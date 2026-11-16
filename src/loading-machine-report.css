@@ -140,3 +140,14 @@
  .lm-report tr.lm-row-breakdown>td,.lm-report tr.lm-row-nohours>td,.lm-report tr.lm-line>td,.lm-report .lm-timeline,.lm-report .lm-timeline *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
  .lm-report .lm-tl-scroll{overflow:visible}
 }
+/* Breakdown in Pulse opens its details (owner, 16 Nov 2026): the status and the Pulse reference are buttons. */
+.lm-report .lm-bd-open{display:inline-flex;align-items:center;max-width:100%;padding:0;border:0;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.lm-report .lm-bd-open:not(:has(.lm-status)){color:#8a1c1c;font-weight:700;text-decoration:underline;text-underline-offset:3px}
+.lm-report .lm-bd-open:hover .lm-status,.lm-report .lm-bd-open:focus-visible .lm-status{box-shadow:0 0 0 3px #b4232340}
+.lm-report .lm-bd-open:focus-visible{outline:3px solid #8654b6;outline-offset:2px;border-radius:6px}
+.lm-report .lm-bd-ref{font-weight:750;color:#8a1c1c}
+.lm-report .lm-bd-lifecycle{margin:8px 0 18px;padding:12px 14px;border:1px solid #e4c9c9;border-left:5px solid #b42323;border-radius:10px;background:var(--panel,#fff)}
+.lm-report .lm-bd-lifecycle>header{display:flex;align-items:center;gap:12px;margin-bottom:8px}
+.lm-report .lm-bd-lifecycle h3{margin:0;font-size:16px}
+.lm-report .lm-bd-lifecycle>header button{margin-left:auto}
+:root[data-theme="dark"] .lm-report .lm-bd-open:not(:has(.lm-status)),:root[data-theme="dark"] .lm-report .lm-bd-ref{color:#ff9b9b}

@@ -39,6 +39,8 @@ import { isIdleVehicleRequest } from "../shared/request-idle.mjs";
 import { requestStatusLabel, requestStatusSortRank } from "./request-status.mjs";
 import { openSmartPrint, printFitScale, printPageSize, setSmartPrintExporter, setSmartPrintPrinterSource, smartPrintReportParts } from "./smart-print.mjs";
 import { chooseSaveTarget, saveAsAvailable, saveOutcomeMessage, saveToTarget } from "./save-as.mjs";
+import { downloadBlob } from "./download-history.mjs";
+import DownloadHistoryButton from "./download-history.jsx";
 import { registerSmartPrintMenu } from "./table-smart-print.jsx";
 import { readDomTable } from "./dom-table-model.mjs";
 import {beginDownload,runDownloadNotice} from './download-notice.mjs';
@@ -55,7 +57,7 @@ import "./date-input.css";
 import { describeDateRange, encodeDateRange, looksLikeDateColumn, matchesDateRange, parseDateRange } from "./date-range-filter.mjs";
 import { cellMatchesFilterValues, describeFilterValues, filterValueSelected, parseFilterValues, toggleFilterValue } from "./multi-value-filter.mjs";
 import { recordCountLine, withSerialColumn } from "../shared/serial-column.mjs";
-import { XLSX_PAGE_SETUP, xlsxColumnWidth, xlsxFooter, xlsxHeadingHeight, xlsxNumericColumns, xlsxPlainNumber } from "../shared/xlsx-layout.mjs";
+import { XLSX_PAGE_SETUP, xlsxCellText, xlsxColumnWidth, xlsxFooter, xlsxHeadingHeight, xlsxHeadingText, xlsxNumericColumns, xlsxPlainNumber, xlsxTableRows } from "../shared/xlsx-layout.mjs";
 import {canViewUserSessions,isSessionViewOnlyUser} from "../shared/user-session-access.mjs";
 import {canViewBdAgeingReport} from "../shared/bd-ageing-report.mjs";
 import BdAgeingReport from "./bd-ageing-report.jsx";
@@ -3710,12 +3712,10 @@ function CaliberActivityOverlay({ message = "", className = "" }) {
     reportPortalTarget(),
   );
 }
+// To the browser's Downloads folder, kept in Download History (src/download-history.mjs). The file's address used to be
+// dropped at once, which can leave the browser or a download manager with nothing to fetch.
 function downloadExportFile(blob, filename) {
-  const url = URL.createObjectURL(blob), link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  downloadBlob(blob, filename);
 }
 function escapeExportHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (character) => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[character]));
@@ -3808,7 +3808,7 @@ function buildXlsxSheetsWorkbook(title, sheets = []) {
     const serial = withSerialColumn(columns, exportRows);
     const usedLabels = new Set();
     const labels = serial.columns.map((column, index) => {
-      const base = String(column.label || `Column ${index + 1}`).slice(0, 240);
+      const base = xlsxHeadingText(column.label).slice(0, 240) || `Column ${index + 1}`;
       let label = base;
       for (let suffix = 2; usedLabels.has(label.toLowerCase()); suffix++) label = `${base} (${suffix})`;
       usedLabels.add(label.toLowerCase());
@@ -3816,10 +3816,11 @@ function buildXlsxSheetsWorkbook(title, sheets = []) {
     });
     const summaryRows = headerRows?.length ? headerRows.map(row=>Array.isArray(row)?row:[row]) : [[sheetTitle || title || "Caliber Pulse-II report"], [recordCountLine(exportRows.length, formatDisplayDateTime(new Date()))]];
     const firstDataRow = summaryRows.length + 1;
-    const worksheetRows = [...summaryRows, labels, ...serial.rows];
+    const bodyRows = xlsxTableRows(serial.rows, labels.length);
+    const worksheetRows = [...summaryRows, labels, ...bodyRows];
     // Headings wrap in narrow columns, plain-number columns are numbers (shared/xlsx-layout.mjs).
-    const columnWidths = labels.map((label, index) => xlsxColumnWidth(label, serial.rows.map((row) => row[index])));
-    const numericColumns = xlsxNumericColumns(serial.rows, labels.length);
+    const columnWidths = labels.map((label, index) => xlsxColumnWidth(label, bodyRows.map((row) => row[index])));
+    const numericColumns = xlsxNumericColumns(bodyRows, labels.length);
     const headingHeight = xlsxHeadingHeight(labels, columnWidths);
     const sheetData = worksheetRows.map((row, rowIndex) => {
       const style = rowIndex < summaryRows.length ? (rowIndex === 0 ? 3 : 4) : rowIndex === summaryRows.length ? 5 : highlightedRows.has(rowIndex - firstDataRow) ? 2 : (rowIndex - firstDataRow) % 2 === 0 ? 6 : 1;
@@ -3827,7 +3828,7 @@ function buildXlsxSheetsWorkbook(title, sheets = []) {
       return `<row r="${rowIndex + 1}"${height}>${row.map((cell, columnIndex) => {
         const reference = excelCellReference(columnIndex, rowIndex), cellStyle = rowIndex >= firstDataRow && serial.columns[columnIndex]?.tone==='error'?7:rowIndex >= firstDataRow && serial.columns[columnIndex]?.tone==='corrected'?8:style;
         const number = rowIndex >= firstDataRow && numericColumns[columnIndex] ? xlsxPlainNumber(cell) : null;
-        return number !== null ? `<c r="${reference}" s="${cellStyle}"><v>${number}</v></c>` : `<c r="${reference}" s="${cellStyle}" t="inlineStr"><is><t xml:space="preserve">${escapeXlsxText(cell)}</t></is></c>`;
+        return number !== null ? `<c r="${reference}" s="${cellStyle}"><v>${number}</v></c>` : `<c r="${reference}" s="${cellStyle}" t="inlineStr"><is><t xml:space="preserve">${escapeXlsxText(xlsxCellText(cell))}</t></is></c>`;
       }).join("")}</row>`;
     }).join("");
     const widths = columnWidths.map((width, index) => `<col min="${index + 1}" max="${index + 1}" width="${width}" customWidth="1"/>`).join("");
@@ -11440,7 +11441,7 @@ function Normal({ logout, requests, requestsLoaded = true, requestsError = "", r
   const productionFirstTripReportRows=useMemo(()=>productionFirstTripSourceRows.filter((row)=>String(row.status||"").trim().toLowerCase()==="closed"&&String(row.productionFirstTripAt||row.firstTripAt||"").trim()),[productionFirstTripSourceRows]);
   const createLockedByFirstTrip=isProductionManager&&productionFirstTripRows.length>0;
   return <div className={`normal${embedded ? " embedded-workspace" : ""}`} onPointerDown={isMaintenance ? preventTableAutoScroll : undefined}>
-    {!embedded && <header><CaliberBrand className="logo" subtitle="Mobile user portal" /><nav className="normal-header-nav">{showDashboardMenu&&<button data-nav="dashboard" className={section === "dashboard" ? "active" : ""} onClick={() => setSection("dashboard")}><LayoutDashboard /> Dashboard</button>}{showDirectoryMenu&&<button data-nav="directory" className={section === "directory" ? "active" : ""} onClick={() => setSection("directory")}><BookOpen /> Directory (CD)</button>}{showRequestsMenu&&<button data-nav="requests" className={section === "profile" ? "active" : ""} onClick={() => setSection("profile")}><Wrench /> {isGeneral ? "Requests" : mobileRole}</button>}{showReportsMenu&&<button data-nav="reports" className={section === "reports" ? "active" : ""} onClick={() => setSection("reports")}><FileBarChart /> Reports</button>}{showTicketsMenu&&<button data-nav="tickets" className={section === "tickets" ? "active" : ""} onClick={() => setSection("tickets")}><Ticket /> Tickets</button>}{isMis&&<button data-nav="transfers" className={section === "transfers" ? "active" : ""} onClick={() => setSection("transfers")}><ArrowRightLeft /> Vehicle Transfer</button>}<BdmsAssistant session={session} token={authToken} /><AnnouncementHistoryButton token={authToken} /></nav><HeaderClock className="normal-header-clock" /><div className="normal-header-actions">{!isGeneral&&<HelpTraining role={mobileRole} location={assignedLocation} />}<NotificationBell session={session} onOpenEntry={(target) => {if(target?.kind==="cdir-deletion"){setDirectoryView("deletions");setSection("directory");return;}if(target?.kind==="employee-transfer"){setDirectoryView("transfer");setSection("directory");return;}const ticket=target?.kind==="ticket"&&showTicketsMenu;const transfer=target?.kind==="transfer"&&isMis;if(ticket)setSection("tickets");else if(transfer)setSection("transfers");else if(showRequestsMenu&&canSeeRequestMenu("View requests")){setSection("profile");setTab("requests")}}} /><span className="normal-header-user"><b>{mobileRole}</b><small>{session?.name || "Mobile User"}</small></span><UserProfile session={session} role={mobileRole} location={assignedLocation} apiToken={authToken} /><ThemeToggle theme={theme} onToggle={toggleTheme} /><button onClick={logout} aria-label="Sign out" className="sign-out-button"><DoorExitIcon /><span className="sign-out-label">Sign out</span></button></div></header>}
+    {!embedded && <header><CaliberBrand className="logo" subtitle="Mobile user portal" /><nav className="normal-header-nav">{showDashboardMenu&&<button data-nav="dashboard" className={section === "dashboard" ? "active" : ""} onClick={() => setSection("dashboard")}><LayoutDashboard /> Dashboard</button>}{showDirectoryMenu&&<button data-nav="directory" className={section === "directory" ? "active" : ""} onClick={() => setSection("directory")}><BookOpen /> Directory (CD)</button>}{showRequestsMenu&&<button data-nav="requests" className={section === "profile" ? "active" : ""} onClick={() => setSection("profile")}><Wrench /> {isGeneral ? "Requests" : mobileRole}</button>}{showReportsMenu&&<button data-nav="reports" className={section === "reports" ? "active" : ""} onClick={() => setSection("reports")}><FileBarChart /> Reports</button>}{showTicketsMenu&&<button data-nav="tickets" className={section === "tickets" ? "active" : ""} onClick={() => setSection("tickets")}><Ticket /> Tickets</button>}{isMis&&<button data-nav="transfers" className={section === "transfers" ? "active" : ""} onClick={() => setSection("transfers")}><ArrowRightLeft /> Vehicle Transfer</button>}<BdmsAssistant session={session} token={authToken} /><AnnouncementHistoryButton token={authToken} /></nav><HeaderClock className="normal-header-clock" /><div className="normal-header-actions">{!isGeneral&&<HelpTraining role={mobileRole} location={assignedLocation} />}<DownloadHistoryButton session={session} /><NotificationBell session={session} onOpenEntry={(target) => {if(target?.kind==="cdir-deletion"){setDirectoryView("deletions");setSection("directory");return;}if(target?.kind==="employee-transfer"){setDirectoryView("transfer");setSection("directory");return;}const ticket=target?.kind==="ticket"&&showTicketsMenu;const transfer=target?.kind==="transfer"&&isMis;if(ticket)setSection("tickets");else if(transfer)setSection("transfers");else if(showRequestsMenu&&canSeeRequestMenu("View requests")){setSection("profile");setTab("requests")}}} /><span className="normal-header-user"><b>{mobileRole}</b><small>{session?.name || "Mobile User"}</small></span><UserProfile session={session} role={mobileRole} location={assignedLocation} apiToken={authToken} /><ThemeToggle theme={theme} onToggle={toggleTheme} /><button onClick={logout} aria-label="Sign out" className="sign-out-button"><DoorExitIcon /><span className="sign-out-label">Sign out</span></button></div></header>}
     <main>
       {!embedded&&section==="dashboard"&&showDashboardMenu&&(dashboardRequestsReady ? <MisDashboard requests={misDashboardRequests} requestsError={dashboardRequestsError} requestsUpdatedAt={dashboardRequestsUpdatedAt} onRefreshRequests={refreshDashboardRequests} theme={theme} session={session} ReportSection={ReportSection} printDashboard={printDashboardReport} /> : <RequestDataState error={dashboardRequestsError} retry={refreshDashboardRequests} />)}
       {!embedded&&section==="directory"&&showDirectoryMenu&&<CdirModule token={session?.token || authToken} ReportSection={ReportSection} initialView={directoryView} onViewChange={setDirectoryView}/>}
@@ -12217,6 +12218,7 @@ function App() {
             <button type="button" aria-label="Focus page smart search" title="Smart search" className="smart-search-button" onClick={() => active === "Dashboard" ? window.dispatchEvent(new Event("dashboard-smart-search")) : document.querySelector('.body input[data-smart-search]:not([disabled])')?.focus()}>
               <SearchScanIcon />
             </button>
+            <DownloadHistoryButton session={session} />
             <NotificationBell session={session} onOpenEntry={(target) => selectMenu(target?.kind === "cdir-deletion" ? "Record Deletion Approvals" : target?.kind === "employee-transfer" ? "Employee Transfer" : target?.kind === "ticket" ? "Tickets" : target?.kind === "transfer" ? "Vehicle transfers" : adminPermissions.adminLevel === "Manager" ? "Dashboard" : "Breakdown master")} />
           </div>
         </div>

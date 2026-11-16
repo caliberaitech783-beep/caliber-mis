@@ -1,0 +1,46 @@
+/* Download History (top bar): a list of the files downloaded on this PC, and a table view of one of them. */
+.dlh-backdrop{position:fixed;inset:0;z-index:12500;display:grid;place-items:center;padding:16px;background:#10284c66}
+.dlh-dialog{box-sizing:border-box;display:flex;flex-direction:column;gap:10px;width:min(1180px,100%);max-height:calc(100vh - 32px);padding:16px 18px;border-radius:14px;background:var(--panel,#fff);color:var(--text,#17233c);box-shadow:0 24px 60px #10284c55;overflow:hidden}
+.dlh-head{display:flex;align-items:center;gap:12px}
+.dlh-head h2{display:flex;align-items:center;gap:8px;margin:0;font-size:19px}
+.dlh-head h2 svg{width:22px;height:22px;color:#522e90}
+.dlh-head .mis-popup-close{margin-left:auto}
+.dlh-note{margin:0;color:var(--muted,#65758b);font-size:13px;line-height:1.5}
+.dlh-error{margin:0;padding:8px 12px;border-radius:8px;background:#fdecea;color:#991b1b;font-size:13px;font-weight:600}
+.dlh-tools{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.dlh-tools input{flex:1 1 260px;min-width:0;padding:8px 12px;border:1px solid var(--line,#d5dbe5);border-radius:8px;font:inherit;background:var(--panel,#fff);color:inherit}
+.dlh-tools span{color:var(--muted,#65758b);font-size:13px;font-weight:600}
+.dlh-table-wrap{min-height:0;overflow:auto;border:1px solid var(--line,#d5dbe5);border-radius:10px}
+.dlh-table-wrap table{width:100%;border-collapse:collapse;font-size:13px}
+.dlh-table-wrap th{position:sticky;top:0;z-index:1;padding:8px 10px;background:#eef1f7;color:#10284c;font-size:12px;text-align:left;text-transform:uppercase;white-space:nowrap}
+.dlh-table-wrap td{padding:7px 10px;border-top:1px solid var(--line,#e3e8ef);vertical-align:top}
+.dlh-list td:first-child,.dlh-list th:first-child{width:56px;text-align:right}
+.dlh-list td b{display:block;overflow-wrap:anywhere}
+.dlh-list td small{display:block;margin-top:2px;color:var(--muted,#65758b)}
+.dlh-kind{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap}
+.dlh-kind svg{width:14px;height:14px}
+.dlh-kind-excel,.dlh-kind-csv{background:#e3f4ea;color:#166534}
+.dlh-kind-pdf{background:#fdecea;color:#991b1b}
+.dlh-actions{white-space:nowrap}
+.dlh-actions button,.dlh-viewer header button{display:inline-flex;align-items:center;gap:5px;margin:0 6px 4px 0;padding:6px 10px;font-size:13px}
+.dlh-actions button svg,.dlh-viewer header button svg{width:15px;height:15px}
+.dlh-remove{padding:6px 8px!important}
+.dlh-empty{margin:24px 0;text-align:center;color:var(--muted,#65758b)}
+.dlh-viewer{display:flex;flex-direction:column;gap:8px;min-height:0}
+.dlh-viewer header{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.dlh-viewer header b{flex:1 1 200px;min-width:0;overflow-wrap:anywhere}
+.dlh-viewer .dlh-table-wrap{max-height:calc(100vh - 230px)}
+.dlh-viewer td{white-space:pre-wrap}
+.dlh-intro{margin:0;font-size:13px;font-weight:700}
+.dlh-intro+.dlh-intro{font-weight:400;color:var(--muted,#65758b)}
+.dlh-sheets{display:flex;gap:6px;flex-wrap:wrap}
+.dlh-sheets button{padding:5px 10px;border:1px solid var(--line,#d5dbe5);border-radius:6px;background:transparent;color:inherit;font-size:13px}
+.dlh-sheets button.active{background:#522e90;border-color:#522e90;color:#fff}
+:root[data-theme="dark"] .dlh-table-wrap th{background:#1f3049;color:#e5ebf5}
+:root[data-theme="dark"] .dlh-dialog{background:#111d30;color:#e5ebf5}
+:root[data-theme="dark"] .dlh-head h2 svg{color:#c4a8ec}
+@media (max-width:700px){
+ .dlh-backdrop{padding:8px}
+ .dlh-dialog{padding:12px;max-height:calc(100vh - 16px)}
+ .dlh-list th:nth-child(5),.dlh-list td:nth-child(5),.dlh-list th:nth-child(6),.dlh-list td:nth-child(6){display:none}
+}

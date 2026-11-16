@@ -1,6 +1,7 @@
 // "Export Excel" opens the computer's own Save As window, so the user chooses the folder and the file name.
 // Only Chrome and Edge on a PC have that window; everywhere else (phones, Firefox, Safari) the file goes to
 // Downloads as before.
+import {recordDownload} from './download-history.mjs';
 export const XLSX_MIME='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 const FILE_TYPES={
   xlsx:{description:'Excel Workbook',accept:{[XLSX_MIME]:['.xlsx']}},
@@ -32,18 +33,26 @@ export async function chooseSaveTarget(fileName,win=globalThis.window){
  * file is not downloading after selecting the download location"). onWriteError hears why, for the diagnostics log.
  * The file the Save As window made is left as it is: it may be an older file the user chose to replace.
  */
-export async function saveToTarget(target,blob,fileName,download,{onWriteError}={}){
+// A write that has not finished in this time (a OneDrive or network folder that hangs, a virus check that never answers)
+// is given up and the file is downloaded instead (owner, 16 Nov 2026 at 22:30, after the fallback above: "Excel reports are
+// still not downloading in Smart Print").
+export const SAVE_WRITE_LIMIT_MS=20000;
+const tooSlow=()=>Object.assign(new Error('the folder you chose did not finish taking the file within '+SAVE_WRITE_LIMIT_MS/1000+' seconds'),{name:'TimeoutError'});
+export async function saveToTarget(target,blob,fileName,download,{onWriteError,limitMs=SAVE_WRITE_LIMIT_MS,record=recordDownload,title=''}={}){
   if(!target){download(blob,fileName);return {saved:false,name:fileName};}
-  let writable=null;
+  let writable=null,timer=null;
   try{
-    writable=await target.createWritable();
-    await writable.write(blob);await writable.close();
+    const write=(async()=>{writable=await target.createWritable();await writable.write(blob);await writable.close();})();
+    write.catch(()=>{/* a write that ends after the limit has already been reported */});
+    await Promise.race([write,new Promise((_,reject)=>{timer=setTimeout(()=>reject(tooSlow()),limitMs);})]);
   }catch(error){
     if(writable){try{await writable.abort?.();}catch{/* the write already failed */}}
     try{onWriteError?.(error);}catch{/* reporting never stops the file */}
     download(blob,fileName);
     return {saved:false,name:fileName,fallback:true,chosenName:target.name||fileName,reason:writeErrorText(error)};
-  }
+  }finally{clearTimeout(timer);}
+  // Download History keeps a copy, so a file saved in a folder can be opened again from the app.
+  try{record?.(blob,target.name||fileName,{where:'folder',title});}catch{/* the history never stops the file */}
   return {saved:true,name:target.name||fileName};
 }
 
@@ -52,6 +61,7 @@ function writeErrorText(error){
   if(name==='NoModificationAllowedError'||name==='InvalidModificationError')return 'the file is open in another program, such as Excel';
   if(name==='NotAllowedError'||name==='SecurityError')return 'the browser was not allowed to write there';
   if(name==='QuotaExceededError')return 'there is no space left there';
+  if(name==='TimeoutError')return String(error.message);
   return String(error?.message||'the browser could not write there');
 }
 

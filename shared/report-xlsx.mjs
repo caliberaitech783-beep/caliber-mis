@@ -1,6 +1,6 @@
 import {recordCountLine,withSerialColumn} from "./serial-column.mjs";
 import {formatDisplayDateTime} from "./date-time-format.mjs";
-import {XLSX_PAGE_SETUP,xlsxColumnWidth,xlsxFooter,xlsxHeadingHeight,xlsxNumericColumns,xlsxPlainNumber} from "./xlsx-layout.mjs";
+import {XLSX_PAGE_SETUP,xlsxCellText,xlsxColumnWidth,xlsxFooter,xlsxHeadingHeight,xlsxHeadingText,xlsxNumericColumns,xlsxPlainNumber,xlsxTableRows} from "./xlsx-layout.mjs";
 function escapeExportHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (character) => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[character]));
 }
@@ -92,7 +92,7 @@ function buildXlsxSheetsWorkbook(title, sheets = []) {
     const serial = withSerialColumn(columns, exportRows);
     const usedLabels = new Set();
     const labels = serial.columns.map((column, index) => {
-      const base = String(column.label || `Column ${index + 1}`).slice(0, 240);
+      const base = xlsxHeadingText(column.label).slice(0, 240) || `Column ${index + 1}`;
       let label = base;
       for (let suffix = 2; usedLabels.has(label.toLowerCase()); suffix++) label = `${base} (${suffix})`;
       usedLabels.add(label.toLowerCase());
@@ -100,10 +100,11 @@ function buildXlsxSheetsWorkbook(title, sheets = []) {
     });
     const summaryRows = headerRows?.length ? headerRows.map(row=>Array.isArray(row)?row:[row]) : [[sheetTitle || title || "Caliber Pulse-II report"], [recordCountLine(exportRows.length, formatDisplayDateTime(new Date()))]];
     const firstDataRow = summaryRows.length + 1;
-    const worksheetRows = [...summaryRows, labels, ...serial.rows];
+    const bodyRows = xlsxTableRows(serial.rows, labels.length);
+    const worksheetRows = [...summaryRows, labels, ...bodyRows];
     // Headings wrap in narrow columns, plain-number columns are numbers (shared/xlsx-layout.mjs).
-    const columnWidths = labels.map((label, index) => xlsxColumnWidth(label, serial.rows.map((row) => row[index])));
-    const numericColumns = xlsxNumericColumns(serial.rows, labels.length);
+    const columnWidths = labels.map((label, index) => xlsxColumnWidth(label, bodyRows.map((row) => row[index])));
+    const numericColumns = xlsxNumericColumns(bodyRows, labels.length);
     const headingHeight = xlsxHeadingHeight(labels, columnWidths);
     const sheetData = worksheetRows.map((row, rowIndex) => {
       const style = rowIndex < summaryRows.length ? (rowIndex === 0 ? 3 : 4) : rowIndex === summaryRows.length ? 5 : highlightedRows.has(rowIndex - firstDataRow) ? 2 : (rowIndex - firstDataRow) % 2 === 0 ? 6 : 1;
@@ -111,7 +112,7 @@ function buildXlsxSheetsWorkbook(title, sheets = []) {
       return `<row r="${rowIndex + 1}"${height}>${row.map((cell, columnIndex) => {
         const reference = excelCellReference(columnIndex, rowIndex), cellStyle = rowIndex >= firstDataRow && serial.columns[columnIndex]?.tone==='error'?7:rowIndex >= firstDataRow && serial.columns[columnIndex]?.tone==='corrected'?8:style;
         const number = rowIndex >= firstDataRow && numericColumns[columnIndex] ? xlsxPlainNumber(cell) : null;
-        return number !== null ? `<c r="${reference}" s="${cellStyle}"><v>${number}</v></c>` : `<c r="${reference}" s="${cellStyle}" t="inlineStr"><is><t xml:space="preserve">${escapeXlsxText(cell)}</t></is></c>`;
+        return number !== null ? `<c r="${reference}" s="${cellStyle}"><v>${number}</v></c>` : `<c r="${reference}" s="${cellStyle}" t="inlineStr"><is><t xml:space="preserve">${escapeXlsxText(xlsxCellText(cell))}</t></is></c>`;
       }).join("")}</row>`;
     }).join("");
     const widths = columnWidths.map((width, index) => `<col min="${index + 1}" max="${index + 1}" width="${width}" customWidth="1"/>`).join("");

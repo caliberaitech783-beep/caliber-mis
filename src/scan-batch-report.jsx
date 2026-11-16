@@ -4,6 +4,7 @@ import {scanReportCardStatus,CARD_STATUS_LEGEND} from './scan-report-card-status
 import React,{useState} from 'react';
 import TableSmartPrint from './table-smart-print.jsx';
 import {buildXlsxSheetsWorkbook} from '../shared/report-xlsx.mjs';
+import {downloadBlob} from './download-history.mjs';
 import {scanBatchReport,scanBatchReportTables} from '../shared/scan-batch-report.mjs';
 import './scan-batch-report.css';
 const display=value=>value===null||value===undefined||value===''?'—':String(value);
@@ -32,7 +33,7 @@ export default function ScanBatchReport({batch,cards,token,ReportSection,context
   const response=await fetch('/api/scan-batches/'+batch.id+'/report'+(format==='pdf'?'.pdf':''),{cache:'no-store',headers:{Authorization:'Bearer '+token}});
   if(!response.ok){const body=await response.json().catch(()=>({}));throw Error(body.error||'The batch report could not be downloaded.');}
   let blob;if(format==='pdf')blob=await response.blob();else{const data=await response.json();blob=buildXlsxSheetsWorkbook(data.title,data.tables);}
-  const url=URL.createObjectURL(blob instanceof Blob?blob:new Blob([blob],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})),link=document.createElement('a');link.href=url;link.download=(report.vehicle?'VLB':'ELB')+'-batch-'+batch.id+'.'+format;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
+  downloadBlob(blob instanceof Blob?blob:new Blob([blob],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),(report.vehicle?'VLB':'ELB')+'-batch-'+batch.id+'.'+format);
  }catch(e){setError(e.message)}finally{setDownloading('')}};
  return <section className="scan-batch-report" aria-label="Current batch report">
   <header><div><h2>{report.title}</h2><p>{report.name} · {report.counts.cards} specific cards in this batch</p></div><div className="scan-actions"><button type="button" disabled={Boolean(downloading)||contextBlocked||(report.contextChecked&&!report.counts.saved)} onClick={()=>download('xlsx')}>Download batch Excel</button><button type="button" disabled={Boolean(downloading)||contextBlocked||(report.contextChecked&&!report.counts.saved)} onClick={()=>download('pdf')}>Download batch PDF</button></div></header>

@@ -1,6 +1,7 @@
 import React,{Suspense,lazy,useEffect,useRef,useState} from 'react';
 import {BookOpen,Building2,ShieldCheck,ArrowUpRight,X,Download,Printer} from 'lucide-react';
 import {openSmartPrint} from './smart-print.mjs';
+import {downloadBlob} from './download-history.mjs';
 import TableSmartPrint from './table-smart-print.jsx';
 import './log-book-dashboard.css';
 import {scanImageExtensionForType} from '../public/scan-image-type.mjs';
@@ -83,7 +84,7 @@ export default function LogBookDashboard({session,goto,fetcher=fetch,initialFilt
   try{
    const {dashboardPrintPdf}=await import('./dashboard-pdf.mjs');
    const blob=await dashboardPrintPdf(printTarget(),A3_PAGE);
-   const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download='Caliber-Pulse-II-Dashboard-'+displayDay(applied.from)+'-to-'+displayDay(applied.to)+'-A3.pdf';link.click();setTimeout(()=>URL.revokeObjectURL(url),10000);
+   downloadBlob(blob,'Caliber-Pulse-II-Dashboard-'+displayDay(applied.from)+'-to-'+displayDay(applied.to)+'-A3.pdf');
   }catch(e){setPrintError(e.message||'The dashboard PDF could not be prepared.');}
   finally{setPrinting('');}
  };
