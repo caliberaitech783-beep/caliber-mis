@@ -1,5 +1,5 @@
 import {decodeScanJson} from '../rules/scan-text-storage.mjs';
-import {ownerTelegramLogins} from './release-otp-delivery.mjs';
+import {healthReportLogins} from './health-report-people.mjs';
 import {escapeHtml,duration} from './scan-batch-report.mjs';
 import {displaySiteName} from '../../shared/region-scope.mjs';
 
@@ -237,7 +237,7 @@ export function liveFigures({performance,scanning,pool,pulseCopy},from){
 export const isLiveSlot=(env=process.env)=>!env.WEBSITE_SLOT_NAME||String(env.WEBSITE_SLOT_NAME).toLowerCase()==='production';
 export const healthReportEnabled=(env=process.env)=>!['off','0','false','no'].includes(String(env.MIS_HEALTH_REPORT??'').trim().toLowerCase());
 
-export function createHealthReporter({pool,telegram,live=()=>({}),recipients=()=>ownerTelegramLogins(pool),now=()=>Date.now(),log=console}){
+export function createHealthReporter({pool,telegram,live=()=>({}),recipients=()=>healthReportLogins(pool),now=()=>Date.now(),log=console}){
  let ready=null,running=false;
  const ensure=()=>ready||=pool.query(HEALTH_REPORT_SCHEMA).catch(error=>{ready=null;throw error;});
  async function figures(window){

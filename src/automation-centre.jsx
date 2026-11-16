@@ -2,13 +2,15 @@ import React,{useCallback,useEffect,useMemo,useState} from 'react';
 import TableSmartPrint from './table-smart-print.jsx';
 import './automation-centre.css';
 
-const TABS=['Overview','Rules','Messages sent','Equipment mismatch settings'];
+const TABS=['Overview','Rules','Messages sent','Equipment mismatch settings','Speed report people'];
 const stamp=value=>value?new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Kolkata',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(value)).replace(/\//g,'-').replace(',',''):'';
 const day=value=>value?stamp(value).slice(0,10):'';
 const number=value=>value===null||value===undefined?'—':Number(value).toLocaleString('en-IN');
 const Channel=({state})=>state===null?<span className="automation-channel is-none">Not used</span>:<span className={'automation-channel '+(state==='on'?'is-on':'is-off')}>{state==='on'?'ON':'OFF'}</span>;
 
 export default function AutomationCentre({session,onOpenPage}){
+ // A25 people (16 Nov 2026): Pulse-II logins or mobile numbers who get the speed report besides the owner.
+ const [people,setPeople]=useState(null),[peopleText,setPeopleText]=useState('');
  const [data,setData]=useState(null),[error,setError]=useState(''),[tab,setTab]=useState(TABS[0]),[busy,setBusy]=useState(false),[notice,setNotice]=useState(''),[form,setForm]=useState(null),[category,setCategory]=useState('All');
  const request=useCallback(async(route='',method='GET',body)=>{
   const response=await fetch('/api/automation-centre'+route,{method,cache:'no-store',headers:{Authorization:'Bearer '+session.token,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
@@ -38,6 +40,10 @@ export default function AutomationCentre({session,onOpenPage}){
   if(!window.confirm(`Send a sample of ${row.code} ${row.name} to Telegram?\n\nThe report of the time since the last report time goes to the same people as the real report. The 10:00, 16:00 and 21:00 reports are not changed.`))return;
   setBusy(true);setError('');setNotice('');
   try{const result=await request('/health-report/sample','POST',{});setNotice(`Sample sent on Telegram (${result.sent} chat${result.sent===1?'':'s'}): ${result.verdict}.`)}catch(e){setError(e.message)}finally{setBusy(false)}};
+ const acceptPeople=result=>{setPeople(result);setPeopleText(result.settings.people.join('\n'));};
+ useEffect(()=>{if(tab==='Speed report people'&&!people)request('/health-report/people').then(acceptPeople).catch(e=>setError(e.message));},[tab,people,request]);
+ const savePeople=async event=>{event.preventDefault();setBusy(true);setError('');setNotice('');
+  try{acceptPeople(await request('/health-report/people','PUT',{people:peopleText}));setNotice('A25 Speed report people saved.')}catch(e){setError(e.message)}finally{setBusy(false)}};
  const categories=useMemo(()=>['All',...new Set((data?.rows||[]).map(row=>row.category))],[data]);
  const rows=(data?.rows||[]).filter(row=>category==='All'||row.category===category);
  const totals=data?.totals;
@@ -57,12 +63,12 @@ export default function AutomationCentre({session,onOpenPage}){
     <div><dt>WhatsApp ON</dt><dd>{totals.whatsappOn}</dd></div>
     <div><dt>Messages sent to date</dt><dd>{number(totals.sentToDate)}</dd></div>
    </dl>
-   {tab!=='Equipment mismatch settings'&&<label className="automation-filter">Category<select value={category} onChange={event=>setCategory(event.target.value)}>{categories.map(name=><option key={name}>{name}</option>)}</select></label>}
+   {!['Equipment mismatch settings','Speed report people'].includes(tab)&&<label className="automation-filter">Category<select value={category} onChange={event=>setCategory(event.target.value)}>{categories.map(name=><option key={name}>{name}</option>)}</select></label>}
    {tab==='Overview'&&<>{rows.length>0&&<TableSmartPrint row title={'Automation Centre · Overview'+printScope}/>}<div className="automation-table"><table>
     <thead><tr><th>#</th><th>Automation</th><th>Category</th><th>Switch</th><th>Telegram</th><th>WhatsApp</th><th>Pop-up</th><th>Email</th><th>Sent to date</th><th>People</th></tr></thead>
     <tbody>{rows.map(row=><tr key={row.code}>
      <td>{row.number}</td>
-     <td><span className="automation-code">{row.code}</span> <b>{row.name}</b><small>{row.rule}</small>{row.editable&&<button type="button" className="automation-link" data-print-hide="" onClick={()=>setTab('Equipment mismatch settings')}>Change settings</button>}{row.key==='scan-batch-report'&&<button type="button" className="automation-link" data-print-hide="" disabled={busy} onClick={()=>void sendSample(row)}>Send sample to Telegram</button>}{row.key==='health-report'&&<button type="button" className="automation-link" data-print-hide="" disabled={busy} onClick={()=>void sendHealthSample(row)}>Send sample to Telegram</button>}</td>
+     <td><span className="automation-code">{row.code}</span> <b>{row.name}</b><small>{row.rule}</small>{row.editable&&<button type="button" className="automation-link" data-print-hide="" onClick={()=>setTab('Equipment mismatch settings')}>Change settings</button>}{row.key==='scan-batch-report'&&<button type="button" className="automation-link" data-print-hide="" disabled={busy} onClick={()=>void sendSample(row)}>Send sample to Telegram</button>}{row.key==='health-report'&&<><button type="button" className="automation-link" data-print-hide="" disabled={busy} onClick={()=>void sendHealthSample(row)}>Send sample to Telegram</button><button type="button" className="automation-link" data-print-hide="" onClick={()=>setTab('Speed report people')}>Change people</button></>}</td>
      <td>{row.category}</td><td><button type="button" role="switch" aria-checked={row.switchedOn} aria-label={'Switch '+row.code+' '+(row.switchedOn?'off':'on')} disabled={busy} className={'automation-switch '+(row.switchedOn?'is-on':'is-off')} onClick={()=>void toggle(row)}><span aria-hidden="true"></span>{row.switchedOn?'ON':'OFF'}</button>
       {row.notSendingReason&&<small className="automation-why">{row.notSendingReason}</small>}
       {!row.switchedOn&&row.switchChangedBy&&<small>Switched off by {row.switchChangedBy}{row.switchChangedAt?' on '+stamp(row.switchChangedAt):''}</small>}</td>
@@ -96,6 +102,20 @@ export default function AutomationCentre({session,onOpenPage}){
      <ul className="automation-people">{data.recipientCheck.map(person=><li key={person.entry} className={person.telegramLinked?'is-ready':'is-waiting'}><b>{person.entry}</b>: {person.note}</li>)}</ul></>}
     <p className="automation-note">A mobile number is matched with the mobile number in the person's Users &amp; employees record. Telegram cannot write to a phone number by itself: each person must once press Connect my Telegram on the Telegram Integration page, signed in with their own login.</p>
     <div className="automation-actions"><button type="submit" disabled={busy}>{busy?'Saving…':'Save'}</button><button type="button" onClick={()=>onOpenPage?.('Equipment Deployment')}>Open Equipment Deployment</button><button type="button" onClick={()=>onOpenPage?.('Telegram Integration')}>Open Telegram Integration</button></div>
+   </form>}
+   {tab==='Speed report people'&&<form className="automation-form" onSubmit={savePeople}>
+    <h2><span className="automation-code">A25</span> Speed report (slow or not)</h2>
+    <p>Goes at 10:00, 16:00 and 21:00 IST to the owner and to every person below.</p>
+    {!people&&<p role="status">Loading people…</p>}
+    {people&&<>
+     <label>People (Pulse-II login or mobile number, one per line)<textarea rows={8} value={peopleText} onChange={event=>setPeopleText(event.target.value)} placeholder="One login or mobile number per line"/></label>
+     <ul className="automation-people">
+      {people.check.owner.map(person=><li key={'owner-'+person.login} className={person.telegramLinked?'is-ready':'is-waiting'}><b>{person.login}</b> (owner): {person.telegramLinked?'Telegram connected.':'Telegram not connected yet.'}</li>)}
+      {people.check.people.map(person=><li key={person.entry} className={person.telegramLinked?'is-ready':'is-waiting'}><b>{person.entry}</b>: {person.note}</li>)}
+     </ul>
+    </>}
+    <p className="automation-note">A mobile number is matched with the mobile number in the person's Users &amp; employees record. Telegram cannot write to a phone number by itself: each person must once press Connect my Telegram on the Telegram Integration page, signed in with their own login.</p>
+    <div className="automation-actions"><button type="submit" disabled={busy||!people}>{busy?'Saving…':'Save'}</button><button type="button" onClick={()=>onOpenPage?.('Telegram Integration')}>Open Telegram Integration</button></div>
    </form>}
   </>}
  </section>;

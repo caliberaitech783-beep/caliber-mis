@@ -190,7 +190,8 @@ test('it runs only on the live slot and is the Automation Centre line A25 with i
  assert.equal(line.code,'A25');assert.equal(AUTOMATIONS.at(-1),line);
  assert.match(line.trigger,/10:00, 16:00 and 21:00 IST/);
  const source=readFileSync(new URL('../src/automation-centre.jsx',import.meta.url),'utf8');
- assert.match(source,/row\.key==='health-report'&&<button[^>]*onClick=\{\(\)=>void sendHealthSample\(row\)\}>Send sample to Telegram<\/button>/);
+ assert.match(source,/row\.key==='health-report'&&<><button[^>]*onClick=\{\(\)=>void sendHealthSample\(row\)\}>Send sample to Telegram<\/button><button[^>]*onClick=\{\(\)=>setTab\('Speed report people'\)\}>Change people<\/button><\/>/);
+ assert.match(source,/const TABS=\[[^\]]*'Speed report people'\]/);
  const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
  assert.match(server,/if\(healthReportEnabled\(\)&&isLiveSlot\(\)\)scheduleBackgroundStart\(\(\)=>healthReporter\.start\(\)/);
 });
@@ -208,7 +209,7 @@ test('only an administrator can send a sample of A25',async t=>{
   return {status:response.status,body:await response.json().catch(()=>({}))};};
  assert.equal((await send('operator')).status,403);assert.equal(calls,0);
  assert.deepEqual(await send(),{status:200,body:result});
- result={verdict:'x',people:0,sent:0};assert.match((await send()).body.error,/connected Telegram/);
+ result={verdict:'x',people:0,sent:0};assert.match((await send()).body.error,/Speed report people tab/);
  result={verdict:'x',people:1,sent:0};assert.match((await send()).body.error,/switched OFF/);
 });
 

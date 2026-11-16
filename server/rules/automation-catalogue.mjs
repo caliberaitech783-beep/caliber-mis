@@ -130,7 +130,7 @@ export const AUTOMATIONS=[
  {code:'A25',key:'health-report',name:'Speed report (slow or not)',category:'Reports',
   rule:'Is Pulse-II slow or not since the last report; batches closed; the batch that took longest from start to close, with the usernames that started and locked it',
   trigger:'10:00, 16:00 and 21:00 IST, each covering the time since the last report',
-  people:'Owner (logins with the owner\'s registered mobile)',
+  people:'Owner (logins with the owner\'s registered mobile) and the people on the Speed report people tab',
   format:'Verdict (green / amber / red) with reasons, batches closed, longest batch, card reading, card saving, server, engines',
   controlledIn:'App setting MIS_HEALTH_REPORT (on unless off); live server only',
   telegram:context=>state(context.healthReportRunning!==false&&misBot(context)),whatsapp:()=>null,popup:()=>null,count:{outbox:['health-report']},

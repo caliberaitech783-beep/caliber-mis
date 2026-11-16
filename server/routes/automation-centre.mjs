@@ -1,6 +1,7 @@
 import {AUTOMATIONS,AUTOMATION_KEYS,automationRows} from '../rules/automation-catalogue.mjs';
 import {readAutomationSwitches,writeAutomationSwitch} from '../services/automation-switches.mjs';
 import {readMismatchSettings,writeMismatchSettings} from './equipment-pulse-mismatch.mjs';
+import {readHealthReportPeople,writeHealthReportPeople,healthReportPeopleCheck} from '../services/health-report-people.mjs';
 
 // Telegram/WhatsApp Automation Centre: one list of every automatic message rule with its channels,
 // recipients and the number of messages sent to date.
@@ -101,9 +102,21 @@ export function registerAutomationCentre(app,{pool,requireSession,requireAdminis
   if(!healthReporter)return res.status(503).json({error:'The speed report is not running on this server.'});
   const result=await healthReporter.sendSample();
   req.audit={eventType:'Administration',module:'Automation Centre',action:'Send sample A25 Speed report',targetReference:'health-report',details:result};
-  if(!result.people)return res.status(409).json({error:'Nobody can receive it: no MIS login on the owner\'s mobile number has connected Telegram.'});
-  if(!result.sent)return res.status(409).json({error:'The sample was not sent. A25 may be switched OFF, or the owner\'s Telegram is not connected.'});
+  if(!result.people)return res.status(409).json({error:'Nobody can receive it: no MIS login on the owner\'s mobile number or on the Speed report people tab was found.'});
+  if(!result.sent)return res.status(409).json({error:'The sample was not sent. A25 may be switched OFF, or nobody on the list has connected Telegram.'});
   res.set('Cache-Control','private, no-store').json(result);
+ }catch(e){next(e);}});
+ // A25 people besides the owner: Pulse-II logins or mobile numbers, kept in app settings (16 Nov 2026).
+ app.get('/api/automation-centre/health-report/people',...guard,async(req,res,next)=>{try{
+  req.audit=false;const settings=await readHealthReportPeople(pool);
+  res.set('Cache-Control','private, no-store').json({settings,check:await healthReportPeopleCheck(pool,settings)});
+ }catch(e){next(e);}});
+ app.put('/api/automation-centre/health-report/people',...guard,async(req,res,next)=>{try{
+  const input=req.body||{};
+  if(!Array.isArray(input.people)&&typeof input.people!=='string')return res.status(400).json({error:'Enter the logins or mobile numbers, one per line.'});
+  const saved=await writeHealthReportPeople(pool,input);
+  req.audit={eventType:'Administration',module:'Automation Centre',action:'Change A25 Speed report people',targetReference:'health-report',details:{people:saved.people.length}};
+  res.set('Cache-Control','private, no-store').json({settings:saved,check:await healthReportPeopleCheck(pool,saved)});
  }catch(e){next(e);}});
  // The ON/OFF switch of one automation. A01 keeps its switch in its own settings.
  app.put('/api/automation-centre/switch',...guard,async(req,res,next)=>{try{

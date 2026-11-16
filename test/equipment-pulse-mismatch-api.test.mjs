@@ -171,6 +171,11 @@ test('MIS logins reach the Automation Centre only as administrators',()=>{
   assert.equal(misRequestAllowed(session(['Users & employees']),{path,method:'GET'}),false,path);
   assert.equal(misRequestAllowed(session(['Reports']),{path,method:'POST'}),false,path);
  }
+ // A25 people (16 Nov 2026): read and saved by administrators only.
+ const peoplePath='/api/automation-centre/health-report/people';
+ for(const method of ['GET','PUT'])assert.equal(misRequestAllowed(session(['Users & employees']),{path:peoplePath,method}),true,method);
+ assert.equal(misRequestAllowed(session(['Users & employees']),{path:peoplePath,method:'DELETE'}),false);
+ assert.equal(misRequestAllowed(session(['Reports']),{path:peoplePath,method:'PUT'}),false);
  assert.equal(misRequestAllowed(session(['Reports']),{path:'/api/reports/equipment-pulse-mismatch/notice',method:'GET'}),true);
  assert.equal(misRequestAllowed(session(['Dashboard']),{path:'/api/reports/equipment-pulse-mismatch',method:'GET'}),false);
 });
