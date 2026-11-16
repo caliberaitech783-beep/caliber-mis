@@ -46,7 +46,9 @@ test("browser XLSX worksheets use Excel's required element order and safe Spread
   ]);
   for (const name of ["xl/worksheets/sheet1.xml", "xl/worksheets/sheet2.xml"]) {
     const xml = files.get(name);
-    assert.ok(xml.indexOf("<autoFilter") < xml.indexOf("<mergeCells"), `${name} must put autoFilter before mergeCells`);
+    // Filter arrows come from the table part. A second sheet-level autoFilter over the table makes Excel refuse the file.
+    assert.doesNotMatch(xml, /<autoFilter/, `${name} must leave the filter to its table`);
+    assert.match(xml, /<mergeCells/);
     assert.doesNotMatch(xml, /[\u0000-\u0008\u000b\u000c\u000e-\u001f\ufffe\uffff]/);
     assert.match(xml, /pageSetUpPr fitToPage="1"/);
     assert.match(xml, /orientation="landscape" fitToWidth="1" fitToHeight="0"/);
@@ -57,10 +59,21 @@ test("browser XLSX worksheets use Excel's required element order and safe Spread
   assert.match(files.get("xl/worksheets/sheet2.xml"), /literal _x005F_x0001_/);
   assert.match(files.get("docProps/core.xml"), /BD &amp; Balance/);
   assert.match(files.get("xl/tables/table1.xml"), /tableStyleInfo name="TableStyleLight15"/);
+  assert.match(files.get("xl/tables/table1.xml"), /<autoFilter ref="A3:B4"\/>/);
+  assert.match(files.get("xl/tables/table2.xml"), /<autoFilter ref="A3:B6"\/>/);
   assert.match(files.get("xl/styles.xml"), /left style="thin"><color rgb="FF000000"/);
   assert.match(files.get("xl/styles.xml"), /wrapText="1"/);
   assert.match(files.get("xl/styles.xml"), /fgColor rgb="FFF2F2F2"/);
   assert.match(files.get("xl/styles.xml"), /borderId="1" applyBorder="1"/);
   assert.match(files.get("xl/worksheets/sheet1.xml"), /r="A4" s="6"/);
   assert.match(files.get("xl/worksheets/sheet1.xml"), /tableParts count="1"/);
+});
+
+test("shared XLSX builder leaves the filter to the table so Excel opens the file", async () => {
+  const { buildXlsxSheetsWorkbook } = await import("../shared/report-xlsx.mjs");
+  const blob = await buildXlsxSheetsWorkbook("Idle stops of 20+ min", [{ name: "Report", columns: [{ label: "Machine" }, { label: "Idle (min)" }], rows: [["LPC73 -00130", "45"], ["LPC73 -00130", "99"]] }]);
+  const files = storedFiles(Buffer.from(await blob.arrayBuffer()));
+  assert.doesNotMatch(files.get("xl/worksheets/sheet1.xml"), /<autoFilter/);
+  assert.match(files.get("xl/worksheets/sheet1.xml"), /tableParts count="1"/);
+  assert.match(files.get("xl/tables/table1.xml"), /<autoFilter ref="A3:C5"\/>/);
 });
