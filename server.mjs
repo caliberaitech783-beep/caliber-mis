@@ -8123,7 +8123,7 @@ const healthReporter=createHealthReporter({pool,telegram:telegramOutboxSender(po
  performance:performanceMonitor.snapshot(),pool:{idle:pool.idleCount,waiting:pool.waitingCount},
  scanning:(()=>{try{return bulkScanning.status();}catch{return null;}})(),
  pulseCopy:pulseBreakdownMirror?pulseBreakdownMirror.status():{enabled:false}})});
-registerAutomationCentre(app,{pool,requireSession,requireAdministrator:requireMisAdministrator,centre:automationCentre,mismatchWorker:equipmentMismatch,scanBatchReporter,healthReporter});
+registerAutomationCentre(app,{pool,requireSession,requireAdministrator:requireMisAdministrator,centre:automationCentre,mismatchWorker:equipmentMismatch,scanBatchReporter,healthReporter,misTelegram});
 scheduleBackgroundStart(()=>automationCentre.start(),180000);
 // Equipment alias OTP rule (EQUIPMENT_ALIAS_OTP): aliases saved on a reviewer's choice alone go back to pending once the rule is on; weekly mapping summary to the approver and the MIS managers.
 if(aliasOtpEnabled())scheduleBackgroundStart(()=>demoteUnapprovedAliases(pool).catch(e=>console.error('Alias demotion failed:',e?.message||e)),60000);

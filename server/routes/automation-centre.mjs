@@ -2,6 +2,7 @@ import {AUTOMATIONS,AUTOMATION_KEYS,automationRows} from '../rules/automation-ca
 import {readAutomationSwitches,writeAutomationSwitch} from '../services/automation-switches.mjs';
 import {readMismatchSettings,writeMismatchSettings} from './equipment-pulse-mismatch.mjs';
 import {readHealthReportPeople,writeHealthReportPeople,healthReportPeopleCheck} from '../services/health-report-people.mjs';
+import {CHANNEL_AUTOMATION_KEYS,channelPostCounts,createChannelCode,readAutomationChannels,unlinkAutomationChannel} from '../services/automation-channels.mjs';
 
 // Telegram/WhatsApp Automation Centre: one list of every automatic message rule with its channels,
 // recipients and the number of messages sent to date.
@@ -64,7 +65,8 @@ export function createAutomationCentre({pool,context,ensureSchema=async()=>{},lo
  async function overview(){
   await rollUp();
   const switches=await readAutomationSwitches(pool).catch(()=>({}));
-  const rows=automationRows({...await context(),mismatch:await readMismatchSettings(pool),switches},await counts());
+  const [channels,channelPosts]=await Promise.all([readAutomationChannels(pool).catch(()=>({})),channelPostCounts(pool).catch(()=>({}))]);
+  const rows=automationRows({...await context(),mismatch:await readMismatchSettings(pool),switches,channels,channelPosts},await counts());
   return {rows,generatedAt:new Date().toISOString(),totals:{automations:rows.length,active:rows.filter(row=>row.active).length,
    telegramOn:rows.filter(row=>row.channels.telegram==='on').length,whatsappOn:rows.filter(row=>row.channels.whatsapp==='on').length,
    sentToDate:rows.reduce((sum,row)=>sum+(row.sent||0),0),sentTelegram:rows.reduce((sum,row)=>sum+(row.sentTelegram||0),0),
@@ -75,7 +77,7 @@ export function createAutomationCentre({pool,context,ensureSchema=async()=>{},lo
  return {overview,rollUp,counts,start,stop,ensure};
 }
 
-export function registerAutomationCentre(app,{pool,requireSession,requireAdministrator,centre,mismatchWorker=null,scanBatchReporter=null,healthReporter=null}){
+export function registerAutomationCentre(app,{pool,requireSession,requireAdministrator,centre,mismatchWorker=null,scanBatchReporter=null,healthReporter=null,misTelegram=null}){
  const guard=[requireSession,requireAdministrator];
  const people=async settings=>mismatchWorker?.recipientCheck?mismatchWorker.recipientCheck(settings).catch(()=>null):null;
  app.get('/api/automation-centre',...guard,async(req,res,next)=>{try{req.audit=false;const settings=await readMismatchSettings(pool);res.set('Cache-Control','private, no-store').json({...await centre.overview(),mismatchSettings:settings,recipientCheck:await people(settings)});}catch(e){next(e);}});
@@ -118,6 +120,35 @@ export function registerAutomationCentre(app,{pool,requireSession,requireAdminis
   req.audit={eventType:'Administration',module:'Automation Centre',action:'Change A25 Speed report people',targetReference:'health-report',details:{people:saved.people.length}};
   res.set('Cache-Control','private, no-store').json({settings:saved,check:await healthReportPeopleCheck(pool,saved)});
  }catch(e){next(e);}});
+ // Telegram channel of one automation (16 Nov 2026). A bot cannot create a channel: the page shows the steps
+ // and a one-time code; the code posted in the channel links it (MIS Telegram webhook).
+ const channelItem=req=>{const key=String(req.body?.key??req.query?.key??'');const item=AUTOMATIONS.find(entry=>entry.key===key);
+  if(!item||!CHANNEL_AUTOMATION_KEYS.has(key))throw Object.assign(Error('Choose an automation that can post to a channel.'),{status:400});return item;};
+ const channelView=async item=>{const linked=(await readAutomationChannels(pool))[item.key]||null;
+  return {key:item.key,code:item.code,name:item.name,linked:linked?{title:linked.title,inviteLink:linked.inviteLink,linkedBy:linked.linkedBy,linkedAt:linked.linkedAt,lost:Boolean(linked.lostAt),lostAt:linked.lostAt}:null};};
+ const channelRoute=handler=>async(req,res,next)=>{try{res.set('Cache-Control','private, no-store');await handler(req,res);}catch(e){if(e.status&&e.status<500)return res.status(e.status).json({error:e.publicMessage||e.message});next(e);}};
+ app.get('/api/automation-centre/channel',...guard,channelRoute(async(req,res)=>{req.audit=false;res.json(await channelView(channelItem(req)));}));
+ app.post('/api/automation-centre/channel/code',...guard,channelRoute(async(req,res)=>{
+  const item=channelItem(req),bot=misTelegram?await misTelegram.botInfo():{ready:false,botUsername:''};
+  if(!bot.ready)return res.status(409).json({error:'The Pulse-II Telegram bot is not connected. Set it up on the Telegram Integration page first.'});
+  const {code,expiresInMinutes}=await createChannelCode(pool,{key:item.key,login:req.session?.login||''});
+  req.audit={eventType:'Administration',module:'Automation Centre',action:'Start Telegram channel link for '+item.code+' '+item.name,targetReference:item.key,details:{code:item.code}};
+  res.json({...await channelView(item),linkCode:code,expiresInMinutes,botUsername:bot.botUsername,suggestedName:'Pulse-II '+item.code+' '+item.name});
+ }));
+ app.post('/api/automation-centre/channel/test',...guard,channelRoute(async(req,res)=>{
+  const item=channelItem(req),linked=(await readAutomationChannels(pool))[item.key];
+  if(!linked)return res.status(409).json({error:'No channel is linked to '+item.code+' yet.'});
+  if(!misTelegram)return res.status(503).json({error:'Telegram is not running on this server.'});
+  try{await misTelegram.postNow(linked.chatId,`Test post: ${item.code} ${item.name} messages from Caliber Pulse-II will appear in this channel.`);}
+  catch(e){return res.status(409).json({error:(e.publicMessage||'Telegram did not accept the post.')+' Check that the Pulse-II bot is still an administrator of the channel with "Post messages".'});}
+  req.audit={eventType:'Administration',module:'Automation Centre',action:'Test post to Telegram channel of '+item.code+' '+item.name,targetReference:item.key,details:{channel:linked.title}};
+  res.json({sent:true,...await channelView(item)});
+ }));
+ app.delete('/api/automation-centre/channel',...guard,channelRoute(async(req,res)=>{
+  const item=channelItem(req),removed=await unlinkAutomationChannel(pool,item.key);
+  req.audit={eventType:'Administration',module:'Automation Centre',action:'Unlink Telegram channel of '+item.code+' '+item.name,targetReference:item.key,details:{channel:removed?.title||''}};
+  res.json(await channelView(item));
+ }));
  // The ON/OFF switch of one automation. A01 keeps its switch in its own settings.
  app.put('/api/automation-centre/switch',...guard,async(req,res,next)=>{try{
   const {key,enabled}=req.body||{};
