@@ -23,6 +23,8 @@ const share=r=>blank(r.percent)?'—':r.percent+'%';
 const plural=(n,one,many=one+'s')=>n+' '+(n===1?one:many);
 const FILTERS={...BAND_LABELS,breakdown:STATES.breakdown,nohours:STATES.nohours};
 const isBand=key=>BANDS.some(b=>b.key===key);
+// The minutes of a band as Step 2 writes them inside and above its box: "5–10 min", "20+ min".
+export const bandRange=b=>b.upTo===Infinity?b.above+'+ min':b.above+'–'+b.upTo+' min';
 // A coloured number: pressing it opens the next step with only the lines behind it.
 const counted=(key,label,className,onPick)=>column(key,label,null,r=>r[key]>0?(onPick?<button type="button" className={className} title={'Show only '+label} onClick={e=>{e.stopPropagation();onPick(r,key);}}>{r[key]}</button>:<span className={className}>{r[key]}</span>):r[key]);
 // An idle band: the coloured number of stops with, just beside it, its own share of all the timed gaps between two loadings
@@ -212,7 +214,7 @@ export default function LoadingMachineReport({records=[],assets=[],fleet=[],batc
  const crumbs=[['All sites',reset],...(site?[[siteLabel,()=>{setSlot(null);setItem(null);setStrip('');setCard('');upward();}]]:[]),...(slot?[[slot.label,()=>{setItem(null);setStrip('');setCard('');upward();}]]:[]),
   ...(item?[[item.label,()=>{setStrip('');setCard('');}]]:[]),...(focus&&stacked?[[day(focus.date)+' · '+focus.shift+(item.key===EVERY?' · '+focus.door:''),()=>setCard('')]]:[]),...(card?[[cardHead?.book||'Trip card',null]]:[])];
  const chips=(total,withStates)=><nav className="tt-chips" aria-label="Show only">{[['','All machines',total.machineShifts,''],...(withStates?[['breakdown',STATES.breakdown,total.breakdown,'lm-breakdown'],['nohours',STATES.nohours,total.nohours,'lm-nohours']]:[]),...BANDS.map(b=>[b.key,'Idle '+b.label,total[b.key],'lm-'+b.key])].map(([key,label,n,tone])=><button key={key||'all'} type="button" className={tone} aria-current={upper===key?'page':undefined} onClick={()=>setOnly(key)}>{label} · {n}</button>)}</nav>;
- const tripChips=<nav className="tt-chips" aria-label="Show only">{[['','All trips',opened.loadings,''],['ok','Green · '+BAND_LABELS.ok,opened.ok,'lm-ok'],...BANDS.map(b=>[b.key,(b.key==='b4'?'Red · ':'Orange · ')+b.label,opened[b.key],'lm-'+b.key])].map(([key,label,n,tone])=><button key={key||'all'} type="button" className={tone} aria-current={pick===key?'page':undefined} onClick={()=>setOnly(key)}>{label} · {n}</button>)}</nav>;
+ const tripChips=<nav className="tt-chips" aria-label="Show only">{[['','All trips',opened.loadings,''],['ok','Green · '+BAND_LABELS.ok,opened.ok,'lm-ok'],...BANDS.map(b=>[b.key,'Idle '+b.label,opened[b.key],'lm-'+b.key])].map(([key,label,n,tone])=><button key={key||'all'} type="button" className={tone} aria-current={pick===key?'page':undefined} onClick={()=>setOnly(key)}>{label} · {n}</button>)}</nav>;
  const summaryLine=t=>t.machineShifts?`${t.running} of ${t.machineShifts} machine shifts ran, ${t.breakdown} were in BD and ${t.nohours} had no hours without BD. `
   +(t.percent===null?'':`The machines with an ELB worked ${t.percent}% of their shift hours (${t.hours} of ${t.shiftHours} hours). `)
   +`${t.trips} trips loaded. `+(t.gaps?`Out of ${t.gaps} timed gaps between two loadings, ${t.stops} were idle stops of more than ${IDLE_LIMIT} minutes (${idleText(t.idleMinutes)} in all): ${BANDS.map(b=>`${t[b.key]} in ${b.label} (${t[b.key+'Share']}%)`).join(', ')}.`:'No gap between two loadings could be timed.')+(t.bdMinutes>0?` ${idleText(t.bdMinutes)} in breakdown in Pulse is taken out of the idle time.`:''):'No loading machine in these dates and filters.';
@@ -227,7 +229,7 @@ export default function LoadingMachineReport({records=[],assets=[],fleet=[],batc
  };
  const withTotal=(rows,total)=>rows.length?[...rows,total]:[];
  // Step 2 is the date by shift table of the OT report: a colour chosen above it keeps only that colour in the boxes.
- const gridBoxes=[{key:'breakdown',label:STATES.breakdown,className:'lm-count lm-breakdown'},{key:'nohours',label:STATES.nohours,className:'lm-count lm-nohours'},...BANDS.map(b=>({key:b.key,label:'Idle '+b.label,className:'tt-band lm-'+b.key}))].filter(b=>!upper||b.key===upper);
+ const gridBoxes=[...BANDS.map(b=>({key:b.key,label:'Idle '+b.label,range:bandRange(b),className:'tt-band lm-'+b.key})),{key:'breakdown',label:STATES.breakdown,note:'In BD',className:'lm-count lm-breakdown'},{key:'nohours',label:STATES.nohours,note:'No hours',className:'lm-count lm-nohours'}].filter(b=>!upper||b.key===upper);
  // The share worked counts only the machine shifts whose ELB gives both hours, as on the lines themselves.
  const shiftGrid=dateShiftGrid(shiftsListed.map(r=>({...r,judgedHours:r.percent===null?0:r.percent*r.shiftHours/100})),{sumKeys:['machineShifts','running','breakdown','nohours','trips','judgedHours','shiftHours','stops','idleMinutes',...BANDS.map(b=>b.key)]});
  const shiftDay=[{key:'machines',label:'Machine shifts',value:t=>t.machineShifts},{key:'trips',label:'Trips loaded',value:t=>t.trips},
@@ -253,7 +255,7 @@ export default function LoadingMachineReport({records=[],assets=[],fleet=[],batc
   {level>=2&&<>
    <p className="tt-insight">{summaryLine(shifts.total)}</p>
    {chips(shifts.total,true)}
-   <ReportSection key={'lm-shifts-'+site+upper} reportKey="Loading machines shifts" dataReady={dataReady} title={'Step 2 · Loading machines · '+siteLabel+' · date by shift · '+period+filtered} category="operations-loading-shifts" description="In each box: the machines of that shift, then the machines in BD (red), with no hours (brown) and the idle stops of each band, with the entry stage under them. Press a box for the machines of that shift; press a colour for only those. Idle time is complete only after the VLB of the shift is locked."
+   <ReportSection key={'lm-shifts-'+site+upper} reportKey="Loading machines shifts" dataReady={dataReady} title={'Step 2 · Loading machines · '+siteLabel+' · date by shift · '+period+filtered} category="operations-loading-shifts" description="In each box: the machines of that shift, then the idle stops of each band (blue 5–10, orange 10–15, red 15–20, dark red 20+ min; the minutes are written inside each box and above it) and, last, the machines in BD and with no hours, with the entry stage under them. Press a box for the machines of that shift; press a colour for only those. Idle time is complete only after the VLB of the shift is locked."
     rows={shiftExport.rows} columns={shiftExport.columns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
     <DateShiftGrid grid={shiftGrid} count={r=>r.machineShifts} countLabel="Machines" boxes={gridBoxes} dayColumns={shiftDay} cellNote={r=>r.stageLabel} onOpen={(r,b)=>openSlot(r,b||upper)} onOpenAll={()=>openSlot(shifts.total)}
      isPicked={r=>slot?.key===r.key} pickedBox={upper} allPicked={allShifts} ariaLabel="Loading machines by date and shift" emptyMessage="No shift with such a machine here."/>
