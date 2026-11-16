@@ -4,6 +4,8 @@
 // Pure rules only; the screen is src/trip-timing-report.jsx.
 import {tripSerialNumber} from './log-book-labels.mjs';
 import {canonicalSiteName} from './site-location.mjs';
+import {equipmentGroupName} from './equipment-group.mjs';
+import {fleetDoorKey} from './scan-fleet-door.mjs';
 
 // Owner's limit (11 Nov 2026): a time above 15 minutes is a delay. It was 10 at first; real cards showed a usual trip takes 10 to 20 minutes.
 export const DELAY_LIMIT=15;
@@ -40,17 +42,26 @@ export function siteLabels(records){
  const label=new Map([...spellings].map(([key,count])=>[key,[...count].sort((a,b)=>(a[0]===a[0].toLowerCase())-(b[0]===b[0].toLowerCase())||b[1]-a[1]||a[0].localeCompare(b[0]))[0][0]]));
  return name=>text(name)?label.get(canonicalSiteName(name)):'Unassigned';
 }
-// One entry per trip row of every saved Vehicle Log Book in `records` (rows from normalise()).
-export function tripEntries(records){
- const out=[],siteName=siteLabels(records);
+// The equipment category of a card's vehicle: its group in the Equipment master, named as OT & Multiple Duties names it.
+// The vehicle is the master record saved on the card; a card without one is matched by its door number at its site,
+// only when one vehicle there has that door.
+function vehicleCategories(assets){
+ const byId=new Map(assets.map(a=>[String(a.id),a])),doors=new Map();
+ for(const a of assets){if(a.kind==='equipment')continue;const key=canonicalSiteName(a.site)+'|'+fleetDoorKey(a.door);if(!fleetDoorKey(a.door))continue;doors.set(key,doors.has(key)?null:a);}
+ return r=>{const asset=byId.get(String(r.assetId??''))||(text(r.door)?doors.get(canonicalSiteName(r.location)+'|'+fleetDoorKey(r.door)):null);return equipmentGroupName(asset?.group);};
+}
+// One entry per trip row of every saved Vehicle Log Book in `records` (rows from normalise()). `assets` is the
+// Equipment master as the operations screen reads it; it names each trip's equipment category.
+export function tripEntries(records,{assets=[]}={}){
+ const out=[],siteName=siteLabels(records),categoryOf=vehicleCategories(assets);
  for(const r of records){
   if(r.kind!=='vehicle')continue;
   const timed=r.timeMode!=='without',trips=r.trips||[];
-  const caliberId=text(r.caliberId),driver=text(r.employeeName);
+  const caliberId=text(r.caliberId),driver=text(r.employeeName),category=categoryOf(r);
   trips.forEach((t,i)=>{
    const previous=i>0?trips[i-1]:null;
    const taken=timed?minutesBetween(t.loadingTime,t.unloadingTime):null,gap=timed&&previous?minutesBetween(previous.unloadingTime,t.loadingTime):null;
-   out.push({id:r.id+'-'+i,recordId:String(r.id),book:r.book,date:r.bookDate,site:siteName(r.location),shift:r.shiftName||'',door:text(r.door)||'Not recorded',caliberId,driver,
+   out.push({id:r.id+'-'+i,recordId:String(r.id),book:r.book,date:r.bookDate,site:siteName(r.location),shift:r.shiftName||'',door:text(r.door)||'Not recorded',category,caliberId,driver,
     driverKey:JSON.stringify([caliberId,driver]),sr:tripSerialNumber(t,i),machine:text(t.equipmentName)||'Not recorded',trips:t.tripCount??'',
     loadingTime:clock(t.loadingTime),unloadingTime:clock(t.unloadingTime),previousUnloadingTime:previous?clock(previous.unloadingTime):'',first:i===0,
     'load-unload':timing(true,taken,t.loadingTime),'unload-load':timing(i>0,gap,previous?.unloadingTime)});
@@ -59,7 +70,7 @@ export function tripEntries(records){
  return out;
 }
 
-const keyOf={site:e=>e.site,shift:e=>JSON.stringify([e.date,e.shift]),driver:e=>e.driverKey,door:e=>e.door,machine:e=>e.machine};
+const keyOf={site:e=>e.site,shift:e=>JSON.stringify([e.date,e.shift]),category:e=>e.category,driver:e=>e.driverKey,door:e=>e.door,machine:e=>e.machine};
 const OTHER={'load-unload':'unload-load','unload-load':'load-unload'};
 export const groupKey=(group,entry)=>keyOf[group](entry);
 function counts(entries,mode){
@@ -73,13 +84,13 @@ function counts(entries,mode){
 export function summarise(entries,mode,group){
  const groups=new Map();
  for(const e of entries){const key=keyOf[group](e);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(e);}
- const rows=[...groups.entries()].map(([key,list])=>{const f=list[0];return {id:group+':'+key,key,site:f.site,date:f.date,shift:f.shift||'Not recorded',caliberId:f.caliberId||'ID not recorded',driver:f.driver||'Name not recorded',door:f.door,machine:f.machine,
+ const rows=[...groups.entries()].map(([key,list])=>{const f=list[0];return {id:group+':'+key,key,site:f.site,date:f.date,shift:f.shift||'Not recorded',caliberId:f.caliberId||'ID not recorded',driver:f.driver||'Name not recorded',door:f.door,machine:f.machine,category:f.category,
   doors:[...new Set(list.map(e=>e.door))].join(', '),driverCount:new Set(list.map(e=>e.driverKey)).size,vehicleCount:new Set(list.map(e=>e.door)).size,...counts(list,mode)};}).filter(r=>r.timed+r.notJudged+r.otherOver>0);
  if(group==='site')rows.sort((a,b)=>a.site.localeCompare(b.site));
  else if(group==='shift')rows.sort((a,b)=>String(b.date).localeCompare(String(a.date))||a.shift.localeCompare(b.shift,undefined,{numeric:true}));
  else rows.sort((a,b)=>b.over-a.over||b.b3-a.b3||b.b2-a.b2||(b.longest??0)-(a.longest??0)||String(a.key).localeCompare(String(b.key)));
  const all=entries;
- return {rows,total:{id:group+':total',key:null,total:true,site:'ALL SITES',date:'',shift:'ALL SHIFTS',caliberId:'',driver:'TOTAL',door:'TOTAL',machine:'TOTAL',doors:'',driverCount:new Set(all.map(e=>e.driverKey)).size,vehicleCount:new Set(all.map(e=>e.door)).size,...counts(all,mode)}};
+ return {rows,total:{id:group+':total',key:null,total:true,site:'ALL SITES',date:'',shift:'ALL SHIFTS',caliberId:'',driver:'TOTAL',door:'TOTAL',machine:'TOTAL',category:'ALL CATEGORIES',doors:'',driverCount:new Set(all.map(e=>e.driverKey)).size,vehicleCount:new Set(all.map(e=>e.door)).size,...counts(all,mode)}};
 }
 // The delayed trips (or gaps) behind one line, newest first. `band` keeps one band only; the exception key keeps the
 // trips an exception time moved to a lower band, whether or not they are still a delay.
