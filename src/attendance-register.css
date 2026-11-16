@@ -46,6 +46,14 @@
 .ar-grid tfoot :is(th,td){border-top:2px solid #c7b5dd;background:#f4f1f9;font-weight:750}
 .ar-grid tfoot .ar-sticky{background:#f4f1f9}
 
+/* Batch-wise Step 4 (owner, 16 Nov 2026): the people of one batch in the register's look; text columns wrap. */
+.ar-grid.ar-batch-people .ar-day-code{min-width:64px}
+.ar-grid.ar-batch-people .ar-code{min-width:64px;font-size:13px}
+.ar-grid.ar-batch-people .ar-text{text-align:left;white-space:normal;min-width:110px;max-width:240px}
+.ar-grid.ar-batch-people .ar-books{max-width:200px;overflow-wrap:anywhere;font-size:12px}
+/* The A / ? / TR code of the people not on any card that day, in the register's boxes. */
+.ar-register span.ar-code-box{display:inline-block;min-width:40px;padding:4px 8px;border-radius:6px;text-align:center;font-weight:750;font-size:12px}
+
 :root[data-theme="dark"] .ar-grid thead th,:root[data-theme="dark"] .ar-grid thead .ar-sticky,:root[data-theme="dark"] .ar-grid tfoot :is(th,td),:root[data-theme="dark"] .ar-grid tfoot .ar-sticky{background:#1d2b42;color:#dbe4f3}
 :root[data-theme="dark"] .ar-grid .ar-sticky{background:#17253a;color:#eef3fb}
 :root[data-theme="dark"] .ar-grid :is(th,td){border-color:#2c415e}
