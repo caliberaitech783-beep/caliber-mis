@@ -1,4 +1,5 @@
 import {withSerialColumn} from '../shared/serial-column.mjs';
+import {saveOutcomeMessage} from './save-as.mjs';
 import {DAILY_UPDATES_DETAIL_COLUMNS,prepareDailyUpdatesLayout} from './xlsx-daily-updates.mjs';
 
 export function printColumnOptions(columns=[]) {
@@ -268,7 +269,7 @@ export function openSmartPrint({title,columns=[],rows=[],highlightRow,reportGrou
         const contents=`${chosen.length} column${chosen.length===1?'':'s'} and ${rows.length} record${rows.length===1?'':'s'}`;
         // The exporter says when the file went through the Save As window instead of to Downloads.
         notice.textContent=outcome?.saved?`${formatName} file saved as ${outcome.name} with ${contents}.`:`${formatName} export downloaded with ${contents}.`;
-        notifyExport(outcome?.saved?`${formatName} file saved as ${outcome.name}.`:`${formatName} download started. Check your browser downloads.`,'success');
+        notifyExport(saveOutcomeMessage(outcome,formatName),'success');
       })
       .catch(error=>{
         // Cancel in the Save As window is the user's choice, not a failure.

@@ -38,7 +38,7 @@ import { siteReportHtml } from "./site-report.mjs";
 import { isIdleVehicleRequest } from "../shared/request-idle.mjs";
 import { requestStatusLabel, requestStatusSortRank } from "./request-status.mjs";
 import { openSmartPrint, printFitScale, printPageSize, setSmartPrintExporter, setSmartPrintPrinterSource, smartPrintReportParts } from "./smart-print.mjs";
-import { chooseSaveTarget, saveAsAvailable, saveToTarget } from "./save-as.mjs";
+import { chooseSaveTarget, saveAsAvailable, saveOutcomeMessage, saveToTarget } from "./save-as.mjs";
 import { registerSmartPrintMenu } from "./table-smart-print.jsx";
 import { readDomTable } from "./dom-table-model.mjs";
 import {beginDownload,runDownloadNotice} from './download-notice.mjs';
@@ -65,7 +65,7 @@ import React, { useState, useRef, useEffect, useMemo, useDeferredValue } from "r
 import { SCAN_CARD_SIDEBAR_EVENT, sidebarAutoHide } from "./scan-card-sidebar.mjs";
 import TelegramSiteGroups from './telegram-site-groups.jsx';
 import { ApplicationErrorBoundary, createLazyFeature } from "./lazy-feature.jsx";
-import { configureClientErrorReporting, installGlobalErrorReporting } from "./client-error-report.mjs";
+import { configureClientErrorReporting, installGlobalErrorReporting, reportClientError } from "./client-error-report.mjs";
 import ReportPeriodFilter from "./report-period-filter.jsx";
 import MaintenanceEtcInput from "./maintenance-etc-input.jsx";
 import { TwelveHourDateTimeInput, TwelveHourTimeInput } from "./twelve-hour-input.jsx";
@@ -3996,7 +3996,8 @@ async function exportSmartPrintSelection({ format, title, sourceTitle=title, col
     // Excel asks where to save first (Save As window); Cancel there stops the export.
     const fileName = exportFileName(title, "xlsx"), target = await chooseSaveTarget(fileName);
     recordUserActivity({module:"Reports",action:"Download Excel report",targetReference:title,reason:`${rows.length} records`});
-    return saveToTarget(target, buildXlsxWorkbook(title, columns, exportRows, highlightedRows, rows), fileName, downloadExportFile);
+    return saveToTarget(target, buildXlsxWorkbook(title, columns, exportRows, highlightedRows, rows), fileName, downloadExportFile,
+      { onWriteError: (error) => { void reportClientError(error, { kind: "export", componentStack: `Excel could not be written where chosen: ${title}` }); } });
   }
   recordUserActivity({module:"Reports",action:"Download PDF report",targetReference:title,reason:`${rows.length} records`});
   const appendixTables = appendices.map((appendix) => ({
@@ -4072,17 +4073,25 @@ function ExportMenu({ title, columns = [], rows = [], smartPrintColumns = column
       window.removeEventListener("scroll", positionMenu, true);
     };
   }, [open]);
-  const runDownload = (message, task) => {
-    if (downloadActivity) return;
+  // A ref, not the state: the Save As window can stay open for a while, and the state read by that click is old by then.
+  const exportRunning = useRef(false);
+  const runDownload = (message, task, formatName = "Excel") => {
+    // Never a silent stop: the Save As window has already made the file, so the user is told why nothing was written.
+    if (exportRunning.current) { beginDownload(formatName).error(new Error("another export from this table is still being prepared. Wait for it to finish, then export again.")); return; }
+    exportRunning.current = true;
     setOpen(false);
     setDownloadActivity(message);
     const downloadNotice=beginDownload(message.replace(/Preparing | report\.\.\./g,''));
     window.setTimeout(async () => {
       const startedAt = Date.now();
-      // A task that saved through the Save As window says so; the notice then names the file instead of Downloads.
-      try { const outcome = await task(); downloadNotice.success(outcome?.saved ? `Saved as ${outcome.name}.` : ""); }
-      catch (error) { downloadNotice.error(error); alert(error.message); }
+      // A task that saved through the Save As window says so; the notice then names the file and says it is not in Downloads.
+      try { const outcome = await task(); downloadNotice.success(outcome?.saved || outcome?.fallback ? saveOutcomeMessage(outcome, formatName) : ""); }
+      catch (error) {
+        downloadNotice.error(error); alert(error.message);
+        void reportClientError(error, { kind: "export", componentStack: `${formatName} export of ${title}` });
+      }
       finally {
+        exportRunning.current = false;
         window.setTimeout(() => setDownloadActivity(""), Math.max(0, 450 - (Date.now() - startedAt)));
       }
     }, 50);
@@ -4091,18 +4100,21 @@ function ExportMenu({ title, columns = [], rows = [], smartPrintColumns = column
   // from the columns and rows as they are on screen and written to the chosen place.
   const downloadExcel = async () => {
     setOpen(false);
+    if (exportRunning.current) { beginDownload("Excel").error(new Error("another export from this table is still being prepared. Wait for it to finish, then export again.")); return; }
     const model = excelSheets ? null : currentModel();
     if (!excelSheets && !model) return;
     const fileName = exportFileName(title, "xlsx");
+    // A place that cannot be written: the file goes to Downloads and the reason reaches the Diagnostics page.
+    const onWriteError = (error) => { void reportClientError(error, { kind: "export", componentStack: `Excel could not be written where chosen: ${title}` }); };
     let target;
     try { target = await chooseSaveTarget(fileName); } catch { return; }
     runDownload("Preparing Excel report...", () => {
       const sheets = excelSheets?.();
       recordUserActivity({module:"Reports",action:"Download Excel report",targetReference:title,reason:sheets ? `${sheets.length} sheets` : `${model.rows.length} records`});
-      if (sheets) return saveToTarget(target, buildXlsxSheetsWorkbook(title, prepareXlsxExportSheets({ title, sheets, formatCell: exportCellText })), fileName, downloadExportFile);
+      if (sheets) return saveToTarget(target, buildXlsxSheetsWorkbook(title, prepareXlsxExportSheets({ title, sheets, formatCell: exportCellText })), fileName, downloadExportFile, { onWriteError });
       const exportRows = model.rows.map((row) => model.columns.map((column) => exportCellText(column.value?.(row))));
       const highlightedRows = new Set(model.rows.flatMap((row, index) => highlightRow?.(row) ? [index] : []));
-      return saveToTarget(target, buildXlsxWorkbook(title, model.columns, exportRows, highlightedRows, model.rows), fileName, downloadExportFile);
+      return saveToTarget(target, buildXlsxWorkbook(title, model.columns, exportRows, highlightedRows, model.rows), fileName, downloadExportFile, { onWriteError });
     });
   };
   // Export PDF (A3): one click, an A3 landscape file of the columns and rows as they are on screen.
@@ -4113,7 +4125,7 @@ function ExportMenu({ title, columns = [], rows = [], smartPrintColumns = column
         recordUserActivity({module:"Reports",action:"Download PDF report",targetReference:title,reason:`${rows.length} records`});
         const {downloadDashboardPdf} = await import("./dashboard-pdf.mjs");
         await downloadDashboardPdf(triggerRef.current?.closest(".mine-dashboard, .manager-dashboard"), exportFileName(title, "pdf"));
-      });
+      }, "PDF");
       return;
     }
     const model = currentModel();
@@ -4121,7 +4133,7 @@ function ExportMenu({ title, columns = [], rows = [], smartPrintColumns = column
     runDownload("Preparing PDF report...", () => {
       const { chosen, appendices } = smartPrintReportParts({ title, columns: model.columns, rows: model.rows, formatCell: exportCellText });
       return exportSmartPrintSelection({ format: "pdf", title, columns: chosen, rows: model.rows, highlightRow, appendices });
-    });
+    }, "PDF");
   };
   const printReport = () => {
     setOpen(false);

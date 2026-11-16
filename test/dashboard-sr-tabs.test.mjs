@@ -110,7 +110,10 @@ test('All puts every Sr No on the page, opened one after another',async()=>{
  const screen=read('log-book-dashboard.jsx');
  assert.match(screen,/reading=\(\)=>\[\.\.\.\(printRoot\.current\?\.querySelectorAll\('\.lb-reports \[role=status\]'\)\|\|\[\]\)\]\.some\(line=>\/\^\(Loading\|Reading\)\\b\/\.test\(line\.textContent\.trim\(\)\)\)/,'the next Sr No waits while a report still says that it is reading; a table\'s "3 of 3 records" line does not hold it back');
  // Each report says so in these words while it reads.
- assert.ok(read('operations-reports.jsx').includes('{busy&&<p role="status">Loading complete report data…</p>}'));
+ // Since 16 Nov 2026 the operations reports show a clock; its line still starts "Loading complete report data…".
+ assert.ok(read('operations-reports.jsx').includes('{busy&&<LoadClock reading={loadReading} days={days} parts={parts}/>}'));
+ assert.ok(read('operations-reports.jsx').includes('<p role="status" className="op-load-clock">{loadClockText('));
+ assert.match(read('report-load-clock.mjs'),/return 'Loading complete report data… '\+formatDuration\(elapsedMs\)/);
  assert.ok(read('manpower-reports.jsx').includes('{busy&&<p role="status">Loading saved records and checking shift patterns…</p>}'));
  assert.match(screen,/if\(reading\(\)&&Date\.now\(\)-started<PANEL_OPEN_WAIT_MS\)return;clearInterval\(timer\);setOpened\(list=>list\.includes\(next\)\?list:\[\.\.\.list,next\]\);/);
 });

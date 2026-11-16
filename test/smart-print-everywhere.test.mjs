@@ -31,7 +31,9 @@ test('Export PDF is one click to an A3 file; Export Excel asks where to save bef
   const excel=menu.slice(menu.indexOf('const downloadExcel = async () => {'),menu.indexOf('const downloadPdf = () => {'));
   assert.ok(excel.indexOf('await chooseSaveTarget(fileName)')<excel.indexOf('runDownload('),'the Save As window opens while the click is fresh');
   assert.match(excel,/catch \{ return; \}/,'Cancel stops quietly');
-  assert.match(excel,/saveToTarget\(target, buildXlsxWorkbook\(title, model\.columns, exportRows, highlightedRows, model\.rows\), fileName, downloadExportFile\)/);
+  // Since 16 Nov 2026 a place that cannot be written sends the file to Downloads and the reason to the Diagnostics page.
+  assert.match(excel,/saveToTarget\(target, buildXlsxWorkbook\(title, model\.columns, exportRows, highlightedRows, model\.rows\), fileName, downloadExportFile, \{ onWriteError \}\)/);
+  assert.match(excel,/reportClientError\(error, \{ kind: "export"/);
   // The Excel made from inside the Smart Print window goes through Save As as well.
   assert.match(main,/target = await chooseSaveTarget\(fileName\);\s*recordUserActivity\(\{module:"Reports",action:"Download Excel report"/);
   assert.match(read('smart-print.mjs'),/if\(error\?\.name==='AbortError'\)\{notice\.textContent='';toast\.hidden=true;/);
