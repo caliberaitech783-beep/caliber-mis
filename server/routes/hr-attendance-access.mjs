@@ -1,6 +1,14 @@
 import {canonicalSiteName} from '../../shared/site-location.mjs';
 
 const pulseValidation = 'https://pulse.cmll.in/api/integrations/hr/validate';
+const hrSiteAliases = new Map([
+  ['ncl jayant', 'jayant ob'], ['jayant ob east', 'jayant ob'],
+  ['ncl dude', 'dudhichua east ob'], ['dudhichua ob east', 'dudhichua east ob'], ['dch e', 'dudhichua east ob'],
+  ['ncl dudw', 'dudhichua ob'], ['dudhichua ob west', 'dudhichua ob'], ['dch w', 'dudhichua ob'],
+  ['wcl sasti', 'sasti ob'], ['wcl majri', 'majri ob'], ['wcl dhoptala', 'dhoptala ob 2nd'],
+  ['wcl gauri', 'gauri pauni ob 2nd'], ['wcl gauri pauni', 'gauri pauni ob 2nd'], ['gauri pauni ob', 'gauri pauni ob 2nd'],
+  ['wcl lalpeth', 'lalpeth ob']
+]);
 
 export function hrAttendanceScope(profile) {
   const permissions = profile?.permissions;
@@ -16,7 +24,7 @@ export function hrAttendanceScope(profile) {
   if (!values.every(value => typeof value === 'string')) return null;
   const sites = values.flatMap(value => value.split('|')).map(value => value.trim().toLowerCase()).filter(Boolean);
   if (sites.some(value => ['*', 'all', 'all sites', 'all locations'].includes(value))) return {sites: null};
-  return {sites: [...new Set(sites.map(canonicalSiteName).filter(Boolean))].sort()};
+  return {sites: [...new Set(sites.map(canonicalSiteName).map(site => hrSiteAliases.get(site) || site).filter(Boolean))].sort()};
 }
 
 export const requireHrAttendance = (fetcher = fetch) => async (req, res, next) => {

@@ -105,10 +105,10 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
     attendanceEquipment:report.attendanceEquipment.map(row=>pick(row,[...PRESENCE_FIELDS,'status','reason','remarks','logBooks'])),
     attendanceShifts:report.attendanceShifts.filter(row=>siteAllowed(req.logBookScope,row.siteKey)),
     otDuties:report.otDuties.map(row=>pick(row,[...DUTY_FIELDS,'logBooks'])),
-    performance:report.otDuties.map(row=>pick(row,['date','site','shift','employeeId','employeeName','start','end','km'])),
-    details:report.otDuties.filter(row=>row.scanned).map(row=>({...pick(row,['date','site','shift','employeeId','employeeName']),batchStatus:'Saved scan'})),
-    exceptions:report.exceptions.map(row=>pick(row,['date','site','shift','employeeId','employeeName','reason'])),
-    ot:report.ot.map(row=>pick(row,['site','employeeId','schedule']))
+    performance:report.otDuties.map(row=>pick(row,['date','site','siteKey','shift','employeeId','employeeName','start','end','km'])),
+    details:report.otDuties.filter(row=>row.scanned).map(row=>({...pick(row,['date','site','siteKey','shift','employeeId','employeeName']),batchStatus:'Saved scan'})),
+    exceptions:report.exceptions.map(row=>pick(row,['date','site','siteKey','shift','employeeId','employeeName','reason'])),
+    ot:report.ot.map(row=>pick(row,['site','siteKey','employeeId','schedule']))
    };
    const dutyKey=d=>[d.employeeKey,d.siteKey,d.date,d.shift].join('|'),held=new Set(report.otDuties.map(dutyKey));
    return {filters:report.filters,otDuties:report.otDuties.map(d=>pick(d,DUTY_FIELDS)),

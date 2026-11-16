@@ -8,6 +8,8 @@ test('the HR attendance feed only accepts Employee Master access and keeps its l
   assert.equal(hrAttendanceScope({permissions: {...employeeMaster, application: 'MIS'}}), null);
   assert.equal(hrAttendanceScope({permissions: {...employeeMaster, hrDesktopAccess: []}}), null);
   assert.deepEqual(hrAttendanceScope({permissions: {...employeeMaster, site: 'Jayant | Jayant OB'}}), {sites: ['jayant ob']});
+  assert.deepEqual(hrAttendanceScope({permissions: {...employeeMaster, site: ['NCL-JAYANT', 'Dudhichua OB East']}}),
+    {sites: ['dudhichua east ob', 'jayant ob']});
   assert.deepEqual(hrAttendanceScope({permissions: {...employeeMaster, adminLevel: 'Site HR'}}), {sites: []});
 });
 
