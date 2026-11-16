@@ -48,3 +48,45 @@ test('both books accept historical assignments and enforce the exact overnight t
  await assert.rejects(equipment({closingHmr:106}),/Working hours/);
 });
 
+
+// Owner, 16 Nov 2026: Sasti -> Majri on the 15th at 12:00. Sasti's late entries up to 12:00 on the
+// 15th are never stopped; Majri enters from 12:00. LMV follows the same split as VLB and ELB, and a
+// transfer with no time uses the moment it was completed that day.
+test('Sasti keeps entering up to the transfer time on VLB, ELB and LMV; Majri from it',async t=>{
+ const db=new PGlite();
+ t.after(()=>db.close());
+ await db.exec('CREATE TABLE master_records(id BIGSERIAL PRIMARY KEY,master_name TEXT,record_data JSONB)');
+ const source='Sasti',destination='Majri',day='2026-11-15';
+ const move={status:'Completed',transferDate:day,transferTime:'12:00:00',source,destination};
+ const masters=[
+  ['Equipment master',{category:'Vehicle',door:'V1',currentLocation:destination}],
+  ['Equipment master',{category:'Equipment',door:'L1',currentLocation:destination}],
+  ['Equipment master',{category:'LMV',door:'LMV1',currentLocation:destination}],
+  ['Users & employees',{employee:'Operator'}],
+  ['Shift Master',{site:source,shiftName:'I',startTime:'06:00:00'}],
+  ['Shift Master',{site:destination,shiftName:'I',startTime:'06:00:00'}],
+  ['Vehicle transfers',{...move,equipmentMasterId:'1'}],
+  ['Vehicle transfers',{...move,equipmentMasterId:'2'}],
+  ['Vehicle transfers',{...move,equipmentMasterId:'3'}],
+ ];
+ for(const [name,data] of masters)await db.query('INSERT INTO master_records(master_name,record_data) VALUES($1,$2)',[name,JSON.stringify(data)]);
+ const input={location:source,shiftHours:8,shiftId:5,employeeId:4,openingHmr:100,closingHmr:102,openingKmr:10,closingKmr:15};
+ for(const [kind,assetId] of [['vehicle',1],['equipment',2],['lmv',3]]){
+  const save=patch=>resolveLogBookData(db,kind,{...input,assetId,bookDate:day,...(kind==='vehicle'?{trips:[]}:{}),...patch});
+  for(const bookDate of ['2026-11-12','2026-11-13','2026-11-14'])assert.equal((await save({bookDate})).location,source,kind+' '+bookDate);
+  const sasti=await save({});
+  assert.equal(sasti.transferPeriod.end,'2026-11-15T06:30:00.000Z',kind);
+  assert.equal(sasti.scheduledHours,6,kind);
+  const majri=await save({location:destination,shiftId:6});
+  assert.equal(majri.transferPeriod.start,'2026-11-15T06:30:00.000Z',kind);
+  assert.equal(majri.scheduledHours,2,kind);
+  await assert.rejects(save({bookDate:'2026-11-16'}),/not assigned|different location/,kind);
+  await assert.rejects(save({location:destination,shiftId:6,bookDate:'2026-11-14'}),/not assigned|different location/,kind);
+ }
+ // No transfer time: the completion (destination acceptance) at 12:00 on the 15th is the cutoff.
+ await db.query("UPDATE master_records SET record_data=record_data-'transferTime'||jsonb_build_object('sourceApprovedAt','2026-11-15T09:00:00+05:30','destinationAcceptedAt','2026-11-15T12:00:00+05:30') WHERE master_name='Vehicle transfers'");
+ for(const [kind,assetId] of [['vehicle',1],['equipment',2],['lmv',3]]){
+  const sasti=await resolveLogBookData(db,kind,{...input,assetId,bookDate:day,...(kind==='vehicle'?{trips:[]}:{})});
+  assert.equal(sasti.transferPeriod.end,'2026-11-15T06:30:00.000Z',kind);
+ }
+});
