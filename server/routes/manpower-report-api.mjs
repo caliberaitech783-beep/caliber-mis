@@ -1,11 +1,11 @@
 import {canonicalSiteName} from '../../shared/site-location.mjs';
-import {manpowerFilters,buildManpowerReport,attendanceWindows,joinAttendanceReports,pendingSiteDays,otHistoryWindows,otHistorySummary,otYearWindows,otDriverTally,OT_HISTORY_DAYS} from '../rules/manpower-report.mjs';
+import {manpowerFilters,buildManpowerReport,attendanceWindows,joinAttendanceReports,pendingSiteDays,lockedSiteDays,otHistoryWindows,otHistorySummary,otYearWindows,otDriverTally,OT_HISTORY_DAYS} from '../rules/manpower-report.mjs';
 import {siteAllowed,filterLogBookSites,requireLogBookSite} from '../../shared/log-book-access.mjs';
 import {directLane,reportKey} from '../services/report-lane.mjs';
 import {linkVlbTripHandovers} from '../../shared/vlb-trip-handover.mjs';
 import {requireHrAttendance} from './hr-attendance-access.mjs';
+import {HISTORY_CARD_FIELDS,ATTENDANCE_BATCH_COLUMNS,attendanceDayStoreEnabled,cardSignatures,lockedDayCards} from '../services/attendance-day-store.mjs';
 
-const HISTORY_CARD_FIELDS=['bookDate','location','bookShiftCode','cardShift','shiftName','shiftId','masterShiftStart','door','assetId','employeeId','caliberId','employeeName','openingHmr','closingHmr','openingKmr','closingKmr','completedTrips','totalTrips','scanBatchId','scanCardId'];
 const todayIst=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 // Slim read for OT look-backs: only the card fields that decide a duty, from all three log books.
 async function slimCards(client,range,sites,fields=HISTORY_CARD_FIELDS){
@@ -18,8 +18,6 @@ async function slimCards(client,range,sites,fields=HISTORY_CARD_FIELDS){
  if(rows.length>50000)throw Object.assign(new Error('Earlier duty history is too large to read for this selection. Open one site and try again.'),{status:400});
  return rows;
 }
-// The attendance register needs the duty fields plus the trip rows (trip count), the second operator and ELB trips.
-const ATTENDANCE_CARD_FIELDS=[...HISTORY_CARD_FIELDS,'trips','timeMode','operatorSplit','fleetTrips'];
 // What the register reads of a duty line and of a presence line.
 const DUTY_FIELDS=['id','date','shift','site','siteKey','employeeKey','employeeId','caliberCode','employeeName','category','equipment','doors','makeModel','logBook','flag','flagLabel','hours','trips','km','books'];
 const PRESENCE_FIELDS=['date','shift','site','siteKey','employeeKey','employeeId','caliberCode','employeeName','equipment','doors','makeModel','flag','flagLabel','trips','actual'];
@@ -31,7 +29,7 @@ async function reportMasters(client){
  return {assets:fromMaster(['Equipment master']),employees:fromMaster(MASTER_NAMES.slice(2)),shifts:fromMaster(['Shift Master'])};
 }
 
-export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandovers=async(_,rows)=>rows,today=todayIst,lane=directLane}){
+export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandovers=async(_,rows)=>rows,today=todayIst,lane=directLane,useDayStore=attendanceDayStoreEnabled()}){
  app.get('/api/reports/manpower',...protect,async(req,res,next)=>{
   try{
    const filters=manpowerFilters(req.query);
@@ -94,14 +92,17 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
     ORDER BY book_date,site,shift,employee_id LIMIT 50001`,[filters.from,filters.to,req.logBookScope.sites]);
    if(attendance.length>50000)throw Object.assign(new Error('This range contains too many attendance entries. Select a shorter date range.'),{status:400});
    const masters=await reportMasters(client);
-   const batches=(await client.query(`SELECT id,name,site,book_date::text AS report_date,closed_at,shift,stage FROM mis_vlb_batches
+   const batches=(await client.query(`SELECT ${ATTENDANCE_BATCH_COLUMNS} FROM mis_vlb_batches
     WHERE deleted_at IS NULL AND archived_at IS NULL AND book_date BETWEEN $1 AND $2`,[filters.contextFrom,filters.contextTo])).rows.filter(b=>siteAllowed(req.logBookScope,b.site));
    const present=attendance.filter(r=>siteAllowed(req.logBookScope,r.site)),parts=[];
+   // Only locked site-days are read (the rest is left out of the report anyway): from the stored locked days where a
+   // stored day still matches its cards and batches, the rest live. See server/services/attendance-day-store.mjs.
+   const locked=lockedSiteDays(masters.shifts,batches),signatures=await cardSignatures(client,{from:filters.contextFrom,to:filters.contextTo},sites,batches);
    // One week of cards at a time from the same snapshot (each with its adjoining days), so a month of every site
    // neither reaches the card read limit nor sits in memory at once. Every week sees the whole range's batches,
    // so a site is listed in each week even when it saved nothing in that week.
    for(const window of attendanceWindows(filters.from,filters.to)){
-    const range=manpowerFilters(window),rows=(await slimCards(client,range,sites,ATTENDANCE_CARD_FIELDS)).filter(r=>siteAllowed(req.logBookScope,r.site));
+    const range=manpowerFilters(window),rows=(await lockedDayCards(client,{from:range.contextFrom,to:range.contextTo},{sites,locked,signatures,useStore:useDayStore})).rows.filter(r=>siteAllowed(req.logBookScope,r.site));
     const vehicles=linkVlbTripHandovers(rows.filter(r=>r.book_type==='vehicle'));
     parts.push({window,report:buildManpowerReport({records:[...vehicles,...rows.filter(r=>r.book_type!=='vehicle')],attendance:present.filter(r=>r.date>=window.from&&r.date<=window.to),...masters,batches,filters:range,parts:hr?'hr-attendance':'attendance',lockedOnly:true})});
    }

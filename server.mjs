@@ -56,6 +56,7 @@ import {createPulseBreakdownMirror} from './server/services/pulse-breakdown-mirr
 import {registerEquipmentMasterOtp} from './server/routes/equipment-master-otp.mjs';
 import {registerTripVerification} from './server/routes/pulse-trip-verification.mjs';
 import {registerLogBooks} from './server/routes/log-book.mjs';
+import {attendanceDayStoreEnabled} from './server/services/attendance-day-store.mjs';
 import {accountLedgerQueries} from './server/rules/iboss-account-ledger.mjs';
 import {bdmsChatAnswer,bdmsChatCanRead,bdmsChatFlow,bdmsChatQueryAllowed,bdmsChatIntent} from './shared/telegram-bdms-chatbot.mjs';
 import {bdmsChatConversation} from './server/rules/telegram-bdms-conversation.mjs';
@@ -8093,6 +8094,9 @@ registerVlbBatchAlertSettings(app,{pool,requireSession,requireAdministrator:requ
 // Express changes approved by OTP that still have to be applied in Pulse by hand (Pulse Master Sync page).
 registerPulsePending(app,{pool,requireSession,requireAdministrator,writer:pulseMasterWriter});
 if(process.env.VLB_BATCH_ALERTS!=='0')scheduleBackgroundStart(()=>vlbBatchAlerts.start(),90000);
+// Stored locked days for Attendance Batch-wise / Month-wise and the HR feed: every 10 minutes, locked site-days that are
+// new or changed since they were stored are stored again (one server at a time). ATTENDANCE_DAY_STORE=0 switches it off.
+if(attendanceDayStoreEnabled())logBooks.attendanceDayStore.start();
 // Equipment list check: Equipment Deployment (Pulse-II) against the Pulse equipment list every six
 // hours; a difference raises a pop-up notice and a Telegram message until the lists agree.
 const equipmentMismatchWhatsApp={async send(login,message){
