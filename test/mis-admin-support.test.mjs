@@ -23,6 +23,13 @@ test('MIS administration APIs fail closed for users and retain only bounded admi
  assert.equal(allowed(admin,'/api/audit-events','DELETE'),false);assert.equal(allowed(admin,'/api/user-login-history','DELETE'),false);
  assert.equal(allowed(user,'/api/mis-telegram/link','POST'),true);assert.equal(allowed(user,'/api/mis-telegram/settings','PUT'),false);
  assert.equal(allowed(user,'/api/mis-ticket-sites'),true);assert.equal(allowed(user,'/api/mis-ticket-sites','POST'),false);
+ // 16 Nov 2026: the Telegram Integration page showed "This MIS menu is not assigned to your login" to the owner's MIS login.
+ for(const [path,method] of [['/api/vlb-batch-alerts/settings','GET'],['/api/vlb-batch-alerts/settings','PUT'],['/api/vlb-batch-alerts/state','GET'],['/api/vlb-batch-alerts/run','POST'],
+  ['/api/mis-telegram/links','GET'],['/api/mis-telegram/test-release-approval','POST']]){
+  assert.equal(allowed(admin,path,method),true,method+' '+path);assert.equal(allowed(user,path,method),false,method+' '+path);
+ }
+ assert.equal(allowed(admin,'/api/vlb-batch-alerts/run','GET'),false);assert.equal(allowed(admin,'/api/vlb-batch-alerts/state','PUT'),false);
+ assert.equal(allowed(admin,'/api/mis-telegram/links','DELETE'),false);
 });
 test('MIS ticket access checks ownership for entries, media and notifications despite super session role',async()=>{
  const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
