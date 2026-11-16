@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildManpowerReport,manpowerFilters,otHistoryWindows,otHistorySummary,otYearWindows,otDriverTally} from '../server/rules/manpower-report.mjs';
+import {buildManpowerReport,manpowerFilters,attendanceWindows,otHistoryWindows,otHistorySummary,otYearWindows,otDriverTally} from '../server/rules/manpower-report.mjs';
 import {registerManpowerReports} from '../server/routes/manpower-report-api.mjs';
 import {linkVlbTripHandovers} from '../shared/vlb-trip-handover.mjs';
 
@@ -141,6 +141,27 @@ test('attendance API reads slim card fields and returns the register duties of t
  assert.deepEqual(r.result.attendanceEquipment.map(p=>[p.employeeId,p.shift,p.actual]),[['102','S2',true]],'only the second operator, whom no duty line holds');
  assert.ok(Array.isArray(r.result.attendanceShifts)&&Array.isArray(r.result.otSites)&&Array.isArray(r.result.notes));
  assert.equal((await h.run({from:'bad',to:date},'/api/reports/manpower/attendance')).status,400);
+});
+test('attendance over a month is read a week at a time and joins to the same register as one build',async()=>{
+ // 16 Nov 2026: Attendance Month-wise for every site from 1 to 16 Nov passed 50,000 cards in one read and stopped.
+ const on=(id,day,shift,patch={})=>card(id,shift,{bookDate:day,...patch});
+ const cards=[on(1,'2026-11-02',1),on(2,'2026-11-07',3),on(3,'2026-11-08',1),on(4,'2026-11-10',2),on(5,'2026-11-16',1,{employeeId:22,caliberId:'102'})];
+ const range={from:'2026-11-01',to:'2026-11-16'},one=buildManpowerReport({records:linkVlbTripHandovers(cards),assets,employees,shifts,filters:manpowerFilters(range),parts:'attendance'});
+ assert.ok(one.ot.some(e=>e.dutyDates.includes('2026-11-07')&&e.dutyDates.includes('2026-11-08')),'the fixture has an OT case across the week edge');
+ const h=apiHarness({sites:null},cards),r=await h.run({...range,view:'attendance'},'/api/reports/manpower/attendance');
+ assert.equal(r.status,200);assert.equal(r.released,true);
+ assert.deepEqual(h.calls.filter(c=>c.sql.includes('SELECT l.id')).map(c=>[c.args[0],c.args[1]]),[['2026-11-01','2026-11-08'],['2026-11-07','2026-11-15'],['2026-11-14','2026-11-17']],'three weeks, each with its adjoining days');
+ assert.equal(h.calls.at(-1).sql,'COMMIT');
+ const fields=Object.keys(r.result.otDuties[0]);
+ assert.deepEqual(r.result.otDuties,one.otDuties.map(d=>Object.fromEntries(fields.map(k=>[k,d[k]]))));
+ assert.deepEqual(r.result.attendanceShifts,one.attendanceShifts);assert.deepEqual(r.result.otSites,one.otSites);assert.deepEqual(r.result.attendanceSites,one.attendanceSites);
+ assert.deepEqual(r.result.filters,manpowerFilters(range));
+ const hr=await h.run(range,'/api/integrations/hr/attendance');
+ assert.deepEqual(hr.result.ot,one.ot.map(e=>({site:e.site,siteKey:e.siteKey,employeeId:e.employeeId,schedule:e.schedule})),'an OT case across the week edge is sent once');
+});
+test('attendance weeks cover the range without gaps',()=>{
+ assert.deepEqual(attendanceWindows('2026-11-01','2026-11-30'),[{from:'2026-11-01',to:'2026-11-07'},{from:'2026-11-08',to:'2026-11-14'},{from:'2026-11-15',to:'2026-11-21'},{from:'2026-11-22',to:'2026-11-28'},{from:'2026-11-29',to:'2026-11-30'}]);
+ assert.deepEqual(attendanceWindows(date,date),[{from:date,to:date}]);
 });
 test('attendance-only build skips the other tables and keeps the same duty lines',()=>{
  const cards=[card(1,1),card(2,2)],all=report(cards),slim=report(cards,{parts:'attendance'});

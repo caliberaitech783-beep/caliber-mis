@@ -1,5 +1,5 @@
 import {canonicalSiteName} from '../../shared/site-location.mjs';
-import {manpowerFilters,buildManpowerReport,otHistoryWindows,otHistorySummary,otYearWindows,otDriverTally,OT_HISTORY_DAYS} from '../rules/manpower-report.mjs';
+import {manpowerFilters,buildManpowerReport,attendanceWindows,joinAttendanceReports,otHistoryWindows,otHistorySummary,otYearWindows,otDriverTally,OT_HISTORY_DAYS} from '../rules/manpower-report.mjs';
 import {siteAllowed,filterLogBookSites,requireLogBookSite} from '../../shared/log-book-access.mjs';
 import {directLane,reportKey} from '../services/report-lane.mjs';
 import {linkVlbTripHandovers} from '../../shared/vlb-trip-handover.mjs';
@@ -89,7 +89,6 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
    client=await pool.connect();
    await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
    const sites=await filterLogBookSites(client,req.logBookScope);
-   const rows=(await slimCards(client,filters,sites,ATTENDANCE_CARD_FIELDS)).filter(r=>siteAllowed(req.logBookScope,r.site));
    const {rows:attendance}=await client.query(`SELECT book_date::text AS date,site,shift,employee_id,asset_id,reason,remarks
     FROM mis_shift_attendance WHERE book_date BETWEEN $1 AND $2 AND ($3::text[] IS NULL OR site=ANY($3::text[]))
     ORDER BY book_date,site,shift,employee_id LIMIT 50001`,[filters.from,filters.to,req.logBookScope.sites]);
@@ -97,10 +96,18 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
    const masters=await reportMasters(client);
    const batches=(await client.query(`SELECT id,name,site,book_date::text AS report_date,closed_at,shift,stage FROM mis_vlb_batches
     WHERE deleted_at IS NULL AND archived_at IS NULL AND book_date BETWEEN $1 AND $2`,[filters.from,filters.to])).rows.filter(b=>siteAllowed(req.logBookScope,b.site));
+   const present=attendance.filter(r=>siteAllowed(req.logBookScope,r.site)),parts=[];
+   // One week of cards at a time from the same snapshot (each with its adjoining days), so a month of every site
+   // neither reaches the card read limit nor sits in memory at once. Every week sees the whole range's batches,
+   // so a site is listed in each week even when it saved nothing in that week.
+   for(const window of attendanceWindows(filters.from,filters.to)){
+    const range=manpowerFilters(window),rows=(await slimCards(client,range,sites,ATTENDANCE_CARD_FIELDS)).filter(r=>siteAllowed(req.logBookScope,r.site));
+    const vehicles=linkVlbTripHandovers(rows.filter(r=>r.book_type==='vehicle'));
+    parts.push({window,report:buildManpowerReport({records:[...vehicles,...rows.filter(r=>r.book_type!=='vehicle')],attendance:present.filter(r=>r.date>=window.from&&r.date<=window.to),...masters,batches,filters:range,parts:hr?'hr-attendance':'attendance'})});
+   }
    await client.query('COMMIT');
    client.release();client=null;
-   const vehicles=linkVlbTripHandovers(rows.filter(r=>r.book_type==='vehicle'));
-   const report=buildManpowerReport({records:[...vehicles,...rows.filter(r=>r.book_type!=='vehicle')],attendance:attendance.filter(r=>siteAllowed(req.logBookScope,r.site)),...masters,batches,filters,parts:hr?'hr-attendance':'attendance'});
+   const report=joinAttendanceReports(parts,filters);
    if(hr)return {
     attendanceEquipment:report.attendanceEquipment.map(row=>pick(row,[...PRESENCE_FIELDS,'status','reason','remarks','logBooks'])),
     attendanceShifts:report.attendanceShifts.filter(row=>siteAllowed(req.logBookScope,row.siteKey)),

@@ -251,7 +251,7 @@ export function buildManpowerReport({records=[],attendance=[],assets=[],employee
     ...(hr?{start:window?.startLabel||'',end:window?.endLabel||''}:{})};
   });
  }));
- const otSites=knownSites.map(([siteKey,site])=>{const events=ot.filter(e=>e.siteKey===siteKey);return {site,siteKey,...flagTally(events),books:Object.fromEntries(LOG_BOOKS.map(([,code])=>[code,flagTally(events.filter(e=>e.logBooks.includes(code)))]))};}).sort((a,b)=>a.site.localeCompare(b.site));
+ const otSites=otSiteTally(knownSites,ot);
  const optionRows=[...rows,...attendanceSources];
  // The first row of each door, person and batch names it; looked up once instead of searching every row per value.
  const firstBy=(list,keyOf)=>{const out=new Map();for(const r of list)for(const k of [keyOf(r)].flat())if(k!==''&&k!=null&&!out.has(k))out.set(k,r);return out;};
@@ -293,6 +293,25 @@ function buildOt(duties,filters,marks=new Map()){
  return events.sort((a,b)=>a.dates.localeCompare(b.dates)||a.employeeId.localeCompare(b.employeeId));
 }
 
+const otSiteTally=(sites,ot)=>sites.map(([siteKey,site])=>{const events=ot.filter(e=>e.siteKey===siteKey);return {site,siteKey,...flagTally(events),books:Object.fromEntries(LOG_BOOKS.map(([,code])=>[code,flagTally(events.filter(e=>e.logBooks.includes(code)))]))};}).sort((a,b)=>a.site.localeCompare(b.site));
+// The attendance register over a long range is built a week at a time (each week reads one adjoining day on either side,
+// as one report does), so a month of every site is never held at once and each read stays under the card limit.
+export const ATTENDANCE_WINDOW_DAYS=7;
+export function attendanceWindows(from,to,days=ATTENDANCE_WINDOW_DAYS){
+ const windows=[];
+ for(let start=from;start<=to;start=nextReportDate(start,days)){const end=nextReportDate(start,days-1);windows.push({from:start,to:end>to?to:end});}
+ return windows;
+}
+// Joins the weekly attendance builds into one report. Duty, presence, batch and review lines are dated inside their own week,
+// so they are joined as they are. An OT case that crosses into the next week is seen by both weeks and kept once, in the
+// week of its first duty. Site OT counts are then taken from the joined cases.
+export function joinAttendanceReports(parts,filters){
+ const lines=field=>parts.flatMap(({report})=>report[field]||[]);
+ const ot=parts.flatMap(({window,report},i)=>(report.ot||[]).filter(e=>i===0||e.startDate>=window.from)).sort((a,b)=>a.dates.localeCompare(b.dates)||a.employeeId.localeCompare(b.employeeId));
+ const sitesOf=field=>[...new Map(lines(field).map(s=>[s.siteKey,s.site]))].sort((a,b)=>a[1].localeCompare(b[1]));
+ return {filters,otDuties:lines('otDuties'),attendanceEquipment:lines('attendanceEquipment'),attendanceShifts:lines('attendanceShifts'),exceptions:lines('exceptions'),ot,
+  otSites:otSiteTally(sitesOf('otSites'),ot),attendanceSites:sitesOf('attendanceSites').map(([siteKey,site])=>({siteKey,site})),notes:parts[0]?.report.notes||[]};
+}
 // Earlier repeats are looked up only on request. The look-back is bounded so a
 // click cannot read the whole logbook history.
 export const OT_HISTORY_DAYS=90;
