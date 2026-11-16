@@ -98,14 +98,14 @@ async function load(file,names){
  const {code}=await transformWithOxc(source,file,{jsx:{runtime:'classic'}});
  return code;
 }
-async function screen(state){
+async function screen(state,extra=[]){
  const grid=await load('date-shift-grid.jsx'),register=await load('attendance-register.jsx');
  const parts=new Function('React',grid+';return {DateShiftGrid,dateShiftGrid,dateShiftExport};')(React);
- const ReportSection=({title,rows,columns,children})=>React.createElement('section',{'data-title':title},React.createElement('h2',null,title),children||React.createElement('table',null,React.createElement('tbody',null,rows.map((r,i)=>React.createElement('tr',{key:i},columns.map(c=>React.createElement('td',{key:c.key},String(c.value(r)))))))));
+ const ReportSection=({title,rows,columns,children})=>React.createElement('section',{'data-title':title},React.createElement('h2',null,title),children||React.createElement('table',null,React.createElement('tbody',null,rows.map((r,i)=>React.createElement('tr',{key:i},columns.map(c=>React.createElement('td',{key:c.key},c.render?c.render(r):String(c.value(r)))))))));
  let slot=0;const useState=initial=>{const value=state[slot++]??(typeof initial==='function'?initial():initial);return [value,()=>{}];};
  const env={React,useMemo:fn=>fn(),useState,...parts,StepBackButton:()=>null,buildAttendanceRegister,batchPeople,batchCategories,registerCategories,personCategories};
  const Register=new Function(...Object.keys(env),register+';return AttendanceRegister;')(...Object.values(env));
- const report={otDuties:duties,attendanceEquipment:presence,attendanceShifts:shifts};
+ const report={otDuties:[...duties,...extra],attendanceEquipment:presence,attendanceShifts:shifts};
  return mode=>{slot=0;return renderToStaticMarkup(React.createElement(Register,{report,filters:{from:days[0],to:'2026-11-13'},mode,ReportSection,sites,query:'q'}));};
 }
 
@@ -119,7 +119,20 @@ test('Batch-wise draws Step 1, the date by shift table, the batch by equipment c
  assert.match(html,/not on any card here that day/);
  const opened=(await screen([JAYANT,{date:days[0],shift:'S1'},'','Tipper']))('attendance-batch');
  assert.ok(opened.includes('data-title="Step 4 · Jayant OC · 10-11-26 · Shift 1 · Tipper · people"'));
- assert.match(opened,/<td>CMLL101<\/td><td>Driver 101<\/td>/,'Caliber ID and Name side by side');
+ assert.match(opened,/<td class="ar-sticky ar-id">CMLL101<\/td><th scope="row" class="ar-sticky ar-name"><button[^>]*aria-label="Duties of Driver 101"[^>]*>Driver 101<\/button><small>Tipper Driver<\/small><\/th>/,'Caliber ID beside the name to press, designation under it, as in the month-wise register');
+ assert.match(opened,/<td class="ar-code ar-present ar-flag-orange" title="Shift 1[^"]*">P1\+3<\/td>/,'the day code in the register\'s coloured box, the shifts on hover');
+ assert.match(opened,/<span class="ar-code ar-code-box ar-absent" title="Absent">A<\/span>/,'the people not on a card get the register\'s code boxes too');
+ assert.ok(!opened.includes('data-title="Step 5'),'the duties wait for a name');
+});
+
+test('Batch-wise Step 4 lists red first, then orange, then the rest; a name opens that person\'s duties as Step 5',async()=>{
+ const red=duty('199',days[0],'S1',{employeeName:'Zubair',flag:'red',flagLabel:'RED — back-to-back'});
+ const html=(await screen([JAYANT,{date:days[0],shift:'S1'},'','Tipper'],[red]))('attendance-batch');
+ assert.deepEqual([...html.matchAll(/aria-label="Duties of ([^"]+)"/g)].map(m=>m[1]),['Zubair','Driver 101','Driver 104']);
+ assert.match(html,/Present in this batch<\/th><td class="ar-code">3<\/td>/);
+ const opened=(await screen([JAYANT,{date:days[0],shift:'S1'},'CMLL101','Tipper']))('attendance-batch');
+ assert.ok(opened.includes('data-title="Step 5 · CMLL101 · Driver 101 · duties at Jayant OC"'));
+ assert.match(opened,/<tr class="report-row-picked"><td class="ar-sticky ar-id">CMLL101/);
 });
 
 test('Month-wise Step 2 (owner, 16 Nov 2026): the site\'s people by equipment category, a person on two categories in both',()=>{

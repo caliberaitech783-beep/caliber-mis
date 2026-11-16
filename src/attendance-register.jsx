@@ -19,6 +19,16 @@ const shown=v=>blank(v)?'—':v;
 const COLOURS=[['red','Red','Back-to-back shifts, or all three shifts'],['orange','Orange','Shift 1 and Shift 3 with a gap'],['review','Brown','Shift pattern needs review'],['zero','Blue','Present with 0 trips']];
 export const CODE_LEGEND=[['P1 / P2 / P3','Present in Shift 1 / 2 / 3 (saved card)','present'],['P1+3','Two duties in one day; colour as in OT & Multiple Duties','double'],['A','Absent: no card anywhere, every batch of the day locked','absent'],['?','Not locked: a batch of the day is open, reopened, not created or the shift has not ended. Nothing of that day is counted until every shift is locked','pending'],['TR','Worked at another site that day','away']];
 const cols=list=>list.map(([key,label,value])=>({key,label,value:value||(r=>shown(r[key]))}));
+// The hover text of a day's code: each duty's shift, door, hours and trips, then the colour's reason.
+const tip=c=>c.kind==='present'?c.lines.map(l=>shiftName(l.shift)+' · '+[l.doors,l.equipment,l.logBook].filter(Boolean).join(' · ')+(blank(l.hours)?'':' · '+l.hours+' h')+(blank(l.trips)?'':' · '+l.trips+' trips')).join('\n')+(c.lines[0]?.flagLabel&&c.flag!=='normal'?'\n'+[...new Set(c.lines.map(l=>l.flagLabel))].join('; '):''):c.kind==='away'?'Worked at '+c.where:c.kind==='absent'?'Absent: no saved card, day locked':c.kind==='pending'?'Pending: a batch of this day is open, not created or not ended':'';
+// Batch-wise Step 4 lists red first, then orange, brown, blue and normal duties, then by name.
+const FLAG_ORDER={red:0,orange:1,review:2,zero:3};
+const flagOrder=f=>FLAG_ORDER[f]??4;
+const DUTY_COLUMNS=[['date','Date',r=>shortDate(r.date)],['shift','Shift',r=>shiftName(r.shift)],['logBook','Log book'],['doors','Door / equipment'],['equipment','Equipment'],['hours','HMR hours'],['trips','Trips'],['km','KM'],['flagLabel','Colour / reason'],['books','Saved cards']];
+// A person's duties at the site in these dates: month-wise Step 4 and batch-wise Step 5 (owner, 16 Nov 2026: in line).
+const personDuties=({ReportSection,step,person,site,query})=><ReportSection key={'ar-person-'+query+'-'+site.siteKey+'-'+person.employeeKey} title={'Step '+step+' · '+person.caliberCode+' · '+person.employeeName+' · duties at '+site.site} category="attendance-person"
+ description={[person.category,person.duties+(person.duties===1?' duty':' duties'),person.present+' days present',person.absent+' absent',person.attendance+' attendance'].filter(Boolean).join(' · ')}
+ rows={[...person.lines].sort((a,b)=>a.date.localeCompare(b.date)||a.shift.localeCompare(b.shift))} columns={cols(DUTY_COLUMNS)} rowKey={r=>r.id} rowClassName={r=>'mp-duty-'+r.flag} showSearch={false} recordDateFilter={false} emptyMessage="No duty in these dates."/>;
 
 function Legend(){
  return <div className="ar-legend" aria-label="Codes">{CODE_LEGEND.map(([code,meaning,kind])=><span key={code} className={'ar-legend-item ar-'+kind}><b>{code}</b> {meaning}</span>)}
@@ -44,8 +54,11 @@ export default function AttendanceRegister({report,filters,mode='attendance-batc
  const openSite=key=>{setSiteKey(siteKey===key&&siteRows.length>1?'':key);setPick({date:'',shift:''});setPersonKey('');setEquipment('');};
  const closeBatch=()=>{setPick({date:'',shift:''});setPersonKey('');setEquipment('');};
  const level=!open?1:month?(!equipment?2:people.some(p=>p.employeeKey===personKey)?4:3):!(pick.date&&pick.shift)?2:equipment?4:3;
+ // Batch-wise Step 5 (owner, 16 Nov 2026): the person whose name was pressed in Step 4, as month-wise Step 4.
+ const batchPerson=!month&&level===4&&personKey?register.find(p=>p.employeeKey===personKey):null;
+ const closeCategory=()=>{setEquipment('');setPersonKey('');};
  const back=month?(level===4?()=>setPersonKey(''):level===3?closeBatch:level===2&&siteRows.length>1?()=>openSite(open):null)
-  :level===4?()=>setEquipment(''):level===3?closeBatch:level===2&&siteRows.length>1?()=>openSite(open):null;
+  :batchPerson?()=>setPersonKey(''):level===4?closeCategory:level===3?closeBatch:level===2&&siteRows.length>1?()=>openSite(open):null;
  const equipmentLabel=equipment==='*'?'All categories':equipment;
 
  // Step 1: one line per site, then All sites.
@@ -62,7 +75,8 @@ export default function AttendanceRegister({report,filters,mode='attendance-batc
    {level===4&&<><span>›</span><button type="button" onClick={()=>setPersonKey('')}>{equipmentLabel}</button><span>›</span><strong>{people.find(p=>p.employeeKey===personKey)?.employeeName}</strong></>}
   </>:<>
    {level===3&&<><span>›</span><strong>{shortDate(pick.date)+' · '+shiftName(pick.shift)}</strong></>}
-   {level===4&&<><span>›</span><button type="button" onClick={()=>setEquipment('')}>{shortDate(pick.date)+' · '+shiftName(pick.shift)}</button><span>›</span><strong>{equipmentLabel}</strong></>}
+   {level===4&&<><span>›</span><button type="button" onClick={closeCategory}>{shortDate(pick.date)+' · '+shiftName(pick.shift)}</button><span>›</span>
+    {batchPerson?<><button type="button" onClick={()=>setPersonKey('')}>{equipmentLabel}</button><span>›</span><strong>{batchPerson.employeeName}</strong></>:<strong>{equipmentLabel}</strong>}</>}
   </>}</p>;
 
  return <div className="ar-register">
@@ -79,7 +93,7 @@ export default function AttendanceRegister({report,filters,mode='attendance-batc
   const day=new Map(model.days.map(date=>{const list=model.dayPeople(open,date),n=kind=>list.filter(x=>x.cell.kind===kind).length;return [date,{present:n('present'),absent:n('absent'),pending:n('pending'),away:n('away')}];}));
   const dayTotal=key=>[...day.values()].reduce((s,d)=>s+d[key],0);
   const dayColumns=[['present','People present'],['absent','Absent (A)'],['pending','Pending (?)'],['away','At another site (TR)']].map(([key,label])=>({key,label,value:(t,line)=>line&&day.has(line.key)?day.get(line.key)[key]:dayTotal(key)}));
-  const choose=r=>{setPick(pick.date===r.date&&pick.shift===r.shift?{date:'',shift:''}:{date:r.date,shift:r.shift});setEquipment('');};
+  const choose=r=>{setPick(pick.date===r.date&&pick.shift===r.shift?{date:'',shift:''}:{date:r.date,shift:r.shift});setEquipment('');setPersonKey('');};
   const cell=(list,where)=>{const r=list[0],on=pick.date===r.date&&pick.shift===r.shift;
    return <span className="dsg-cell">
     <button type="button" className={'dsg-count ar-batch ar-batch-'+r.status} aria-pressed={on} aria-label={many(r.present,'person')+' present · '+where+' · '+STATUS[r.status]} onClick={()=>choose(r)}>{r.present}</button>
@@ -104,19 +118,45 @@ export default function AttendanceRegister({report,filters,mode='attendance-batc
   const step3=<ReportSection key={'ar-categories-'+query+'-'+open+'-'+pick.date+'-'+pick.shift} title={'Step 3 · '+batchWhere+' · by equipment category'} category="attendance-categories"
    description={many(present.length,'person')+' present · Batch '+(batch?.batch||'not created')+' · '+STATUS[batch?.status||'none']+' · One line per equipment category (the machine’s group in the Equipment master); a person on machines of two categories is in both. Press a category for its people.'}
    rows={present.length?[...categories.rows,categories.total]:[]} columns={categoryColumns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}
-   isTotalRow={r=>r.id==='*'} onRowClick={r=>setEquipment(equipment===r.id?'':r.id)} rowClassName={r=>(r.id==='*'?'mp-att-total':'')+(r.id===equipment?' report-row-picked':'')} emptyMessage={model.dayState(open,pick.date)==='locked'?'Nobody has a saved duty in this batch.':'This day is not locked yet. Its people are counted once every shift of the day is locked.'}/>;
-  const listed=level===4?present.filter(p=>equipment==='*'||p.categories.includes(equipment)):[];
+   isTotalRow={r=>r.id==='*'} onRowClick={r=>{setEquipment(equipment===r.id?'':r.id);setPersonKey('');}}rowClassName={r=>(r.id==='*'?'mp-att-total':'')+(r.id===equipment?' report-row-picked':'')} emptyMessage={model.dayState(open,pick.date)==='locked'?'Nobody has a saved duty in this batch.':'This day is not locked yet. Its people are counted once every shift of the day is locked.'}/>;
+  // Step 4 (owner, 16 Nov 2026: in line with the month-wise register): Caliber ID, the name to press with the designation under
+  // it, and the day code in the register's coloured box; red first, then orange, brown, blue and normal, then by name.
+  const listed=level===4?present.filter(p=>equipment==='*'||p.categories.includes(equipment)).sort((a,b)=>flagOrder(a.flag)-flagOrder(b.flag)):[];
+  const dayIndex=model.days.indexOf(pick.date),cellOf=p=>register.find(r=>r.employeeKey===p.employeeKey)?.cells[dayIndex];
   const missing=model.dayPeople(open,pick.date).filter(x=>x.cell.kind!=='present').map(({person,cell})=>{const last=person.lines.filter(l=>l.date<pick.date).map(l=>l.date).sort().at(-1);
-   return {id:person.id,caliberCode:person.caliberCode,employeeName:person.employeeName,category:person.category||'—',code:cell.code,meaning:cell.kind==='absent'?'Absent':cell.kind==='pending'?'Pending':'At '+cell.where,last:last?shortDate(last):'—'};});
-  const peopleColumns=cols([['caliberCode','Caliber ID'],['employeeName','Name'],['category','Category'],['logBook','Log book'],['doors','Door / equipment'],['equipment','Equipment'],['hours','HMR hours'],['trips','Trips'],['km','KM'],['code','Day code'],['flagLabel','Colour / reason'],['books','Saved cards']]);
+   return {id:person.id,caliberCode:person.caliberCode,employeeName:person.employeeName,category:person.category||'—',code:cell.code,kind:cell.kind,meaning:cell.kind==='absent'?'Absent':cell.kind==='pending'?'Pending':'At '+cell.where,last:last?shortDate(last):'—'};});
+  const codeBox=r=><span className={'ar-code ar-code-box ar-'+r.kind} title={r.meaning}>{r.code}</span>;
+  const missingColumns=cols([['caliberCode','Caliber ID'],['employeeName','Name'],['category','Category'],['code','Code'],['meaning','Meaning'],['last','Last duty here before this date']]).map(c=>c.key==='code'?{...c,render:codeBox}:c);
+  const peopleColumns=cols([['caliberCode','Caliber ID'],['employeeName','Name'],['category','Category'],['code','Day code'],['doors','Door / equipment'],['equipment','Equipment'],['logBook','Log book'],['hours','HMR hours'],['trips','Trips'],['km','KM'],['flagLabel','Colour / reason'],['books','Saved cards']]);
+  const figures=[['hours','HMR hours'],['trips','Trips'],['km','KM']];
+  const sumOf=key=>{const values=listed.map(p=>p[key]).filter(v=>typeof v==='number');return values.length?Math.round(values.reduce((a,b)=>a+b,0)*100)/100:'—';};
+  const step4=level===4&&<ReportSection key={'ar-people-'+query+'-'+open+'-'+pick.date+'-'+pick.shift+'-'+equipment} title={'Step 4 · '+batchWhere+' · '+equipmentLabel+' · people'} category="attendance-people"
+   description={many(listed.length,'person')+' present · '+equipmentLabel+' · Batch '+(batch?.batch||'not created')+' · '+STATUS[batch?.status||'none']+' · Red first, then orange. Press a name for that person’s duties. Day code is the whole day: P1+3 means Shift 1 and Shift 3; hover it for each shift.'}
+   rows={listed} columns={peopleColumns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
+   {listed.length?<div className="ar-grid-wrap" role="group" aria-label="People of this batch">
+    <table className="ar-grid ar-batch-people">
+     <thead><tr><th scope="col" className="ar-sticky ar-id">Caliber ID</th><th scope="col" className="ar-sticky ar-name">Name</th><th scope="col" className="ar-day-code">Day code</th>
+      <th scope="col" className="ar-text">Door / equipment</th><th scope="col" className="ar-text">Equipment</th><th scope="col">Log book</th>
+      {figures.map(([key,label])=><th key={key} scope="col" className="ar-total-head">{label}</th>)}<th scope="col" className="ar-text">Colour / reason</th><th scope="col" className="ar-text">Saved cards</th></tr></thead>
+     <tbody>{listed.map(p=>{const c=cellOf(p),on=personKey===p.employeeKey;return <tr key={p.id} className={on?'report-row-picked':undefined}>
+      <td className="ar-sticky ar-id">{p.caliberCode}</td>
+      <th scope="row" className="ar-sticky ar-name"><button type="button" className="mp-cat-open" aria-pressed={on} aria-label={'Duties of '+p.employeeName} onClick={()=>setPersonKey(on?'':p.employeeKey)}>{p.employeeName}</button>{p.category&&p.category!=='—'&&<small>{p.category}</small>}</th>
+      <td className={'ar-code ar-present'+(p.flag?' ar-flag-'+p.flag:'')} title={(c&&tip(c))||undefined}>{p.code}</td>
+      <td className="ar-text">{shown(p.doors)}</td><td className="ar-text">{shown(p.equipment)}</td><td>{shown(p.logBook)}</td>
+      {figures.map(([key])=><td key={key} className="ar-total">{shown(p[key])}</td>)}
+      <td className="ar-text">{shown(p.flagLabel)}</td><td className="ar-text ar-books">{shown(p.books)}</td>
+     </tr>;})}</tbody>
+     <tfoot><tr className="ar-foot"><td className="ar-sticky ar-id"></td><th scope="row" className="ar-sticky ar-name">Present in this batch</th><td className="ar-code">{listed.length}</td><td colSpan={3}></td>
+      {figures.map(([key])=><td key={key} className="ar-total">{sumOf(key)}</td>)}<td colSpan={2}></td></tr></tfoot>
+    </table>
+   </div>:<p>Nobody of this category has a saved duty in this batch.</p>}
+  </ReportSection>;
   return <>{step2}{step3}
-   {level===4?<ReportSection key={'ar-people-'+query+'-'+open+'-'+pick.date+'-'+pick.shift+'-'+equipment} title={'Step 4 · '+batchWhere+' · '+equipmentLabel+' · people'} category="attendance-people"
-    description={many(listed.length,'person')+' present · '+equipmentLabel+' · Batch '+(batch?.batch||'not created')+' · '+STATUS[batch?.status||'none']+' · Day code is the whole day: P1+3 means Shift 1 and Shift 3.'}
-    rows={listed} columns={peopleColumns} rowKey={r=>r.id} rowClassName={r=>'mp-duty-'+r.flag} showSearch={false} recordDateFilter={false} emptyMessage="Nobody of this category has a saved duty in this batch."/>
-    :<p className="mp-notice">Press a category above, or All categories, to list its people.</p>}
+   {level===4?step4:<p className="mp-notice">Press a category above, or All categories, to list its people.</p>}
+   {batchPerson&&personDuties({ReportSection,step:5,person:batchPerson,site,query})}
    <ReportSection key={'ar-missing-'+query+'-'+open+'-'+pick.date} title={site.site+' · '+shortDate(pick.date)+' · not on any card here that day'} category="attendance-not-present"
     description="People of this site with no duty here on this date: A when every batch of the day is locked, ? while one is open or missing, TR when they worked at another site."
-    rows={missing} columns={cols([['caliberCode','Caliber ID'],['employeeName','Name'],['category','Category'],['code','Code'],['meaning','Meaning'],['last','Last duty here before this date']])} rowKey={r=>r.id} recordDateFilter={false} emptyMessage="Everyone of this site worked here that day."/>
+    rows={missing} columns={missingColumns} rowKey={r=>r.id} recordDateFilter={false} emptyMessage="Everyone of this site worked here that day."/>
   </>;
  }
 
@@ -127,7 +167,6 @@ export default function AttendanceRegister({report,filters,mode='attendance-batc
   const exportColumns=[{key:'caliberCode',label:'Caliber ID',value:p=>p.caliberCode},{key:'employeeName',label:'Name',value:p=>p.employeeName},{key:'category',label:'Category',value:p=>p.category||'—'},
    ...days.map((d,i)=>({key:'d'+d,label:d.slice(8,10)+' '+weekday(d),value:p=>p.cells[i].code})),...totals.map(([key,label])=>({key,label,value:p=>shown(valueOf(p,key))}))];
   const presentOn=i=>people.filter(p=>p.cells[i].kind==='present').length;
-  const tip=c=>c.kind==='present'?c.lines.map(l=>shiftName(l.shift)+' · '+[l.doors,l.equipment,l.logBook].filter(Boolean).join(' · ')+(blank(l.hours)?'':' · '+l.hours+' h')+(blank(l.trips)?'':' · '+l.trips+' trips')).join('\n')+(c.lines[0]?.flagLabel&&c.flag!=='normal'?'\n'+[...new Set(c.lines.map(l=>l.flagLabel))].join('; '):''):c.kind==='away'?'Worked at '+c.where:c.kind==='absent'?'Absent: no saved card, day locked':c.kind==='pending'?'Pending: a batch of this day is open, not created or not ended':'';
   const sum=key=>{const values=people.map(p=>valueOf(p,key)).filter(v=>!blank(v)&&typeof v==='number');return values.length?Math.round(values.reduce((a,b)=>a+b,0)*100)/100:'—';};
   // Step 2 (owner, 16 Nov 2026): the site's people by equipment category; a line opens its month-wise register as Step 3.
   const categories=registerCategories(register);
@@ -159,11 +198,6 @@ export default function AttendanceRegister({report,filters,mode='attendance-batc
   </ReportSection>;
   const person=people.find(p=>p.employeeKey===personKey);
   if(!person)return <>{step2}{step3}</>;
-  const dutyColumns=cols([['date','Date',r=>shortDate(r.date)],['shift','Shift',r=>shiftName(r.shift)],['logBook','Log book'],['doors','Door / equipment'],['equipment','Equipment'],['hours','HMR hours'],['trips','Trips'],['km','KM'],['flagLabel','Colour / reason'],['books','Saved cards']]);
-  return <>{step2}{step3}
-   <ReportSection key={'ar-person-'+query+'-'+open+'-'+person.employeeKey} title={'Step 4 · '+person.caliberCode+' · '+person.employeeName+' · duties at '+site.site} category="attendance-person"
-    description={[person.category,person.duties+(person.duties===1?' duty':' duties'),person.present+' days present',person.absent+' absent',person.attendance+' attendance'].filter(Boolean).join(' · ')}
-    rows={[...person.lines].sort((a,b)=>a.date.localeCompare(b.date)||a.shift.localeCompare(b.shift))} columns={dutyColumns} rowKey={r=>r.id} rowClassName={r=>'mp-duty-'+r.flag} showSearch={false} recordDateFilter={false} emptyMessage="No duty in these dates."/>
-  </>;
+  return <>{step2}{step3}{personDuties({ReportSection,step:4,person,site,query})}</>;
  }
 }
