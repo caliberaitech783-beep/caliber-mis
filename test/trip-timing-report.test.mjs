@@ -179,3 +179,31 @@ test('the screen offers the exception time and the two views, and the standard v
  const css=fs.readFileSync(new URL('../src/trip-timing-report.css',import.meta.url),'utf8');
  for(const name of ['.tt-exception','.tt-exception-form','.tt-exception-list','.tt-view','.tt-given'])assert.ok(css.includes(name),name);
 });
+
+// Owner, 16 Nov 2026: the minutes of each colour are written above it in Step 2, and Step 2 stays in view while it scrolls.
+test('Step 2 writes the minutes of each colour above it and keeps every colour in its own place',async()=>{
+ const React=(await import('react')).default,{renderToStaticMarkup}=await import('react-dom/server'),{transformWithOxc}=await import('vite');
+ const source=fs.readFileSync(new URL('../src/date-shift-grid.jsx',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace(/^export /gm,'');
+ const {code}=await transformWithOxc(source,'date-shift-grid.jsx',{jsx:{runtime:'classic'}});
+ const {DateShiftGrid,dateShiftGrid}=new Function('React',code+';return {DateShiftGrid,dateShiftGrid};')(React);
+ const view=fs.readFileSync(new URL('../src/trip-timing-report.jsx',import.meta.url),'utf8');
+ const bandRange=new Function('return '+view.match(/export const bandRange=(b=>[^;]+);/)[1])();
+ assert.deepEqual(BANDS.map(bandRange),['15–20 min','20–30 min','30+ min']);
+ const boxes=BANDS.map(b=>({key:b.key,label:b.label,range:bandRange(b),className:'tt-band tt-'+b.key}));
+ const rows=[{key:'d1-A',date:'2026-11-01',shift:'A',timed:1224,b1:191,b2:36,b3:0},{key:'d2-A',date:'2026-11-02',shift:'A',timed:1208,b1:220,b2:44,b3:7}];
+ const grid=dateShiftGrid(rows,{sumKeys:['timed','b1','b2','b3']});
+ const html=renderToStaticMarkup(React.createElement(DateShiftGrid,{grid,count:r=>r.timed,countLabel:'Trips timed',boxes,onOpen:()=>{},onOpenAll:()=>{}}));
+ const head=html.slice(html.indexOf('<thead'),html.indexOf('</thead>'));
+ assert.match(head,/Trips timed<\/small><span class="dsg-box dsg-range tt-band tt-b1"[^>]*>15–20 min<\/span><span[^>]*>20–30 min<\/span><span[^>]*>30\+ min<\/span>/);
+ assert.match(html,/class="report-filter-table dsg-table dsg-ranged"/);
+ const first=html.slice(html.indexOf('<tbody'),html.indexOf('</tr>',html.indexOf('<tbody')));
+ assert.match(first,/>36<\/button><span class="dsg-box dsg-box-gap" aria-hidden="true"><\/span>/,'no red on 01-11: an empty place keeps the columns under their minutes');
+ assert.match(first,/title="15 to 20 min"[^>]*>191</,'pointing at a colour also says its minutes');
+ const plain=renderToStaticMarkup(React.createElement(DateShiftGrid,{grid,count:r=>r.timed,countLabel:'Trips timed',boxes:boxes.map(({range,...b})=>b),onOpen:()=>{}}));
+ assert.ok(!plain.includes('dsg-box-gap')&&plain.includes('Trips timed · colours'),'reports without ranges draw as before');
+ assert.match(view,/range:b\.key===EXCEPTION_KEY\?'Exception':bandRange\(b\)/);
+ assert.match(view,/<div className="tt-report" ref=\{step2InView\}>/);
+ const css=fs.readFileSync(new URL('../src/trip-timing-report.css',import.meta.url),'utf8');
+ assert.match(css,/\[data-category="operations-timing-shifts"\]>\.reports-section-heading\{position:sticky;top:var\(--tt-stick,0px\)/);
+ assert.match(css,/\.dsg\[data-tt-fits\] thead th\{position:sticky;top:calc\(var\(--tt-stick,0px\) \+ var\(--tt-head,0px\)\)/);
+});

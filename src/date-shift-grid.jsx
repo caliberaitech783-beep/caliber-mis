@@ -45,22 +45,29 @@ export function dateShiftExport(grid,{count,countLabel,boxes=[],dayColumns=[],sh
 
 export function DateShiftGrid({grid,count,countLabel='',boxes=[],renderCell,dayColumns=[],onOpen,onOpenAll,isPicked=()=>false,pickedBox='',allPicked=false,cellNote=null,shiftLabel=s=>s,label='Date',ariaLabel='By date and shift',emptyMessage='Nothing in these dates.',hint=null}){
  if(!grid.lines.length)return <div className="reports-detail-table dsg">{hint}<p className="dsg-empty">{emptyMessage}</p></div>;
+ // A box with a `range` (owner, 16 Nov 2026: "above 36 it should write from which to which") puts that range above its
+ // colour in the shift heading; every colour then keeps its own place in the box, an empty place where it is 0, so the
+ // figures stay under their range.
+ const ranged=boxes.some(b=>b.range);
+ const gap=b=>ranged?<span key={b.key} className="dsg-box dsg-box-gap" aria-hidden="true"/>:null;
  const cell=(list,where)=>{
   if(!list?.length)return <span className="dsg-zero">0</span>;
   if(renderCell)return renderCell(list,where);
   const r=list[0],on=isPicked(r),n=count(r);
   return <span className="dsg-cell">
    <button type="button" className="dsg-count" aria-pressed={on&&!pickedBox} aria-label={n+' '+countLabel+' · '+where} onClick={()=>onOpen(r,'')}>{n}</button>
-   {boxes.map(b=>r[b.key]>0?<button key={b.key} type="button" className={'dsg-box '+b.className} aria-pressed={on&&pickedBox===b.key} title={b.label} aria-label={r[b.key]+' '+b.label+' · '+where} onClick={()=>onOpen(r,b.key)}>{r[b.key]}</button>:null)}
+   {boxes.map(b=>r[b.key]>0?<button key={b.key} type="button" className={'dsg-box '+b.className} aria-pressed={on&&pickedBox===b.key} title={b.label} aria-label={r[b.key]+' '+b.label+' · '+where} onClick={()=>onOpen(r,b.key)}>{r[b.key]}</button>:gap(b))}
    {cellNote&&cellNote(r)?<small className="dsg-note">{cellNote(r)}</small>:null}
   </span>;
  };
- const totalCell=t=>t?<span className="dsg-cell"><span className="dsg-count">{count(t)}</span>{boxes.map(b=>t[b.key]>0?<span key={b.key} className={'dsg-box '+b.className} title={b.label}>{t[b.key]}</span>:null)}</span>:null;
+ const totalCell=t=>t?<span className="dsg-cell"><span className="dsg-count">{count(t)}</span>{boxes.map(b=>t[b.key]>0?<span key={b.key} className={'dsg-box '+b.className} title={b.label}>{t[b.key]}</span>:gap(b))}</span>:null;
  const dayCell=(c,sums,line)=>c.render?c.render(sums,line):c.value(sums,line);
  return <div className="reports-detail-table dsg" role="group" aria-label={ariaLabel}>
   {hint}
-  <table className="report-filter-table dsg-table">
-   <thead><tr><th scope="col">{label}</th>{grid.shifts.map(s=><th key={s} scope="col">{shiftLabel(s)}{countLabel&&<small>{countLabel}{boxes.length?' · colours':''}</small>}</th>)}{dayColumns.map(c=><th key={c.key} scope="col">{c.label}{c.sub&&<small>{c.sub}</small>}</th>)}</tr></thead>
+  <table className={'report-filter-table dsg-table'+(ranged?' dsg-ranged':'')}>
+   <thead><tr><th scope="col">{label}</th>{grid.shifts.map(s=><th key={s} scope="col">{shiftLabel(s)}{ranged
+    ?<span className="dsg-cell dsg-legend"><small>{countLabel}</small>{boxes.map(b=><span key={b.key} className={'dsg-box dsg-range '+b.className} title={b.label}>{b.range}</span>)}</span>
+    :countLabel&&<small>{countLabel}{boxes.length?' · colours':''}</small>}</th>)}{dayColumns.map(c=><th key={c.key} scope="col">{c.label}{c.sub&&<small>{c.sub}</small>}</th>)}</tr></thead>
    <tbody>{grid.lines.map(l=><tr key={l.key} className={l.list.some(isPicked)?'report-row-picked':undefined}>
     <th scope="row">{l.label}{l.sub&&<small>{l.sub}</small>}</th>
     {grid.shifts.map(s=><td key={s}>{cell(l.cells[s],l.label+' · '+shiftLabel(s))}</td>)}
