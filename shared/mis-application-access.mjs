@@ -39,6 +39,10 @@ export function misRequestAllowed(session,req){
  if(route==='/api/vlb-batch-alerts/run')return req.method==='POST'&&isMisAdministrator(session);
  // "Send sample to Telegram" on A24 and A25.
  if(route==='/api/automation-centre/scan-batch-report/sample'||route==='/api/automation-centre/health-report/sample')return req.method==='POST'&&isMisAdministrator(session);
+ // "Create Telegram channel" on an automation line (16 Nov 2026: the owner's MIS login got
+ // "This MIS menu is not assigned to your login" because PR 387 left these routes off the list).
+ if(route==='/api/automation-centre/channel')return (read||req.method==='DELETE')&&isMisAdministrator(session);
+ if(route==='/api/automation-centre/channel/code'||route==='/api/automation-centre/channel/test')return req.method==='POST'&&isMisAdministrator(session);
  if(route==='/api/print-helper/certificate')return read;
  if(route==='/api/print-helper/sign')return req.method==='POST';
  if(['/api/print-helper/setup','/api/print-helper/setup/override.crt'].includes(route))return isMisAdministrator(session)&&(read||req.method==='POST'&&route==='/api/print-helper/setup');
