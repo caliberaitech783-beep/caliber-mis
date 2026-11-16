@@ -202,15 +202,9 @@ function otOverview({report,filters,query,ReportSection,sites,otPick,setOtPick,l
 // month-wise history. Plain render function: its state lives in ManpowerReports.
 function attendanceOverview({report,filters,query,ReportSection,pick,setPick,tally,tallyKey,tallySite,driverOpen,setDriverOpen,historyBox}){
  const rows=report.attendanceEquipment||[],sites=report.attendanceSites||[],held=report.attendanceShifts||[];
- // A site working Shift 1 to 3 does not also work a Day or Night shift. Such a shift with no duty and no batch in the
- // selected dates is only in the Shift Master, so it is left out instead of being counted as missing its batch every day.
- const used=new Set([...rows.map(r=>r.siteKey+'|'+r.shift),...held.filter(b=>!['none','not_due'].includes(b.state)).map(b=>b.siteKey+'|'+b.shift)]);
- const threeShifts=new Set([...used].filter(k=>/\|S[123]$/.test(k)).map(k=>k.slice(0,k.lastIndexOf('|'))));
- const unused=b=>['D','N'].includes(b.shift)&&threeShifts.has(b.siteKey)&&!used.has(b.siteKey+'|'+b.shift);
- const batches=held.filter(b=>!unused(b));
+ // Every Shift Master shift is shown, Day and Night too, even with 0 duties and no batch (owner, 16 Nov 2026).
+ const batches=held;
  const siteLabel=key=>key===EVERY?'All sites':sites.find(s=>s.siteKey===key)?.site||key;
- const hiddenNote=site=>{const leftOut=[...new Set(held.filter(b=>unused(b)&&(site===EVERY||b.siteKey===site)).map(b=>b.siteKey+'|'+b.shift))].map(k=>{const at=k.lastIndexOf('|');return (site===EVERY?siteLabel(k.slice(0,at))+' ':'')+shiftName(k.slice(at+1));});
-  return leftOut.length>0&&<p className="mp-category-hint">Not shown: {leftOut.join(', ')}. The Shift Master holds {leftOut.length===1?'this shift':'these shifts'}, but the site works Shift 1 to 3 and has no duty or batch in {leftOut.length===1?'it':'them'} in these dates.</p>;};
  // An actual duty is one driver in one shift on one date; a second machine in the same shift is not another one.
  const actual=list=>list.filter(r=>r.actual).length;
  const days=filters.from!==filters.to,dateLabel=days?shortDate(filters.from)+' to '+shortDate(filters.to):shortDate(filters.from);
@@ -307,7 +301,6 @@ function attendanceOverview({report,filters,query,ReportSection,pick,setPick,tal
    <div className="mp-category mp-att mp-att-sites" role="group" aria-label="Actual duties and batches by site">
     {sites.length?<>
      <p className="mp-att-status">{all.none>0&&<span className="mp-flag mp-att-none">{many(all.none,'shift')} without a batch</span>}{all.open>0&&<span className="mp-flag mp-att-open">{all.open===1?'1 batch open':all.open+' batches open'}</span>}{!all.none&&!all.open&&<span>Every shift that has ended has a closed batch.</span>}<span>Red: batch not created. Orange outline: batch not closed.</span></p>
-     {hiddenNote(EVERY)}
      <table><thead><tr><th scope="col">Site</th><th scope="col">Actual duties<small>One driver, one shift</small></th><th scope="col">Equipment-wise duties<small>Each machine worked</small></th><th scope="col">Shifts due<small>Ended by Shift Master times</small></th><th scope="col">Batch closed</th><th scope="col">Batch not created</th><th scope="col">Batch open<small>VLB, LMV or ELB open</small></th></tr></thead>
       <tbody>{siteRows.map(siteLine)}</tbody>
      </table>
@@ -318,7 +311,6 @@ function attendanceOverview({report,filters,query,ReportSection,pick,setPick,tal
    <ReportSection key={'att-dates-'+query+'-'+siteKey+'-'+mark} title={step2Title} category="shift-attendance-dates" description="In each box: the actual duties of that shift. Red = batch not created (no card can be saved without a batch, so it shows 0). Orange outline = batch created but not closed, with the stage it waits in. Not due = the shift has not ended yet. Press a box for its equipment, a day total for the whole day." rows={shown} columns={dateColumns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
     <div className="mp-category mp-att mp-att-grid">
      <div className="mp-book-pick" role="group" aria-label="Dates shown">{[['','All dates',slotRows.length?new Set(slotRows.map(r=>lineOf(r).key)).size:0],['none','Batch not created',slotRows.reduce((n,r)=>n+r.none,0)],['open','Batch open',slotRows.reduce((n,r)=>n+r.open,0)]].map(([id,name,n])=><button key={id||'all'} type="button" aria-pressed={mark===id} aria-label={name+' · '+n} onClick={()=>setPick({...noPick,siteKey,mark:id})}>{name} <small>{n}</small></button>)}</div>
-     {hiddenNote(siteKey)}
      <DateShiftGrid grid={shiftGrid} renderCell={cell} renderTotal={shiftTotal} dayColumns={dayColumns} shiftLabel={shiftName} label={siteKey===EVERY?'Site · date':'Date'}
       isPicked={r=>scope&&at===r.siteKey&&date===r.date} onOpenAll={()=>show(siteKey,'','')} allPicked={scope&&at===siteKey&&!date&&!shift} ariaLabel="Actual duties by date and shift" emptyMessage={mark?'No date matches this choice.':'No shift in these dates.'}/>
     </div>
