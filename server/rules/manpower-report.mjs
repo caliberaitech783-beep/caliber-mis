@@ -56,17 +56,30 @@ const flagTally=events=>Object.fromEntries(['red','orange','review'].map(severit
 const activeShiftRow=s=>!s.sourceMissing&&text(s.status).toLowerCase()!=='inactive';
 // The shifts a site runs on a date by the Shift Master; Shift 1 to 3 when the master holds none for it.
 const masterShiftCodes=(shifts,siteKey,date)=>{const codes=unique(shifts.filter(s=>activeShiftRow(s)&&canonicalSiteName(s.site||s.siteName)===siteKey&&(!s.effectiveFrom||s.effectiveFrom<=date)&&(!s.effectiveTo||date<=s.effectiveTo)).map(s=>bookShiftCode(s.shiftCode)||bookShiftCode(s.shiftName||s.name||s.shift)));return codes.length?codes:['S1','S2','S3'];};
-// Locked days only (owner, 16 Nov 2026): a site's day counts only when every shift it runs that day has a batch and every
-// batch it holds that day is fully closed (VLB, LMV and ELB locked). One open, reopened or missing shift keeps the whole
-// site-day out, so no figure is ever shown from a day that can still change. Returns "siteKey|date" keys.
+// Locked days only (owner, 16 Nov 2026): a site's day counts only when every batch it holds that day is fully closed (VLB,
+// LMV and ELB locked) and those locked shifts make up the whole day. One open or reopened batch, or a shift of the day that
+// was never created, keeps the whole site-day out, so no figure is ever shown from a day that can still change.
+// "The whole day" is any of: Shift 1, 2 and 3; Day and Night shift; every shift the Shift Master lists for the site; or
+// locked shifts whose Shift Master times cover at least 23½ hours. (Jayant and Dudhichua East list Day and Night shift
+// beside Shift 1 to 3 but run only Shift 1 to 3: three locked shifts are their whole day; 16 Nov 2026, live check.)
+// Returns "siteKey|date" keys.
+const FULL_DAY_PATTERNS=[['S1','S2','S3'],['D','N']];
+const FULL_DAY_MS=23.5*3600000;
+function coveredMs(shifts,site,date,codes){
+ const spans=codes.map(code=>shiftWindow(shifts,site,date,code)).filter(Boolean).map(w=>[w.start,w.end]).sort((a,b)=>a[0]-b[0]);
+ let total=0,cur=null;
+ for(const [s,e] of spans){if(!cur||s>cur[1]){if(cur)total+=cur[1]-cur[0];cur=[s,e];}else cur[1]=Math.max(cur[1],e);}
+ return cur?total+cur[1]-cur[0]:0;
+}
 export function lockedSiteDays(shifts,batches){
  const bySiteDay=new Map();
- for(const b of batches){const siteKey=canonicalSiteName(b.site),date=b.report_date;if(!siteKey||!date)continue;const k=siteKey+'|'+date;if(!bySiteDay.has(k))bySiteDay.set(k,{siteKey,date,list:[]});bySiteDay.get(k).list.push(b);}
+ for(const b of batches){const siteKey=canonicalSiteName(b.site),date=b.report_date;if(!siteKey||!date)continue;const k=siteKey+'|'+date;if(!bySiteDay.has(k))bySiteDay.set(k,{siteKey,date,site:b.site,list:[]});bySiteDay.get(k).list.push(b);}
  const locked=new Set();
- for(const [k,{siteKey,date,list}] of bySiteDay){
+ for(const [k,{siteKey,date,site,list}] of bySiteDay){
   if(list.some(b=>!b.closed_at))continue;
   const held=new Set(list.map(b=>bookShiftCode(b.shift)||text(b.shift)));
-  if(masterShiftCodes(shifts,siteKey,date).every(code=>held.has(code)))locked.add(k);
+  const whole=FULL_DAY_PATTERNS.some(p=>p.every(code=>held.has(code)))||masterShiftCodes(shifts,siteKey,date).every(code=>held.has(code))||coveredMs(shifts,site,date,[...held])>=FULL_DAY_MS;
+  if(whole)locked.add(k);
  }
  return locked;
 }
@@ -334,10 +347,10 @@ export function joinAttendanceReports(parts,filters){
  return {filters,otDuties:lines('otDuties'),attendanceEquipment:lines('attendanceEquipment'),attendanceShifts,exceptions:lines('exceptions'),ot,
   otSites:otSiteTally(sitesOf('otSites'),ot),attendanceSites,notes:parts[0]?.report.notes||[]};
 }
-// Site-days with a shift not yet locked (open in any stage, not created, or not ended), from the batch boxes.
-export function pendingSiteDays(attendanceShifts){
+// Site-days not locked yet (see lockedSiteDays), with their shifts that are open, not created or not ended.
+export function pendingSiteDays(attendanceShifts,locked=null){
  const days=new Map();
- for(const s of attendanceShifts){if(s.state==='closed')continue;const k=s.siteKey+'|'+s.date;if(!days.has(k))days.set(k,{siteKey:s.siteKey,date:s.date,shifts:[]});days.get(k).shifts.push({shift:s.shift,state:s.state});}
+ for(const s of attendanceShifts){if(s.state==='closed'||locked?.has(s.siteKey+'|'+s.date))continue;const k=s.siteKey+'|'+s.date;if(!days.has(k))days.set(k,{siteKey:s.siteKey,date:s.date,shifts:[]});days.get(k).shifts.push({shift:s.shift,state:s.state});}
  return [...days.values()].sort((a,b)=>a.date.localeCompare(b.date)||a.siteKey.localeCompare(b.siteKey));
 }
 // Earlier repeats are looked up only on request. The look-back is bounded so a
