@@ -91,6 +91,23 @@ test('live figures take the period from the per-minute history and the whole sav
  assert.deepEqual(figures.engines,{live:8,reading:1,blocked:0,blockedReason:''});
 });
 
+test('the report leaves out card saves in the first 10 minutes after a restart and says so',()=>{
+ const window=reportWindow(ist('2026-11-16T16:00:00'));
+ const cold={reads:4,total:{avgMs:5974,maxMs:13858},steps:{'card-fill':{avgMs:9000,maxMs:13226}}};
+ const live=afterWarmup=>liveFigures({scanning:{liveEngines:8,outages:[],entryReadSteps:{...cold,afterWarmup}}},window.from);
+ const onlyCold=live({reads:0,total:null,steps:{},slowest:[],warmupMinutes:10,warmupSkipped:4});
+ assert.equal(onlyCold.saving.averageMs,null,'the 4 cold saves are not judged');
+ assert.equal(verdict({...calm,saving:onlyCold.saving}).good,true);
+ assert.match(healthReportMessage({window,figures:{...calm,saving:onlyCold.saving}}),/Only 4 saves so far, all in the first 10 min after restart \(left out\)/);
+ const mixed=live({reads:12,total:{avgMs:300,maxMs:900},steps:{'card-fill':{avgMs:120,maxMs:400}},slowest:[],warmupMinutes:10,warmupSkipped:4});
+ assert.equal(mixed.saving.averageMs,300);
+ assert.equal(mixed.saving.slowestMs,900);
+ const text=healthReportMessage({window,figures:{...calm,saving:mixed.saving}});
+ assert.match(text,/Card saving \(last 12 saves\)/);
+ assert.match(text,/4 saves in the first 10 min after restart left out/);
+ assert.equal(live(undefined).saving.averageMs,5974,'an older tracker without afterWarmup still works');
+});
+
 const fakePool=({batches=[],audit=[],cards=[]}={})=>{
  const claimed=new Set(),queries=[];
  return {queries,claimed,async query(sql,params=[]){
