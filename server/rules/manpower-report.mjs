@@ -71,7 +71,7 @@ const rowMatches=(r,f,{dates=true}={})=>(!dates||r.date>=f.from&&r.date<=f.to)&&
 // parts 'attendance' builds only what the attendance register shows (duty lines, presence, batches, sites, review items);
 // the tables of the other Manpower views come back empty.
 export function buildManpowerReport({records=[],attendance=[],assets=[],employees=[],shifts=[],batches=[],filters,now=Date.now(),parts='all'}){
- const full=parts!=='attendance',f=manpowerFilters(filters),exceptions=[],rows=[],resolveEmployee=identityIndex(employees),assetMap=new Map(assets.map(a=>[String(a.id),a]));
+ const hr=parts==='hr-attendance',full=!hr&&parts!=='attendance',f=manpowerFilters(filters),exceptions=[],rows=[],resolveEmployee=identityIndex(employees),assetMap=new Map(assets.map(a=>[String(a.id),a]));
  const addIssue=(r,reason)=>{r.issues.push(reason);exceptions.push({id:`${r.id}:${r.issues.length}`,date:r.date,site:r.site,shift:r.shift,door:r.door,employeeId:r.employeeId||r.savedEmployeeId,employeeName:r.employeeName,book:r.book,batches:sourceLabel(r),reason,record:r});};
  const assetDoors=new Map();
  for(const asset of assets){const door=key(asset.door||asset.doorNo||equipmentDoorNumber(asset)),site=canonicalSiteName(asset.currentLocation||asset.site||asset.location);if(!door||!site)continue;const identity=site+'|'+door;if(!assetDoors.has(identity))assetDoors.set(identity,new Set());assetDoors.get(identity).add(String(asset.id));}
@@ -145,13 +145,14 @@ export function buildManpowerReport({records=[],attendance=[],assets=[],employee
  const otMarks=new Map(),ot=buildOt(otDuties,f,otMarks).map(e=>({...e,site:siteName(e.site)}));
  // OT & Multiple Duties, duty by duty: one line per driver, site, date and shift from all three log books, flagged or not,
  // carrying the strongest colour of the cases it is part of. A duty on two machines sits on the one with the most HMR hours.
- const otDutyLines=otDuties.filter(d=>d.cards.some(r=>rowMatches(r,f))).map(d=>{
+ const otDutyLines=otDuties.filter(d=>(!hr||!dummyDuty(d))&&d.cards.some(r=>rowMatches(r,f))).map(d=>{
   const mark=otMarks.get(d.key);let main=d.cards[0];for(const c of d.cards)if((c.hours||0)>(main.hours||0))main=c;
   const others=mark?unique([...mark.others].sort((x,y)=>x.date.localeCompare(y.date)||x.shift.localeCompare(y.shift)).map(o=>o.date===d.date?o.shift:o.shift+' on '+shortDate(o.date))):[];
   const logBooks=LOG_BOOKS.map(([,code])=>code).filter(code=>d.cards.some(r=>logBookCode(r.kind)===code));
   return {id:d.key,date:d.date,shift:d.shift,site:siteName(d.site),siteKey:canonicalSiteName(d.site),employeeKey:d.employeeKey,employeeId:d.employeeId,caliberCode:d.caliberCode,employeeName:d.employeeName,category:d.designation||'Category not in Employee master',
    equipment:equipmentName(main.group),doors:unique(d.cards.map(r=>r.door)).join('; '),makeModel:unique(d.cards.map(makeModelName)).join('; '),logBooks,logBook:logBooks.join(' + '),
-   flag:mark?.severity||'normal',flagLabel:mark?unique(mark.reasons).join('; '):'Normal duty',others:others.length?'Also worked '+others.join(', '):'',hours:d.hours,trips:d.trips,km:d.km,books:d.cards.map(r=>r.book).join('; ')};
+   flag:mark?.severity||'normal',flagLabel:mark?unique(mark.reasons).join('; '):'Normal duty',others:others.length?'Also worked '+others.join(', '):'',hours:d.hours,trips:d.trips,km:d.km,books:d.cards.map(r=>r.book).join('; '),
+   ...(hr?{start:d.schedule?.startLabel||'',end:d.schedule?.endLabel||'',scanned:d.cards.some(card=>card.data.scanCardId)}:{})};
  }).sort((x,y)=>x.date.localeCompare(y.date)||x.site.localeCompare(y.site)||x.shift.localeCompare(y.shift)||x.employeeName.localeCompare(y.employeeName));
  const visibleExceptions=exceptions.filter(e=>rowMatches(e.record,f)).map(({record,...e})=>({...e,site:siteName(e.site),siteKey:canonicalSiteName(e.site),logBook:logBookCode(record.kind)}));
  const visibleBatches=batches.filter(b=>b.report_date>=f.from&&b.report_date<=f.to);
@@ -176,7 +177,7 @@ export function buildManpowerReport({records=[],attendance=[],assets=[],employee
   const site=sitesByKey.get(entry.site)||entry.site;
   attendanceSources.push({...entry,site,door,assetKey:door?entry.site+'|'+key(door):'',batchIds:[],employeeKey:person.identityKey,employeeId:person.employeeId,employeeName:person.name,caliberCode:person.caliberCode,trips:0,...assetClass(asset),noMachine:!asset});
  }
- const attendanceDuties=group(attendanceSources,r=>JSON.stringify([r.employeeKey,r.date,r.shift])).filter(sources=>sources.some(r=>rowMatches(r,f)));
+ const attendanceDuties=group(attendanceSources.filter(r=>!hr||![r.employeeId,r.caliberCode].some(isDummyEmployeeId)),r=>JSON.stringify([r.employeeKey,r.date,r.shift])).filter(sources=>sources.some(r=>rowMatches(r,f)));
  const shiftAttendance=!full?[]:attendanceDuties
   .map(sources=>{
    const r=sources[0],cards=sources.filter(s=>s.card),zero=sources.filter(s=>!s.card);
@@ -209,7 +210,8 @@ export function buildManpowerReport({records=[],attendance=[],assets=[],employee
     equipment:line.equipment,doors:line.doors,makeModel:unique(line.list.map(s=>s.noMachine?'':makeModelName(s))).join('; '),status,trips:trips.length?sum(trips):line.list.some(s=>s.card)?null:0,
     actual:line===main,actualLabel:line===main?'Yes':'No — second machine',
     flag:mark?.severity||(zeroTrips?'zero':'normal'),flagLabel:mark?unique(mark.reasons).join('; '):zeroTrips?'BLUE — Present with 0 trips':'Normal duty',
-    note:[others.length?'Also worked '+others.join(', '):'',machines].filter(Boolean).join(' · '),reason,remarks};
+    note:[others.length?'Also worked '+others.join(', '):'',machines].filter(Boolean).join(' · '),reason,remarks,
+    ...(hr?{logBooks:unique(line.list.filter(s=>s.card).map(s=>logBookCode(s.kind)))}:{})};
   });
  }).sort((a,b)=>a.date.localeCompare(b.date)||a.site.localeCompare(b.site)||a.shift.localeCompare(b.shift)||a.employeeName.localeCompare(b.employeeName)||Number(b.actual)-Number(a.actual));
  // Every known site is listed, including those with no flagged driver, so an
@@ -243,7 +245,8 @@ export function buildManpowerReport({records=[],attendance=[],assets=[],employee
   return unique([...(master.length?master:['S1','S2','S3']),...held]).sort().filter(code=>!f.shift||code===f.shift).map(code=>{
    const list=batchesOf.get(JSON.stringify([siteKey,date,code]))||[],open=list.find(b=>!b.closed_at),window=shiftWindow(shifts,site,date,code);
    const state=open?batchStage(open):list.length?'closed':(window?window.end<=now:date<today)?'none':'not_due';
-   return {siteKey,date,shift:code,state,batch:(open||list[0])?.name||''};
+   return {siteKey,date,shift:code,state,batch:(open||list[0])?.name||'',
+    ...(hr?{start:window?.startLabel||'',end:window?.endLabel||''}:{})};
   });
  }));
  const otSites=knownSites.map(([siteKey,site])=>{const events=ot.filter(e=>e.siteKey===siteKey);return {site,siteKey,...flagTally(events),books:Object.fromEntries(LOG_BOOKS.map(([,code])=>[code,flagTally(events.filter(e=>e.logBooks.includes(code)))]))};}).sort((a,b)=>a.site.localeCompare(b.site));
