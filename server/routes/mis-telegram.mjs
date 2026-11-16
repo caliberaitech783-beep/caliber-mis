@@ -2,7 +2,7 @@ import {createHash,randomBytes,timingSafeEqual} from 'node:crypto';
 import {requireMisAdministrator} from '../../shared/mis-admin-access.mjs';
 import {telegramFetch} from '../services/telegram-fetch.mjs';
 import {automationOn} from '../services/automation-switches.mjs';
-import {siteReportBanner} from '../services/site-report-banner.mjs';
+import {siteReportBanner,speedReportBanner} from '../services/site-report-banner.mjs';
 import {batchReportCard} from '../services/batch-report-card.mjs';
 const digest=value=>createHash('sha256').update(String(value)).digest('hex');
 const key='mis-telegram';
@@ -136,7 +136,8 @@ export function registerMisTelegram(app,{pool,store,requireSession,fetchImpl=tel
     // Rows queued before the report card: the site picture with the report as its caption.
     // A caption holds 1024 characters: a longer report goes as the picture, then the text.
     const fits=String(row.message).length<=1024;
-    try{await sendPhoto(config,fits?{chat_id:row.chat_id,caption:row.message,parse_mode}:{chat_id:row.chat_id},await siteReportBanner(photo));if(fits)return;}
+    // photo.speed: the green / red headline picture of the speed report (A25).
+    try{await sendPhoto(config,fits?{chat_id:row.chat_id,caption:row.message,parse_mode}:{chat_id:row.chat_id},await (photo.speed?speedReportBanner(photo.speed):siteReportBanner(photo)));if(fits)return;}
     catch{/* falls back to text below */}
    }
   }

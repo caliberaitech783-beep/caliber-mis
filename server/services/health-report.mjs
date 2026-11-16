@@ -50,6 +50,7 @@ const clock=ms=>new Date(ms).toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata'
 const dayClock=ms=>new Date(ms).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',hour12:false}).replace(',','');
 const ms=v=>finite(v)?(v<1000?`${Math.round(v)} ms`:duration(v)):'-';
 const hoursText=span=>{const h=Math.round(span/360000)/10;return `${h} h`;};
+const reportPeriod=window=>`${dayClock(window.from)} → ${dayClock(window.at)} IST · ${hoursText(window.at-window.from)}`;
 
 // Names of the card-saving steps (entry-read-steps.mjs) in plain words.
 const STEP_NAMES={'card-check':'card rule check','card-fill':'card fill','check-world':'master lists','card-other':'other card work',
@@ -81,8 +82,11 @@ export function verdict(f){
   [f.pulseCopy&&f.pulseCopy.fresh===false?1:0,'Pulse breakdown copy is not fresh'],
  ];
  const level=Math.max(0,...checks.map(([value])=>value));
- const reasons=checks.filter(([value])=>value===level&&level>0).map(([,text])=>text);
- return {level,label:['No slowness','Some slowness','Slow'][level],icon:['🟢','🟠','🔴'][level],reasons};
+ // Two states only (owner, 16 Nov 2026): SPEED GOOD in green, or SPEED SLOW in red as soon as any
+ // limit is crossed. The reasons list the worst ones first.
+ const reasons=checks.filter(([value])=>value>0).sort((a,b)=>b[0]-a[0]).map(([,text])=>text);
+ const good=level===0;
+ return {level,good,label:good?'SPEED GOOD':'SPEED SLOW',icon:good?'🟢':'🔴',reasons};
 }
 
 const shortBatchName=name=>{const parts=String(name||'').split('/');return parts.length>=4&&parts[0]==='CMLL'?parts.slice(2).join('/'):String(name||'-');};
@@ -91,10 +95,12 @@ const login=v=>String(v||'').trim().toLowerCase()||'-';
 export function healthReportMessage({window,figures:f,sample=false}){
  const v=verdict(f),b=f.batches,r=f.reading,s=f.saving,srv=f.server;
  const lines=[
-  `<b>${REPORT_TITLE}${sample?' (SAMPLE)':''}</b>`,
-  `🕙 ${escapeHtml(dayClock(window.from))} → ${escapeHtml(dayClock(window.at))} IST · ${hoursText(window.at-window.from)}`,
-  `${v.icon} <b>${v.label}</b>`,
+  // The punch line first, bold (owner, 16 Nov 2026); the green / red picture above it carries the colour.
+  `${v.icon}${v.icon} <b>${v.label}</b> ${v.icon}${v.icon}`,
   ...v.reasons.slice(0,3).map(text=>`• ${escapeHtml(text)}`),
+  '',
+  `<b>${REPORT_TITLE}${sample?' (SAMPLE)':''}</b>`,
+  `🕙 ${escapeHtml(reportPeriod(window))}`,
   '',
   `<b>📦 Batches closed: ${b.closed}</b>`,
  ];
@@ -188,9 +194,11 @@ export function createHealthReporter({pool,telegram,live=()=>({}),recipients=()=
   let state={};try{state=liveFigures(await live(),window.from);}catch(error){log.error?.('Speed report live figures:',error?.message||error);}
   return {batches,reading,...state};
  }
- async function deliver(key,message){
+ // Every message goes with the green / red headline picture (mis-telegram.mjs draws it from photo.speed).
+ const headline=(window,f)=>{const v=verdict(f);return {speed:{good:v.good,period:reportPeriod(window),reasons:v.reasons.slice(0,2)}};};
+ async function deliver(key,message,photo=null){
   const people=await recipients();let sent=0;
-  for(const person of people){try{if(await telegram.send(person,message,`health-report:${key}:${person}`,{html:true}))sent++;}catch(error){log.error?.('Speed report not sent:',error?.message||error);}}
+  for(const person of people){try{if(await telegram.send(person,message,`health-report:${key}:${person}`,{html:true,photo}))sent++;}catch(error){log.error?.('Speed report not sent:',error?.message||error);}}
   return {people:people.length,sent};
  }
  async function tick(){
@@ -203,7 +211,7 @@ export function createHealthReporter({pool,telegram,live=()=>({}),recipients=()=
    if(!claimed)return {due:true,claimed:false};
    const f=await figures(window);
    await pool.query('UPDATE mis_health_reports SET summary=$2::jsonb WHERE window_key=$1',[window.key,JSON.stringify({verdict:verdict(f),...f})]).catch(()=>{});
-   return {due:true,claimed:true,...await deliver(window.key,healthReportMessage({window,figures:f}))};
+   return {due:true,claimed:true,...await deliver(window.key,healthReportMessage({window,figures:f}),headline(window,f))};
   }finally{running=false;}
  }
  // "Send sample to Telegram" on the Automation Centre: the report of the period up to now, to the
@@ -212,7 +220,7 @@ export function createHealthReporter({pool,telegram,live=()=>({}),recipients=()=
   const at=now(),window={at,from:reportWindow(at).at,key:`sample:${at}`};
   if(at-window.from<3600000)window.from=reportWindow(window.from-1).at;
   const f=await figures(window);
-  return {verdict:verdict(f).label,...await deliver(window.key,healthReportMessage({window,figures:f,sample:true}))};
+  return {verdict:verdict(f).label,...await deliver(window.key,healthReportMessage({window,figures:f,sample:true}),headline(window,f))};
  }
  return {tick,sendSample,
   start({intervalMs=60000}={}){

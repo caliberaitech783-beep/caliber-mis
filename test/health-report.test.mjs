@@ -33,12 +33,13 @@ const calm={batches:{closed:0,averageMs:null,longest:null},reading:{cards:0,notR
  queue:{slots:4,active:0,waiting:0},engines:{live:8,reading:0,blocked:0},pulseCopy:{fresh:true,ageSeconds:14}};
 
 test('the verdict is green, amber or red with the reasons of the worst level',()=>{
- assert.deepEqual(verdict(calm),{level:0,label:'No slowness',icon:'🟢',reasons:[]});
+ assert.deepEqual(verdict(calm),{level:0,good:true,label:'SPEED GOOD',icon:'🟢',reasons:[]});
  const amber=verdict({...calm,saving:{...calm.saving,averageMs:1200}});
- assert.equal(amber.label,'Some slowness');assert.deepEqual(amber.reasons,['card save 1.2 s on average']);
+ assert.deepEqual([amber.good,amber.label,amber.icon],[false,'SPEED SLOW','🔴'],'two states only: any crossed limit is SLOW');
+ assert.deepEqual(amber.reasons,['card save 1.2 s on average']);
  const red=verdict({...calm,saving:{...calm.saving,averageMs:1200},server:{...calm.server,mostWaiting:7},engines:{live:8,reading:0,blocked:1,blockedReason:'credit'}});
- assert.equal(red.label,'Slow');
- assert.deepEqual(red.reasons,['7 requests waited for the database','card reading held: credit'],'only the red reasons are listed');
+ assert.equal(red.label,'SPEED SLOW');
+ assert.deepEqual(red.reasons,['7 requests waited for the database','card reading held: credit','card save 1.2 s on average'],'the worst reasons first');
  assert.equal(verdict({...calm,reading:{cards:10,notRead:9}}).level,0,'too few cards to judge the not-read share');
 });
 
@@ -49,9 +50,10 @@ test('the message has the verdict, batches closed, the longest batch with its us
    startedBy:'TeklalMahto',lockedBy:'rakesh<b>',totalMs:7*3600000+45*60000,vlbMs:5*3600000,lmvMs:3600000,elbMs:45*60000}},
   reading:{cards:640,notRead:4,readAverageMs:6100,readSlowestMs:42000,queueAverageMs:12000,queueSlowestMs:180000}};
  const text=healthReportMessage({window,figures});
- assert.match(text,/^<b>PULSE-II SPEED REPORT<\/b>/);
- assert.match(text,/15 Nov 21:00 → 16 Nov 10:00 IST · 13 h/);
- assert.match(text,/🟢 <b>No slowness<\/b>/);
+ assert.match(text,/^🟢🟢 <b>SPEED GOOD<\/b> 🟢🟢\n/,'the punch line comes first, bold');
+ assert.match(text,/\n<b>PULSE-II SPEED REPORT<\/b>\n🕙 15 Nov 21:00 → 16 Nov 10:00 IST · 13 h/);
+ const slow=healthReportMessage({window,figures:{...figures,server:{...calm.server,mostWaiting:7}}});
+ assert.match(slow,/^🔴🔴 <b>SPEED SLOW<\/b> 🔴🔴\n• 7 requests waited for the database\n/);
  assert.match(text,/<b>📦 Batches closed: 12<\/b>/);
  assert.match(text,/⏳ Longest: 9TH -NOV-26\/S1\/B01/);
  assert.match(text,/7 h 45 min start to close/);
@@ -120,6 +122,7 @@ test('one message per report time to every owner login, with the longest batch a
  assert.deepEqual({claimed:first.claimed,people:first.people,sent:first.sent},{claimed:true,people:2,sent:2});
  assert.deepEqual(sent.map(s=>s.key),['health-report:2026-11-16 10:00 IST:owner1','health-report:2026-11-16 10:00 IST:owner2']);
  assert.equal(sent[0].options.html,true);
+ assert.deepEqual(sent[0].options.photo,{speed:{good:true,period:'15 Nov 21:00 → 16 Nov 10:00 IST · 13 h',reasons:[]}},'the green / red headline picture goes with it');
  const text=sent[0].message;
  assert.match(text,/Batches closed: 2/);
  assert.match(text,/Longest: 15TH -NOV-26\/S3\/B01/);
@@ -153,7 +156,7 @@ test('it runs only on the live slot and is the Automation Centre line A25 with i
 });
 
 test('only an administrator can send a sample of A25',async t=>{
- let result={verdict:'No slowness',people:1,sent:1},calls=0;
+ let result={verdict:'SPEED GOOD',people:1,sent:1},calls=0;
  const app=express();app.use(express.json());
  app.use((req,res,next)=>{req.session={login:req.get('Authorization')};next();});
  registerAutomationCentre(app,{pool:{query:async()=>({rows:[]})},centre:{overview:async()=>({rows:[]})},requireSession:(req,res,next)=>next(),
@@ -167,4 +170,16 @@ test('only an administrator can send a sample of A25',async t=>{
  assert.deepEqual(await send(),{status:200,body:result});
  result={verdict:'x',people:0,sent:0};assert.match((await send()).body.error,/connected Telegram/);
  result={verdict:'x',people:1,sent:0};assert.match((await send()).body.error,/switched OFF/);
+});
+
+test('the headline picture is green for SPEED GOOD and red for SPEED SLOW, and the outbox sends it',async()=>{
+ const {speedReportBanner}=await import('../server/services/site-report-banner.mjs');
+ const {createCanvas,loadImage}=await import('@napi-rs/canvas');
+ const colour=async png=>{const image=await loadImage(png),canvas=createCanvas(image.width,image.height),ctx=canvas.getContext('2d');ctx.drawImage(image,0,0);return [...ctx.getImageData(image.width-20,image.height-20,1,1).data].slice(0,3);};
+ const [gr,gg]=await colour(await speedReportBanner({good:true,period:'16 Nov 10:00 → 16 Nov 16:00 IST · 6 h'}));
+ assert.ok(gg>gr,'green');
+ const [rr,rg]=await colour(await speedReportBanner({good:false,period:'x',reasons:['card save 3.4 s on average']}));
+ assert.ok(rr>rg,'red');
+ const source=readFileSync(new URL('../server/routes/mis-telegram.mjs',import.meta.url),'utf8');
+ assert.match(source,/photo\.speed\?speedReportBanner\(photo\.speed\):siteReportBanner\(photo\)/);
 });
