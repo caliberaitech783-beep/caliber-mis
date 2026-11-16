@@ -124,8 +124,15 @@ export function healthReportMessage({window,figures:f,sample=false}){
   if(s.largest)lines.push(`🧩 Largest step: ${escapeHtml(stepName(s.largest.name))} ${ms(s.largest.avgMs)} avg · ${ms(s.largest.maxMs)} slowest`);
  }else lines.push(s?.warmupSkipped?`Only ${s.warmupSkipped} save${s.warmupSkipped===1?'':'s'} so far, all in the first ${s.warmupMinutes} min after restart (left out)`:'No card saved since the server started');
  if(srv||f.queue||f.engines||f.pulseCopy)lines.push('',`<b>🖥 Server${srv?.measuredFrom>window.from?` (since restart ${escapeHtml(clock(srv.measuredFrom))})`:''}</b>`);
- if(srv)lines.push(`🧊 Freezes ${srv.freezes}${srv.freezes?` · longest ${ms(srv.longestFreezeMs)}`:''}${srv.warmupUntil?` (first ${srv.warmupMinutes} min after restart left out${srv.warmupFreezes?`: ${srv.warmupFreezes} freeze${srv.warmupFreezes===1?'':'s'}`:''})`:''}`,
-  `🔌 Database: ${srv.free} free, ${srv.waitingNow} waiting now · most waiting ${srv.mostWaiting}`);
+ if(srv)lines.push(`🧊 Freezes ${srv.freezes}${srv.freezes?` · longest ${ms(srv.longestFreezeMs)}`:''}${srv.warmupUntil?` (first ${srv.warmupMinutes} min after restart left out${srv.warmupFreezes?`: ${srv.warmupFreezes} freeze${srv.warmupFreezes===1?'':'s'}`:''})`:''}`);
+ // The page that was loading when the longest freeze happened (only for a freeze that counts as slow).
+ const worst=srv?.longestFreeze;
+ if(worst&&worst.blockedMs>=LIMITS.freezeMs.amber)lines.push(`   ↳ ${ms(worst.blockedMs)} freeze at ${escapeHtml(clock(worst.at))}${worst.cause?` while <b>${escapeHtml(worst.cause.page)}</b> was loading (${ms(worst.cause.runningMs)})`:''}`);
+ if(srv)lines.push(`🔌 Database: ${srv.free} free, ${srv.waitingNow} waiting now · most waiting ${srv.mostWaiting}`);
+ if(srv?.slowPages?.length){
+  lines.push(`🐢 Slowest pages${srv.pagesSince?` since ${escapeHtml(clock(srv.pagesSince))}`:''}:`);
+  for(const p of srv.slowPages)lines.push(`   • ${escapeHtml(p.page)}: ${ms(p.averageMs)} avg · ${ms(p.maxMs)} worst (${p.count}×)`);
+ }
  if(f.queue)lines.push(`📥 Card read queue: ${f.queue.slots} slots, ${f.queue.active} busy, ${f.queue.waiting} waiting`);
  if(f.engines)lines.push(`🤖 Engines ${f.engines.live} live, ${f.engines.blocked?`${f.engines.blocked} blocked`:'none blocked'}, ${f.engines.reading} reading now`);
  if(f.pulseCopy)lines.push(`🔄 Pulse breakdown copy ${f.pulseCopy.fresh?'fresh':'NOT fresh'} (${duration((f.pulseCopy.ageSeconds||0)*1000)} old)`);
@@ -171,6 +178,29 @@ async function readingFigures(pool,from,to){
 // The first WARMUP_MS after a restart run on cold memory (16 Nov 2026 15:16: freezes up to 2.6 s in the
 // first 3 minutes), so freezes and database waits in those minutes are left out (owner's choice, 16 Nov).
 export const WARMUP_MS=10*60*1000;
+// What made it slow (owner, 16 Nov 2026: "add in telegram automation"): the page that was loading longest when the
+// longest freeze happened, and the slowest pages. The notifications long poll waits on purpose and is never a cause.
+// A page counts as slow from 5 s on average; it is shown, it does not change SPEED GOOD / SLOW.
+export const SLOW_PAGE_MS=5000;
+const WAITS_ON_PURPOSE=/^\/api\/notifications\b/;
+const PAGE_NAMES={'/api/reports/operations':'Operations report','/api/dashboard/log-books':'Dashboard log books','/api/dashboard/log-books/recent':'Dashboard 6/12/24 h panel',
+ '/api/pulse-trip-verification':'Pulse trip verification','/api/reports/batch-status':'Batch Status report','/api/reports/manpower':'Manpower report',
+ '/api/reports/manpower/ot-drivers':'OT drivers report','/api/log-books/vehicle':'VLB save','/api/log-books/vehicle/:id':'VLB edit','/api/log-books/equipment':'ELB save',
+ '/api/log-books/equipment/:id':'ELB edit','/api/scan-cards/:id/auto-save':'Card auto-save','/api/log-books/options':'Log book lists','/api/vlb-batches':'VLB batch list'};
+export const pageName=(method,route)=>PAGE_NAMES[route]||`${method} ${route}`;
+// recordFreeze writes each running request as "GET /api/x (12345 ms)" and each just-ended one as "GET /api/x (finished)".
+export function freezeCause(requests=[]){
+ const running=requests.map(text=>/^([A-Z]+) (\S+) \((\d+) ms\)$/.exec(String(text))).filter(Boolean)
+  .map(([,method,route,msText])=>({method,route,ms:Number(msText)})).filter(r=>!WAITS_ON_PURPOSE.test(r.route));
+ const top=running.sort((a,b)=>b.ms-a.ms)[0];
+ return top?{page:pageName(top.method,top.route),runningMs:top.ms}:null;
+}
+function slowPages(performance){
+ return (performance?.slowestRoutes||[]).map(r=>{const [method,...path]=String(r.route||'').split(' ');return {...r,method,path:path.join(' ')};})
+  .filter(r=>r.path&&!WAITS_ON_PURPOSE.test(r.path)&&r.averageMs>=SLOW_PAGE_MS)
+  .sort((a,b)=>b.averageMs-a.averageMs).slice(0,3)
+  .map(r=>({page:pageName(r.method,r.path),averageMs:r.averageMs,maxMs:r.maxMs,count:r.count}));
+}
 export function liveFigures({performance,scanning,pool,pulseCopy},from){
  const started=Date.parse(performance?.measuredSince);
  const measuredFrom=Math.max(from,started||from);
@@ -181,6 +211,14 @@ export function liveFigures({performance,scanning,pool,pulseCopy},from){
  const server=performance?{measuredFrom,freezes:minutes.reduce((s,m)=>s+(m.freezes||0),0),longestFreezeMs:Math.max(0,...minutes.map(m=>m.longestFreezeMs||0)),
   mostWaiting:Math.max(0,...minutes.map(m=>m.poolMaxWaiting||0),pool?.waiting||0),free:pool?.idle??0,waitingNow:pool?.waiting??0,
   warmupUntil,warmupMinutes:WARMUP_MS/60000,warmupFreezes:leftOut.reduce((s,m)=>s+(m.freezes||0),0)}:null;
+ if(server){
+  // The monitor keeps the last 30 freezes with what was running; the longest of those in the period, after the warm-up.
+  const counted=(performance.recentFreezes||[]).filter(f=>{const at=Date.parse(f.at);return at>=from&&(!warmupUntil||at>=warmupUntil);});
+  const worst=counted.sort((a,b)=>b.blockedMs-a.blockedMs)[0];
+  server.longestFreeze=worst?{at:Date.parse(worst.at),blockedMs:worst.blockedMs,cause:freezeCause(worst.requests)}:null;
+  server.slowPages=slowPages(performance);
+  server.pagesSince=Number.isFinite(started)?started:null;
+ }
  // Saves in the first minutes after a restart run on cold memory, so the report leaves them out
  // (owner's choice, 16 Nov 2026); /api/health still shows them.
  const allSteps=scanning?.entryReadSteps,steps=allSteps?.afterWarmup||allSteps;

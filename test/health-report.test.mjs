@@ -86,7 +86,7 @@ test('live figures take the period from the per-minute history and the whole sav
    entryReadSteps:{reads:40,total:{avgMs:150,maxMs:350},steps:{queue:{avgMs:500,maxMs:900},'card-check':{avgMs:73,maxMs:238},'duplicate-saved':{avgMs:3,maxMs:7}}}},
   pulseCopy:{fresh:true,ageSeconds:14}},from);
  assert.deepEqual(figures.server,{measuredFrom:from,freezes:3,longestFreezeMs:800,mostWaiting:2,free:10,waitingNow:0,
-  warmupUntil:null,warmupMinutes:10,warmupFreezes:0},'minutes before the period are left out; a restart long before the period changes nothing');
+  warmupUntil:null,warmupMinutes:10,warmupFreezes:0,longestFreeze:null,slowPages:[],pagesSince:ist('2026-11-16T06:00:00')},'minutes before the period are left out; a restart long before the period changes nothing');
  assert.deepEqual(figures.saving.largest,{name:'card-check',avgMs:73,maxMs:238},'waiting in the queue is not a step of the save');
  assert.equal(figures.saving.averageMs,150);
  assert.deepEqual(figures.engines,{live:8,reading:1,blocked:0,blockedReason:''});
@@ -222,4 +222,34 @@ test('the headline picture is green for SPEED GOOD and red for SPEED SLOW, and t
  assert.ok(rr>rg,'red');
  const source=readFileSync(new URL('../server/routes/mis-telegram.mjs',import.meta.url),'utf8');
  assert.match(source,/photo\.speed\?speedReportBanner\(photo\.speed\):siteReportBanner\(photo\)/);
+});
+
+test('the report names the page loading during the longest freeze and the slowest pages',()=>{
+ // Live figures of 16 Nov 2026: restart 16:09, a 2.6 s freeze at 16:26 while the Operations report had run 34 s.
+ const window=reportWindow(ist('2026-11-16T21:00:00'));
+ const minute=(time,extra)=>({minute:new Date(ist(time)).toISOString(),freezes:0,longestFreezeMs:0,poolMaxWaiting:0,...extra});
+ const freeze=(time,blockedMs,requests)=>({at:new Date(ist(time)).toISOString(),blockedMs,requests,jobs:[]});
+ const performance={measuredSince:new Date(ist('2026-11-16T16:09:03')).toISOString(),
+  minutes:[minute('2026-11-16T16:10:00',{freezes:1,longestFreezeMs:9267}),minute('2026-11-16T16:26:00',{freezes:4,longestFreezeMs:2611})],
+  recentFreezes:[freeze('2026-11-16T16:26:31',2611,['GET /api/notifications (40000 ms)','GET /api/reports/operations (33964 ms)','GET /api/x (finished)']),
+   freeze('2026-11-16T16:26:20',936,['GET /api/reports/operations (23722 ms)','GET /api/dashboard/log-books/recent (18764 ms)']),
+   freeze('2026-11-16T16:10:30',9267,['GET /api/dashboard/log-books (56656 ms)'])],
+  slowestRoutes:[{route:'GET /api/dashboard/log-books',count:15,averageMs:18456,p95Ms:64870,maxMs:64870},
+   {route:'GET /api/notifications',count:900,averageMs:25000,p95Ms:30000,maxMs:30000},
+   {route:'GET /api/pulse-trip-verification',count:37,averageMs:16376,p95Ms:46807,maxMs:47843},
+   {route:'GET /api/reports/operations',count:3,averageMs:30778,p95Ms:41835,maxMs:41835},
+   {route:'GET /api/reports/batch-status',count:3,averageMs:20627,p95Ms:46292,maxMs:46292},
+   {route:'GET /api/log-books/options',count:84,averageMs:1301,p95Ms:3759,maxMs:6887}]};
+ const figures=liveFigures({performance,pool:{idle:16,waiting:0}},window.from);
+ assert.deepEqual(figures.server.longestFreeze,{at:ist('2026-11-16T16:26:31'),blockedMs:2611,cause:{page:'Operations report',runningMs:33964}},
+  'the 9.3 s freeze at 16:10 is in the warm-up; the notifications long poll is never the cause');
+ assert.deepEqual(figures.server.slowPages.map(p=>p.page),['Operations report','Batch Status report','Dashboard log books'],'slowest first, notifications left out, at most 3');
+ const text=healthReportMessage({window,figures:{...calm,server:figures.server}});
+ assert.match(text,/🧊 Freezes 4 · longest 2\.6 s \(first 10 min after restart left out: 1 freeze\)\n   ↳ 2\.6 s freeze at 16:26 while <b>Operations report<\/b> was loading \(34 s\)\n🔌 Database/,
+  'the cause sits right under the freezes');
+ assert.match(text,/🐢 Slowest pages since 16:09:\n   • Operations report: 30\.8 s avg · 41\.8 s worst \(3×\)\n   • Batch Status report: 20\.6 s avg · 46\.3 s worst \(3×\)\n   • Dashboard log books: 18\.5 s avg · 1 min 5 s worst \(15×\)/);
+ const quiet=liveFigures({performance:{...performance,minutes:[minute('2026-11-16T16:40:00',{freezes:1,longestFreezeMs:400})],recentFreezes:[freeze('2026-11-16T16:40:00',400,['GET /api/reports/operations (900 ms)'])],slowestRoutes:[performance.slowestRoutes[5]]},pool:{idle:16,waiting:0}},window.from);
+ const calmText=healthReportMessage({window,figures:{...calm,server:quiet.server}});
+ assert.doesNotMatch(calmText,/↳|🐢/,'short freezes and quick pages add no lines');
+ assert.equal(verdict({...calm,server:{...quiet.server,slowPages:figures.server.slowPages}}).good,true,'slow pages are shown, they do not decide SPEED GOOD / SLOW');
 });
