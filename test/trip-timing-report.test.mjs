@@ -86,9 +86,25 @@ test('a site opens date by date and shift by shift, and a driver line carries hi
 
 test('the shared screen shows the delay views on the Trip Timing tab only',()=>{
  const screen=fs.readFileSync(new URL('../src/operations-reports.jsx',import.meta.url),'utf8');
- assert.match(screen,/id==='timing'\?<TripTimingReport records=\{selected\} loading=\{filters\.loading\}/);
+ assert.match(screen,/id==='timing'\?<TripTimingReport records=\{selected\} assets=\{data\.assets\} loading=\{filters\.loading\}/);
  const view=fs.readFileSync(new URL('../src/trip-timing-report.jsx',import.meta.url),'utf8');
- for(const text of ['All trip rows','Step 1 · ','Step 2 · ','Step 3 · ','Step 4 · ','Step 5 · Trip card ',' · date by shift · ','<DateShiftGrid grid={shiftGrid}'])assert.ok(view.includes(text),text);
+ for(const text of ['All trip rows','Step 1 · ','Step 2 · ','Step 3 · ',' · by equipment category','Step 4 · ','Step 5 · ','Step 6 · Trip card ',' · date by shift · ','<DateShiftGrid grid={shiftGrid}'])assert.ok(view.includes(text),text);
+ // Owner, 16 Nov 2026: the equipment category sits between the date by shift table and the drivers.
+ assert.ok(view.indexOf(' · by equipment category')<view.indexOf("'Step 4 · '+m.label+' · '+where+' · '+GROUPS[group]"),'equipment category comes before the drivers');
+});
+
+test('equipment category: the vehicle\'s group in the Equipment master, by saved vehicle or by door at the site',()=>{
+ const assets=[{id:'51',door:'V9051',site:'Site A',kind:'vehicle',group:'TIPPER'},{id:'52',door:'V9052',site:'Site A',kind:'vehicle',group:'water tanker'},
+  // The same door at another site, and a loading machine with the door of a vehicle: neither is the vehicle of a card at Site A.
+  {id:'53',door:'V9053',site:'Site B',kind:'vehicle',group:'SERVICE VAN'},{id:'54',door:'V9054',site:'Site A',kind:'equipment',group:'EXCAVATOR'}];
+ const one=[trip('EX1','06:00','06:30')];
+ const set=tripEntries(normalise([book(51,'Site A','SAMPLE DRIVER 51','V9051',one),book(55,'Site A','SAMPLE DRIVER 55','V-9052',one,{assetId:''}),
+  book(56,'Site A','SAMPLE DRIVER 56','V9053',one,{assetId:''}),book(57,'Site A','SAMPLE DRIVER 57','V9054',one,{assetId:''})]),{assets});
+ assert.deepEqual(set.map(e=>e.category),['Tipper','Water Tanker','Group missing in master','Group missing in master']);
+ const categories=summarise(set,'load-unload','category');
+ assert.deepEqual(categories.rows.map(r=>[r.category,r.timed,r.over,r.vehicleCount]),[['Group missing in master',2,2,2],['Tipper',1,1,1],['Water Tanker',1,1,1]]);
+ assert.equal(categories.total.category,'ALL CATEGORIES');assert.equal(categories.total.timed,4);
+ assert.ok(tripEntries(records).every(e=>e.category==='Group missing in master'),'without the master every trip is still counted');
 });
 
 // Exception time: the owner's example. Shift 05:00 to 13:00, blasting from 06:00 to 07:00.

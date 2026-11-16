@@ -3,7 +3,7 @@ import {equipmentDoorNumber} from '../../shared/equipment-door.mjs';
 import {employeeIdentity,matchesEmployeeReference,suggestedCaliberId} from '../../shared/employee-identity.mjs';
 import {bookShiftCode,selectedMasterShift} from '../../shared/trip-card-rules.mjs';
 import {operationalDate,OPERATIONAL_START} from '../../shared/operational-start.mjs';
-import {normalizeEquipmentGroup} from '../../shared/equipment-group.mjs';
+import {equipmentGroupName} from '../../shared/equipment-group.mjs';
 import {isDummyEmployeeId} from '../../shared/dummy-employee-ids.mjs';
 import {batchStage} from './vlb-two-stage.mjs';
 import {fleetAssetKind,assetIdentity} from './fleet-reconciliation.mjs';
@@ -56,8 +56,8 @@ const flagTally=events=>Object.fromEntries(['red','orange','review'].map(severit
 const sourceLabel=r=>r.batchNames.join('; ')||`Saved ${logBookCode(r.kind)} (no site batch)`;
 // Shift Attendance Equipment Wise names a duty after the machine's group in the Equipment master.
 // Spelling differences ("Water Tanker" / "WATER TANKER") become one name; the master is never rewritten.
-const NO_EQUIPMENT_GROUP='Group missing in master',NO_EQUIPMENT_ASSIGNED='No equipment assigned';
-const equipmentName=value=>{const name=normalizeEquipmentGroup(value);return !name||name.startsWith('UNRESOLVED ')?NO_EQUIPMENT_GROUP:name.toLowerCase().replace(/[a-z]+/g,word=>/[aeiouy]/.test(word)?word[0].toUpperCase()+word.slice(1):word.toUpperCase());};
+const NO_EQUIPMENT_ASSIGNED='No equipment assigned';
+const equipmentName=equipmentGroupName;
 const makeModelName=s=>[/^Unresolved /.test(s.make)?'Make not named':text(s.make),/^Unresolved /.test(s.model)?'':text(s.model)].filter(Boolean).join(' ');
 const assetClass=asset=>{
  const out={group:'Unresolved group',make:'Unresolved make',model:'Unresolved model'};if(!asset)return out;
