@@ -38,3 +38,35 @@ test('the site picture is a PNG',async()=>{
  const png=await siteReportBanner({site:'A very long site name that has to shrink to fit',kind:'VLB',batch:'CMLL/A VERY LONG SITE NAME THAT HAS TO SHRINK TO FIT/9TH -NOV-26/S1/B01'});
  assert.deepEqual([...png.subarray(1,4)].map(c=>String.fromCharCode(c)).join(''),'PNG');
 });
+
+// Owner, 16 Nov 2026: the whole report as one picture with the sub batches in a table, and a short caption.
+test('a report card goes as one picture with a short caption, and the full text only if the picture fails',async t=>{
+ const db=new PGlite();t.after(()=>db.close());
+ const pool={query:(...args)=>args[0].includes('CREATE TABLE')?db.exec(args[0]):db.query(...args)};
+ const calls=[];let photoFails=false;
+ const service=registerMisTelegram(express(),{pool,store:{read:async()=>({enabled:true,webhookReady:true,botToken:'1:x'})},requireSession:(q,r,n)=>n(),
+  fetchImpl:async(url,options)=>{const method=url.split('/').at(-1);
+   calls.push({method,body:options.body instanceof FormData?Object.fromEntries([...options.body.entries()].map(([k,v])=>[k,typeof v==='string'?v:v.type])):JSON.parse(options.body)});
+   const ok=!(method==='sendPhoto'&&photoFails);return {ok,status:ok?200:400,json:async()=>({ok,result:true})};}});
+ await service.initialize();t.after(()=>service.stop());
+ await db.query("INSERT INTO mis_telegram_links(login_name,chat_id) VALUES('owner','42')");
+ const sender=telegramOutboxSender(pool);
+ const card={site:'DIPKA',kind:'VLB',batchName:'CMLL/DIPKA/15TH -NOV-26/S1/B01',batchLine:'VLB · 15TH -NOV-26/S1/B01 · ramu',scanned:3,trips:9,extracted:3,processed:3,
+  subs:[{code:'B01',operator:'RAMU',total:3,auto:2,error:1}],more:0,all:{total:3,auto:2,error:1},time:'10:00 → 10:05 · 5 min 0 s',perCard:'12 s',accuracy:'100%',model:'gemini'};
+ const caption='<b>SITE-WISE BATCH COMPLETION REPORT</b>\n📋 VLB · 15TH -NOV-26/S1/B01 · ramu',full='<b>SITE-WISE BATCH COMPLETION REPORT</b>\nfull text';
+ await sender.send('owner',full,'scan-batch-report:closed:1:owner',{html:true,photo:{card,caption}});await service.drain();
+ assert.deepEqual(calls,[{method:'sendPhoto',body:{chat_id:'42',caption,parse_mode:'HTML',photo:'image/png'}}]);
+ photoFails=true;calls.length=0;
+ await sender.send('owner',full,'scan-batch-report:closed:2:owner',{html:true,photo:{card,caption}});await service.drain();
+ assert.deepEqual(calls.map(c=>c.method),['sendPhoto','sendMessage']);assert.equal(calls[1].body.text,full);
+});
+
+test('the report card is a PNG that grows with the sub batches',async()=>{
+ const {batchReportCard}=await import('../server/services/batch-report-card.mjs');
+ const {createRequire}=await import('node:module');const {loadImage}=createRequire(import.meta.url)('@napi-rs/canvas');
+ const base={site:'A very long site name that has to shrink to fit the header',kind:'VLB',batchName:'CMLL/X/1ST -NOV-26/S1/B01',batchLine:'VLB · 1ST -NOV-26/S1/B01',
+  scanned:1,trips:1,extracted:1,processed:1,all:{total:1,auto:1,error:0},time:'-',perCard:'-',accuracy:'-',model:'-'};
+ const one=await loadImage(await batchReportCard({...base,subs:[{code:'B01',operator:'A',total:1,auto:1,error:0}],more:0}));
+ const many=await loadImage(await batchReportCard({...base,subs:Array.from({length:12},(_,i)=>({code:'B'+i,operator:'A',total:1,auto:1,error:0})),more:3}));
+ assert.equal(one.width,1080);assert.ok(many.height>one.height+12*60,'one table row per sub batch, plus the "+3 more" row');
+});
