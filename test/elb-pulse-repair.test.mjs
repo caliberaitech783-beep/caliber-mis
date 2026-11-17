@@ -87,3 +87,17 @@ test('dry run lists old and new and writes nothing; only an MIS administrator ma
  const none=await call('POST /api/admin/elb-pulse-repair',{session,body:{from:'2026-11-01',to:'2026-11-17'}});
  assert.equal(none.code,400,'nothing is written without the list of cards');
 });
+
+// 17 Nov 2026: the live dry run was refused ("This MIS menu is not assigned to your login"): new routes fail closed in
+// shared/mis-application-access.mjs, and PR 414 left this one off the list.
+test('an MIS administrator\'s separate MIS login may run the dry run and the repair; nobody else may',async()=>{
+ const {misRequestAllowed}=await import('../shared/mis-application-access.mjs');
+ const misAdmin={role:'super',permissions:{separateMisCredentials:true,adminLevel:'admin',misDesktopAccess:'Users & employees | Reports'}};
+ const siteUser={role:'user',permissions:{separateMisCredentials:true,misDesktopAccess:'Reports'}};
+ const route='/api/admin/elb-pulse-repair';
+ assert.equal(misRequestAllowed(misAdmin,{path:route,method:'GET'}),true);
+ assert.equal(misRequestAllowed(misAdmin,{path:route,method:'POST'}),true);
+ assert.equal(misRequestAllowed(misAdmin,{path:route,method:'DELETE'}),false);
+ assert.equal(misRequestAllowed(siteUser,{path:route,method:'GET'}),false);
+ assert.equal(misRequestAllowed(siteUser,{path:route,method:'POST'}),false);
+});
