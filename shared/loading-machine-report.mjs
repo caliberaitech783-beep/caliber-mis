@@ -200,6 +200,9 @@ export function machineShifts(records,{assets=[],fleet=[],batches=[],filters={},
     // Each Pulse breakdown of the machine that touches the shift, whole (owner, 16 Nov 2026: pressing Breakdown in Pulse
     // shows its details), with the minutes and clock times it took inside this shift.
     bdRequests:breakdownRequests(source,bdPeriods,now),
+    // elbEntered: an ELB card was saved for the machine in this shift (owner, 17 Nov 2026: the BD mismatch report names
+    // the shifts where Pulse shows a breakdown and no ELB was entered).
+    elbEntered:m.cards.length>0,
     trips:m.trips,tippers:[...m.tippers],hours,shiftHours,percent:percentWorked(hours,shiftHours),bdHours,bdMinutes,
     loadings:judged.length,gaps:Math.max(judged.length-1,0),firstLoading:judged[0]?.clock||'',lastLoading:judged.at(-1)?.clock||'',ok,...count,stops:stopList.length,idleMinutes:round1(idleMinutes),longest,notJudged:m.untimed+outside,delayed:kept.size,stopList,
     lines,bdPeriods,axis:{start:axisStart,known:start!==null,minutes:shiftMinutes}});

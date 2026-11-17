@@ -5,6 +5,7 @@ import {BANDS,BAND_LABELS,IDLE_LIMIT,RED_AFTER,WAIT_LIMIT,STATES,TONE_LABELS,mac
 import {tripEntries} from '../shared/trip-timing-report.mjs';
 import {formatDisplayDateTime} from '../shared/date-time-format.mjs';
 import {RequestTimelineContent} from './request-timeline.jsx';
+import BdHoursReport from './bd-hours-report.jsx';
 import './trip-timing-report.css';
 import './loading-machine-report.css';
 
@@ -207,8 +208,10 @@ export default function LoadingMachineReport({records=[],assets=[],fleet=[],batc
  const visible=useMemo(()=>loading?entries.filter(e=>e.names.includes(loading)||e.door===loading):entries,[entries,loading]);
  const cardRows=useMemo(()=>card?tripEntries(records).filter(e=>e.recordId===card):[],[records,card]),cardHead=cardRows[0];
  const reset=()=>{setSite('');setSlot(null);setCategory(null);setItem(null);setStrip('');setOnly('');setCard('');setBdShift('');setBdRequest('');};
- const tabs=<nav className="production-tabs tt-tabs" aria-label="Report view">{[['idle','Machine working and idle time'],['rows','All machines list']].map(([key,label])=><button key={key} type="button" aria-current={mode===key?'page':undefined} onClick={()=>{setMode(key);reset();}}>{label}</button>)}</nav>;
+ // Owner, 17 Nov 2026: two more tabs, the BD hours of every loading machine from Pulse and from the ELB, and their mismatch.
+ const tabs=<nav className="production-tabs tt-tabs" aria-label="Report view">{[['idle','Machine working and idle time'],['bd','BD hours (Pulse + ELB)'],['mismatch','BD mismatch'],['rows','All machines list']].map(([key,label])=><button key={key} type="button" aria-current={mode===key?'page':undefined} onClick={()=>{setMode(key);reset();}}>{label}</button>)}</nav>;
  if(mode==='rows')return <div className="tt-report lm-report">{tabs}{rowsView}</div>;
+ if(mode==='bd'||mode==='mismatch')return <div className="tt-report lm-report">{tabs}<BdHoursReport key={mode} mode={mode} entries={visible} period={period} ReportSection={ReportSection} dataReady={dataReady} pulseBreakdownsError={pulseBreakdownsError} ShiftTimelines={ShiftTimelines} breakdownDetailColumns={breakdownDetailColumns}/></div>;
  const band=isBand(only)?only:'';
  // Steps stay one below the other. The green chip belongs to the time-line of Step 4 only, so the steps above it read
  // the colour chosen without it.
