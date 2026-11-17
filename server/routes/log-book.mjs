@@ -341,7 +341,9 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
      });
      // Loading Equipment-wise Report: the breakdowns in Pulse now, for each person apart (Pulse reads are per sign-in and
      // reused for a short while), so that a breakdown entered or closed after the ELB was saved still shows.
-     const pulse=!withScans&&pulseMasterSync?await readReportBreakdowns(()=>pulseMasterSync.readBreakdownRequests({actor:req.session.login||req.session.name}),{from,to,siteAllowed:site=>siteAllowed(req.logBookScope,site)}):{pulseBreakdowns:null,pulseBreakdownsError:withScans?'':'Pulse is not connected.'};
+     // 17 Nov 2026: the per-person live read came back empty while the ELB saves read Pulse-II's stored copy of Pulse's
+     // breakdown list; the report now reads the same stored copy first and the live read only when there is no copy.
+     const pulse=!withScans&&pulseMasterSync?await readReportBreakdowns(()=>readBreakdownRows(req.session.login||req.session.name),{from,to,siteAllowed:site=>siteAllowed(req.logBookScope,site)}):{pulseBreakdowns:null,pulseBreakdownsError:withScans?'':'Pulse is not connected.'};
      // Written in pieces so that a month of cards does not stop the server for seconds (chunked-json.mjs).
      res.set('Cache-Control','no-store');
      await sendJsonInChunks(res,{...body,...pulse});

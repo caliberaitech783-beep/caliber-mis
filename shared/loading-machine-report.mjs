@@ -4,6 +4,7 @@
 //   % of shift worked: hours on the machine's own Equipment Log Book against the hours of the shift
 //   In BD / No hours : a machine that neither loaded nor showed hours, by its ELB status
 // Pure rules only; the screen is src/loading-machine-report.jsx.
+import {pulseMachineKey,pulseMachineKeys} from './pulse-machine-key.mjs';
 import {canonicalSiteName} from './site-location.mjs';
 import {vlbRecordShift} from './vlb-batch-format.mjs';
 import {isUnloadingOnlyTrip,CARD_SHIFTS,normalizeCardShift} from './trip-card-rules.mjs';
@@ -89,7 +90,7 @@ export function machineShifts(records,{assets=[],fleet=[],batches=[],filters={},
  const siteName=siteLabels(records);
  const byId=new Map(assets.map(a=>[String(a.id),a]));
  const live=Array.isArray(pulseBreakdowns),requests=new Map();
- if(live)for(const r of pulseBreakdowns){const site=canonicalSiteName(r.site);if(!requests.has(site))requests.set(site,[]);requests.get(site).push({...r,keys:[r.door,r.equipment,r.reg].map(identity).filter(Boolean),chassisKey:identity(r.chassis)});}
+ if(live)for(const r of pulseBreakdowns){const site=canonicalSiteName(r.site);if(!requests.has(site))requests.set(site,[]);requests.get(site).push({...r,keys:pulseMachineKeys([r.door,r.equipment,r.reg]),chassisKey:pulseMachineKey(r.chassis)});}
  // Door numbers of the machines of each site; a door shared by two machines identifies neither.
  const doors=new Map();
  for(const a of assets){if(a.kind!=='equipment')continue;const site=canonicalSiteName(a.site),key=fleetDoorKey(a.door);if(!key)continue;if(!doors.has(site))doors.set(site,new Map());doors.get(site).set(key,doors.get(site).has(key)?null:a);}
@@ -134,6 +135,9 @@ export function machineShifts(records,{assets=[],fleet=[],batches=[],filters={},
  for(const slot of slots.values())for(const m of slot.machines.values())if(m.trips>0||m.loadings.length||m.untimed)loaders.add(m.key);
  const out=[];
  for(const slot of slots.values()){
+  // Which machines of the shift carry each saved Pulse request on their ELB card (used when Pulse cannot be read).
+  const copyOwners=new Map();
+  for(const mm of slot.machines.values())for(const c of mm.cards)for(const b of Array.isArray(c.pulseBreakdowns)?c.pulseBreakdowns:[]){const k=text(b.reference);if(!k)continue;if(!copyOwners.has(k))copyOwners.set(k,new Set());copyOwners.get(k).add(mm.key);}
   const preset=CARD_SHIFTS[normalizeCardShift(slot.code)],shift=mostCommon(slot.names)||slot.code,site=siteName(slot.site)||slot.site||'Unassigned';
   const start=clockMinutes(mostCommon(slot.starts)||mostCommon(slot.elbStarts)||preset?.start||''),shiftMinutes=(mostCommon(slot.hours)||preset?.hours||8)*60;
   for(const m of slot.machines.values()){
@@ -166,10 +170,13 @@ export function machineShifts(records,{assets=[],fleet=[],batches=[],filters={},
    const winFrom=Math.min(0,judged[0]?.off??0),winTo=Math.max(shiftMinutes,judged.at(-1)?.off??0);
    let source=[];
    if(live){
-    const aliases=new Set([asset?.door,/\d/.test(text(asset?.name))?asset.name:'',m.roster?.door,last?.door,...m.names].map(identity).filter(Boolean)),chassis=identity(asset?.chassis);
+    // Keys that can name one machine only (shared/pulse-machine-key.mjs): a "-" registration or chassis names none.
+    const aliases=new Set(pulseMachineKeys([asset?.door,/\d/.test(text(asset?.name))?asset.name:'',m.roster?.door,last?.door,...m.names])),chassis=pulseMachineKey(asset?.chassis);
     source=(requests.get(canonicalSiteName(slot.site))||[]).filter(r=>chassis&&r.chassisKey?chassis===r.chassisKey:r.keys.some(k=>aliases.has(k)))
      .map(r=>({reference:r.ref,reason:r.reason,status:r.status,start:r.start,end:r.end,ongoing:!r.end}));
-   }else source=m.cards.flatMap(c=>Array.isArray(c.pulseBreakdowns)?c.pulseBreakdowns:[]).map(b=>({reference:b.reference,reason:b.description,status:b.status,start:b.start,end:b.end,ongoing:b.ongoing??!b.end,from:b.shiftStart,to:b.shiftEnd}));
+   // Without a Pulse read, the copy saved on the ELB card. A request copied onto the cards of several machines of the shift
+   // is a site list saved by mistake (17 Nov 2026: a "-" registration matched every machine), so it is left out.
+   }else source=m.cards.flatMap(c=>Array.isArray(c.pulseBreakdowns)?c.pulseBreakdowns:[]).filter(b=>(copyOwners.get(text(b.reference))?.size||0)<=1).map(b=>({reference:b.reference,reason:b.description,status:b.status,start:b.start,end:b.end,ongoing:b.ongoing??!b.end,from:b.shiftStart,to:b.shiftEnd}));
    const seen=new Set(),bdPeriods=!Number.isFinite(shiftAt)?[]:source.map(b=>{
     const a=Date.parse(b.start),z=b.end?Date.parse(b.end):now,from=round1(Math.max(winFrom,(a-shiftAt)/60000)),to=round1(Math.min(winTo,(z-shiftAt)/60000));
     const minutes=round1(to-from);
