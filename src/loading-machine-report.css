@@ -151,3 +151,20 @@
 .lm-report .lm-bd-lifecycle h3{margin:0;font-size:16px}
 .lm-report .lm-bd-lifecycle>header button{margin-left:auto}
 :root[data-theme="dark"] .lm-report .lm-bd-open:not(:has(.lm-status)),:root[data-theme="dark"] .lm-report .lm-bd-ref{color:#ff9b9b}
+/* Owner, 17 Nov 2026 (photo 1): the tick on Step 4 and the chart of every machine of the shift, one under the other. The
+   Sr. No. of each chart is coloured as in every report table: 1-5 red, 6-10 orange, 11 onwards green. */
+.lm-chart-tick{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid #d9cfe8;border-radius:8px;background:#fff;color:#2a2140;font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap}
+.lm-chart-tick input{width:16px;height:16px;accent-color:#522e90;margin:0}
+.lm-charts{margin-top:12px}
+.lm-charts-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.lm-charts-head h3{margin:0}
+.lm-chart-card{border-top:1px solid #ece6f5;padding:10px 0 6px}
+.lm-chart-card:first-of-type{border-top:0}
+.lm-chart-head{display:flex;align-items:center;flex-wrap:wrap;gap:6px 14px;font-size:13px;margin-bottom:6px}
+.lm-chart-head b{font-weight:800}
+.lm-chart-sr{display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:22px;padding:0 6px;border-radius:6px;color:#fff;font-weight:800;font-size:12px;box-sizing:border-box}
+.lm-chart-sr.lm-sr-red{background:#dc2626}
+.lm-chart-sr.lm-sr-orange{background:#ea580c}
+.lm-chart-sr.lm-sr-green{background:#16a34a}
+.lm-charts-note{margin-top:10px}
+@media print{.lm-chart-sr{-webkit-print-color-adjust:exact;print-color-adjust:exact}}

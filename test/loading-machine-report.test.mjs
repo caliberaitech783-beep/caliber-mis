@@ -228,7 +228,9 @@ test('site, shift and machine lines add up, with running machines first, then re
  const shifts=summarise(entries.filter(e=>e.site==='Site A'),'shift');
  assert.deepEqual(shifts.rows.map(r=>[r.shift,r.stageLabel,r.machineShifts,r.running]),[['Shift I','VLB locked',5,2],['Shift III','VLB still open',1,1]]);
  const machines=summarise(entries.filter(e=>e.site==='Site A'&&e.shiftCode==='S1'),'machine');
- assert.deepEqual(machines.rows.map(r=>[r.door,r.state]),[['EX1','running'],['EX2','running'],['EX3','breakdown'],['EX4','nohours'],['EX5','nohours']]);
+ // Owner, 17 Nov 2026: the running machines with the fewest hours worked on top: EX2 (4 h) before EX1 (6 h).
+ assert.deepEqual(machines.rows.map(r=>[r.door,r.state]),[['EX2','running'],['EX1','running'],['EX3','breakdown'],['EX4','nohours'],['EX5','nohours']]);
+ assert.deepEqual(machines.rows.slice(0,2).map(r=>r.hours),[4,6]);
  const together=summarise(entries.filter(e=>e.site==='Site A'),'machine').rows.find(r=>r.door==='EX1');
  assert.equal(together.machineShifts,2);assert.equal(together.statusLabel,'Ran 2 shifts');assert.equal(together.stops,6);
  assert.deepEqual(idleStops(entries,'b2').map(s=>[s.shift,s.machine,s.minutes]),[['Shift I','EX1',12],['Shift III','EX1',14]]);
@@ -452,4 +454,37 @@ test('All-sites lists carry a Site column and a machine line names every site it
  const one=entries[0],moved=[one,{...one,site:'Site Z',slotKey:one.slotKey+'-z',id:one.id+'-z'}];
  assert.equal(summarise(moved,'machine').rows[0].sites,one.site+', Site Z');
  assert.equal(summarise([one],'machine').rows[0].sites,one.site);
+});
+
+// Owner, 17 Nov 2026 (photo 2): Step 4 runs from the fewest hours worked to the most (2.5 h before 3 h); a running machine
+// with no hours on its ELB comes after them, then the machines in BD and with no hours, as before.
+test('Step 4 lists the running machines from the fewest hours worked to the most',()=>{
+ const base=entries.find(e=>e.state==='running');
+ const make=(door,state,hours,idleMinutes)=>({...base,id:base.id+door,machineKey:'m-'+door,door,state,hours,idleMinutes,lines:[],stops:0,trips:1});
+ const list=[make('A','running',3,10),make('B','running',2.5,5),make('C','running',null,90),make('D','breakdown',0,0),make('E','running',3,40),make('F','nohours',null,0)];
+ const order=summarise(list,'machine').rows.map(r=>r.door);
+ assert.deepEqual(order,['B','E','A','C','D','F'],'2.5 h first; equal hours: the most idle first; no ELB hours after the running ones with hours');
+});
+
+test('Step 4 carries the tick that draws the chart of every machine of one shift, in the order of the list',()=>{
+ const screen=fs.readFileSync(new URL('../src/loading-machine-report.jsx',import.meta.url),'utf8');
+ assert.match(screen,/headingControl=\{<label className="lm-chart-tick"[^\n]*<input type="checkbox" checked=\{chartAll\}[^\n]*Show chart of every machine/);
+ assert.match(screen,/const chartItems=chartAll&&slot&&category\?machinesListed\.map\(\(row,i\)=>\(\{row,sr:i\+1,/,'charts follow the lines of Step 4 with their Sr. No.');
+ assert.match(screen,/\{chartAll&&<MachineCharts items=\{chartItems\}[^\n]*slotPicked=\{Boolean\(slot\)\}/);
+ assert.match(screen,/Pick one shift box in Step 2 above to see the chart of every machine of that shift\./,'every date and shift open draws nothing');
+ assert.match(screen,/<Strip entry=\{e\} label="" single onPick=\{\(\)=>\{\}\} onOpen=\{\(\)=>onOpen\(row\)\}\/>/,'each chart is the full photo-1 strip and opens its machine');
+ assert.match(screen,/@page\{size:A3 landscape;margin:8mm\}/);
+ assert.match(screen,/\.lm-chart-card:nth-of-type\(3n\)\{break-after:page/,'three machines a page');
+ // New state goes after the old, so the screen tests that feed useState by position keep working.
+ const states=[...screen.slice(screen.indexOf('export default function LoadingMachineReport')).matchAll(/useState\(/g)].length;
+ assert.ok(screen.indexOf('[chartAll,setChartAll]=useState(false)')>screen.indexOf('[bdShift,setBdShift]=useState('),'the tick is the last state');
+ assert.ok(states>=10);
+});
+
+test('the Sr. No. of a chart is red for 1 to 5, orange for 6 to 10 and green after',()=>{
+ const screen=fs.readFileSync(new URL('../src/loading-machine-report.jsx',import.meta.url),'utf8');
+ const srTone=new Function('return '+/export const srTone=([^;]+);/.exec(screen)[1])();
+ assert.deepEqual([1,5,6,10,11,40].map(srTone),['red','red','orange','orange','green','green']);
+ const css=fs.readFileSync(new URL('../src/loading-machine-report.css',import.meta.url),'utf8');
+ for(const [tone,colour] of [['red','#dc2626'],['orange','#ea580c'],['green','#16a34a']])assert.ok(css.includes(`.lm-chart-sr.lm-sr-${tone}{background:${colour}}`),tone);
 });

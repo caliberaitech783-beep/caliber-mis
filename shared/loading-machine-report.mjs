@@ -229,6 +229,7 @@ function totals(list){
  return t;
 }
 const STATE_ORDER={running:0,mixed:0,breakdown:1,nohours:2};
+const hoursOrder=r=>r.hours===null||r.hours===undefined||!Number.isFinite(Number(r.hours))?Infinity:Number(r.hours);
 // One line per site, per date and shift, or per machine, with the machines in each state and the idle stops in each band.
 // `total` is the line for all of them.
 export function summarise(entries,group){
@@ -244,8 +245,9 @@ export function summarise(entries,group){
  else if(group==='shift')rows.sort((a,b)=>String(b.date).localeCompare(String(a.date))||a.shift.localeCompare(b.shift,undefined,{numeric:true}));
  // Equipment categories: the most idle on top, as the machines.
  else if(group==='category')rows.sort((a,b)=>b.idleMinutes-a.idleMinutes||b.machineShifts-a.machineShifts||a.category.localeCompare(b.category));
- // Running machines first, the most idle on top; then the machines in BD; then the machines with no hours.
- else rows.sort((a,b)=>STATE_ORDER[a.state]-STATE_ORDER[b.state]||b.idleMinutes-a.idleMinutes||b.stops-a.stops||b.trips-a.trips||a.door.localeCompare(b.door,undefined,{numeric:true}));
+ // Owner, 17 Nov 2026: running machines first, the fewest hours worked on top (2.5 h before 3 h), a running machine
+ // without hours on its ELB after them; then the machines in BD; then the machines with no hours. Equal hours: the most idle first.
+ else rows.sort((a,b)=>STATE_ORDER[a.state]-STATE_ORDER[b.state]||hoursOrder(a)-hoursOrder(b)||b.idleMinutes-a.idleMinutes||b.stops-a.stops||b.trips-a.trips||a.door.localeCompare(b.door,undefined,{numeric:true}));
  return {rows,total:{id:group+':total',key:null,total:true,site:'ALL SITES',date:'',shift:'ALL SHIFTS',stage:'',stageLabel:'',door:'TOTAL',machineName:'',category:'ALL CATEGORIES',machineCount:new Set(entries.map(e=>e.machineKey)).size,operator:'',state:'',statusLabel:'',reason:'',elbBooks:'',firstLoading:'',lastLoading:'',...totals(entries)}};
 }
 const shiftOrder=(a,b)=>String(b.date).localeCompare(String(a.date))||a.shift.localeCompare(b.shift,undefined,{numeric:true});
