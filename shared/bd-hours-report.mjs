@@ -56,8 +56,11 @@ export function bdLines(entries=[],tolerance=BD_TOLERANCE_MINUTES){
   const kind=mismatchKind({pulseMinutes,elbHours,elbEntered},tolerance);
   if(!kind)continue;
   const elbMinutes=elbHours===null?null:round1(elbHours*60);
-  const requests=e.bdRequests||[];
-  out.push({...e,pulseMinutes,elbMinutes,elbEntered,kind,kindLabel:KIND_LABELS[kind],tone:MISMATCH_KINDS[KIND_RANK[kind]].tone,
+  // Only the Pulse requests that fall inside this shift: the machine's list (bdRequests) holds every request of the
+  // machine in the dates read, so a request of another day would otherwise be named on a shift with 0 Pulse hours
+  // (found on live data, 17 Nov 2026, Gauri Pauni: 4 requests named on a shift whose Pulse hours were 0).
+  const requests=(e.bdRequests||[]).filter(r=>r.shiftMinutes>0);
+  out.push({...e,pulseMinutes,elbMinutes,elbEntered,kind,kindLabel:KIND_LABELS[kind],tone:MISMATCH_KINDS[KIND_RANK[kind]].tone,shiftRequests:requests,
    diffMinutes:elbEntered?round1((elbMinutes||0)-pulseMinutes):null,
    breakdownCount:requests.length||(e.bdPeriods||[]).length,
    pulseReasons:[...new Set(requests.map(r=>r.reason).filter(Boolean))].join('; ')||[...new Set((e.bdPeriods||[]).map(p=>p.reason).filter(Boolean))].join('; '),
