@@ -1,0 +1,79 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {buildOperationReport,operationReports,requirements} from '../src/operations-report-model.mjs';
+import {STEP_REPORTS,LINE_REPORTS,EVERY,hasReportSteps,stepItems,openedItems,stepLines,stepTable,assetCategoryOf} from '../src/saved-report-steps-model.mjs';
+
+const site='Dhoptala OB (2nd)';
+const assets=[{id:'1',door:'V103',site,kind:'vehicle',group:'TIPPER'},{id:'2',door:'V104',site,kind:'vehicle',group:'TIPPER'},{id:'3',door:'EX7',site,kind:'equipment',group:'EXCAVATOR'},{id:'4',door:'V9',site:'Majri OB',kind:'vehicle',group:'WATER TANKER'}];
+const shifts=[{id:'1',site,name:'Shift A'},{id:'2',site,name:'Shift B'}];
+const rec=(id,assetId,door,date,shiftId,shiftName,extra={})=>({id,book:'B'+id,kind:door.startsWith('EX')?'equipment':'vehicle',assetId,door,bookDate:date,location:assets.find(a=>a.id===assetId)?.site||site,shiftId,shiftName,employeeName:'SAMPLE '+id,caliberId:'C'+id,shiftHours:8,hours:6,openingHmr:10,closingHmr:16,openingKmr:100,closingKmr:140,km:40,tripsTotal:5,trips:[],...extra});
+const records=[rec(1,'1','V103','2026-11-01',1,'Shift A'),rec(2,'2','V104','2026-11-01',1,'Shift A'),rec(3,'3','EX7','2026-11-01',2,'Shift B'),rec(4,'1','V103','2026-11-02',1,'Shift A',{closingHmr:30,hours:20}),rec(5,'4','V9','2026-11-01',1,'Shift A')];
+const filters={from:'2026-11-01',to:'2026-11-02'};
+
+test('every Operations report that was one long table now opens in steps',()=>{
+ const own=['timing','loading','batch-status','meter-continuity','manpower','manpower-reconciliation','employee','attendance','ot','attendance-batch','attendance-month','door-production','machine-production'];
+ const left=operationReports.map(r=>r.id).filter(id=>!own.includes(id)&&!requirements[id]&&!hasReportSteps(id));
+ assert.deepEqual(left,[],'reports with no steps: '+left.join(', '));
+ for(const id of Object.keys(LINE_REPORTS))assert.ok(STEP_REPORTS.includes(id));
+});
+
+test('the equipment category comes from the saved asset, else from a door that is one asset at the site',()=>{
+ const of=assetCategoryOf(assets);
+ assert.equal(of({assetId:'3',door:'',site}),'Excavator');
+ assert.equal(of({assetId:null,door:'V104',site}),'Tipper');
+ assert.equal(of({assetId:null,door:'V104',site:'Majri OB'}),'Group missing in master');
+});
+
+test('a line report opens its own lines: site, date and shift, category, with the rows it already had',()=>{
+ const report=buildOperationReport('vehicle',records,{assets,shifts,filters});
+ const items=stepItems('vehicle',{records,report,assets});
+ assert.equal(items.length,4,'one item per vehicle log book');
+ const sites=stepLines(items,'site');
+ assert.deepEqual(sites.rows.map(r=>[r.site,r.count]),[[site,3],['Majri OB',1]]);
+ assert.equal(sites.total.count,4);
+ const atSite=openedItems(items,{site:sites.rows[0].key});
+ const slots=stepLines(atSite,'slot');
+ assert.deepEqual(slots.rows.map(r=>[r.date,r.shift,r.count]),[['2026-11-01','Shift A',2],['2026-11-02','Shift A',1]]);
+ const inSlot=openedItems(atSite,{slot:'2026-11-01|Shift A'});
+ const categories=stepLines(inSlot,'category');
+ assert.deepEqual(categories.rows.map(r=>[r.category,r.count,r.assets]),[['Tipper',2,2]]);
+ const table=stepTable('vehicle',report,openedItems(inSlot,{category:'Tipper'}),()=>assert.fail('a line report is not built again'));
+ assert.deepEqual(table.columns,report.columns);
+ assert.deepEqual(table.rows.map(r=>r[2]),['B1','B2']);
+});
+
+test('the meter exceptions count exceptions, and Potential missing logbooks are found by door and shift',()=>{
+ const meters=buildOperationReport('meters',records,{assets,shifts,filters});
+ const items=stepItems('meters',{records,report:meters,assets});
+ assert.ok(items.length>=1&&items.every(i=>i.date&&i.site&&i.shift));
+ const missing=buildOperationReport('missing',records,{assets,shifts,filters});
+ const found=stepItems('missing',{records,report:missing,assets});
+ assert.ok(found.some(i=>i.source[6]==='Potential missing'&&i.category==='Tipper'&&i.shift==='Shift B'));
+});
+
+test('a built report is built again from the log books opened',()=>{
+ const report=buildOperationReport('daily',records,{assets,shifts,filters});
+ const items=stepItems('daily',{records,report,assets});
+ assert.equal(items.length,records.length);
+ const opened=openedItems(items,{site:EVERY,slot:'2026-11-01|Shift B',category:EVERY});
+ const table=stepTable('daily',report,opened,list=>buildOperationReport('daily',list,{assets,shifts,filters}));
+ assert.equal(table.rows.length,1);
+ assert.equal(table.rows[0][2],'Shift B');
+});
+
+test('scanned cards open by their own date, site, shift and door',()=>{
+ const cards=[{id:9,scanned_date:'2026-11-02',status:'pending',draft:{bookDate:'2026-11-01',location:site,shiftName:'Shift A',door:'V103'}},{id:10,scanned_date:'2026-11-02',status:'failed',draft:null}];
+ const items=stepItems('scans',{records,cards,report:{rows:[]},assets});
+ assert.deepEqual(items.map(i=>[i.date,i.site,i.shift,i.category]),[['2026-11-01',site,'Shift A','Tipper'],['2026-11-02','Site not recorded','Shift not recorded','Group missing in master']]);
+});
+
+test('the Operations screen draws these reports through the steps, each step under the one before',()=>{
+ const screen=readFileSync(new URL('../src/operations-reports.jsx',import.meta.url),'utf8');
+ assert.match(screen,/hasReportSteps\(id\)\?<SavedReportSteps /);
+ const steps=readFileSync(new URL('../src/saved-report-steps.jsx',import.meta.url),'utf8');
+ for(const n of [1,2,3,4])assert.match(steps,new RegExp("'Step "+n+" · '"));
+ assert.match(steps,/level>=2&&/);assert.match(steps,/level>=3&&/);assert.match(steps,/level>=4&&/);
+ assert.doesNotMatch(steps,/level===\d/);
+ assert.match(steps,/<DateShiftGrid /);
+});
