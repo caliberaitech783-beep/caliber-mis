@@ -567,6 +567,8 @@ function performanceOverview({report,filters,query,description,ReportSection,sit
 }
 
 // On the dashboard (embedded) the report stands alone: it opens on the dates given and shows no tabs for the other views.
+// Each tab reads only its own tables, a week of cards at a time (server/rules/manpower-report.mjs MANPOWER_VIEWS).
+const REPORT_VIEWS={manpower:'category','manpower-reconciliation':'reconciliation',employee:'performance',attendance:'equipment'};
 export default function ManpowerReports({session,reportId='manpower',onSelect,ReportSection,embedded=false,initialFrom=''}){
  const [filters,setFilters]=useState(()=>{const date=today();return {from:initialFrom||monthStartDate(date),to:date,site:'',shift:'',batch:'',employee:'',asset:''};});
  const [data,setData]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[refresh,setRefresh]=useState(0),[options,setOptions]=useState({});
@@ -578,7 +580,7 @@ export default function ManpowerReports({session,reportId='manpower',onSelect,Re
  // The OT view always loads every assigned site; the Site selection there narrows the list of sites.
  // The attendance register reads every shift of every site: a day is coded from all its shifts and a person's other sites.
  const register=['attendance-batch','attendance-month'].includes(reportId);
- const query=useMemo(()=>new URLSearchParams(register?{from:filters.from,to:filters.to,view:'attendance'}:reportId==='ot'?{...filters,site:'',view:'ot'}:filters).toString(),[filters,reportId,register]);
+ const query=useMemo(()=>new URLSearchParams(register?{from:filters.from,to:filters.to,view:'attendance'}:reportId==='ot'?{...filters,site:'',view:'ot'}:{...filters,view:REPORT_VIEWS[reportId]||'category'}).toString(),[filters,reportId,register]);
  // The register has its own lighter read (only its duties, presence and batches); `view` keeps its result apart from the full report's.
  const source=(register?'/api/reports/manpower/attendance?':'/api/reports/manpower?')+query;
  const valid=filters.from>=OPERATIONAL_START&&filters.to>=filters.from&&Date.parse(filters.to)-Date.parse(filters.from)<=30*86400000;

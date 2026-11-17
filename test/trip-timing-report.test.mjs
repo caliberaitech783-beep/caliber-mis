@@ -115,8 +115,9 @@ const blastEntries=tripEntries(normalise([
  blast(31,'Site A','Shift A','SAMPLE DRIVER 31',[trip('EX1','05:50','06:45'),trip('EX1','06:50','07:30'),trip('EX1','08:00','08:40'),trip('EX1','09:00','09:10')]),
  // A short trip wholly inside the blast was never a delay, so no exception is given to it.
  blast(32,'Site A','Shift A','SAMPLE DRIVER 32',[trip('EX1','06:10','06:20')]),
- // The same clock times in another shift and at another site.
- blast(33,'Site A','Shift B','SAMPLE DRIVER 33',[trip('EX1','05:50','06:45')]),
+ // The same clock times in another shift and at another site. A 12-hour Day card with no saved start keeps its
+ // times as written (an 8-hour Shift B card would read 05:50 as 17:50 on its own clock).
+ blast(33,'Site A','Shift Day','SAMPLE DRIVER 33',[trip('EX1','05:50','06:45')]),
  blast(34,'Site B','Shift A','SAMPLE DRIVER 34',[trip('EX1','05:50','06:45')])]));
 const slotA=JSON.stringify(['2026-12-14','Shift A']);
 const loadMinutes=list=>list.map(e=>[e['load-unload'].minutes,e['load-unload'].band]);
@@ -153,14 +154,14 @@ test('exception time: a period added for one site or one date and shift touches 
 });
 
 test('exception time: periods through 12 at night, overlapping periods, and times longer than a shift',()=>{
- const night=tripEntries(normalise([blast(41,'Site A','Shift C','SAMPLE DRIVER 41',[trip('EX1','23:50','00:40'),trip('EX1','00:45','01:00'),trip('EX1','05:00','18:30')])]));
+ const night=tripEntries(normalise([blast(41,'Site A','Shift C','SAMPLE DRIVER 41',[trip('EX1','23:50','00:40'),trip('EX1','00:45','01:00'),trip('EX1','05:00','04:30')])]));
  for(const period of [{from:'23:30',to:'00:30'},{from:'23:50',to:'00:30'}])assert.deepEqual(loadMinutes(withExceptionTime(night,[period])).slice(0,2),[[10,'ok'],[15,'ok']],period.from);
  assert.deepEqual(loadMinutes(withExceptionTime(night,[{from:'00:00',to:'01:00'}])).slice(0,2),[[10,'ok'],[0,'ok']]);
  // 06:10 to 07:20 under 06:00 to 07:00 and 06:30 to 07:30: the half hour the two share is taken out once.
  const twice=tripEntries(normalise([blast(42,'Site A','Shift A','SAMPLE DRIVER 42',[trip('EX1','06:10','07:20'),trip('EX1','07:25','08:05')])]));
  assert.deepEqual(withExceptionTime(twice,[{from:'06:00',to:'07:00'},{from:'06:30',to:'07:30'}]).map(e=>[e['load-unload'].excepted,e['load-unload'].minutes]),[[70,0],[5,35]]);
  const long=withExceptionTime(night,[{from:'05:00',to:'13:00'}])[2]['load-unload'];
- assert.deepEqual([long.band,long.minutes,long.excepted],[null,810,0],'a time longer than a shift is a wrong clock time and stays not judged');
+ assert.deepEqual([long.band,long.minutes,long.excepted],[null,1410,0],'a time longer than a shift is a wrong clock time and stays not judged');
  assert.equal(withExceptionTime(night,[]),night);assert.equal(withExceptionTime(night,[{from:'bad',to:'07:00'}]),night);
 });
 

@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Trip times on the shift clock</title>
+<style>
+@page{size:A4;margin:15mm 15mm}
+body{font-family:"Segoe UI",Arial,sans-serif;color:#24163a;font-size:10.8pt;line-height:1.48;margin:0}
+h1{font-size:20pt;margin:0 0 2px;color:#3b1d6e}
+.sub{color:#6a5a80;margin:0 0 12px;font-size:10.3pt}
+h2{font-size:13.2pt;color:#3b1d6e;border-bottom:2px solid #d9c9ef;padding-bottom:3px;margin:15px 0 7px}
+.box,tr{break-inside:avoid}
+table{border-collapse:collapse;width:100%;margin:6px 0 10px;font-size:10.2pt}
+th,td{border:1px solid #d6cbe6;padding:5px 8px;text-align:left;vertical-align:top}
+th{background:#f1eafb}
+td.t{font-family:Consolas,monospace;white-space:nowrap}
+.box{border-radius:8px;padding:9px 12px;margin:8px 0}
+.warn{background:#fff6dc;border:1px solid #e6c45c}
+.ok{background:#e9f7ee;border:1px solid #8fcca6}
+.note{background:#f5f1fb;border:1px solid #d2c3ea}
+.clock{display:flex;gap:8px;margin:8px 0}
+.shift{flex:1;border:1px solid #c9b7e6;border-radius:8px;padding:8px 10px;background:#faf7ff}
+.shift b{display:block;color:#3b1d6e;font-size:11.5pt}
+.shift span{font-family:Consolas,monospace;font-size:10pt}
+ul,ol{margin:4px 0 8px 18px;padding:0}li{margin:2px 0}
+.small{font-size:9.3pt;color:#6a5a80}
+</style></head><body>
+
+<h1>Trip times are now read on the shift clock</h1>
+<p class="sub">Vehicle Log Book (VLB) trip cards · Trip Timing &amp; Gap Report · Loading Equipment-wise report · 17 November 2026</p>
+
+<h2>1. What was wrong</h2>
+<div class="box warn">On the Trip Timing report, a <b>Shift C</b> card of Dhoptala OB (2nd) for 01-11-26 showed one trip at
+<b>04:03</b> and another at <b>12:50 → 13:37</b>. 12:50 looks like a Shift A time, so it seemed that Shift A trips had mixed into Shift C.</div>
+<p>They had not. The driver wrote the time on a <b>12-hour clock</b>: on a night card "12:50" means <b>00:50</b>, just after midnight.
+Trip no. 8 at 00:50 comes before trip no. 12 at 04:03, so the order on the card agrees. The app was copying the time exactly as written,
+so the report printed 12:50.</p>
+
+<h2>2. The new rule</h2>
+<div class="box ok">The shift of every card is fixed (it is locked in the batch). So every time written on the card is read on <b>that shift's clock</b>.
+A written hour can mean two clock times, for example 2:30 can be 02:30 or 14:30. The app keeps the one that falls <b>inside the shift</b>.</div>
+<div class="clock">
+ <div class="shift"><b>Shift A</b><span>05:00 – 13:00</span></div>
+ <div class="shift"><b>Shift B</b><span>13:00 – 21:00</span></div>
+ <div class="shift"><b>Shift C</b><span>21:00 – 05:00</span></div>
+</div>
+<table>
+<tr><th style="width:18%">Shift</th><th style="width:22%">Written on the card</th><th style="width:22%">Read by the app</th><th>Why</th></tr>
+<tr><td>Shift A</td><td class="t">6:10</td><td class="t">06:10</td><td>18:10 is not in Shift A</td></tr>
+<tr><td>Shift A</td><td class="t">12:30</td><td class="t">12:30</td><td>00:30 is not in Shift A</td></tr>
+<tr><td>Shift B</td><td class="t">2:30</td><td class="t">14:30</td><td>02:30 is not in Shift B</td></tr>
+<tr><td>Shift B</td><td class="t">8:45</td><td class="t">20:45</td><td>08:45 is not in Shift B</td></tr>
+<tr><td>Shift C</td><td class="t">9:30</td><td class="t">21:30</td><td>09:30 is not in Shift C</td></tr>
+<tr><td>Shift C</td><td class="t">12:50</td><td class="t">00:50</td><td>12:50 noon is not in Shift C</td></tr>
+<tr><td>Shift C</td><td class="t">13:37</td><td class="t">01:37</td><td>13:37 is not in Shift C; 12 hours earlier is</td></tr>
+<tr><td>Shift C</td><td class="t">4:03</td><td class="t">04:03</td><td>already inside Shift C</td></tr>
+</table>
+<p class="small">The hours come from each site's Shift Master (for example Majri Shift C is 20:00 – 04:00), so every site is read on its own clock.
+A trip may start up to 1 hour before the shift or run up to 2 hours after it; those times are still accepted.
+On 12-hour Day and Night shifts a time clearly written on the 24-hour clock (for example 20:30) is kept as written.</p>
+
+<h2>3. What you will see</h2>
+<ul>
+<li><b>Saving a card</b> (manual entry or scan auto-save): trip times are saved on the shift clock. The time as written stays on the trip row.</li>
+<li><b>Trip Timing &amp; Gap Report</b> and <b>Loading Equipment-wise</b>: already saved cards are read the same way, so old dates are corrected too. Nothing in the saved cards is changed by the reports.</li>
+<li>Step 5 (the delayed trips) has a new last column <b>As written on card</b>, for example <i>"Loading 12:50 · Unloading 13:37"</i>, beside the times read (00:50 → 01:37).</li>
+<li>Step 6 (the trip card) says it in the <b>Remark</b> column: <i>"Written 12:50 on the card, read as 00:50 on the Shift C clock"</i>.</li>
+<li><b>Minutes are now correct.</b> A trip written 12:50 → 1:37 used to work out as more than 12 hours and was shown as <i>Not judged</i>. It is now 47 minutes. So some delay counts on Shift B and Shift C may go up a little: these are real delays that were hidden before.</li>
+</ul>
+
+<h2>4. "Time outside shift hours"</h2>
+<div class="box note">If a time fits the shift neither way (for example 7:30 on a Shift C card), the app keeps it as written and shows
+<i>"Time outside Shift C hours (21:00–05:00): check the card, not judged"</i>. That trip is <b>not counted as a delay</b>.
+It usually means a wrong time on the card or the wrong shift ticked.</div>
+
+<h2>5. What the team should do</h2>
+<ol>
+<li>Tick the <b>correct shift</b> on every trip card. The app now trusts the shift to read the times.</li>
+<li>Writing times on the 24-hour clock (21:30, 00:50) is best, but a 12-hour time is now read correctly.</li>
+<li>When the report shows <b>"Time outside shift hours"</b>, open the card, check the time and the shift against the paper card, and correct it.</li>
+<li>Report any trip that still looks like it belongs to another shift, with the book no. and trip no.</li>
+</ol>
+</body></html>

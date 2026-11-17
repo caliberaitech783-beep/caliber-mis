@@ -6,6 +6,7 @@ import {tripSerialNumber} from './log-book-labels.mjs';
 import {canonicalSiteName} from './site-location.mjs';
 import {equipmentGroupName} from './equipment-group.mjs';
 import {fleetDoorKey} from './scan-fleet-door.mjs';
+import {cardOnShiftClock,shiftWindowOf,shiftClockNote} from './shift-clock.mjs';
 
 // Owner's limit (11 Nov 2026): a time above 15 minutes is a delay. It was 10 at first; real cards showed a usual trip takes 10 to 20 minutes.
 export const DELAY_LIMIT=15;
@@ -32,7 +33,8 @@ const minuteOfDay=value=>{const s=seconds(value);return s===null?null:s/60;};
 const round1=n=>Math.round(n*10)/10;
 // One timing of a trip row. `minutes` and `band` are what the report counts; `rawMinutes` and `rawBand` are the clock
 // times as written, and stay so when an exception time (below) takes minutes out. `start` is the minute of the day it begins.
-const timing=(counted,minutes,startsAt)=>{const band=bandOf(minutes);return {counted,minutes,band,rawMinutes:minutes,rawBand:band,excepted:0,start:minuteOfDay(startsAt)};};
+// `outside`: a time of the row fits the card's shift neither way (shared/shift-clock.mjs), so it is not judged.
+const timing=(counted,minutes,startsAt,outside=false)=>{const band=outside?null:bandOf(minutes);return {counted,minutes,band,rawMinutes:minutes,rawBand:band,excepted:0,start:minuteOfDay(startsAt),...(outside?{outside:true}:{})};};
 
 // Cards carry the site as it was typed or read ("Majri OB", "majri ob", "Dudhicua East OB"). All spellings of one site
 // are shown as one site, under the spelling used most among those that are not all in small letters.
@@ -54,8 +56,10 @@ function vehicleCategories(assets){
 // Equipment master as the operations screen reads it; it names each trip's equipment category.
 export function tripEntries(records,{assets=[]}={}){
  const out=[],siteName=siteLabels(records),categoryOf=vehicleCategories(assets);
- for(const r of records){
-  if(r.kind!=='vehicle')continue;
+ for(const record of records){
+  if(record.kind!=='vehicle')continue;
+  // Times are read on the card's shift clock (owner, 17 Nov 2026): "12:50" on a Shift C card is 00:50.
+  const r=cardOnShiftClock(record),window=shiftWindowOf(record)?.label||'';
   const timed=r.timeMode!=='without',trips=r.trips||[];
   const caliberId=text(r.caliberId),driver=text(r.employeeName),category=categoryOf(r);
   trips.forEach((t,i)=>{
@@ -64,7 +68,8 @@ export function tripEntries(records,{assets=[]}={}){
    out.push({id:r.id+'-'+i,recordId:String(r.id),book:r.book,date:r.bookDate,site:siteName(r.location),shift:r.shiftName||'',door:text(r.door)||'Not recorded',category,caliberId,driver,
     driverKey:JSON.stringify([caliberId,driver]),sr:tripSerialNumber(t,i),machine:text(t.equipmentName)||'Not recorded',trips:t.tripCount??'',
     loadingTime:clock(t.loadingTime),unloadingTime:clock(t.unloadingTime),previousUnloadingTime:previous?clock(previous.unloadingTime):'',first:i===0,
-    'load-unload':timing(true,taken,t.loadingTime),'unload-load':timing(i>0,gap,previous?.unloadingTime)});
+    clockNote:shiftClockNote(t,r.shiftName,window),writtenLoading:t.writtenLoadingTime||'',writtenUnloading:t.writtenUnloadingTime||'',outsideShift:Boolean(t.outsideShift),
+    'load-unload':timing(true,taken,t.loadingTime,Boolean(t.outsideShift)),'unload-load':timing(i>0,gap,previous?.unloadingTime,Boolean(t.outsideShift||previous?.outsideShift))});
   });
  }
  return out;
@@ -104,8 +109,9 @@ export function delayedEntries(entries,mode,band=''){
 export function entryRemark(e){
  const notes=[];
  if(e.first)notes.push('First trip of the card: no gap before it');
- if(!e['load-unload'].band)notes.push(e['load-unload'].minutes===null?'Loading or unloading time not written: not judged':'Time is longer than a shift: check the times');
- if(!e.first&&!e['unload-load'].band)notes.push(e['unload-load'].minutes===null?'Gap not judged: a time is not written':'Gap is longer than a shift: check the times');
+ if(e.clockNote)notes.push(e.clockNote);
+ if(!e['load-unload'].band&&!e['load-unload'].outside)notes.push(e['load-unload'].minutes===null?'Loading or unloading time not written: not judged':'Time is longer than a shift: check the times');
+ if(!e.first&&!e['unload-load'].band)notes.push(e['unload-load'].outside?'Gap not judged: a time is outside the shift':e['unload-load'].minutes===null?'Gap not judged: a time is not written':'Gap is longer than a shift: check the times');
  for(const [mode,what] of [['load-unload','loading to unloading'],['unload-load','gap before this loading']]){const m=e[mode];if(m.excepted>0)notes.push(`Exception time: ${m.excepted} of ${m.rawMinutes} min not counted (${what})`);}
  return notes.join(' · ');
 }

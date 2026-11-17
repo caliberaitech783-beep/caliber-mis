@@ -16,6 +16,7 @@ import {ATTENDANCE_DAY_STORE_SCHEMA,attendanceDayStoreSweep} from '../services/a
 export {assetBookKind} from '../../shared/equipment-kind.mjs';
 import {validateTripEquipment} from '../../shared/trip-equipment-validation.mjs';
 import {normalizeManualDetails} from '../../shared/manual-log-book-details.mjs';
+import {cardOnShiftClock} from '../../shared/shift-clock.mjs';
 import {vlbBatchActor} from '../rules/vlb-batch-access.mjs';
 import {registerVlbBatches} from './vlb-batches.mjs';
 import {registerManpowerReports} from './manpower-report-api.mjs';
@@ -100,7 +101,7 @@ const timeMode=input.timeMode==='without'?'without':'with';
    const tripCount=number(row.tripCount,`Trips in row ${index+1}`,{integer:true});if(tripCount<1)fail('Each trip row must contain at least one trip.');
    const loadingTime=timeMode==='with'?text(row.loadingTime,8):'',unloadingTime=timeMode==='with'?text(row.unloadingTime,8):'';
    if(timeMode==='with'&&!validTripTimes({loadingTime,unloadingTime}))fail('Enter at least one valid loading or unloading time for each trip.');
-   return {equipmentName,originalEquipmentName:text(row.originalEquipmentName||row.equipmentNotation?.original||row.equipmentName),...(row.equipmentId?{equipmentId:text(row.equipmentId)}:{}),...(row.equipmentSite?{equipmentSite:text(row.equipmentSite)}:{}),loadingTime,unloadingTime,tripCount,...(row.masterJob===true?{masterJob:true}:{}),...(row.workOrderId?{workOrderId:String(number(row.workOrderId,'Trip Work Order',{integer:true}))}:{}),...(row.jobType?{jobType:text(row.jobType,500)}:{}),...(row.remark?{remark:text(row.remark,2000)}:{}),...(row.timeEstimates?{timeEstimates:row.timeEstimates}:{}),...(row.equipmentProvenance&&row.equipmentName===row.equipmentProvenance.value?{equipmentSource:'previous-shift',equipmentProvenance:row.equipmentProvenance}:{}),durationMinutes:timeMode==='with'&&loadingTime&&unloadingTime?timeGapMinutes(loadingTime,unloadingTime):null};
+   return {equipmentName,originalEquipmentName:text(row.originalEquipmentName||row.equipmentNotation?.original||row.equipmentName),...(row.equipmentId?{equipmentId:text(row.equipmentId)}:{}),...(row.equipmentSite?{equipmentSite:text(row.equipmentSite)}:{}),loadingTime,unloadingTime,tripCount,...(row.masterJob===true?{masterJob:true}:{}),...(row.workOrderId?{workOrderId:String(number(row.workOrderId,'Trip Work Order',{integer:true}))}:{}),...(row.jobType?{jobType:text(row.jobType,500)}:{}),...(row.remark?{remark:text(row.remark,2000)}:{}),...(row.timeEstimates?{timeEstimates:row.timeEstimates}:{}),...(timeMode==='with'&&row.writtenLoadingTime?{writtenLoadingTime:text(row.writtenLoadingTime,8)}:{}),...(timeMode==='with'&&row.writtenUnloadingTime?{writtenUnloadingTime:text(row.writtenUnloadingTime,8)}:{}),...(row.equipmentProvenance&&row.equipmentName===row.equipmentProvenance.value?{equipmentSource:'previous-shift',equipmentProvenance:row.equipmentProvenance}:{}),durationMinutes:timeMode==='with'&&loadingTime&&unloadingTime?timeGapMinutes(loadingTime,unloadingTime):null};
  }):[];
  trips.forEach((row,index)=>{row.gapMinutes=timeMode==='with'?interTripGap(trips,index):null});
  const workingHmr=openingHmr===null||closingHmr===null?null:rounded(closingHmr-openingHmr);
@@ -178,6 +179,12 @@ export async function resolveLogBookData(client,kind,input,{enforceEmployeeSite=
      Object.assign(data,{door:text(asset.door||asset.doorNo||equipmentDoorNumber(asset)),assetName:text(asset.equipmentName||asset.equipment||asset.name||asset.group),registration:text(asset.registration||asset.reg),employeeName:employee?text(employee.employee||employee.name||employee.login):'',caliberId:employee?employeeCode(employee):'',shiftName:text(shift?.shiftName||shift?.name||shift?.shift||(manualLmvShift==='day'?'Day':manualLmvShift==='night'?'Night':'')),masterShiftStart:text(shift?.startTime||shift?.start)});
  if(kind==='vehicle'){data.bookShiftCode=bookShiftCode(data.cardShift)||(optionalShift?bookShiftCode(input.bookShiftCode):'')||bookShiftCode(shift?.shiftCode)||bookShiftCode(data.shiftName);if(!data.bookShiftCode)fail('Select a marked Trip Card shift (I, II, III, Day or Night) for the book number.');}
  else data.bookShiftCode=(kind==='lmv'&&manualEntry?'':bookShiftCode(input.bookShiftCode))||bookShiftCode(data.cardShift)||bookShiftCode(shift?.shiftCode)||bookShiftCode(data.shiftName)||'';
+ // Trip times are saved on the shift's clock (owner, 17 Nov 2026): "12:50" written on a Shift C card is saved as 00:50,
+ // and the written time stays on the row. The minutes of each row and the gap between rows follow the saved times.
+ if(kind==='vehicle'&&data.timeMode==='with'){
+  const read=cardOnShiftClock(data);
+  if(read!==data){data.trips=read.trips;data.trips.forEach((row,index)=>{row.durationMinutes=row.loadingTime&&row.unloadingTime?timeGapMinutes(row.loadingTime,row.unloadingTime):null;row.gapMinutes=interTripGap(data.trips,index);});}
+ }
  // LMV follows the same transfer-time split as VLB and ELB (owner, 16 Nov 2026); an LMV entry with no shift start keeps the date check above.
  if(kind!=='lmv'||data.masterShiftStart){
   const windows=assignmentWindows(historicalRecord||{...asset,id:data.assetId},historicalRecord?.transferHistory||[]);

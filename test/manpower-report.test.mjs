@@ -185,6 +185,30 @@ test('OT & Multiple Duties over a month is read a week at a time and matches one
  const tooMany=apiHarness({sites:null},Array.from({length:50001},(_,i)=>on(i+1,'2026-11-02',1)),{batches});
  const stop=await tooMany.run({...range,view:'ot'});assert.equal(stop.status,400);assert.match(stop.result.error,/One week of saved cards is too large/);
 });
+test('Manpower by Category, Reconciliation, Shift Performance and Equipment Wise over a month are read a week at a time and match one build',async()=>{
+ // 17 Nov 2026: the four other Manpower tabs read a month of every site in one go and stopped at 50,000 cards, as OT did.
+ const on=(id,day,shift,patch={})=>card(id,shift,{bookDate:day,...patch});
+ const cards=[on(1,'2026-11-02',1,{remark:'Tyre change'}),on(2,'2026-11-07',3),on(3,'2026-11-08',1),on(4,'2026-11-10',2),on(6,'2026-11-14',2,{trips:[]}),on(5,'2026-11-16',1,{employeeId:22,caliberId:'102'})];
+ const range={from:'2026-11-01',to:'2026-11-16'},batches=lockedBatches([site+'|2026-11-08|S1']);
+ const one=buildManpowerReport({records:linkVlbTripHandovers(cards),assets,employees,shifts,filters:manpowerFilters(range),batches});
+ const byId=list=>[...list].sort((a,b)=>String(a.id).localeCompare(String(b.id)));
+ const views={category:['details','summary'],reconciliation:['fleet','fleetWork'],performance:['performance'],equipment:['attendanceEquipment','attendanceShifts']};
+ for(const [view,tables] of Object.entries(views)){
+  const h=apiHarness({sites:null},cards,{batches}),r=await h.run({...range,site:'',shift:'',batch:'',employee:'',asset:'',view});
+  assert.equal(r.status,200,view+' '+JSON.stringify(r.result));assert.equal(r.released,true);assert.equal(h.calls.at(-1).sql,'COMMIT');
+  const reads=h.calls.filter(c=>c.sql.includes('SELECT l.id'));
+  assert.deepEqual(reads.map(c=>[c.args[0],c.args[1]]),[['2026-11-01','2026-11-08'],['2026-11-07','2026-11-15'],['2026-11-14','2026-11-17']],view+': three weeks, each with its adjoining days');
+  for(const c of reads){assert.match(c.sql,/mis_vlb_batch_entries/);assert.ok(!c.sql.includes("l.data-'manualAttachments'"),view+': only the fields the report uses are read');}
+  for(const table of tables)assert.deepEqual(r.result[table],one[table],view+' '+table+' as one build of every card');
+  for(const table of ['details','summary','performance','fleet','fleetWork','attendanceEquipment','otDuties','ot','shiftAttendance'].filter(t=>!tables.includes(t)))assert.equal(r.result[table],undefined,view+' sends no '+table);
+  assert.deepEqual(r.result.totals,one.totals,view+' totals');assert.deepEqual(byId(r.result.exceptions),byId(one.exceptions));assert.deepEqual(r.result.otSites,one.otSites);
+  assert.deepEqual(r.result.options.employees,one.options.employees);assert.deepEqual(r.result.options.sites,one.options.sites);assert.deepEqual(r.result.notes,one.notes);
+ }
+ assert.ok(one.details.some(r=>/Tyre change/.test(r.remarks)),'a card remark still reaches Manpower by Category');
+ assert.ok(one.details.length>=5&&one.performance.length>=5&&one.fleetWork.length>=5&&one.attendanceEquipment.length>=5,'the fixture fills every table');
+ const tooMany=apiHarness({sites:null},Array.from({length:50001},(_,i)=>on(i+1,'2026-11-02',1)),{batches});
+ const stop=await tooMany.run({...range,view:'category'});assert.equal(stop.status,400);assert.match(stop.result.error,/One week of saved cards is too large/);
+});
 test('locked days only (owner, 16 Nov 2026): an open, reopened or missing shift keeps the whole site-day out until it is locked again',async()=>{
  let open=['Sasti OC|2026-11-10|S3'],drop='';
  const h=apiHarness({sites:null},[card(1,1),card(2,2)],{batches:()=>lockedBatches(open).filter(b=>b.id!==drop)});

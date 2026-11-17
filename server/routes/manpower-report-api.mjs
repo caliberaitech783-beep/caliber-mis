@@ -1,5 +1,5 @@
 import {canonicalSiteName} from '../../shared/site-location.mjs';
-import {manpowerFilters,buildManpowerReport,attendanceWindows,joinAttendanceReports,joinOtReports,pendingSiteDays,lockedSiteDays,otHistoryWindows,otHistorySummary,otYearWindows,otDriverTally,OT_HISTORY_DAYS} from '../rules/manpower-report.mjs';
+import {manpowerFilters,buildManpowerReport,attendanceWindows,joinAttendanceReports,joinOtReports,joinManpowerReports,trimManpowerWeek,MANPOWER_VIEWS,pendingSiteDays,lockedSiteDays,otHistoryWindows,otHistorySummary,otYearWindows,otDriverTally,OT_HISTORY_DAYS} from '../rules/manpower-report.mjs';
 import {siteAllowed,filterLogBookSites,requireLogBookSite} from '../../shared/log-book-access.mjs';
 import {directLane,reportKey} from '../services/report-lane.mjs';
 import {linkVlbTripHandovers} from '../../shared/vlb-trip-handover.mjs';
@@ -22,6 +22,8 @@ async function slimCards(client,range,sites,fields=HISTORY_CARD_FIELDS,{withBatc
  if(rows.length>50000)throw Object.assign(new Error(tooLarge),{status:400});
  return rows;
 }
+// The full report also shows a card's remark (Manpower by Category list).
+const REPORT_CARD_FIELDS=[...ATTENDANCE_CARD_FIELDS,'remark'];
 // What the register reads of a duty line and of a presence line.
 const DUTY_FIELDS=['id','date','shift','site','siteKey','employeeKey','employeeId','caliberCode','employeeName','category','equipment','doors','makeModel','logBook','flag','flagLabel','hours','trips','km','books'];
 const PRESENCE_FIELDS=['date','shift','site','siteKey','employeeKey','employeeId','caliberCode','employeeName','equipment','doors','makeModel','flag','flagLabel','trips','actual'];
@@ -39,7 +41,7 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
    const filters=manpowerFilters(req.query);
    if(filters.site)requireLogBookSite(req.logBookScope,filters.site);
    await ensureBooks();
-   if(req.query.view==='ot')return res.set('Cache-Control','private, no-store').json(await readOt(req,filters));
+   if(req.query.view==='ot'||Object.hasOwn(MANPOWER_VIEWS,req.query.view))return res.set('Cache-Control','private, no-store').json(await readWeeks(req,filters,req.query.view));
    const body=await lane.run(reportKey('manpower',req),async()=>{
    let client;
    try{
@@ -79,10 +81,11 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
    res.set('Cache-Control','private, no-store').json(body);
   }catch(error){if(error.status)return res.status(error.status).json({error:error.message});next(error);}
  });
- // OT & Multiple Duties (its tab and dashboard Sr 5): one week of cards at a time from one snapshot, each week with its
- // adjoining days, so a month of every site stays under the card read limit. Only the card fields that decide a duty are
- // read, with each card's batches. Every saved card counts, as before; open batches are not left out here.
- const readOt=(req,filters)=>lane.run(reportKey('manpower-ot',req),async()=>{
+ // OT & Multiple Duties (its tab and dashboard Sr 5), Manpower by Category, its Reconciliation, Shift Performance and Shift
+ // Attendance Equipment Wise: one week of cards at a time from one snapshot, each week with its adjoining days, so a month of
+ // every site stays under the card read limit. Only the card fields the report uses are read, with each card's batches.
+ // Every saved card counts, as before; open batches are not left out here. Trip counts come from each card's own trip rows.
+ const readWeeks=(req,filters,view)=>lane.run(reportKey(view==='ot'?'manpower-ot':'manpower-'+view,req),async()=>{
   let client;
   try{
    client=await pool.connect();
@@ -99,12 +102,19 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
     WHERE deleted_at IS NULL AND archived_at IS NULL AND book_date BETWEEN $1 AND $2`,[filters.from,filters.to])).rows.filter(b=>siteAllowed(req.logBookScope,b.site));
    const present=attendance.filter(r=>siteAllowed(req.logBookScope,r.site)),parts=[];
    for(const window of attendanceWindows(filters.from,filters.to)){
-    const range=manpowerFilters({...filters,...window}),rows=(await slimCards(client,range,sites,ATTENDANCE_CARD_FIELDS,{withBatches:true,tooLarge:'One week of saved cards is too large to read. Open one site and try again.'})).filter(r=>siteAllowed(req.logBookScope,r.site));
+    const range=manpowerFilters({...filters,...window}),rows=(await slimCards(client,range,sites,view==='ot'?ATTENDANCE_CARD_FIELDS:REPORT_CARD_FIELDS,{withBatches:true,tooLarge:'One week of saved cards is too large to read. Open one site and try again.'})).filter(r=>siteAllowed(req.logBookScope,r.site));
     const vehicles=linkVlbTripHandovers(rows.filter(r=>r.book_type==='vehicle'));
-    parts.push({window,report:buildManpowerReport({records:[...vehicles,...rows.filter(r=>r.book_type!=='vehicle')],attendance:present.filter(r=>r.date>=window.from&&r.date<=window.to),...masters,batches,filters:range,parts:'ot'})});
+    const report=buildManpowerReport({records:[...vehicles,...rows.filter(r=>r.book_type!=='vehicle')],attendance:present.filter(r=>r.date>=window.from&&r.date<=window.to),...masters,batches,filters:range,parts:view==='ot'?'ot':'all'});
+    parts.push({window,report:view==='ot'?report:trimManpowerWeek(report,view)});
    }
    await client.query('COMMIT');
    client.release();client=null;
+   if(view!=='ot'){
+    const report=joinManpowerReports(parts,filters,view),fleetSites=new Set(report.otSites.filter(s=>siteAllowed(req.logBookScope,s.site)).map(s=>s.siteKey));
+    return {...report,...(report.fleet?{fleet:report.fleet.filter(m=>fleetSites.has(m.siteKey)),fleetWork:report.fleetWork.filter(w=>fleetSites.has(w.siteKey))}:{}),
+     ...(report.attendanceShifts?{attendanceShifts:report.attendanceShifts.filter(s=>siteAllowed(req.logBookScope,s.siteKey))}:{}),
+     otSites:report.otSites.filter(s=>siteAllowed(req.logBookScope,s.site)),attendanceSites:report.attendanceSites.filter(s=>siteAllowed(req.logBookScope,s.site)),generatedAt:new Date().toISOString()};
+   }
    const report=joinOtReports(parts,filters);
    return {...report,otSites:report.otSites.filter(s=>siteAllowed(req.logBookScope,s.site)),attendanceSites:report.attendanceSites.filter(s=>siteAllowed(req.logBookScope,s.site)),attendanceShifts:report.attendanceShifts.filter(s=>siteAllowed(req.logBookScope,s.siteKey)),generatedAt:new Date().toISOString()};
   }catch(error){if(client)await client.query('ROLLBACK').catch(()=>{});throw error;}
