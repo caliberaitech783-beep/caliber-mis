@@ -1,21 +1,25 @@
 import {canonicalSiteName} from '../../shared/site-location.mjs';
-import {manpowerFilters,buildManpowerReport,attendanceWindows,joinAttendanceReports,pendingSiteDays,lockedSiteDays,otHistoryWindows,otHistorySummary,otYearWindows,otDriverTally,OT_HISTORY_DAYS} from '../rules/manpower-report.mjs';
+import {manpowerFilters,buildManpowerReport,attendanceWindows,joinAttendanceReports,joinOtReports,pendingSiteDays,lockedSiteDays,otHistoryWindows,otHistorySummary,otYearWindows,otDriverTally,OT_HISTORY_DAYS} from '../rules/manpower-report.mjs';
 import {siteAllowed,filterLogBookSites,requireLogBookSite} from '../../shared/log-book-access.mjs';
 import {directLane,reportKey} from '../services/report-lane.mjs';
 import {linkVlbTripHandovers} from '../../shared/vlb-trip-handover.mjs';
 import {requireHrAttendance} from './hr-attendance-access.mjs';
-import {HISTORY_CARD_FIELDS,ATTENDANCE_BATCH_COLUMNS,attendanceDayStoreEnabled,cardSignatures,lockedDayCards} from '../services/attendance-day-store.mjs';
+import {HISTORY_CARD_FIELDS,ATTENDANCE_CARD_FIELDS,ATTENDANCE_BATCH_COLUMNS,attendanceDayStoreEnabled,cardSignatures,lockedDayCards} from '../services/attendance-day-store.mjs';
 
 const todayIst=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 // Slim read for OT look-backs: only the card fields that decide a duty, from all three log books.
-async function slimCards(client,range,sites,fields=HISTORY_CARD_FIELDS){
+// withBatches adds each card's batches (for the Source batches column and the batch filter).
+const CARD_BATCHES=`COALESCE((SELECT jsonb_agg(jsonb_build_object('id',b.id,'name',b.name,'closed_at',b.closed_at))
+     FROM mis_vlb_batch_entries e JOIN mis_vlb_batches b ON b.id=e.batch_id
+     WHERE e.logbook_id=l.id AND b.archived_at IS NULL AND b.deleted_at IS NULL),'[]'::jsonb)`;
+async function slimCards(client,range,sites,fields=HISTORY_CARD_FIELDS,{withBatches=false,tooLarge='Earlier duty history is too large to read for this selection. Open one site and try again.'}={}){
  const {rows}=await client.query(`SELECT l.id,l.book_no,l.book_type,l.book_date::text,l.site,l.asset_id,
   (SELECT COALESCE(jsonb_object_agg(field.key,field.value),'{}'::jsonb) FROM jsonb_each(l.data) AS field WHERE field.key=ANY($4::text[])) AS data,
-  '[]'::jsonb AS batches
+  ${withBatches?CARD_BATCHES:"'[]'::jsonb"} AS batches
   FROM mis_log_books l WHERE l.book_type IN ('vehicle','equipment','lmv') AND l.deleted_at IS NULL AND l.book_date>=$$2026-11-01$$
   AND l.book_date BETWEEN $1 AND $2 AND ($3::text[] IS NULL OR l.site=ANY($3::text[]))
   ORDER BY l.book_date,l.id LIMIT 50001`,[range.contextFrom,range.contextTo,sites,fields]);
- if(rows.length>50000)throw Object.assign(new Error('Earlier duty history is too large to read for this selection. Open one site and try again.'),{status:400});
+ if(rows.length>50000)throw Object.assign(new Error(tooLarge),{status:400});
  return rows;
 }
 // What the register reads of a duty line and of a presence line.
@@ -35,6 +39,7 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
    const filters=manpowerFilters(req.query);
    if(filters.site)requireLogBookSite(req.logBookScope,filters.site);
    await ensureBooks();
+   if(req.query.view==='ot')return res.set('Cache-Control','private, no-store').json(await readOt(req,filters));
    const body=await lane.run(reportKey('manpower',req),async()=>{
    let client;
    try{
@@ -73,6 +78,37 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
    });
    res.set('Cache-Control','private, no-store').json(body);
   }catch(error){if(error.status)return res.status(error.status).json({error:error.message});next(error);}
+ });
+ // OT & Multiple Duties (its tab and dashboard Sr 5): one week of cards at a time from one snapshot, each week with its
+ // adjoining days, so a month of every site stays under the card read limit. Only the card fields that decide a duty are
+ // read, with each card's batches. Every saved card counts, as before; open batches are not left out here.
+ const readOt=(req,filters)=>lane.run(reportKey('manpower-ot',req),async()=>{
+  let client;
+  try{
+   client=await pool.connect();
+   await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+   let sites=await filterLogBookSites(client,req.logBookScope);
+   if(filters.site){if(sites===null)sites=(await client.query('SELECT DISTINCT site FROM mis_log_books WHERE book_date BETWEEN $1 AND $2',[filters.contextFrom,filters.contextTo])).rows.map(r=>r.site);sites=sites.filter(site=>canonicalSiteName(site)===canonicalSiteName(filters.site));}
+   const {rows:attendance}=await client.query(`SELECT book_date::text AS date,site,shift,employee_id,asset_id,reason,remarks
+    FROM mis_shift_attendance WHERE book_date BETWEEN $1 AND $2 AND ($3::text[] IS NULL OR site=ANY($3::text[]))
+    ORDER BY book_date,site,shift,employee_id LIMIT 50001`,
+   [filters.from,filters.to,filters.site?[canonicalSiteName(filters.site)]:req.logBookScope.sites]);
+   if(attendance.length>50000)throw Object.assign(new Error('This range contains too many attendance entries. Select a shorter date range.'),{status:400});
+   const masters=await reportMasters(client);
+   const batches=(await client.query(`SELECT id,name,site,book_date::text AS report_date,closed_at,shift,stage FROM mis_vlb_batches
+    WHERE deleted_at IS NULL AND archived_at IS NULL AND book_date BETWEEN $1 AND $2`,[filters.from,filters.to])).rows.filter(b=>siteAllowed(req.logBookScope,b.site));
+   const present=attendance.filter(r=>siteAllowed(req.logBookScope,r.site)),parts=[];
+   for(const window of attendanceWindows(filters.from,filters.to)){
+    const range=manpowerFilters({...filters,...window}),rows=(await slimCards(client,range,sites,ATTENDANCE_CARD_FIELDS,{withBatches:true,tooLarge:'One week of saved cards is too large to read. Open one site and try again.'})).filter(r=>siteAllowed(req.logBookScope,r.site));
+    const vehicles=linkVlbTripHandovers(rows.filter(r=>r.book_type==='vehicle'));
+    parts.push({window,report:buildManpowerReport({records:[...vehicles,...rows.filter(r=>r.book_type!=='vehicle')],attendance:present.filter(r=>r.date>=window.from&&r.date<=window.to),...masters,batches,filters:range,parts:'ot'})});
+   }
+   await client.query('COMMIT');
+   client.release();client=null;
+   const report=joinOtReports(parts,filters);
+   return {...report,otSites:report.otSites.filter(s=>siteAllowed(req.logBookScope,s.site)),attendanceSites:report.attendanceSites.filter(s=>siteAllowed(req.logBookScope,s.site)),attendanceShifts:report.attendanceShifts.filter(s=>siteAllowed(req.logBookScope,s.siteKey)),generatedAt:new Date().toISOString()};
+  }catch(error){if(client)await client.query('ROLLBACK').catch(()=>{});throw error;}
+  finally{client?.release();}
  });
  // Attendance Batch-wise and Month-wise: the same duties as the full report, without the card data, batch list per card,
  // trip-handover links and tables those two screens never show. Trip counts come from each card's own trip rows, as in

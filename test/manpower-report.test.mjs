@@ -124,7 +124,7 @@ const lockedBatches=(open=[])=>Array.from({length:17},(_,i)=>'2026-11-'+String(i
 // The card signature read of the stored locked days: count, id sum and revision sum per card site and date.
 const signatureRows=(cards,[from,to,sites])=>{const out=new Map();for(const c of cards){if(c.book_date<from||c.book_date>to||sites&&!sites.includes(c.site))continue;const k=c.site+'|'+c.book_date,row=out.get(k)||{site:c.site,date:c.book_date,n:0,ids:0,revs:0};row.n++;row.ids+=Number(c.id);row.revs+=Number(c.revision||1);out.set(k,row);}return [...out.values()].map(r=>({...r,ids:String(r.ids),revs:String(r.revs)}));};
 function apiHarness(scope={sites:['sasti ob']},cards=[card()],{batches=[]}={}){
- const handlers={};const calls=[];let released=false;const client={async query(sql,args){calls.push({sql,args});if(sql.startsWith('SELECT DISTINCT site'))return {rows:[{site},{site:'Jayant OC'}]};if(sql.includes('GROUP BY site,book_date'))return {rows:signatureRows(cards,args)};if(sql.includes('SELECT l.id')&&sql.includes('unnest('))return {rows:cards.filter(c=>args[0].some((name,i)=>name===c.site&&args[1][i]===c.book_date))};if(sql.includes('SELECT l.id'))return {rows:cards};if(sql.includes('FROM mis_vlb_batches'))return {rows:typeof batches==='function'?batches():batches};if(sql.startsWith('SELECT id,master_name'))return {rows:[...assets.map(record_data=>({id:record_data.id,master_name:'Equipment master',record_data})),...employees.map(record_data=>({id:record_data.id,master_name:'Employee master',record_data})),...shifts.map(record_data=>({id:record_data.id,master_name:'Shift Master',record_data}))]};return {rows:[]};},release(){released=true;}};
+ const handlers={};const calls=[];let released=false;const client={async query(sql,args){calls.push({sql,args});if(sql.startsWith('SELECT DISTINCT site'))return {rows:[{site},{site:'Jayant OC'}]};if(sql.includes('GROUP BY site,book_date'))return {rows:signatureRows(cards,args)};if(sql.includes('SELECT l.id')&&sql.includes('unnest('))return {rows:cards.filter(c=>args[0].some((name,i)=>name===c.site&&args[1][i]===c.book_date))};if(sql.includes('SELECT l.id'))return {rows:Array.isArray(args?.[3])?cards.map(c=>({...c,data:Object.fromEntries(Object.entries(c.data).filter(([k])=>args[3].includes(k)))})):cards};if(sql.includes('FROM mis_vlb_batches'))return {rows:typeof batches==='function'?batches():batches};if(sql.startsWith('SELECT id,master_name'))return {rows:[...assets.map(record_data=>({id:record_data.id,master_name:'Equipment master',record_data})),...employees.map(record_data=>({id:record_data.id,master_name:'Employee master',record_data})),...shifts.map(record_data=>({id:record_data.id,master_name:'Shift Master',record_data}))]};return {rows:[]};},release(){released=true;}};
  const protect=[()=>{},()=>{},()=>{}];registerManpowerReports({get(path,...steps){if(path==='/api/integrations/hr/attendance')assert.equal(steps.length,2);else assert.deepEqual(steps.slice(0,3),protect);handlers[path]=steps.at(-1);}},{pool:{connect:async()=>client},protect,ensureBooks:async()=>{},withHandovers:async(_,rows)=>rows,today:()=>'2026-11-12'});
  return {calls,async run(query={from:date,to:date},path='/api/reports/manpower'){let result,status=200;const headers={};await handlers[path]({query,logBookScope:scope},{set(k,v){headers[k]=v;return this;},status(s){status=s;return this;},json(value){result=value;}},e=>{throw e;});return {result,status,headers,released};}};
 }
@@ -164,6 +164,26 @@ test('attendance over a month is read a week at a time and joins to the same reg
  assert.deepEqual(r.result.filters,manpowerFilters(range));
  const hr=await h.run(range,'/api/integrations/hr/attendance');
  assert.deepEqual(hr.result.ot,one.ot.map(e=>({site:e.site,siteKey:e.siteKey,employeeId:e.employeeId,schedule:e.schedule})),'an OT case across the week edge is sent once');
+});
+test('OT & Multiple Duties over a month is read a week at a time and matches one build of every saved card',async()=>{
+ // 17 Nov 2026: dashboard Sr 5 OT & Multiple Duties for every site from 1 to 16 Nov passed 50,000 cards in one read and stopped.
+ const on=(id,day,shift,patch={})=>card(id,shift,{bookDate:day,...patch});
+ const cards=[on(1,'2026-11-02',1),on(2,'2026-11-07',3),on(3,'2026-11-08',1),on(4,'2026-11-10',2),on(5,'2026-11-16',1,{employeeId:22,caliberId:'102'})];
+ // 8 Nov Shift 1 is still open: the OT view counts every saved card, as it did before.
+ const range={from:'2026-11-01',to:'2026-11-16'},batches=lockedBatches([site+'|2026-11-08|S1']);
+ const one=buildManpowerReport({records:linkVlbTripHandovers(cards),assets,employees,shifts,filters:manpowerFilters(range),batches});
+ assert.ok(one.ot.some(e=>e.dutyDates.includes('2026-11-07')&&e.dutyDates.includes('2026-11-08')),'the fixture has an OT case across the week edge, into an open shift');
+ const h=apiHarness({sites:null},cards,{batches}),r=await h.run({...range,site:'',shift:'',batch:'',employee:'',asset:'',view:'ot'});
+ assert.equal(r.status,200);assert.equal(r.released,true);assert.equal(h.calls.at(-1).sql,'COMMIT');
+ const reads=h.calls.filter(c=>c.sql.includes('SELECT l.id'));
+ assert.deepEqual(reads.map(c=>[c.args[0],c.args[1]]),[['2026-11-01','2026-11-08'],['2026-11-07','2026-11-15'],['2026-11-14','2026-11-17']],'three weeks, each with its adjoining days');
+ for(const c of reads){assert.match(c.sql,/mis_vlb_batch_entries/,'each card comes with its batches');assert.ok(!c.sql.includes("l.data-'manualAttachments'"),'only the duty fields are read');}
+ assert.deepEqual(r.result.ot,one.ot,'an OT case across the week edge is listed once');
+ assert.deepEqual(r.result.otDuties,one.otDuties);assert.deepEqual(r.result.otSites,one.otSites);assert.deepEqual(r.result.exceptions,one.exceptions);
+ assert.deepEqual(r.result.options.employees,one.options.employees);assert.deepEqual(r.result.options.assets,one.options.assets);assert.deepEqual(r.result.options.sites,one.options.sites);
+ assert.deepEqual(r.result.filters,manpowerFilters(range));
+ const tooMany=apiHarness({sites:null},Array.from({length:50001},(_,i)=>on(i+1,'2026-11-02',1)),{batches});
+ const stop=await tooMany.run({...range,view:'ot'});assert.equal(stop.status,400);assert.match(stop.result.error,/One week of saved cards is too large/);
 });
 test('locked days only (owner, 16 Nov 2026): an open, reopened or missing shift keeps the whole site-day out until it is locked again',async()=>{
  let open=['Sasti OC|2026-11-10|S3'],drop='';

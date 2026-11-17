@@ -578,7 +578,7 @@ export default function ManpowerReports({session,reportId='manpower',onSelect,Re
  // The OT view always loads every assigned site; the Site selection there narrows the list of sites.
  // The attendance register reads every shift of every site: a day is coded from all its shifts and a person's other sites.
  const register=['attendance-batch','attendance-month'].includes(reportId);
- const query=useMemo(()=>new URLSearchParams(register?{from:filters.from,to:filters.to,view:'attendance'}:reportId==='ot'?{...filters,site:''}:filters).toString(),[filters,reportId,register]);
+ const query=useMemo(()=>new URLSearchParams(register?{from:filters.from,to:filters.to,view:'attendance'}:reportId==='ot'?{...filters,site:'',view:'ot'}:filters).toString(),[filters,reportId,register]);
  // The register has its own lighter read (only its duties, presence and batches); `view` keeps its result apart from the full report's.
  const source=(register?'/api/reports/manpower/attendance?':'/api/reports/manpower?')+query;
  const valid=filters.from>=OPERATIONAL_START&&filters.to>=filters.from&&Date.parse(filters.to)-Date.parse(filters.from)<=30*86400000;
