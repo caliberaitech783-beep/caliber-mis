@@ -359,20 +359,42 @@ export function joinOtReports(parts,filters){
 }
 // The other Manpower tabs read week by week too; each gets only the tables it shows. Card, duty and machine-shift lines are
 // dated inside their own week, so they are joined as they are; the fleet list is the same machines each week, kept once.
-export const MANPOWER_VIEWS={category:['details','summary'],reconciliation:['fleet','fleetWork'],performance:['performance'],equipment:['attendanceEquipment','attendanceShifts']};
+// Manpower by Category (17 Nov 2026): a month of every site was 59,000 card lines (38 MB) so the page could count them.
+// 'category-counts' sends the counts instead (manpowerCategoryCells) with the make and model list; 'category-cards' lists the
+// cards of one day when a date is opened. 'category' stays the old full read for a page opened before the change.
+export const MANPOWER_VIEWS={category:['details','summary'],'category-counts':['summary','cells'],'category-cards':['details'],reconciliation:['fleet','fleetWork'],performance:['performance'],equipment:['attendanceEquipment','attendanceShifts']};
 // A week's build keeps only what its tab and the join use, so a month of every site is not held in memory five times over.
 export function trimManpowerWeek(report,view){
  const keep=new Set(MANPOWER_VIEWS[view]),out={...report,otDuties:[],shiftAttendance:[]};
  for(const name of ['summary','fleetWork','attendanceEquipment'])if(!keep.has(name))out[name]=[];
- // The totals still count every week's machines, people and duties.
- if(!keep.has('details'))out.details=report.details.map(r=>({assetKey:r.assetKey,employeeKey:r.employeeKey}));
+ // The totals and the category counts still see every week's machines, people and duties.
+ if(!keep.has('details'))out.details=report.details.map(r=>({siteKey:r.siteKey,date:r.date,shift:r.shift,equipment:r.equipment,assetKey:r.assetKey,employeeKey:r.employeeKey,dutyKey:r.dutyKey}));
  if(!keep.has('performance'))out.performance=report.performance.map(()=>({}));
  return out;
 }
-export function joinManpowerReports(parts,filters,view){
+// Every count the Manpower by Category steps show, worked out here from the cards' keys: different machines, different
+// employees, duties and saved cards for each site, date, shift and equipment category, and for every total of them ('*' =
+// all sites / all dates / all shifts / all categories). One line: [siteKey,date,shift,equipment,machines,employees,duties,cards].
+// A card left out of totals carries no keys, so it adds a saved card but no machine, employee or duty, as on the page before.
+export const MANPOWER_ALL='*';
+export function manpowerCategoryCells(details){
+ const cells=new Map(),ALL=MANPOWER_ALL;
+ for(const r of details){
+  const equipment=r.equipment||'Group missing in master';
+  for(const site of [r.siteKey,ALL])for(const date of [r.date,ALL])for(const shift of [r.shift,ALL])for(const group of [equipment,ALL]){
+   const k=site+'\u0001'+date+'\u0001'+shift+'\u0001'+group;let c=cells.get(k);
+   if(!c)cells.set(k,c={line:[site,date,shift,group],machines:new Set(),employees:new Set(),duties:new Set(),cards:0});
+   if(r.assetKey)c.machines.add(r.assetKey);if(r.employeeKey)c.employees.add(r.employeeKey);if(r.dutyKey)c.duties.add(r.dutyKey);c.cards++;
+  }
+ }
+ return [...cells.values()].map(c=>[...c.line,c.machines.size,c.employees.size,c.duties.size,c.cards]);
+}
+// cells: the Category counts when they were already worked out (on a worker thread, from these weeks' details).
+export function joinManpowerReports(parts,filters,view,{cells}={}){
  const lines=field=>parts.flatMap(({report})=>report[field]||[]);
  const {otDuties,ot,attendanceEquipment,attendanceShifts,...joined}=joinOtReports(parts,filters),details=lines('details');
  const tables={details,summary:lines('summary'),performance:lines('performance'),fleetWork:lines('fleetWork'),attendanceEquipment,attendanceShifts,
+  cells:MANPOWER_VIEWS[view].includes('cells')?cells||manpowerCategoryCells(details):undefined,
   fleet:[...new Map(lines('fleet').map(m=>[m.siteKey+'|'+m.key,m])).values()]};
  const totals={savedRecords:details.length,assets:unique(details.map(r=>r.assetKey)).length,employees:unique(details.map(r=>r.employeeKey)).length,duties:tables.performance.length,exceptions:joined.exceptions.filter(e=>e.logBook!=='LMV').length};
  return {...joined,totals,...Object.fromEntries(MANPOWER_VIEWS[view].map(name=>[name,tables[name]]))};

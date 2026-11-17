@@ -44,4 +44,9 @@ test('manpower HTTP report reads scoped saved books and batches from PostgreSQL'
   assert.deepEqual(weekly.totals,payload.totals,view+' totals');assert.deepEqual(weekly.otSites,payload.otSites);assert.deepEqual(weekly.options.batches,payload.options.batches);assert.equal(weekly.otDuties,undefined);
  }
  const category=await (await fetch(url+'&view=category&batch='+batchId,{headers:{Authorization:'Bearer fixture'}})).json();assert.deepEqual(category.details,filtered.details);assert.match(category.details[0].batches,/TEST BATCH/);
+ // Manpower by Category now gets the counts of every card (built on a worker thread) and one date's cards on their own.
+ const {manpowerCategoryCells}=await import('../server/rules/manpower-report.mjs');
+ const counts=await (await fetch(url+'&view=category-counts',{headers:{Authorization:'Bearer fixture'}})).json();
+ assert.deepEqual(counts.cells,manpowerCategoryCells(payload.details));assert.deepEqual(counts.summary,payload.summary);assert.deepEqual(counts.totals,payload.totals);assert.equal(counts.details,undefined);
+ const cards=await (await fetch(url+'&view=category-cards',{headers:{Authorization:'Bearer fixture'}})).json();assert.deepEqual(cards.details,payload.details);
 });

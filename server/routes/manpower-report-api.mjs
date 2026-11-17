@@ -1,8 +1,9 @@
 import {canonicalSiteName} from '../../shared/site-location.mjs';
-import {manpowerFilters,buildManpowerReport,attendanceWindows,joinAttendanceReports,joinOtReports,joinManpowerReports,trimManpowerWeek,MANPOWER_VIEWS,pendingSiteDays,lockedSiteDays,otHistoryWindows,otHistorySummary,otYearWindows,otDriverTally,OT_HISTORY_DAYS} from '../rules/manpower-report.mjs';
+import {manpowerFilters,buildManpowerReport,attendanceWindows,joinAttendanceReports,joinOtReports,joinManpowerReports,MANPOWER_VIEWS,pendingSiteDays,lockedSiteDays,otHistoryWindows,otHistorySummary,otYearWindows,otDriverTally,OT_HISTORY_DAYS} from '../rules/manpower-report.mjs';
 import {siteAllowed,filterLogBookSites,requireLogBookSite} from '../../shared/log-book-access.mjs';
 import {directLane,reportKey} from '../services/report-lane.mjs';
 import {linkVlbTripHandovers} from '../../shared/vlb-trip-handover.mjs';
+import {buildReportInWorker} from '../services/report-build-pool.mjs';
 import {requireHrAttendance} from './hr-attendance-access.mjs';
 import {HISTORY_CARD_FIELDS,ATTENDANCE_CARD_FIELDS,ATTENDANCE_BATCH_COLUMNS,attendanceDayStoreEnabled,cardSignatures,lockedDayCards} from '../services/attendance-day-store.mjs';
 
@@ -35,12 +36,14 @@ async function reportMasters(client){
  return {assets:fromMaster(['Equipment master']),employees:fromMaster(MASTER_NAMES.slice(2)),shifts:fromMaster(['Shift Master'])};
 }
 
-export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandovers=async(_,rows)=>rows,today=todayIst,lane=directLane,useDayStore=attendanceDayStoreEnabled()}){
+export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandovers=async(_,rows)=>rows,today=todayIst,lane=directLane,useDayStore=attendanceDayStoreEnabled(),buildInWorker=buildReportInWorker}){
  app.get('/api/reports/manpower',...protect,async(req,res,next)=>{
   try{
    const filters=manpowerFilters(req.query);
    if(filters.site)requireLogBookSite(req.logBookScope,filters.site);
    await ensureBooks();
+   // The Category card list is one day's cards, read when a date is opened; a longer list is the old 38 MB read.
+   if(req.query.view==='category-cards'&&filters.from!==filters.to)return res.status(400).json({error:'The saved card list is read one day at a time. Open a date first.'});
    if(req.query.view==='ot'||Object.hasOwn(MANPOWER_VIEWS,req.query.view))return res.set('Cache-Control','private, no-store').json(await readWeeks(req,filters,req.query.view));
    const body=await lane.run(reportKey('manpower',req),async()=>{
    let client;
@@ -100,17 +103,19 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
    const masters=await reportMasters(client);
    const batches=(await client.query(`SELECT id,name,site,book_date::text AS report_date,closed_at,shift,stage FROM mis_vlb_batches
     WHERE deleted_at IS NULL AND archived_at IS NULL AND book_date BETWEEN $1 AND $2`,[filters.from,filters.to])).rows.filter(b=>siteAllowed(req.logBookScope,b.site));
-   const present=attendance.filter(r=>siteAllowed(req.logBookScope,r.site)),parts=[];
+   const present=attendance.filter(r=>siteAllowed(req.logBookScope,r.site)),parts=[],mastersJson=JSON.stringify(masters);
    for(const window of attendanceWindows(filters.from,filters.to)){
     const range=manpowerFilters({...filters,...window}),rows=(await slimCards(client,range,sites,view==='ot'?ATTENDANCE_CARD_FIELDS:REPORT_CARD_FIELDS,{withBatches:true,tooLarge:'One week of saved cards is too large to read. Open one site and try again.'})).filter(r=>siteAllowed(req.logBookScope,r.site));
-    const vehicles=linkVlbTripHandovers(rows.filter(r=>r.book_type==='vehicle'));
-    const report=buildManpowerReport({records:[...vehicles,...rows.filter(r=>r.book_type!=='vehicle')],attendance:present.filter(r=>r.date>=window.from&&r.date<=window.to),...masters,batches,filters:range,parts:view==='ot'?'ot':'all'});
-    parts.push({window,report:view==='ot'?report:trimManpowerWeek(report,view)});
+    // The week is built on a worker thread (buildManpowerWeek), so card saving is not frozen while a month is read;
+    // the cards and masters go over as JSON text, the cheapest hand-over for the main thread.
+    parts.push({window,report:await buildInWorker('manpower-week',{rowsJson:JSON.stringify(rows),attendance:present.filter(r=>r.date>=window.from&&r.date<=window.to),mastersJson,batches,filters:range,view})});
    }
    await client.query('COMMIT');
    client.release();client=null;
    if(view!=='ot'){
-    const report=joinManpowerReports(parts,filters,view),fleetSites=new Set(report.otSites.filter(s=>siteAllowed(req.logBookScope,s.site)).map(s=>s.siteKey));
+    // The Category counts of every card are worked out on the worker too (about 1.3 s for a month of every site).
+    const cells=MANPOWER_VIEWS[view].includes('cells')?await buildInWorker('manpower-cells',JSON.stringify(parts.flatMap(({report})=>report.details))):undefined;
+    const report=joinManpowerReports(parts,filters,view,{cells}),fleetSites=new Set(report.otSites.filter(s=>siteAllowed(req.logBookScope,s.site)).map(s=>s.siteKey));
     return {...report,...(report.fleet?{fleet:report.fleet.filter(m=>fleetSites.has(m.siteKey)),fleetWork:report.fleetWork.filter(w=>fleetSites.has(w.siteKey))}:{}),
      ...(report.attendanceShifts?{attendanceShifts:report.attendanceShifts.filter(s=>siteAllowed(req.logBookScope,s.siteKey))}:{}),
      otSites:report.otSites.filter(s=>siteAllowed(req.logBookScope,s.site)),attendanceSites:report.attendanceSites.filter(s=>siteAllowed(req.logBookScope,s.site)),generatedAt:new Date().toISOString()};
