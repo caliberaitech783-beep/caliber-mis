@@ -155,7 +155,7 @@ test('manpower views route to their dedicated report with shared export controls
 });
 
 test('manpower reports export complete selected data, separate shift hours, and retain OT colours and reasons',async()=>{
- const filters={from:'2026-11-10',to:'2026-11-10',site:'',shift:'',batch:'',employee:'',asset:''},query=new URLSearchParams(filters).toString(),otQuery=new URLSearchParams({...filters,view:'ot'}).toString();
+ const filters={from:'2026-11-10',to:'2026-11-10',site:'',shift:'',batch:'',employee:'',asset:''},otQuery=new URLSearchParams({...filters,view:'ot'}).toString(),viewQuery=view=>new URLSearchParams({...filters,view}).toString(),query=viewQuery('category');
  const rows=Array.from({length:137},(_,id)=>({id,date:filters.from,site:'Sasti OC',shift:'S1',employeeId:'E'+id,employeeKey:'E'+id,siteKey:'sasti ob',category:id%2?'Volvo Driver':'Dumper Operator',dates:filters.from,employeeName:'Example',hours:0,trips:null,reason:'RED — Back-to-back OT',severity:'red',combinedHours:15,
   // Every third case started in Shift 3 (46), the rest in Shift 1 (91).
   startDate:filters.from,startShift:id%3?'S1':'S3',
@@ -169,7 +169,7 @@ test('manpower reports export complete selected data, separate shift hours, and 
   for(const section of sections.filter(n=>!['manpower-review','manpower-sites'].includes(n.props.category)))assert.equal(section.props.rows.length,137,'export receives every matching row');}
  // Shift Performance in steps (owner, 16 Nov 2026): sites, date by shift, equipment category, then the duties. All sites,
  // all dates and All categories opened hand every duty to the export.
- {const closedPf={siteKey:'',scope:false,date:'',shift:'',equipment:''},state=pf=>[filters,{query,payload},'',false,0,{},false,false,'',{key:'',data:null,error:''},'',undefined,undefined,undefined,undefined,pf];
+ {const closedPf={siteKey:'',scope:false,date:'',shift:'',equipment:''},state=pf=>[filters,{query:viewQuery('performance'),payload},'',false,0,{},false,false,'',{key:'',data:null,error:''},'',undefined,undefined,undefined,undefined,pf];
   const first=(await component('manpower-reports.jsx','ManpowerReports',{OPERATIONAL_START:'2026-11-01'},state(closedPf)))({session:{token:'test'},reportId:'employee',onSelect:()=>{}});
   assert.deepEqual(nodes(first,ReportSection).map(n=>n.props.category),['manpower-performance-sites','manpower-review'],'only the site lines before a site is opened');
   const all=(await component('manpower-reports.jsx','ManpowerReports',{OPERATIONAL_START:'2026-11-01'},state({...closedPf,siteKey:'*',scope:true,equipment:'*'})))({session:{token:'test'},reportId:'employee',onSelect:()=>{}});
@@ -274,12 +274,12 @@ test('manpower reports export complete selected data, separate shift hours, and 
   name().render(row(view,'E1')).props.onClick();assert.deepEqual(categories(view()).slice(-2),['manpower-ot-drivers','manpower-ot'],'pressing the name again closes the history');}
  // Cards to correct: one line on the OT and attendance pages, the full list on Manpower by Category.
  {const flawed={...payload,exceptions:[{id:'x',date:filters.from,site:'Sasti OC',siteKey:'sasti ob',shift:'S1',logBook:'VLB',reason:'Equipment master match is missing.'}],attendanceEquipment:[],attendanceSites:[],attendanceShifts:[]};
-  const page=async reportId=>(await component('manpower-reports.jsx','ManpowerReports',{OPERATIONAL_START:'2026-11-01'},[filters,{query:reportId==='ot'?otQuery:query,payload:flawed},'',false,0,{}]))({session:{token:'test'},reportId,onSelect:()=>{}});
+  const page=async reportId=>(await component('manpower-reports.jsx','ManpowerReports',{OPERATIONAL_START:'2026-11-01'},[filters,{query:reportId==='ot'?otQuery:viewQuery({attendance:'equipment',manpower:'category'}[reportId]),payload:flawed},'',false,0,{}]))({session:{token:'test'},reportId,onSelect:()=>{}});
   for(const reportId of ['ot','attendance']){const tree=await page(reportId),line=nodes(tree,'details').find(n=>n.props.className==='mp-notes mp-review');assert.equal(nodes(line,'summary')[0].props.children.join(''),'1 saved card needs correction (list for the MIS team)',reportId);assert.deepEqual(nodes(line,ReportSection).map(n=>[n.props.category,n.props.rows.length,n.props.recordDateFilter]),[['manpower-review',1,false]]);}
   const full=await page('manpower');assert.equal(nodes(full,'details').filter(n=>n.props.className==='mp-notes mp-review').length,0);assert.equal(nodes(full,ReportSection).at(-1).props.category,'manpower-review');
   assert.equal(nodes((await ot())(),'details').filter(n=>n.props.className==='mp-notes mp-review').length,0,'no line when nothing needs correction');}
- const tree=render({session:{token:'test'},reportId:'employee',onSelect:()=>{}});nodes(tree,'input').find(n=>n.props.type==='date').props.onChange({target:{value:'2026-11-09'}});
- assert.equal(nodes(render({session:{token:'test'},reportId:'employee',onSelect:()=>{}}),ReportSection).length,0,'changed filters cannot export stale results');
+ const tree=render({session:{token:'test'},reportId:'manpower',onSelect:()=>{}});assert.ok(nodes(tree,ReportSection).length>0);nodes(tree,'input').find(n=>n.props.type==='date').props.onChange({target:{value:'2026-11-09'}});
+ assert.equal(nodes(render({session:{token:'test'},reportId:'manpower',onSelect:()=>{}}),ReportSection).length,0,'changed filters cannot export stale results');
 });
 
 
@@ -299,7 +299,7 @@ test('shift attendance equipment wise opens sites, then date by shift, then equi
  const shiftBatches=[batch('dhoptala','S1','none'),batch('dhoptala','S2','not_due'),batch('dhoptala','S3','not_due'),batch('jayant ob','S1','closed','J1'),batch('jayant ob','S2','lmv_open','JAYANT-S2'),batch('jayant ob','S3','vlb_open','JAYANT-S3'),batch('sasti ob','S1','closed','S1'),batch('sasti ob','S2','elb_open','SASTI-S2'),batch('sasti ob','S3','none')];
  const payload=(attendanceSites=sites,attendanceShifts=shiftBatches,attendanceEquipment=rows)=>({summary:[],details:[],performance:[],ot:[],otSites:[],shiftAttendance:[],attendanceEquipment,attendanceSites,attendanceShifts,exceptions:[],totals:{},notes:[],options:{},generatedAt:'2026-11-10T10:00:00Z'});
  const blank={key:'',data:null,error:''},closed={siteKey:'',mark:'',scope:false,at:'',date:'',shift:'',equipment:'',flag:''};
- const mount=async({pick,chosen=filters,data=payload(),tally=blank,driverOpen=''}={})=>{const render=await component('manpower-reports.jsx','ManpowerReports',{OPERATIONAL_START:'2026-11-01',DateShiftGrid,dateShiftGrid:grid.dateShiftGrid},[chosen,{query:new URLSearchParams(chosen).toString(),payload:data},'',false,0,{},false,false,'',tally,driverOpen,...(pick?[{...closed,...pick}]:[])]);return ()=>render({session:{token:'test'},reportId:'attendance',onSelect:()=>{}});};
+ const mount=async({pick,chosen=filters,data=payload(),tally=blank,driverOpen=''}={})=>{const render=await component('manpower-reports.jsx','ManpowerReports',{OPERATIONAL_START:'2026-11-01',DateShiftGrid,dateShiftGrid:grid.dateShiftGrid},[chosen,{query:new URLSearchParams({...chosen,view:'equipment'}).toString(),payload:data},'',false,0,{},false,false,'',tally,driverOpen,...(pick?[{...closed,...pick}]:[])]);return ()=>render({session:{token:'test'},reportId:'attendance',onSelect:()=>{}});};
  const buttons=(tree,name)=>nodes(tree,'button').filter(n=>new RegExp('(^| )'+name+'( |$)').test(n.props.className||''));
  const categories=tree=>nodes(tree,ReportSection).map(n=>n.props.category);
  const step=(tree,category)=>nodes(tree,ReportSection).find(n=>n.props.category===category);
@@ -426,7 +426,7 @@ test('shift attendance equipment wise opens sites, then date by shift, then equi
 });
 
 test('manpower by category opens sites, then date by shift, then equipment category, and the two lists follow',async()=>{
- const filters={from:'2026-11-10',to:'2026-11-11',site:'',shift:'',batch:'',employee:'',asset:''},query=new URLSearchParams(filters).toString();
+ const filters={from:'2026-11-10',to:'2026-11-11',site:'',shift:'',batch:'',employee:'',asset:''},query=new URLSearchParams({...filters,view:'category'}).toString();
  const names={'sasti ob':'Sasti OC','jayant ob':'Jayant OC'};
  // Sasti: three machines, three employees, five duties on six cards (one card has no matched employee). Jayant: one of each.
  const card=(id,date,shift,equipment,door,employee,siteKey='sasti ob')=>({id,date,site:names[siteKey],siteKey,shift,equipment,door,assetKey:siteKey+'|'+door,employeeKey:employee,dutyKey:employee&&JSON.stringify([employee,siteKey,date,shift]),employeeId:employee,employeeName:'Example'});
@@ -461,7 +461,7 @@ test('manpower by category opens sites, then date by shift, then equipment categ
 });
 
 test('manpower by category reconciliation compares the fleet with saved cards, shift by shift, down to the machines',async()=>{
- const filters={from:'2026-11-10',to:'2026-11-10',site:'',shift:'',batch:'',employee:'',asset:''},query=new URLSearchParams(filters).toString();
+ const filters={from:'2026-11-10',to:'2026-11-10',site:'',shift:'',batch:'',employee:'',asset:''},query=new URLSearchParams({...filters,view:'reconciliation'}).toString();
  // Sasti fleet: three tippers and one excavator. Shift 1: V1 worked, V2 has a card with 0 trips and 0 km, X1 worked, V3 has no card,
  // and V9 (listed at another site) has a card here. Shift 2: only V1 worked, with 0 km written.
  const machine=(door,equipment)=>({siteKey:'sasti ob',key:'k'+door,door,equipment,makeModel:'Make Model'});

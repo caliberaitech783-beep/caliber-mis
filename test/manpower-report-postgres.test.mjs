@@ -37,4 +37,11 @@ test('manpower HTTP report reads scoped saved books and batches from PostgreSQL'
  assert.deepEqual(ot.ot,payload.ot);assert.deepEqual(ot.otDuties,payload.otDuties);assert.deepEqual(ot.otSites,payload.otSites);assert.deepEqual(ot.options.batches,payload.options.batches);
  assert.match(ot.ot[0].batches,/TEST BATCH/);
  const otBatch=await (await fetch(url+'&view=ot&batch='+batchId,{headers:{Authorization:'Bearer fixture'}})).json();assert.deepEqual(otBatch.ot,filtered.ot);
+ // The other four Manpower tabs read week by week as well and get only their own tables, the same as the full read.
+ for(const [view,tables] of Object.entries({category:['details','summary'],reconciliation:['fleet','fleetWork'],performance:['performance'],equipment:['attendanceEquipment','attendanceShifts']})){
+  const response=await fetch(url+'&view='+view,{headers:{Authorization:'Bearer fixture'}}),weekly=await response.json();assert.equal(response.status,200,view+' '+JSON.stringify(weekly));
+  for(const table of tables)assert.deepEqual(weekly[table],payload[table],view+' '+table);
+  assert.deepEqual(weekly.totals,payload.totals,view+' totals');assert.deepEqual(weekly.otSites,payload.otSites);assert.deepEqual(weekly.options.batches,payload.options.batches);assert.equal(weekly.otDuties,undefined);
+ }
+ const category=await (await fetch(url+'&view=category&batch='+batchId,{headers:{Authorization:'Bearer fixture'}})).json();assert.deepEqual(category.details,filtered.details);assert.match(category.details[0].batches,/TEST BATCH/);
 });
