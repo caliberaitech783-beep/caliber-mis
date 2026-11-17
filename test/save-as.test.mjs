@@ -78,3 +78,25 @@ test('a Save As window the browser refuses at once (same AbortError as Cancel) d
   await assert.rejects(chooseSaveTarget('x.xlsx',{showSaveFilePicker:async()=>{throw refusedAtOnce;}},edge(SAVE_AS_REFUSED_WITHIN_MS)),error=>saveCancelled(error));
   assert.equal(await chooseSaveTarget('x.xlsx',{showSaveFilePicker:async()=>{throw refusedAtOnce;}},edge(SAVE_AS_REFUSED_WITHIN_MS-1)),null);
 });
+
+test('the Claude app pane downloads straight away, and a failed write removes only an empty file and stops asking',async()=>{
+  // Owner, 17 Nov 2026 at 11:40: in the Claude app pane the Save As window opened, but the chosen file stayed at 0 bytes.
+  const paneWin={showSaveFilePicker:async()=>{throw new Error('must not be asked');},navigator:{userAgent:'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Claude/5.11492.5 Chrome/156.0.8078.75 Safari/537.36 MSIX'}};
+  assert.equal(saveAsAvailable(paneWin),false);
+  assert.equal(await chooseSaveTarget('step-1.xlsx',paneWin),null);
+  const chrome={showSaveFilePicker:async()=>null,navigator:{userAgent:'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36'}};
+  assert.equal(saveAsAvailable(chrome),true);
+  const denied=Object.assign(new Error('The request is not allowed'),{name:'NotAllowedError'});
+  const steps=[];
+  const emptyFile={name:'step-1.xlsx',createWritable:async()=>{throw denied;},getFile:async()=>({size:0}),remove:async()=>steps.push('removed empty file')};
+  const outcome=await saveToTarget(emptyFile,{},'step-1.xlsx',()=>steps.push('downloaded'),{win:chrome,record:null});
+  assert.deepEqual(steps,['downloaded','removed empty file']);
+  assert.equal(outcome.fallback,true);
+  assert.match(saveOutcomeMessage(outcome),/From now on this page downloads straight to Downloads\.$/);
+  assert.equal(saveAsAvailable(chrome),false,'the next export on this page goes straight to Downloads');
+  // A file that already holds data (an older report the user chose to replace) is never removed.
+  const kept=[];
+  const olderFile={name:'old.xlsx',createWritable:async()=>{throw denied;},getFile:async()=>({size:5120}),remove:async()=>kept.push('removed')};
+  await saveToTarget(olderFile,{},'old.xlsx',()=>{},{win:{},record:null});
+  assert.deepEqual(kept,[]);
+});

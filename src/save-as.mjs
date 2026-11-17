@@ -14,7 +14,14 @@ const FILE_TYPES={
 // Downloads instead, and this browser page is not asked again.
 export const SAVE_AS_REFUSED_WITHIN_MS=400;
 const refusingWindows=new WeakSet();
-export const saveAsAvailable=(win=globalThis.window)=>typeof win?.showSaveFilePicker==='function'&&!refusingWindows.has(win);
+// Owner, 17 Nov 2026 at 11:40, after the fix above went live: "Excel still not downloading". The Claude app's browser pane
+// now shows the Save As window, but the file chosen there cannot be written: it stays empty, 0 bytes, while the pane's
+// own storage writes fine. So the person found an empty file where they saved. That pane is known by "Claude/" in its
+// user agent and gets a plain download, which lands in Downloads. Any other browser whose chosen place fails is marked
+// the same way after the first failure (markSaveAsRefused), so its next export goes straight to Downloads.
+const claudeAppPane=win=>/\bClaude\/\d/.test(String(win?.navigator?.userAgent||''));
+export const markSaveAsRefused=(win=globalThis.window)=>{if(win&&typeof win==='object')refusingWindows.add(win);};
+export const saveAsAvailable=(win=globalThis.window)=>typeof win?.showSaveFilePicker==='function'&&!refusingWindows.has(win)&&!claudeAppPane(win);
 export const saveCancelled=error=>error?.name==='AbortError';
 
 /**
@@ -41,14 +48,15 @@ export async function chooseSaveTarget(fileName,win=globalThis.window,{now=()=>D
  * When the chosen place cannot be written (the same file open in Excel, a OneDrive or network folder that refuses,
  * no space), the file is downloaded to Downloads instead, so the user never ends with nothing (16 Nov 2026: "the Excel
  * file is not downloading after selecting the download location"). onWriteError hears why, for the diagnostics log.
- * The file the Save As window made is left as it is: it may be an older file the user chose to replace.
+ * The file the Save As window made is removed only while it is still empty (0 bytes); a file with data in it may be an
+ * older file the user chose to replace, and is left as it is. After a failed write this page downloads from then on.
  */
 // A write that has not finished in this time (a OneDrive or network folder that hangs, a virus check that never answers)
 // is given up and the file is downloaded instead (owner, 16 Nov 2026 at 22:30, after the fallback above: "Excel reports are
 // still not downloading in Smart Print").
 export const SAVE_WRITE_LIMIT_MS=20000;
 const tooSlow=()=>Object.assign(new Error('the folder you chose did not finish taking the file within '+SAVE_WRITE_LIMIT_MS/1000+' seconds'),{name:'TimeoutError'});
-export async function saveToTarget(target,blob,fileName,download,{onWriteError,limitMs=SAVE_WRITE_LIMIT_MS,record=recordDownload,title=''}={}){
+export async function saveToTarget(target,blob,fileName,download,{onWriteError,limitMs=SAVE_WRITE_LIMIT_MS,record=recordDownload,title='',win=globalThis.window}={}){
   if(!target){download(blob,fileName);return {saved:false,name:fileName};}
   let writable=null,timer=null;
   try{
@@ -59,11 +67,18 @@ export async function saveToTarget(target,blob,fileName,download,{onWriteError,l
     if(writable){try{await writable.abort?.();}catch{/* the write already failed */}}
     try{onWriteError?.(error);}catch{/* reporting never stops the file */}
     download(blob,fileName);
+    markSaveAsRefused(win);
+    await removeIfEmpty(target);
     return {saved:false,name:fileName,fallback:true,chosenName:target.name||fileName,reason:writeErrorText(error)};
   }finally{clearTimeout(timer);}
   // Download History keeps a copy, so a file saved in a folder can be opened again from the app.
   try{record?.(blob,target.name||fileName,{where:'folder',title});}catch{/* the history never stops the file */}
   return {saved:true,name:target.name||fileName};
+}
+
+// The empty file the Save As window made, so no 0-byte file is left where the person looks. Never a file with data in it.
+async function removeIfEmpty(target){
+  try{if(typeof target?.remove==='function'&&(await target.getFile()).size===0)await target.remove();}catch{/* leaving it is harmless */}
 }
 
 function writeErrorText(error){
@@ -78,7 +93,7 @@ function writeErrorText(error){
 /** The words for the notice after an export: where the file went, in words a site user can act on. */
 export function saveOutcomeMessage(outcome,formatName='Excel'){
   if(outcome?.saved)return `${formatName} saved as ${outcome.name} in the folder you chose. A file saved with Save As does not show in the browser's Downloads list: open that folder to find it.`;
-  if(outcome?.fallback)return `${formatName} could not be saved as ${outcome.chosenName} in the folder you chose (${outcome.reason}), so it was downloaded to your Downloads folder as ${outcome.name}.`;
+  if(outcome?.fallback)return `${formatName} could not be saved as ${outcome.chosenName} in the folder you chose (${outcome.reason}), so it was downloaded to your Downloads folder as ${outcome.name}. From now on this page downloads straight to Downloads.`;
   // Some browsers (the Claude app's browser pane) show no download bar, so the notice names the folder and the file.
   if(outcome?.name)return `${formatName} download started: ${outcome.name} goes to your Downloads folder. It is also in Download History (the folder button at the top) to open again.`;
   return `${formatName} download started. Check your browser downloads.`;
