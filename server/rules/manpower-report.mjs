@@ -353,6 +353,26 @@ export function joinOtReports(parts,filters){
  const byValue=field=>[...new Map(lists(field).map(item=>[item.value,item])).values()];
  return {...joinAttendanceReports(parts,filters),options:{sites:unique(lists('sites')).sort(),shifts:unique(lists('shifts')).sort(),assets:byValue('assets'),employees:byValue('employees'),batches:byValue('batches')}};
 }
+// The other Manpower tabs read week by week too; each gets only the tables it shows. Card, duty and machine-shift lines are
+// dated inside their own week, so they are joined as they are; the fleet list is the same machines each week, kept once.
+export const MANPOWER_VIEWS={category:['details','summary'],reconciliation:['fleet','fleetWork'],performance:['performance'],equipment:['attendanceEquipment','attendanceShifts']};
+// A week's build keeps only what its tab and the join use, so a month of every site is not held in memory five times over.
+export function trimManpowerWeek(report,view){
+ const keep=new Set(MANPOWER_VIEWS[view]),out={...report,otDuties:[],shiftAttendance:[]};
+ for(const name of ['summary','fleetWork','attendanceEquipment'])if(!keep.has(name))out[name]=[];
+ // The totals still count every week's machines, people and duties.
+ if(!keep.has('details'))out.details=report.details.map(r=>({assetKey:r.assetKey,employeeKey:r.employeeKey}));
+ if(!keep.has('performance'))out.performance=report.performance.map(()=>({}));
+ return out;
+}
+export function joinManpowerReports(parts,filters,view){
+ const lines=field=>parts.flatMap(({report})=>report[field]||[]);
+ const {otDuties,ot,attendanceEquipment,attendanceShifts,...joined}=joinOtReports(parts,filters),details=lines('details');
+ const tables={details,summary:lines('summary'),performance:lines('performance'),fleetWork:lines('fleetWork'),attendanceEquipment,attendanceShifts,
+  fleet:[...new Map(lines('fleet').map(m=>[m.siteKey+'|'+m.key,m])).values()]};
+ const totals={savedRecords:details.length,assets:unique(details.map(r=>r.assetKey)).length,employees:unique(details.map(r=>r.employeeKey)).length,duties:tables.performance.length,exceptions:joined.exceptions.filter(e=>e.logBook!=='LMV').length};
+ return {...joined,totals,...Object.fromEntries(MANPOWER_VIEWS[view].map(name=>[name,tables[name]]))};
+}
 // Site-days not locked yet (see lockedSiteDays), with their shifts that are open, not created or not ended.
 export function pendingSiteDays(attendanceShifts,locked=null){
  const days=new Map();
