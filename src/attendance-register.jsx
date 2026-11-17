@@ -24,7 +24,10 @@ const tip=c=>c.kind==='present'?c.lines.map(l=>shiftName(l.shift)+' · '+[l.door
 // Batch-wise Step 4 lists red first, then orange, brown, blue and normal duties, then by name.
 const FLAG_ORDER={red:0,orange:1,review:2,zero:3};
 const flagOrder=f=>FLAG_ORDER[f]??4;
-const DUTY_COLUMNS=[['date','Date',r=>shortDate(r.date)],['shift','Shift',r=>shiftName(r.shift)],['logBook','Log book'],['doors','Door / equipment'],['equipment','Equipment'],['hours','HMR hours'],['trips','Trips'],['km','KM'],['flagLabel','Colour / reason'],['books','Saved cards']];
+// HMR hours is keyed 'hmrHours', not 'hours': the shared table sorts any 'hours' column high to low by default
+// (duration-sort.mjs), which put a person's duties out of date order on live (17 Nov 2026).
+const HMR=['hmrHours','HMR hours',r=>shown(r.hours)];
+const DUTY_COLUMNS=[['date','Date',r=>shortDate(r.date)],['shift','Shift',r=>shiftName(r.shift)],['logBook','Log book'],['doors','Door / equipment'],['equipment','Equipment'],HMR,['trips','Trips'],['km','KM'],['flagLabel','Colour / reason'],['books','Saved cards']];
 // A person's duties at the site in these dates: month-wise Step 4 and batch-wise Step 5 (owner, 16 Nov 2026: in line).
 const personDuties=({ReportSection,step,person,site,query})=><ReportSection key={'ar-person-'+query+'-'+site.siteKey+'-'+person.employeeKey} title={'Step '+step+' · '+person.caliberCode+' · '+person.employeeName+' · duties at '+site.site} category="attendance-person"
  description={[person.category,person.duties+(person.duties===1?' duty':' duties'),person.present+' days present',person.absent+' absent',person.attendance+' attendance'].filter(Boolean).join(' · ')}
@@ -127,7 +130,7 @@ export default function AttendanceRegister({report,filters,mode='attendance-batc
    return {id:person.id,caliberCode:person.caliberCode,employeeName:person.employeeName,category:person.category||'—',code:cell.code,kind:cell.kind,meaning:cell.kind==='absent'?'Absent':cell.kind==='pending'?'Pending':'At '+cell.where,last:last?shortDate(last):'—'};});
   const codeBox=r=><span className={'ar-code ar-code-box ar-'+r.kind} title={r.meaning}>{r.code}</span>;
   const missingColumns=cols([['caliberCode','Caliber ID'],['employeeName','Name'],['category','Category'],['code','Code'],['meaning','Meaning'],['last','Last duty here before this date']]).map(c=>c.key==='code'?{...c,render:codeBox}:c);
-  const peopleColumns=cols([['caliberCode','Caliber ID'],['employeeName','Name'],['category','Category'],['code','Day code'],['doors','Door / equipment'],['equipment','Equipment'],['logBook','Log book'],['hours','HMR hours'],['trips','Trips'],['km','KM'],['flagLabel','Colour / reason'],['books','Saved cards']]);
+  const peopleColumns=cols([['caliberCode','Caliber ID'],['employeeName','Name'],['category','Category'],['code','Day code'],['doors','Door / equipment'],['equipment','Equipment'],['logBook','Log book'],HMR,['trips','Trips'],['km','KM'],['flagLabel','Colour / reason'],['books','Saved cards']]);
   const figures=[['hours','HMR hours'],['trips','Trips'],['km','KM']];
   const sumOf=key=>{const values=listed.map(p=>p[key]).filter(v=>typeof v==='number');return values.length?Math.round(values.reduce((a,b)=>a+b,0)*100)/100:'—';};
   const step4=level===4&&<ReportSection key={'ar-people-'+query+'-'+open+'-'+pick.date+'-'+pick.shift+'-'+equipment} title={'Step 4 · '+batchWhere+' · '+equipmentLabel+' · people'} category="attendance-people"
@@ -162,8 +165,8 @@ export default function AttendanceRegister({report,filters,mode='attendance-batc
 
  function monthSteps(){
   const days=model.days;
-  const totals=[['duties','Duties'],...model.shiftCodes.map(code=>[code,shiftName(code).replace('Shift ','S')]),['double','Double'],['present','Days present'],['absent','A'],['pending','?'],['away','TR'],['attendance','Att. %'],['hours','HMR hours'],['trips','Trips'],['km','KM']];
-  const valueOf=(p,key)=>model.shiftCodes.includes(key)?p.shiftCounts[key]:p[key];
+  const totals=[['duties','Duties'],...model.shiftCodes.map(code=>[code,shiftName(code).replace('Shift ','S')]),['double','Double'],['present','Days present'],['absent','A'],['pending','?'],['away','TR'],['attendance','Att. %'],['hmrHours','HMR hours'],['trips','Trips'],['km','KM']];
+  const valueOf=(p,key)=>model.shiftCodes.includes(key)?p.shiftCounts[key]:key==='hmrHours'?p.hours:p[key];
   const exportColumns=[{key:'caliberCode',label:'Caliber ID',value:p=>p.caliberCode},{key:'employeeName',label:'Name',value:p=>p.employeeName},{key:'category',label:'Category',value:p=>p.category||'—'},
    ...days.map((d,i)=>({key:'d'+d,label:d.slice(8,10)+' '+weekday(d),value:p=>p.cells[i].code})),...totals.map(([key,label])=>({key,label,value:p=>shown(valueOf(p,key))}))];
   const presentOn=i=>people.filter(p=>p.cells[i].kind==='present').length;

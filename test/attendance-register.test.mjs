@@ -7,6 +7,7 @@ import {renderToStaticMarkup} from 'react-dom/server';
 import {transformWithOxc} from 'vite';
 import {buildAttendanceRegister,batchPeople,batchCategories,registerCategories,personCategories,shiftDigit,strongest,registerDays} from '../src/attendance-register-model.mjs';
 import {operationReports} from '../src/operations-report-model.mjs';
+import {defaultDurationSort} from '../src/duration-sort.mjs';
 
 const JAYANT='jayant oc',DUDHI='dudhichua oc';
 const duty=(who,date,shift,extra={})=>({id:[who,date,shift,extra.siteKey||JAYANT].join('|'),date,shift,site:extra.siteKey===DUDHI?'Dudhichua OC':'Jayant OC',siteKey:JAYANT,employeeKey:'CMLL'+who,employeeId:'CMLL'+who,caliberCode:'CMLL'+who,employeeName:'Driver '+who,category:'Tipper Driver',equipment:'Tipper',doors:'T-'+who,logBook:'VLB',flag:'normal',flagLabel:'Normal duty',hours:7,trips:10,km:50,books:'B-'+who+'-'+date+shift,...extra});
@@ -99,6 +100,7 @@ test('the two tabs are listed under Manpower & OT and routed to the manpower rep
 });
 
 // Draws the real screen with stand-ins for the app's ReportSection and step-back button.
+const seenTables=[];
 async function load(file,names){
  const source=fs.readFileSync(new URL('../src/'+file,import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace(/^export default function/gm,'function').replace(/^export /gm,'');
  const {code}=await transformWithOxc(source,file,{jsx:{runtime:'classic'}});
@@ -107,7 +109,7 @@ async function load(file,names){
 async function screen(state,extra=[]){
  const grid=await load('date-shift-grid.jsx'),register=await load('attendance-register.jsx');
  const parts=new Function('React',grid+';return {DateShiftGrid,dateShiftGrid,dateShiftExport};')(React);
- const ReportSection=({title,rows,columns,children})=>React.createElement('section',{'data-title':title},React.createElement('h2',null,title),children||React.createElement('table',null,React.createElement('tbody',null,rows.map((r,i)=>React.createElement('tr',{key:i},columns.map(c=>React.createElement('td',{key:c.key},c.render?c.render(r):String(c.value(r)))))))));
+ const ReportSection=({title,rows,columns,children})=>(seenTables.push({title,columns}),React.createElement('section',{'data-title':title},React.createElement('h2',null,title),children||React.createElement('table',null,React.createElement('tbody',null,rows.map((r,i)=>React.createElement('tr',{key:i},columns.map(c=>React.createElement('td',{key:c.key},c.render?c.render(r):String(c.value(r))))))))));
  let slot=0;const useState=initial=>{const value=state[slot++]??(typeof initial==='function'?initial():initial);return [value,()=>{}];};
  const env={React,useMemo:fn=>fn(),useState,...parts,StepBackButton:()=>null,buildAttendanceRegister,batchPeople,batchCategories,registerCategories,personCategories};
  const Register=new Function(...Object.keys(env),register+';return AttendanceRegister;')(...Object.values(env));
@@ -161,4 +163,20 @@ test('Month-wise draws its categories, then the register grid with Caliber ID be
  assert.match(html,/class="ar-code ar-absent"[^>]*>A<\/td>/);
  assert.match(html,/class="ar-code ar-pending[^"]*"[^>]*>\?<\/td>/);
  assert.match(html,/Step 4 · CMLL101 · Driver 101 · duties at Jayant OC/);
+});
+
+test('a person\'s duties stay in date order: no attendance table hands the shared table a column it sorts by hours (live, 17 Nov 2026)',async()=>{
+ seenTables.length=0;
+ (await screen([JAYANT,{date:days[0],shift:'S1'},'CMLL101','Tipper']))('attendance-batch');
+ (await screen([JAYANT,{date:'',shift:''},'CMLL101','*']))('attendance-month');
+ const titles=seenTables.map(t=>t.title);
+ assert.ok(titles.some(t=>t.startsWith('Step 5 · CMLL101'))&&titles.some(t=>t.startsWith('Step 4 · CMLL101')),'both duty tables were drawn');
+ for(const {title,columns} of seenTables)assert.equal(defaultDurationSort(columns).key,'',title+' would be re-sorted by '+defaultDurationSort(columns).key);
+ const duties=seenTables.find(t=>t.title.startsWith('Step 5 · CMLL101')).columns.find(c=>c.label==='HMR hours');
+ assert.equal(duties.value({hours:7.5}),7.5,'HMR hours still shows the duty\'s hours');
+ const html=(await screen([JAYANT,{date:days[0],shift:'S1'},'CMLL101','Tipper']))('attendance-batch');
+ const step5=html.slice(html.indexOf('data-title="Step 5'));
+ const dates=[...step5.matchAll(/<tr><td>(\d\d-\d\d-\d\d)<\/td>/g)].map(m=>m[1]);
+ assert.ok(dates.length>1);
+ assert.deepEqual(dates,[...dates].sort((a,b)=>a.split('-').reverse().join('').localeCompare(b.split('-').reverse().join(''))),'earliest date first');
 });
