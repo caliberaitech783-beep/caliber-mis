@@ -120,7 +120,7 @@ export default function BdHoursReport({entries=[],mode='bd',period='',ReportSect
    rows={shiftLines} columns={bdShiftColumns(manySites||item.key===EVERY)} rowKey={r=>r.id} rowClassName={r=>lineClass(r)+(opened?.id===r.id?' report-row-picked':'')} onRowClick={r=>setLine(line===r.id?'':r.id)} emptyMessage="No shift with a breakdown here."/>}
   {opened&&<>
    <ReportSection key={'bd-pulse-'+opened.id} reportKey={name+' breakdowns in Pulse'} dataReady={dataReady} showSearch={false} recordDateFilter={false} title={'Step 6 · Breakdowns in Pulse · '+opened.door+' · '+day(opened.date)+' · '+opened.shift+' · '+opened.site} category="operations-bd-pulse"
-    description={`Pulse: ${hoursText(opened.pulseMinutes)} hours in this shift. ELB: ${opened.elbEntered?hoursText(opened.elbMinutes)+' hours (book '+(opened.elbBooks||'—')+', '+(opened.statusLabel||'—')+(opened.reason?', '+opened.reason:'')+')':'not entered'}. ${KIND_LABELS[opened.kind]}.`}
+    description={`Pulse: ${hoursText(opened.pulseMinutes)} h in this shift. ELB: ${opened.elbEntered?hoursText(opened.elbMinutes)+' h (book '+(opened.elbBooks||'—')+', '+(opened.statusLabel||'—')+(opened.reason?', '+opened.reason:'')+')':'not entered'}. ${KIND_LABELS[opened.kind]}.`}
     rows={bdRows} columns={breakdownDetailColumns} rowKey={r=>r.id} emptyMessage="No breakdown recorded in Pulse for this shift: the hours come from the ELB only."/>
    <ShiftTimelines entries={[opened]} step="Step 6 · "/>
   </>}
