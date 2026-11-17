@@ -59,6 +59,14 @@ test('the notice says where the file went: the chosen folder (not in Downloads),
   assert.match(saveOutcomeMessage({saved:true,name:'a.pdf'},'PDF'),/^PDF saved as a\.pdf/);
 });
 
+test('in the Claude app pane the notice says to press Save in the app\'s own Save As window',()=>{
+  const pane={navigator:{userAgent:'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Claude/5.11492.5 Chrome/156.0 Electron MSIX'}};
+  const chrome={navigator:{userAgent:'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/156.0 Safari/537.36'}};
+  assert.equal(saveOutcomeMessage({saved:false,name:'a.xlsx'},'Excel',{win:pane}),'Excel is ready: a Save As window has opened (its title starts with "blob:"). Choose the folder and press Save to keep a.xlsx. Cancel throws the file away.');
+  assert.match(saveOutcomeMessage({saved:false,name:'a.pdf'},'PDF',{win:pane}),/^PDF is ready: a Save As window has opened/);
+  assert.match(saveOutcomeMessage({saved:false,name:'a.xlsx'},'Excel',{win:chrome}),/^Excel download started: a\.xlsx goes to your Downloads folder/);
+});
+
 test('a Save As window the browser refuses at once (same AbortError as Cancel) downloads the file instead of stopping',async()=>{
   // Owner, 17 Nov 2026: in the Claude app's browser pane the window is refused in about 0.06 s and nothing was made.
   const refusedAtOnce=Object.assign(new Error("Failed to execute 'showSaveFilePicker' on 'Window': The user aborted a request."),{name:'AbortError'});

@@ -19,7 +19,11 @@ const refusingWindows=new WeakSet();
 // own storage writes fine. So the person found an empty file where they saved. That pane is known by "Claude/" in its
 // user agent and gets a plain download, which lands in Downloads. Any other browser whose chosen place fails is marked
 // the same way after the first failure (markSaveAsRefused), so its next export goes straight to Downloads.
-const claudeAppPane=win=>/\bClaude\/\d/.test(String(win?.navigator?.userAgent||''));
+// Owner, 17 Nov 2026 at 15:30, after that went live: "Excel still not downloading". Proven in the pane with a test page: the
+// Claude app answers every download with its own Windows Save As window, whose title is a web address ("blob:https://…")
+// rather than the file name. The file waits in Downloads as an unnamed .tmp until Save is pressed there; Cancel throws it
+// away. The page cannot skip or fill that window, so the notice tells the person to press Save in it.
+export const claudeAppPane=(win=globalThis.window)=>/\bClaude\/\d/.test(String(win?.navigator?.userAgent||''));
 export const markSaveAsRefused=(win=globalThis.window)=>{if(win&&typeof win==='object')refusingWindows.add(win);};
 export const saveAsAvailable=(win=globalThis.window)=>typeof win?.showSaveFilePicker==='function'&&!refusingWindows.has(win)&&!claudeAppPane(win);
 export const saveCancelled=error=>error?.name==='AbortError';
@@ -91,7 +95,8 @@ function writeErrorText(error){
 }
 
 /** The words for the notice after an export: where the file went, in words a site user can act on. */
-export function saveOutcomeMessage(outcome,formatName='Excel'){
+export function saveOutcomeMessage(outcome,formatName='Excel',{win=globalThis.window}={}){
+  if(outcome?.name&&!outcome.saved&&!outcome.fallback&&claudeAppPane(win))return `${formatName} is ready: a Save As window has opened (its title starts with "blob:"). Choose the folder and press Save to keep ${outcome.name}. Cancel throws the file away.`;
   if(outcome?.saved)return `${formatName} saved as ${outcome.name} in the folder you chose. A file saved with Save As does not show in the browser's Downloads list: open that folder to find it.`;
   if(outcome?.fallback)return `${formatName} could not be saved as ${outcome.chosenName} in the folder you chose (${outcome.reason}), so it was downloaded to your Downloads folder as ${outcome.name}. From now on this page downloads straight to Downloads.`;
   // Some browsers (the Claude app's browser pane) show no download bar, so the notice names the folder and the file.
