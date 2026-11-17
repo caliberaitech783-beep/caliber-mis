@@ -89,7 +89,8 @@ export default function BdHoursReport({entries=[],mode='bd',period='',ReportSect
  const gridExport=dateShiftExport(grid,{count,countLabel,boxes:gridBoxes,dayColumns});
  const name=mismatch?'BD mismatch':'BD hours';
  const sortWords=mismatch?'the machine shifts where Pulse and the ELB do not agree first, the biggest difference on top':'the most BD hours in Pulse on top';
- const bdRows=opened?(opened.bdRequests||[]).map((r,i)=>({...r,id:opened.id+'|bd|'+i,site:opened.site,date:opened.date,shift:opened.shift,door:opened.door,machineName:opened.machineName})):[];
+ // Step 6 lists the Pulse requests inside this shift only (shared/bd-hours-report.mjs `shiftRequests`).
+ const bdRows=opened?(opened.shiftRequests||[]).map((r,i)=>({...r,id:opened.id+'|bd|'+i,site:opened.site,date:opened.date,shift:opened.shift,door:opened.door,machineName:opened.machineName})):[];
  return <div className="bd-report">
   <p className="tt-insight bd-rule">{mismatch
    ?`Pulse BD hours: from the start and end of each breakdown in Pulse, only the part inside the shift (a breakdown still open counts to the end of the shift). ELB BD hours: as typed by the site. They agree when they are within ${BD_TOLERANCE_MINUTES} minutes.`

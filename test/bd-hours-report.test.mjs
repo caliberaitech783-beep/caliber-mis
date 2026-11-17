@@ -31,10 +31,25 @@ const entry=(door,{site='Site A',date='2026-11-16',shift='Shift I',pulse=0,elb=n
  statusLabel:'Working',reason:'',elbBooks:'ELB-'+door,bdMinutes:pulse,bdHours:elb,elbEntered,bdRequests:requests,bdPeriods:[],lines:[],axis:{known:true,start:300,minutes:480}});
 
 test('only machine shifts with a breakdown on either side are listed, with both figures and the difference',()=>{
- const lines=bdLines([entry('EX1',{pulse:120,elb:2,requests:[{reference:'BD-1',reason:'Hose burst',ongoing:false}]}),entry('EX2'),entry('EX3',{pulse:0,elb:0}),entry('EX4',{pulse:60,elbEntered:false,requests:[{reference:'BD-4',reason:'Engine',ongoing:true}]})]);
+ const lines=bdLines([entry('EX1',{pulse:120,elb:2,requests:[{reference:'BD-1',reason:'Hose burst',ongoing:false,shiftMinutes:120}]}),entry('EX2'),entry('EX3',{pulse:0,elb:0}),entry('EX4',{pulse:60,elbEntered:false,requests:[{reference:'BD-4',reason:'Engine',ongoing:true,shiftMinutes:60}]})]);
  assert.deepEqual(lines.map(l=>[l.door,l.kind,l.pulseMinutes,l.elbMinutes,l.diffMinutes]),[['EX1','match',120,120,0],['EX4','noelb',60,null,null]]);
  assert.equal(lines[0].pulseRefs,'BD-1');assert.equal(lines[0].pulseReasons,'Hose burst');assert.equal(lines[0].breakdownCount,1);
  assert.equal(lines[1].stillOpen,true);
+});
+
+// Live data, 17 Nov 2026 (Gauri Pauni, 14-11-26 Shift A): the machine's Pulse list holds every request in the dates read,
+// so a shift with 0 Pulse hours named 4 requests of other days. A shift line names only the requests inside it.
+test('a shift line names only the Pulse requests that fall inside that shift',()=>{
+ const [line]=bdLines([entry('TPC100',{pulse:0,elb:8,requests:[
+  {reference:'REQ-1',reason:'500 hrs servicing',ongoing:false,shiftMinutes:0},
+  {reference:'REQ-2',reason:'Bucket pin broken',ongoing:true,shiftMinutes:0}]})]);
+ assert.equal(line.kind,'elbonly');
+ assert.deepEqual([line.breakdownCount,line.pulseRefs,line.pulseReasons,line.stillOpen,line.shiftRequests.length],[0,'','',false,0]);
+ const [inside]=bdLines([entry('TPC101',{pulse:45,elb:1,requests:[
+  {reference:'REQ-3',reason:'Hose',ongoing:false,shiftMinutes:45},{reference:'REQ-4',reason:'Earlier day',ongoing:false,shiftMinutes:0}]})]);
+ assert.deepEqual([inside.breakdownCount,inside.pulseRefs,inside.pulseReasons],[1,'REQ-3','Hose']);
+ const screen=fs.readFileSync(new URL('../src/bd-hours-report.jsx',import.meta.url),'utf8');
+ assert.match(screen,/const bdRows=opened\?\(opened\.shiftRequests\|\|\[\]\)/,'Step 6 lists the requests of that shift only');
 });
 
 test('BD hours: sites and machines highest Pulse BD hours first; the mismatch tab puts the biggest difference on top',()=>{
