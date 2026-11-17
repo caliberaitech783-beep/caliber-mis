@@ -41,12 +41,18 @@
 .app.erp-shell .top>.crumb b{min-width:0;overflow-wrap:anywhere}
 .app.erp-shell .top>div:last-child{grid-column:4;grid-row:1;min-width:0;justify-self:end;flex-wrap:nowrap}
 .app.erp-shell .top>.header-clock{position:absolute;left:50%;transform:translateX(-50%);grid-column:auto;grid-row:1;justify-self:center;justify-content:center;flex-wrap:nowrap;white-space:nowrap;--header-clock-size:clamp(16px,1.4vw,23px);line-height:1.15}
-/* The clock is centred above the breadcrumb's own column, so the breadcrumb ends where the clock begins (136px lead-in, half a clock of 12.5 letter heights, 8px for a scroll bar). Sign out gives way first (motion-icons.css), then a long page name wraps instead of running under the clock. */
+/* The clock is centred above the breadcrumb's own column, so the breadcrumb ends where the clock begins (136px lead-in, half a clock of 12.5 letter heights, 8px for a scroll bar). Sign out shrinks to its door first (motion-icons.css), then a long page name wraps instead of running under the clock. */
 .app.erp-shell{--erp-side-width:244px}
 .app.erp-shell.sidebar-hidden{--erp-side-width:0px}
 @media(min-width:1101px){.app.erp-shell .top>.crumb{max-width:calc((100vw - var(--erp-side-width))/2 - 6.25*clamp(16px,1.4vw,23px) - 144px)}}
-/* Menu hidden: this is the only Sign out on screen, so its door always stays and a long page name wraps beside it. With the menu open, the menu's own Sign out is on screen and this one may give way completely. */
-.app.erp-shell.sidebar-hidden .top .top-sign-out-slot{min-width:59px}
+/* The door always stays, menu open or hidden (the menu's own Sign out sits at the foot of a long scrolling list), and a long page name wraps beside it.
+   With the menu open up to 1190px the menu button shows its icon alone (40px instead of 100px), and the breadcrumb takes those 60px: the room the door needs beside a short page name such as Reports. */
+.app.erp-shell .top .top-sign-out-slot{min-width:59px}
+@media(min-width:761px) and (max-width:1190px){.app.erp-shell:not(.sidebar-hidden) .erp-sidebar-toggle>span{display:none}}
+@media(min-width:761px) and (max-width:800px){.app.erp-shell.sidebar-hidden .erp-sidebar-toggle>span{display:none}}
+/* Narrower still with the menu open: the open menu already shows Dashboard, so the breadcrumb drops its own Dashboard link and the page name keeps its room. */
+@media(min-width:761px) and (max-width:980px){.app.erp-shell:not(.sidebar-hidden) .top>.crumb>.crumb-dashboard-link,.app.erp-shell:not(.sidebar-hidden) .top>.crumb>.crumb-dashboard-link+svg{display:none}}
+@media(min-width:1101px) and (max-width:1190px){.app.erp-shell:not(.sidebar-hidden) .top>.crumb{max-width:calc((100vw - var(--erp-side-width))/2 - 6.25*clamp(16px,1.4vw,23px) - 84px)}}
 /* Phones: the menu drawer carries Sign out, the page name keeps the room. */
 @media(max-width:760px){.app.erp-shell .top .top-sign-out-slot{display:none}}
 
