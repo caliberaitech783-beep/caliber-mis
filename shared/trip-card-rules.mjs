@@ -100,7 +100,7 @@ export function meterRuleIssues(draft={},kind='vehicle'){
    if(value!==null&&value!==undefined&&String(value).trim()!==''&&Number.isFinite(Number(value))&&Number(value)<0)issues[key]=`${prefix==='opening'?'Opening':'Closing'} ${meter.toUpperCase()} is negative.`;
   }
   const a=draft['opening'+meter],b=draft['closing'+meter];
-  if(a!==null&&b!==null&&a!==undefined&&b!==undefined&&String(a).trim()!==''&&String(b).trim()!==''&&Number.isFinite(Number(a))&&Number.isFinite(Number(b))&&Number(b)<Number(a)&&!(meter==='Kmr'&&kmrMeterReplaced(draft,kind)))issues['closing'+meter]||=`Closing ${meter.toUpperCase()} is below opening ${meter.toUpperCase()}.`;
+  if(a!==null&&b!==null&&a!==undefined&&b!==undefined&&String(a).trim()!==''&&String(b).trim()!==''&&Number.isFinite(Number(a))&&Number.isFinite(Number(b))&&Number(b)<Number(a)&&!(meter==='Kmr'&&(kmrMeterReplaced(draft,kind)||kmrReadingIssue(draft,kind))))issues['closing'+meter]=`Closing ${meter.toUpperCase()} is below opening ${meter.toUpperCase()}.`;
  }
  return issues;
 }
