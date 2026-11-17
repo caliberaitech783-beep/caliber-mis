@@ -79,6 +79,17 @@ test('unresolved and conflicting identities remain visible and cannot create OT'
 test('ambiguous identity mapping is excluded instead of choosing a name',()=>{
  const r=report([card()],{employees:[...employees,{id:'23',caliberId:'101',caliberCode:'OTHER101',name:'Other'}]});assert.equal(r.performance.length,0);assert.match(r.exceptions[0].reason,/ambiguous/);
 });
+test('a card saved with only an Employee ID finds its master by the written forms of that ID, as the one-by-one check did',()=>{
+ const only=(caliberId,list=employees)=>report([card(1,1,{employeeId:undefined,caliberId})],{employees:list});
+ for(const written of ['101','CMLL101','CMLL-101','cmll 101'])assert.equal(only(written).details[0].employeeName,'Driver One',written);
+ // CMPL101 is not a written form of 101 or CMLL101, so it stays unresolved.
+ assert.match(only('CMPL101').exceptions[0].reason,/cannot be resolved/);
+ // The same person in two masters: the first master record in order is used.
+ assert.equal(only('101',[{id:'41',caliberId:'101',caliberCode:'CMLL101',name:'Driver One (ERP)'},...employees]).details[0].employeeName,'Driver One (ERP)');
+ // Two different people answering to the same written ID: nobody is picked.
+ const two=only('101',[...employees,{id:'42',caliberId:'7',idNo:'101',name:'Someone Else'}]);
+ assert.match(two.exceptions[0].reason,/cannot be resolved/);assert.equal(two.performance.length,0);
+});
 test('multiple vehicles in one shift form one duty and no OT',()=>{
  const r=report([card(1,1,{closingHmr:104}),card(2,1,{assetId:2,door:'V2',closingHmr:103})]);assert.equal(r.performance.length,1);assert.equal(r.performance[0].hours,7);assert.equal(r.ot.length,0);assert.equal(r.totals.assets,2);
 });

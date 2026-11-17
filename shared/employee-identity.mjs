@@ -14,11 +14,17 @@ export function employeeReferenceVariants(value=''){
  if(!literal)return [];
  return /^\d+$/.test(literal)?[literal,'CMPL'+literal,'CMLL'+literal]:[literal];
 }
-export function matchesEmployeeReference(record,value){
- const variants=employeeReferenceVariants(value),identity=employeeIdentity(record);
+// The written forms a saved Employee ID is compared with for this master record. A saved ID matches the record
+// when one of its variants (employeeReferenceVariants) is one of these, so a report can index them once.
+export function employeeReferenceKeys(record){
+ const identity=employeeIdentity(record);
  const primary=[record.caliberId,record.employeeId,record.empId,record.idNo,identity.caliberCode].filter(Boolean);
  // Old records may have only an employee code. Do not confuse an ERP internal
  // code with the numeric suffix of another person's explicit Employee ID.
  const fields=primary.length?primary:[record.employeeCode,record.erpEmployeeCode,record.empCode,record.code];
- return fields.some(field=>variants.includes(String(field||'').trim().toUpperCase().replace(/[\s/-]/g,'')));
+ return fields.map(field=>String(field||'').trim().toUpperCase().replace(/[\s/-]/g,'')).filter(Boolean);
+}
+export function matchesEmployeeReference(record,value){
+ const variants=employeeReferenceVariants(value);
+ return employeeReferenceKeys(record).some(field=>variants.includes(field));
 }

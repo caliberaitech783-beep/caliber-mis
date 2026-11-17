@@ -1,6 +1,6 @@
 import {canonicalSiteName as siteNameKey} from '../../shared/site-location.mjs';
 import {equipmentDoorNumber} from '../../shared/equipment-door.mjs';
-import {employeeIdentity,matchesEmployeeReference,suggestedCaliberId} from '../../shared/employee-identity.mjs';
+import {employeeIdentity,employeeReferenceKeys,employeeReferenceVariants,matchesEmployeeReference,suggestedCaliberId} from '../../shared/employee-identity.mjs';
 import {bookShiftCode,selectedMasterShift} from '../../shared/trip-card-rules.mjs';
 import {operationalDate,OPERATIONAL_START} from '../../shared/operational-start.mjs';
 import {equipmentGroupName} from '../../shared/equipment-group.mjs';
@@ -39,9 +39,13 @@ function identityIndex(employees){
   const person={id:String(e.id),employeeId,caliberCode,name:text(e.name||e.employee||e.login),designation:text(e.currentDesignationName||e.designationName||e.designation),identityKey};byId.set(String(e.id),{...person,source:e});
   for(const token of unique([employeeId,caliberCode,e.empId,e.employeeCode].map(key))){if(!aliases.has(token))aliases.set(token,new Set());aliases.get(token).add(identityKey);}
  }
+ // Every master record under each written form of its Employee ID, built once: a card whose saved ID does not name a
+ // master record is looked up here instead of being compared with every employee (cards x employees on a month).
+ const byReference=new Map(),position=new Map();
+ for(const p of byId.values()){position.set(p,position.size);for(const token of unique(employeeReferenceKeys(p.source))){if(!byReference.has(token))byReference.set(token,[]);byReference.get(token).push(p);}}
  return data=>{
   let person=byId.get(String(data.employeeId));
-  if(!person&&data.caliberId){const matches=[...byId.values()].filter(p=>matchesEmployeeReference(p.source,data.caliberId));if(unique(matches.map(p=>p.identityKey)).length===1)person=matches[0];}
+  if(!person&&data.caliberId){const matches=unique(employeeReferenceVariants(data.caliberId).flatMap(v=>byReference.get(v)||[])).sort((a,b)=>position.get(a)-position.get(b));if(unique(matches.map(p=>p.identityKey)).length===1)person=matches[0];}
   if(!person?.identityKey||!person.name)return {error:'Employee ID is missing or cannot be resolved to an employee master.'};
   if(data.caliberId&&!matchesEmployeeReference(person.source,data.caliberId))return {error:'Saved Employee ID conflicts with the linked employee master.'};
   if(caliberMappings.get(person.identityKey)?.size>1||[person.employeeId,person.caliberCode].some(token=>(aliases.get(key(token))?.size||0)>1))return {error:'Employee / Caliber ID mapping is ambiguous.'};
