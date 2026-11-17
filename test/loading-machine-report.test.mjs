@@ -264,7 +264,8 @@ test('Step 3 leaves First and Last loading, Shift hours, Hours in BD and Not jud
 
 test('the screen shows working and idle time first, keeps the old list as a second view and the totals at the foot',()=>{
  const screen=fs.readFileSync(new URL('../src/loading-machine-report.jsx',import.meta.url),'utf8');
- assert.match(screen,/\[\['idle','Machine working and idle time'\],\['rows','All machines list'\]\]/);
+ // Owner, 17 Nov 2026: BD hours (Pulse + ELB) and BD mismatch sit between the two (test/bd-hours-report.test.mjs).
+ assert.match(screen,/\[\['idle','Machine working and idle time'\],\['bd','BD hours \(Pulse \+ ELB\)'\],\['mismatch','BD mismatch'\],\['rows','All machines list'\]\]/);
  assert.match(screen,/const work=\[column\('trips','Trips loaded'\),column\('percent','% of shift worked'[^\n]*column\('hoursWorked','Hours worked'/,'% of shift worked sits between Trips loaded and Hours worked');
  // Step 2 is the date by shift table (owner, 15 Nov 2026), with its All dates line at the foot of the grid.
  assert.equal(screen.match(/isTotalRow=\{isTotal\}/g).length,3,'site, category and machine tables keep their total line at the foot');
