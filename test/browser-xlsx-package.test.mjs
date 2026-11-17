@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { recordCountLine, withSerialColumn } from "../shared/serial-column.mjs";
+import { recordCountLine, withSerialColumn, isSerialColumn, serialTone, SERIAL_XLSX_STYLES, SERIAL_TONE_COLOURS } from "../shared/serial-column.mjs";
 import * as xlsxLayout from "../shared/xlsx-layout.mjs";
 
 function storedFiles(buffer) {
@@ -27,9 +27,10 @@ function browserXlsxBuilder() {
   const end = source.indexOf("// Smart Print goes straight to the printer", start);
   assert.ok(start >= 0 && end > start, "browser XLSX builder source is present");
   return new Function(
+    "isSerialColumn", "serialTone", "SERIAL_XLSX_STYLES", "SERIAL_TONE_COLOURS",
     "withSerialColumn", "recordCountLine", "formatDisplayDateTime", "prepareXlsxExportSheets", "exportCellText", ...Object.keys(xlsxLayout),
     `${source.slice(start, end)}; return { buildXlsxSheetsWorkbook, escapeXlsxText };`,
-  )(withSerialColumn, recordCountLine, () => "12:00 PM 22-09-26", () => [], String, ...Object.values(xlsxLayout));
+  )(isSerialColumn, serialTone, SERIAL_XLSX_STYLES, SERIAL_TONE_COLOURS, withSerialColumn, recordCountLine, () => "12:00 PM 22-09-26", () => [], String, ...Object.values(xlsxLayout));
 }
 
 test("browser XLSX worksheets use Excel's required element order and safe SpreadsheetML text", async () => {
@@ -66,7 +67,8 @@ test("browser XLSX worksheets use Excel's required element order and safe Spread
   assert.match(files.get("xl/styles.xml"), /wrapText="1"/);
   assert.match(files.get("xl/styles.xml"), /fgColor rgb="FFF2F2F2"/);
   assert.match(files.get("xl/styles.xml"), /borderId="1" applyBorder="1"/);
-  assert.match(files.get("xl/worksheets/sheet1.xml"), /r="A4" s="6"/);
+  // Sr. No. 1 is red (style 9): owner, 17 Nov 2026.
+  assert.match(files.get("xl/worksheets/sheet1.xml"), /r="A4" s="9"/);
   assert.match(files.get("xl/worksheets/sheet1.xml"), /tableParts count="1"/);
 });
 
@@ -100,7 +102,7 @@ test("report Excel prints A3, wraps long headings in narrow columns and saves nu
   assert.match(sheet, /<c r="E4" s="6" t="inlineStr"><is><t xml:space="preserve">—<\/t>/);
   assert.match(sheet, /<c r="C4" s="6" t="inlineStr"><is><t xml:space="preserve">128<\/t>/);
   assert.match(sheet, /<c r="F4" s="6" t="inlineStr"><is><t xml:space="preserve">00123<\/t>/);
-  assert.match(sheet, /<c r="A4" s="6"><v>1<\/v><\/c>/);
+  assert.match(sheet, /<c r="A4" s="9"><v>1<\/v><\/c>/, "Sr. No. 1 is red");
   // Heading row: white bold on navy.
   assert.match(files.get("xl/styles.xml"), /<b\/><sz val="10"\/><color rgb="FFFFFFFF"\/>/);
   assert.match(files.get("xl/styles.xml"), /fgColor rgb="FF10284C"/);

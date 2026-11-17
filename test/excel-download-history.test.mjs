@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { DOMParser } from "@xmldom/xmldom";
-import { recordCountLine, withSerialColumn } from "../shared/serial-column.mjs";
+import { recordCountLine, withSerialColumn, isSerialColumn, serialTone, SERIAL_XLSX_STYLES, SERIAL_TONE_COLOURS } from "../shared/serial-column.mjs";
 import * as xlsxLayout from "../shared/xlsx-layout.mjs";
 import { buildXlsxSheetsWorkbook as sharedBuilder } from "../shared/report-xlsx.mjs";
 import { saveToTarget } from "../src/save-as.mjs";
@@ -26,8 +26,8 @@ function storedFiles(buffer) {
 function browserBuilder() {
   const source = readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
   const start = source.indexOf("function escapeExportHtml"), end = source.indexOf("// Smart Print goes straight to the printer", start);
-  return new Function("withSerialColumn", "recordCountLine", "formatDisplayDateTime", "prepareXlsxExportSheets", "exportCellText", ...Object.keys(xlsxLayout),
-    `${source.slice(start, end)}; return buildXlsxSheetsWorkbook;`)(withSerialColumn, recordCountLine, () => "10:30 PM 16-11-26", () => [], String, ...Object.values(xlsxLayout));
+  return new Function("isSerialColumn", "serialTone", "SERIAL_XLSX_STYLES", "SERIAL_TONE_COLOURS", "withSerialColumn", "recordCountLine", "formatDisplayDateTime", "prepareXlsxExportSheets", "exportCellText", ...Object.keys(xlsxLayout),
+    `${source.slice(start, end)}; return buildXlsxSheetsWorkbook;`)(isSerialColumn, serialTone, SERIAL_XLSX_STYLES, SERIAL_TONE_COLOURS, withSerialColumn, recordCountLine, () => "10:30 PM 16-11-26", () => [], String, ...Object.values(xlsxLayout));
 }
 const builders = [["browser", browserBuilder()], ["shared", sharedBuilder]];
 const parse = (xml) => new DOMParser().parseFromString(xml, "application/xml");

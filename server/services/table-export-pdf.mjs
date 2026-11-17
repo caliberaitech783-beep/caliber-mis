@@ -4,7 +4,7 @@ const pulseReportLogo=readFileSync(new URL('../../public/pulse-logo.png',import.
 import {reportTime12} from '../../shared/report-time-format.mjs';
 import {reportPdfFont as fontFor,reportPdfText,registerReportPdfFonts,fittingReportText as fittingCellText} from './report-pdf-text.mjs';
 import {formatDisplayDateTime} from '../../shared/date-time-format.mjs';
-import {withSerialColumn} from '../../shared/serial-column.mjs';
+import {withSerialColumn,isSerialColumn,serialTone,SERIAL_TONE_COLOURS} from '../../shared/serial-column.mjs';
 
 // Report tables match Excel TableStyleLight15 in both application themes;
 // black cell outlines and existing red alert highlights remain explicit.
@@ -103,8 +103,11 @@ function drawTable(doc,{title,columns=[],rows=[],highlights=[]},drawHeading=()=>
       const height=Math.min(available,Math.max(25,...values.map((value,index)=>doc.font(fontFor(value)).heightOfString(value,{width:widths[index]-8,lineGap:1})+9)));
       let x=doc.page.margins.left;
       columns.forEach((_,columnIndex)=>{
-        doc.rect(x,y,widths[columnIndex],height).fill(highlighted.has(rowIndex)?COLORS.highlight:rowIndex%2===0?COLORS.white:COLORS.soft);
-        doc.fillColor(columns[columnIndex].tone==='error'?'#b91c1c':columns[columnIndex].tone==='corrected'?'#15803d':COLORS.navy).font(fontFor(values[columnIndex])).fontSize(fontSize).text(values[columnIndex],x+4,y+4,{width:widths[columnIndex]-8,height:height-8,lineGap:1});
+        // Owner, 17 Nov 2026: the Sr. No. cell is red for 1-5, orange for 6-10 and green after, in white bold figures.
+        const serialColour=isSerialColumn(columns[columnIndex])?SERIAL_TONE_COLOURS[serialTone(row[columnIndex])]:undefined;
+        doc.rect(x,y,widths[columnIndex],height).fill(serialColour||(highlighted.has(rowIndex)?COLORS.highlight:rowIndex%2===0?COLORS.white:COLORS.soft));
+        if(serialColour)doc.fillColor(COLORS.white).font('Helvetica-Bold').fontSize(fontSize).text(values[columnIndex],x+4,y+4,{width:widths[columnIndex]-8,height:height-8,lineGap:1,align:'center'});
+        else doc.fillColor(columns[columnIndex].tone==='error'?'#b91c1c':columns[columnIndex].tone==='corrected'?'#15803d':COLORS.navy).font(fontFor(values[columnIndex])).fontSize(fontSize).text(values[columnIndex],x+4,y+4,{width:widths[columnIndex]-8,height:height-8,lineGap:1});
         doc.strokeColor(COLORS.line).lineWidth(.45).rect(x,y,widths[columnIndex],height).stroke();
         x+=widths[columnIndex];
       });

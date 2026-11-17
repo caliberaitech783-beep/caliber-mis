@@ -56,7 +56,7 @@ import "./smart-print.css";
 import "./date-input.css";
 import { describeDateRange, encodeDateRange, looksLikeDateColumn, matchesDateRange, parseDateRange } from "./date-range-filter.mjs";
 import { cellMatchesFilterValues, describeFilterValues, filterValueSelected, parseFilterValues, toggleFilterValue } from "./multi-value-filter.mjs";
-import { recordCountLine, withSerialColumn } from "../shared/serial-column.mjs";
+import { recordCountLine, withSerialColumn, SERIAL_COLUMN_KEY, SERIAL_COLUMN_LABEL, serialTone, isSerialColumn, SERIAL_XLSX_STYLES, SERIAL_TONE_COLOURS } from "../shared/serial-column.mjs";
 import { XLSX_PAGE_SETUP, xlsxCellText, xlsxColumnWidth, xlsxFooter, xlsxHeadingHeight, xlsxHeadingText, xlsxNumericColumns, xlsxPlainNumber, xlsxTableRows } from "../shared/xlsx-layout.mjs";
 import {canViewUserSessions,isSessionViewOnlyUser} from "../shared/user-session-access.mjs";
 import {canViewBdAgeingReport} from "../shared/bd-ageing-report.mjs";
@@ -3826,7 +3826,7 @@ function buildXlsxSheetsWorkbook(title, sheets = []) {
       const style = rowIndex < summaryRows.length ? (rowIndex === 0 ? 3 : 4) : rowIndex === summaryRows.length ? 5 : highlightedRows.has(rowIndex - firstDataRow) ? 2 : (rowIndex - firstDataRow) % 2 === 0 ? 6 : 1;
       const height = rowIndex === 0 ? ' ht="24" customHeight="1"' : rowIndex === summaryRows.length ? ` ht="${headingHeight}" customHeight="1"` : "";
       return `<row r="${rowIndex + 1}"${height}>${row.map((cell, columnIndex) => {
-        const reference = excelCellReference(columnIndex, rowIndex), cellStyle = rowIndex >= firstDataRow && serial.columns[columnIndex]?.tone==='error'?7:rowIndex >= firstDataRow && serial.columns[columnIndex]?.tone==='corrected'?8:style;
+        const reference = excelCellReference(columnIndex, rowIndex), serialStyle = rowIndex >= firstDataRow && isSerialColumn(serial.columns[columnIndex]) ? SERIAL_XLSX_STYLES[serialTone(cell)] : undefined, cellStyle = serialStyle ? serialStyle : rowIndex >= firstDataRow && serial.columns[columnIndex]?.tone==='error'?7:rowIndex >= firstDataRow && serial.columns[columnIndex]?.tone==='corrected'?8:style;
         const number = rowIndex >= firstDataRow && numericColumns[columnIndex] ? xlsxPlainNumber(cell) : null;
         return number !== null ? `<c r="${reference}" s="${cellStyle}"><v>${number}</v></c>` : `<c r="${reference}" s="${cellStyle}" t="inlineStr"><is><t xml:space="preserve">${escapeXlsxText(xlsxCellText(cell))}</t></is></c>`;
       }).join("")}</row>`;
@@ -3848,7 +3848,7 @@ function buildXlsxSheetsWorkbook(title, sheets = []) {
     { name: "docProps/core.xml", content: `<?xml version="1.0" encoding="UTF-8"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${workbookTitle}</dc:title><dc:creator>Caliber Pulse-II</dc:creator><dcterms:created xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:created></cp:coreProperties>` },
     { name: "docProps/app.xml", content: `<?xml version="1.0" encoding="UTF-8"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>Caliber Pulse-II</Application></Properties>` },
     { name: "xl/_rels/workbook.xml.rels", content: `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${worksheets.map((sheet, index) => `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${index + 1}.xml"/>`).join("")}<Relationship Id="rId${worksheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>` },
-    { name: "xl/styles.xml", content: `<?xml version="1.0" encoding="UTF-8"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="6"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="14"/><color rgb="FF10284C"/><name val="Calibri"/></font><font><b/><sz val="10"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font><font><i/><sz val="10"/><color rgb="FF65758B"/><name val="Calibri"/></font><font><sz val="11"/><color rgb="FFB91C1C"/><name val="Calibri"/></font><font><sz val="11"/><color rgb="FF15803D"/><name val="Calibri"/></font></fonts><fills count="5"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF8CACA"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FF10284C"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF2F2F2"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FF000000"/></left><right style="thin"><color rgb="FF000000"/></right><top style="thin"><color rgb="FF000000"/></top><bottom style="thin"><color rgb="FF000000"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="9"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyBorder="1" xfId="0" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf><xf numFmtId="0" fontId="0" fillId="2" borderId="1" applyBorder="1" xfId="0" applyFill="1" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf><xf numFmtId="0" fontId="1" fillId="0" borderId="1" applyBorder="1" xfId="0" applyFont="1" applyAlignment="1"><alignment vertical="center"/></xf><xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="0" fontId="2" fillId="3" borderId="1" applyBorder="1" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="0" fillId="4" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf><xf numFmtId="0" fontId="4" fillId="0" borderId="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf><xf numFmtId="0" fontId="5" fillId="0" borderId="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles><tableStyles count="0" defaultTableStyle="TableStyleLight15" defaultPivotStyle="PivotStyleLight16"/></styleSheet>` },
+    { name: "xl/styles.xml", content: `<?xml version="1.0" encoding="UTF-8"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="7"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="14"/><color rgb="FF10284C"/><name val="Calibri"/></font><font><b/><sz val="10"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font><font><i/><sz val="10"/><color rgb="FF65758B"/><name val="Calibri"/></font><font><sz val="11"/><color rgb="FFB91C1C"/><name val="Calibri"/></font><font><sz val="11"/><color rgb="FF15803D"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font></fonts><fills count="8"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF8CACA"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FF10284C"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF2F2F2"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFDC2626"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFEA580C"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FF16A34A"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FF000000"/></left><right style="thin"><color rgb="FF000000"/></right><top style="thin"><color rgb="FF000000"/></top><bottom style="thin"><color rgb="FF000000"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="12"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyBorder="1" xfId="0" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf><xf numFmtId="0" fontId="0" fillId="2" borderId="1" applyBorder="1" xfId="0" applyFill="1" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf><xf numFmtId="0" fontId="1" fillId="0" borderId="1" applyBorder="1" xfId="0" applyFont="1" applyAlignment="1"><alignment vertical="center"/></xf><xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="0" fontId="2" fillId="3" borderId="1" applyBorder="1" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="0" fillId="4" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf><xf numFmtId="0" fontId="4" fillId="0" borderId="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf><xf numFmtId="0" fontId="5" fillId="0" borderId="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf><xf numFmtId="0" fontId="6" fillId="5" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="top"/></xf><xf numFmtId="0" fontId="6" fillId="6" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="top"/></xf><xf numFmtId="0" fontId="6" fillId="7" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="top"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles><tableStyles count="0" defaultTableStyle="TableStyleLight15" defaultPivotStyle="PivotStyleLight16"/></styleSheet>` },
     { name: "xl/workbook.xml", content: `<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${worksheets.map((sheet, index) => `<sheet name="${escapeXlsxText(sheet.name)}" sheetId="${index + 1}" r:id="rId${index + 1}"/>`).join("")}</sheets><definedNames>${worksheets.map((sheet,index)=>{const name="'"+sheet.name.replaceAll("'","''")+"'";const cell=sheet.printLastCell.replace(/^([A-Z]+)([0-9]+)$/,(match,col,row)=>String.fromCharCode(36)+col+String.fromCharCode(36)+row);return `<definedName name="_xlnm.Print_Area" localSheetId="${index}">${escapeXlsxText(name+'!$A$1:'+cell)}</definedName><definedName name="_xlnm.Print_Titles" localSheetId="${index}">${escapeXlsxText(name+'!$1:$'+sheet.printHeaderRows)}</definedName>`;}).join('')}</definedNames></workbook>` },
     ...worksheets.flatMap((sheet, index) => [
       {name: `xl/worksheets/_rels/sheet${index + 1}.xml.rels`, content: `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/table" Target="../tables/table${index + 1}.xml"/></Relationships>`},
@@ -3944,7 +3944,7 @@ function printTableReportInBrowser({ title, columns = [], rows = [], highlightRo
   const exportRows = rows.map((row) => columns.map((column) => exportCellText(column.value?.(row))));
   const serial = withSerialColumn(columns, exportRows);
   const headings = serial.columns.map((column) => `<th>${escapeExportHtml(column.label)}</th>`).join("");
-  const body = serial.rows.length ? serial.rows.map((row, index) => `<tr${highlightRow?.(rows[index]) ? ' class="highlight-row"' : ""}>${row.map((cell, cellIndex) => `<td${serial.columns[cellIndex]?.tone ? ` style="color:${serial.columns[cellIndex].tone==='error'?'#b91c1c':'#15803d'}"` : ""}><div class="cell">${escapeExportHtml(cell)}</div></td>`).join("")}</tr>`).join("") : `<tr><td colspan="${serial.columns.length}">No records available</td></tr>`;
+  const body = serial.rows.length ? serial.rows.map((row, index) => `<tr${highlightRow?.(rows[index]) ? ' class="highlight-row"' : ""}>${row.map((cell, cellIndex) => `<td${isSerialColumn(serial.columns[cellIndex]) && serialTone(cell) ? ` style="background:${SERIAL_TONE_COLOURS[serialTone(cell)]};color:#fff;font-weight:700;text-align:center"` : serial.columns[cellIndex]?.tone ? ` style="color:${serial.columns[cellIndex].tone==='error'?'#b91c1c':'#15803d'}"` : ""}><div class="cell">${escapeExportHtml(cell)}</div></td>`).join("")}</tr>`).join("") : `<tr><td colspan="${serial.columns.length}">No records available</td></tr>`;
   const groupedReport = reportGrouping ? siteReportHtml({ rows, columns: serial.columns, cells: serial.rows, grouping: reportGrouping, escape: escapeExportHtml }) : "";
   const appendixHtml = appendices.map((appendix) => {
     const appendixRows = appendix.rows.map((row) => appendix.columns.map((column) => exportCellText(column.value?.(row))));
@@ -4366,7 +4366,7 @@ function figureColumnKeys(columns, rows, valueOf) {
     return found;
   }).map((column) => column.key));
 }
-function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], onVisibleColumnsChange, rows = [], query = "", emptyMessage, rowKey, rowClassName, isTotalRow, isSubtotalRow, toolbarTarget = null, toolbarPortal = false, title = "", layoutKey = "", onExportViewChange = null, onResetSearch = null, smartPrintAction = false, recordDateFilter = null, dataReady = true, rowAction, rowEditor, serialColumn = true, stepLook = false }) {
+function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], onVisibleColumnsChange, rows = [], query = "", emptyMessage, rowKey, rowClassName, isTotalRow, isSubtotalRow, toolbarTarget = null, toolbarPortal = false, title = "", layoutKey = "", onExportViewChange = null, onResetSearch = null, smartPrintAction = false, recordDateFilter = null, dataReady = true, rowAction, rowEditor, serialColumn = true, stepLook = false, figuresRight = false }) {
   const {shifts}=useRequestShiftData();
   columns=requestShiftColumns(columns,rows,shifts);
   const [appliedColumns, applyColumns] = useColumnPreferences(layoutKey || "report-table", columns, visibleColumnKeys);
@@ -4421,11 +4421,16 @@ function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], 
   const exportViewRef = useRef(null);
   useEffect(() => {
     if (!onExportViewChange) return;
-    const next = {sourceRows: rows, rows: [...sortedRows, ...totalRows], columns: stepLook ? columns : displayedColumns, allColumns: columns};
+    const next = {sourceRows: rows, rows: [...sortedRows, ...totalRows], columns: withExportSerial(stepLook ? columns : displayedColumns), allColumns: withExportSerial(columns)};
     if (!sameReportView(exportViewRef.current, next)) { exportViewRef.current = next; onExportViewChange(next); }
   });
   // A subtotal line (Equipment Deployment) takes no Sr. No.: it shows a dash and the lines after it keep counting on.
   const subtotalSerials = isSubtotalRow ? (() => { let serial = 0; return new Map(sortedRows.map((row) => [row, isSubtotalRow(row) ? null : ++serial])); })() : null;
+  // The Sr. No. the screen shows goes into Smart Print, the PDF and Excel as it is: the total line has none.
+  let serialNumbers = subtotalSerials;
+  const serialOf = (row) => { serialNumbers ||= new Map(sortedRows.map((line, index) => [line, index + 1])); return serialNumbers.get(row) ?? ""; };
+  const exportSerialColumn = {key: SERIAL_COLUMN_KEY, label: SERIAL_COLUMN_LABEL, value: serialOf};
+  const withExportSerial = (list) => !serialColumn ? list : list[0]?.key === "requestShift" ? [list[0], exportSerialColumn, ...list.slice(1)] : [exportSerialColumn, ...list];
   const recordsIn = (list) => isSubtotalRow ? list.filter((row) => !isSubtotalRow(row)).length : list.length;
   const pageCount = Math.max(1, Math.ceil(sortedRows.length / pageSize));
   const currentPage = Math.min(page, pageCount - 1);
@@ -4464,13 +4469,13 @@ function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], 
   // Report steps draw like the OT report's Step tables: no Sr. No. column, figures on the right.
   const serialFirst = serialColumn && displayedColumns[0]?.key !== 'requestShift';
   const serialAfterShift = serialColumn && displayedColumns[0]?.key === 'requestShift';
-  const figureKeys = serialColumn ? new Set() : figureColumnKeys(displayedColumns, [...pagedRows, ...totalRows], columnValue);
+  const figureKeys = serialColumn && !figuresRight ? new Set() : figureColumnKeys(displayedColumns, [...pagedRows, ...totalRows], columnValue);
   const unbrokenKeys = stepLook ? unbrokenColumnKeys(displayedColumns, pagedRows, columnValue) : new Set();
   const extraColumns = Number(serialColumn) + Number(Boolean(rowAction));
   const renderRow = (row, index, serial) => (
     <React.Fragment key={rowKey?.(row, index) ?? index}><tr className={[rowClassName?.(row, index), onRowClick && "report-row-clickable"].filter(Boolean).join(" ")} tabIndex={onRowClick ? 0 : undefined} onClick={onRowClick ? (event) => { if (plainRowClick(event)) onRowClick(row); } : undefined} onKeyDown={onRowClick ? (event) => { if (event.key === "Enter" && event.target === event.currentTarget) onRowClick(row); } : undefined}>
-      {rowAction&&<td className="batch-edit-action">{rowAction(row)}</td>}{serialFirst&&<td className="table-serial-cell">{serial ?? "—"}</td>}
-      {displayedColumns.map((column) => <React.Fragment key={column.key}><td className={[(column.key === "complaint" || column.wrap) && "report-complaint-cell", columnWidths[column.key] && "column-resized-cell", figureKeys.has(column.key) && "report-figure-cell", unbrokenKeys.has(column.key) && "report-unbroken-cell"].filter(Boolean).join(" ") || undefined} style={columnWidthStyle(columnWidths[column.key])}>{reportTime12(columnValue(row, column)) !== columnValue(row, column) ? reportTime12(columnValue(row, column)) : column.render ? column.render(row) : columnValue(row, column) || "—"}</td>{serialAfterShift&&column.key==='requestShift'&&<td className="table-serial-cell">{serial ?? "—"}</td>}</React.Fragment>)}
+      {rowAction&&<td className="batch-edit-action">{rowAction(row)}</td>}{serialFirst&&<SerialCell serial={serial} />}
+      {displayedColumns.map((column) => <React.Fragment key={column.key}><td className={[(column.key === "complaint" || column.wrap) && "report-complaint-cell", columnWidths[column.key] && "column-resized-cell", figureKeys.has(column.key) && "report-figure-cell", unbrokenKeys.has(column.key) && "report-unbroken-cell"].filter(Boolean).join(" ") || undefined} style={columnWidthStyle(columnWidths[column.key])}>{reportTime12(columnValue(row, column)) !== columnValue(row, column) ? reportTime12(columnValue(row, column)) : column.render ? column.render(row) : columnValue(row, column) || "—"}</td>{serialAfterShift&&column.key==='requestShift'&&<SerialCell serial={serial} />}</React.Fragment>)}
     </tr>
     {rowEditor?.(row, displayedColumns.length + extraColumns)}
     </React.Fragment>
@@ -4518,7 +4523,7 @@ function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], 
         <tbody>
           {pagedRows.length ? pagedRows.map((row, index) => renderRow(row, index, subtotalSerials ? subtotalSerials.get(row) : firstVisibleRow + index)) : <tr><td colSpan={displayedColumns.length + extraColumns} className="empty-state">{emptyMessage}</td></tr>}
         </tbody>
-        {totalRows.length > 0 && <tfoot className="report-table-totals">{totalRows.map((row, index) => renderRow(row, index))}</tfoot>}
+        {totalRows.length > 0 && <tfoot className="report-table-totals">{totalRows.map((row, index) => renderRow(row, index, ""))}</tfoot>}
       </table>
   );
   return (
@@ -4531,6 +4536,11 @@ function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], 
       {sortDialogOpen && <ReportSortDialog columns={displayedColumns} sort={sort} onApply={(key, direction) => { changeSort(key, direction); setSortDialogOpen(false); }} onClose={() => setSortDialogOpen(false)} />}
     </>
   );
+}
+// Owner, 17 Nov 2026: Sr. No. 1-5 red, 6-10 orange, 11 onwards green; only the number is coloured (shared/serial-column.mjs).
+function SerialCell({ serial }) {
+  const tone = serialTone(serial);
+  return <td className="table-serial-cell">{tone ? <span className={`table-serial-badge serial-${tone}`}>{serial}</span> : serial ?? "—"}</td>;
 }
 function parseCsv(text, fields) {
   const lines = text
@@ -7478,7 +7488,7 @@ function ReportSection({ title, description, category = "general", icon: ReportI
             rowKey={rowKey}
             rowClassName={rowClassName}
             isTotalRow={isTotalRow} isSubtotalRow={isSubtotalRow}
-            rowAction={rowAction} rowEditor={rowEditor} onRowClick={onRowClick} serialColumn={false} stepLook={stepLook}
+            rowAction={rowAction} rowEditor={rowEditor} onRowClick={onRowClick} figuresRight stepLook={stepLook}
             emptyMessage={emptyMessage}
             columns={columns}
             visibleColumnKeys={visibleColumnKeys}

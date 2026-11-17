@@ -7,11 +7,13 @@ import {transformWithOxc} from 'vite';
 
 const read=path=>fs.readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
-test('every report step uses the step look: the stylesheet is loaded and report tables carry no Sr. No. column',()=>{
+test('every report step uses the step look: the stylesheet is loaded and report tables carry the coloured Sr. No. column',()=>{
  const main=read('src/main.jsx');
  assert.match(main,/import "\.\/report-step-style\.css";/);
  const section=main.slice(main.indexOf('function ReportSection('),main.indexOf('function withStageGapHighlights('));
- assert.match(section,/<ReportTable[\s\S]*serialColumn=\{false\}/,'report steps leave out the Sr. No. column, as the OT steps do');
+ // Owner, 17 Nov 2026: every report, its steps too, numbers its lines: Sr. No. 1-5 red, 6-10 orange, then green.
+ assert.doesNotMatch(section,/serialColumn=\{false\}/,'report steps carry the Sr. No. column');
+ assert.match(section,/<ReportTable[\s\S]*figuresRight/,'figures stay on the right in report steps');
  const table=main.slice(main.indexOf('function ReportTable('),main.indexOf('function parseCsv('));
  assert.match(table,/serialColumn = true/,'other tables keep their Sr. No.');
  assert.match(table,/report-figure-cell/,'figures sit on the right');
