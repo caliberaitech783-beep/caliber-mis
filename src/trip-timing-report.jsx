@@ -18,6 +18,8 @@ const column=(key,label,value,render)=>({key,label,value:value||(r=>blank(r[key]
 const pill=(band,text)=>band&&band!=='ok'?<span className={'tt-band tt-'+band}>{text}</span>:text;
 const day=date=>/^\d{4}-\d{2}-\d{2}/.test(String(date))?date.slice(8,10)+'-'+date.slice(5,7)+'-'+date.slice(2,4):date;
 const minutes=(e,mode)=>blank(e[mode].minutes)?'—':e[mode].minutes;
+// The times as the card wrote them, where the shift clock read them differently, or the outside-shift mark.
+export const writtenOnCard=e=>[e.writtenLoading&&'Loading '+e.writtenLoading,e.writtenUnloading&&'Unloading '+e.writtenUnloading,e.outsideShift&&'Outside shift hours'].filter(Boolean).join(' · ')||'—';
 // The clock minutes as written on the card; they differ from the counted minutes only where an exception time took some out.
 const written=(e,mode)=>blank(e[mode].rawMinutes)?'—':e[mode].rawMinutes;
 const LABELS={...BAND_LABELS,[EXCEPTION_KEY]:EXCEPTION_LABEL};
@@ -50,7 +52,8 @@ export function delayedColumns(mode,withDriver,exception=false,manySites=false){
  const counted=label=>exception
   ?[column('rawMinutes',label,e=>written(e,mode)),column('excepted','In exception time (min)',e=>e[mode].excepted||0),column('minutes','Counted (min)',e=>minutes(e,mode),e=>pill(e[mode].band,minutes(e,mode)))]
   :[column('minutes',label,e=>minutes(e,mode),e=>pill(e[mode].band,minutes(e,mode)))];
- const before=exception?[column('rawBand','Band without exception',e=>BAND_LABELS[e[mode].rawBand])]:[];
+ // Shift clock (owner, 17 Nov 2026): a time the card wrote on a 12-hour clock is shown as read, with the written time here.
+ const before=[...(exception?[column('rawBand','Band without exception',e=>BAND_LABELS[e[mode].rawBand])]:[]),column('asWritten','As written on card',e=>writtenOnCard(e))];
  return mode==='load-unload'
   ?[...start,column('machine','Loading machine'),column('trips','Trips'),column('loadingTime','Loading time'),column('unloadingTime','Unloading time'),...counted('Minutes taken'),band,...before]
   :[...start,column('previousUnloadingTime','Unloaded at (previous trip)'),column('loadingTime','Loaded again at'),column('machine','Loading machine'),...counted('Gap minutes'),band,...before];

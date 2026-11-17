@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="hi"><head><meta charset="utf-8"><title>ट्रिप समय अब शिफ्ट की घड़ी पर</title>
+<style>
+@page{size:A4;margin:15mm 15mm}
+body{font-family:"Nirmala UI","Segoe UI",Arial,sans-serif;color:#24163a;font-size:10.8pt;line-height:1.5;margin:0}
+h1{font-size:19pt;margin:0 0 2px;color:#3b1d6e}
+.sub{color:#6a5a80;margin:0 0 12px;font-size:10.3pt}
+h2{font-size:13pt;color:#3b1d6e;border-bottom:2px solid #d9c9ef;padding-bottom:3px;margin:15px 0 7px}
+.box,tr{break-inside:avoid}
+table{border-collapse:collapse;width:100%;margin:6px 0 10px;font-size:10.2pt}
+th,td{border:1px solid #d6cbe6;padding:5px 8px;text-align:left;vertical-align:top}
+th{background:#f1eafb}
+td.t{font-family:Consolas,monospace;white-space:nowrap}
+.box{border-radius:8px;padding:9px 12px;margin:8px 0}
+.warn{background:#fff6dc;border:1px solid #e6c45c}
+.ok{background:#e9f7ee;border:1px solid #8fcca6}
+.note{background:#f5f1fb;border:1px solid #d2c3ea}
+.clock{display:flex;gap:8px;margin:8px 0}
+.shift{flex:1;border:1px solid #c9b7e6;border-radius:8px;padding:8px 10px;background:#faf7ff}
+.shift b{display:block;color:#3b1d6e;font-size:11.5pt}
+.shift span{font-family:Consolas,monospace;font-size:10pt}
+ul,ol{margin:4px 0 8px 18px;padding:0}li{margin:2px 0}
+.small{font-size:9.3pt;color:#6a5a80}
+.en{font-family:"Segoe UI",Arial,sans-serif}
+</style></head><body>
+
+<h1>ट्रिप का समय अब शिफ्ट की घड़ी पर पढ़ा जाता है</h1>
+<p class="sub">व्हीकल लॉग बुक (VLB) ट्रिप कार्ड · <span class="en">Trip Timing &amp; Gap Report</span> · <span class="en">Loading Equipment-wise</span> रिपोर्ट · 17 नवंबर 2026</p>
+
+<h2>1. क्या गलत दिख रहा था</h2>
+<div class="box warn">ट्रिप टाइमिंग रिपोर्ट में धोपटाला OB (2nd) के 01-11-26 के <b>शिफ्ट C</b> कार्ड पर एक ट्रिप <b>04:03</b> पर और दूसरी <b>12:50 → 13:37</b> पर दिख रही थी।
+12:50 शिफ्ट A का समय लगता है, इसलिए ऐसा लगा कि शिफ्ट A की ट्रिप शिफ्ट C में मिल गई हैं।</div>
+<p>ऐसा नहीं था। ड्राइवर ने समय <b>12 घंटे की घड़ी</b> पर लिखा था: रात के कार्ड पर "12:50" का मतलब है <b>00:50</b>, यानी आधी रात के ठीक बाद।
+ट्रिप नं. 8 (00:50) ट्रिप नं. 12 (04:03) से पहले आती है, तो कार्ड का क्रम भी यही बताता है। ऐप समय को जैसा लिखा था वैसा ही उतार रहा था,
+इसलिए रिपोर्ट में 12:50 छपा।</p>
+
+<h2>2. नया नियम</h2>
+<div class="box ok">हर कार्ड की शिफ्ट तय है (बैच में लॉक होती है)। इसलिए कार्ड पर लिखा हर समय <b>उसी शिफ्ट की घड़ी</b> पर पढ़ा जाता है।
+एक लिखा हुआ घंटा दो समय हो सकता है, जैसे 2:30 का मतलब 02:30 भी हो सकता है और 14:30 भी। ऐप वही समय रखता है जो <b>शिफ्ट के अंदर</b> आता है।</div>
+<div class="clock">
+ <div class="shift"><b>शिफ्ट A</b><span>05:00 – 13:00</span></div>
+ <div class="shift"><b>शिफ्ट B</b><span>13:00 – 21:00</span></div>
+ <div class="shift"><b>शिफ्ट C</b><span>21:00 – 05:00</span></div>
+</div>
+<table>
+<tr><th style="width:16%">शिफ्ट</th><th style="width:22%">कार्ड पर लिखा</th><th style="width:22%">ऐप ने पढ़ा</th><th>क्यों</th></tr>
+<tr><td>शिफ्ट A</td><td class="t">6:10</td><td class="t">06:10</td><td>18:10 शिफ्ट A में नहीं है</td></tr>
+<tr><td>शिफ्ट A</td><td class="t">12:30</td><td class="t">12:30</td><td>00:30 शिफ्ट A में नहीं है</td></tr>
+<tr><td>शिफ्ट B</td><td class="t">2:30</td><td class="t">14:30</td><td>02:30 शिफ्ट B में नहीं है</td></tr>
+<tr><td>शिफ्ट B</td><td class="t">8:45</td><td class="t">20:45</td><td>08:45 शिफ्ट B में नहीं है</td></tr>
+<tr><td>शिफ्ट C</td><td class="t">9:30</td><td class="t">21:30</td><td>09:30 शिफ्ट C में नहीं है</td></tr>
+<tr><td>शिफ्ट C</td><td class="t">12:50</td><td class="t">00:50</td><td>दोपहर 12:50 शिफ्ट C में नहीं है</td></tr>
+<tr><td>शिफ्ट C</td><td class="t">13:37</td><td class="t">01:37</td><td>13:37 शिफ्ट C में नहीं है; 12 घंटे पहले वाला है</td></tr>
+<tr><td>शिफ्ट C</td><td class="t">4:03</td><td class="t">04:03</td><td>पहले से शिफ्ट C के अंदर</td></tr>
+</table>
+<p class="small">शिफ्ट के घंटे हर साइट के <span class="en">Shift Master</span> से लिए जाते हैं (जैसे मजरी की शिफ्ट C 20:00 – 04:00 है), इसलिए हर साइट अपनी घड़ी पर पढ़ी जाती है।
+ट्रिप शिफ्ट से 1 घंटा पहले शुरू हो सकती है या 2 घंटे बाद तक चल सकती है; ऐसे समय भी माने जाते हैं।
+12 घंटे की Day और Night शिफ्ट में, 24 घंटे की घड़ी पर साफ़ लिखा समय (जैसे 20:30) वैसा ही रखा जाता है।</p>
+
+<h2>3. आपको क्या दिखेगा</h2>
+<ul>
+<li><b>कार्ड सेव करते समय</b> (हाथ से एंट्री या स्कैन ऑटो-सेव): ट्रिप का समय शिफ्ट की घड़ी पर सेव होगा। कार्ड पर लिखा समय भी ट्रिप लाइन में रखा रहेगा।</li>
+<li><b class="en">Trip Timing &amp; Gap Report</b> और <b class="en">Loading Equipment-wise</b>: पहले से सेव कार्ड भी इसी तरह पढ़े जाते हैं, इसलिए पुरानी तारीखें भी सही दिखेंगी। रिपोर्ट सेव कार्ड में कुछ नहीं बदलती।</li>
+<li>Step 5 (देरी वाली ट्रिप) में आख़िर में नया कॉलम <b class="en">As written on card</b> है, जैसे <i class="en">"Loading 12:50 · Unloading 13:37"</i>, और साथ में पढ़ा गया समय (00:50 → 01:37)।</li>
+<li>Step 6 (ट्रिप कार्ड) के <b>Remark</b> कॉलम में: <i class="en">"Written 12:50 on the card, read as 00:50 on the Shift C clock"</i> (कार्ड पर 12:50 लिखा, शिफ्ट C की घड़ी पर 00:50 पढ़ा)।</li>
+<li><b>मिनट अब सही हैं।</b> 12:50 → 1:37 लिखी ट्रिप पहले 12 घंटे से ज़्यादा की बनती थी और <i class="en">Not judged</i> दिखती थी। अब यह 47 मिनट है। इसलिए शिफ्ट B और C में कुछ देरी की गिनती थोड़ी बढ़ सकती है: ये असली देरी हैं जो पहले छुपी थीं।</li>
+</ul>
+
+<h2>4. "शिफ्ट के घंटों से बाहर का समय"</h2>
+<div class="box note">अगर कोई समय दोनों तरह से शिफ्ट में नहीं बैठता (जैसे शिफ्ट C कार्ड पर 7:30), तो ऐप उसे लिखे अनुसार रखता है और दिखाता है
+<i class="en">"Time outside Shift C hours (21:00–05:00): check the card, not judged"</i>। वह ट्रिप <b>देरी में नहीं गिनी जाती</b>।
+इसका मतलब आमतौर पर कार्ड पर गलत समय या गलत शिफ्ट पर टिक होता है।</div>
+
+<h2>5. टीम को क्या करना है</h2>
+<ol>
+<li>हर ट्रिप कार्ड पर <b>सही शिफ्ट</b> पर टिक करें। अब ऐप समय पढ़ने के लिए शिफ्ट पर ही भरोसा करता है।</li>
+<li>24 घंटे की घड़ी पर समय लिखना (21:30, 00:50) सबसे अच्छा है, लेकिन 12 घंटे वाला समय भी अब सही पढ़ा जाता है।</li>
+<li>जब रिपोर्ट में <b>"शिफ्ट के घंटों से बाहर का समय"</b> दिखे, तो कार्ड खोलें, समय और शिफ्ट को कागज़ के कार्ड से मिलाएँ और सुधारें।</li>
+<li>अगर कोई ट्रिप अब भी दूसरी शिफ्ट की लगे, तो बुक नं. और ट्रिप नं. के साथ बताएँ।</li>
+</ol>
+</body></html>
