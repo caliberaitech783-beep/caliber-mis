@@ -13,6 +13,7 @@ import {ensureJobReferenceVisibleKeys} from '../src/table-actions-model.mjs';
 import {sameReportView} from '../src/report-portal-target.mjs';
 import {matchesSmartSearch} from '../shared/smart-search.mjs';
 import {reportTime12} from '../shared/report-time-format.mjs';
+import {SERIAL_COLUMN_KEY,SERIAL_COLUMN_LABEL,serialTone} from '../shared/serial-column.mjs';
 
 const main=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');
 const nodes=(tree,type)=>{
@@ -56,7 +57,7 @@ test('saved report Print uses the committed restored view and waits until printi
 
 test('generated reports keep full filtered sorted exports and all print columns beyond one page',async()=>{
  const h=hooks(),FilterableHeader=()=>null,RecordDateRange=()=>null,SavedReportsPanel=()=>null,printed=[];let exported;
- const scope={React,...h,primaryRecordDateColumn,encodeDateRange,parseDateRange,matchesDateRange,cellMatchesFilterValues,isDurationColumn,defaultDurationSort,compareDurationValues,ensureJobReferenceVisibleKeys,sameReportView,matchesSmartSearch,reportTime12,
+ const scope={React,...h,SERIAL_COLUMN_KEY,SERIAL_COLUMN_LABEL,serialTone,primaryRecordDateColumn,encodeDateRange,parseDateRange,matchesDateRange,cellMatchesFilterValues,isDurationColumn,defaultDurationSort,compareDurationValues,ensureJobReferenceVisibleKeys,sameReportView,matchesSmartSearch,reportTime12,
   useRequestShiftData:()=>({shifts:[]}),requestShiftColumns:columns=>columns,useColumnPreferences:(_table,_columns,visible)=>[visible,()=>{}],useColumnWidths:()=>[{},()=>{},()=>{}],columnWidthStyle:()=>undefined,StepBackButton:()=>null,mobileTablePageSize:()=>0,
   useTableLayouts:()=>({layouts:[]}),openSmartPrint:model=>printed.push(model),printTableReport:()=>{},exportCellText:String,FilterableHeader,RecordDateRange,SavedReportsPanel,
   TableLayoutSelect:()=>null,ReportActionsMenu:()=>null,SmartSelect:'select',ListFilter:'i',TableParameterFilter:()=>null,ReportColumnSelector:()=>null,ReportSortDialog:()=>null,ChevronLeft:'i',ChevronRight:'i',createPortal:tree=>tree};
@@ -70,7 +71,9 @@ test('generated reports keep full filtered sorted exports and all print columns 
  let tree=h.render(Table,props);h.commit();assert.equal(exported.rows.length,137);assert.equal(nodes(nodes(tree,'tbody')[0],'tr').length,50);
  nodes(tree,RecordDateRange)[0].props.onChange(encodeDateRange('2026-11-03','2026-11-03'));
  tree=h.render(Table,props);h.commit();assert.equal(exported.rows.length,120);assert.equal(exported.rows.at(-1).hours,'—');assert.equal(exported.rows[0].hours,'119h');
- assert.deepEqual(exported.columns.map(c=>c.key),['date','hours']);assert.deepEqual(exported.allColumns.map(c=>c.key),['date','site','hours']);
+ // The export starts with the Sr. No. the screen shows (owner, 17 Nov 2026: coloured in Excel, PDF and print).
+ assert.deepEqual(exported.columns.map(c=>c.key),['__rowNumber','date','hours']);assert.deepEqual(exported.allColumns.map(c=>c.key),['__rowNumber','date','site','hours']);
+ assert.deepEqual(exported.rows.slice(0,3).map(row=>exported.columns[0].value(row)),[1,2,3]);
  const saved=nodes(tree,SavedReportsPanel)[0].props;assert.equal(saved.currentView().dateRange,encodeDateRange('2026-11-03','2026-11-03'));
  saved.onPrint();assert.equal(printed[0].rows.length,120);assert.equal(printed[0].columns.length,3);
  let restoredRange;

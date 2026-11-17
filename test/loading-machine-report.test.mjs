@@ -256,7 +256,7 @@ test('Step 3 leaves First and Last loading, Shift hours, Hours in BD and Not jud
  assert.match(screen,/const printOnly=c=>\(\{\.\.\.c,printOnly:true\}\);/);
  const main=fs.readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');
  assert.match(main,/visibleColumnKeys = stepLook \? columns\.filter\(\(column\) => !column\.printOnly\)\.map\(\(column\) => column\.key\) : appliedColumns;/,'not on the screen');
- assert.match(main,/columns: stepLook \? columns : displayedColumns, allColumns: columns/,'still in Smart Print, PDF and Excel');
+ assert.match(main,/columns: withExportSerial\(stepLook \? columns : displayedColumns\), allColumns: withExportSerial\(columns\)/,'still in Smart Print, PDF and Excel');
 });
 
 test('the screen shows working and idle time first, keeps the old list as a second view and the totals at the foot',()=>{

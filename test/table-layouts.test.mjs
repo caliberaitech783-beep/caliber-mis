@@ -9,6 +9,7 @@ import * as tableModel from "../src/table-actions-model.mjs";
 import { defaultDurationSort, isDurationColumn } from "../src/duration-sort.mjs";
 import { primaryRecordDateColumn } from "../src/record-date-range.mjs";
 import { reportTime12 } from "../shared/report-time-format.mjs";
+import { SERIAL_COLUMN_KEY, SERIAL_COLUMN_LABEL, serialTone } from "../shared/serial-column.mjs";
 
 const columns = ["door", "status", "model"].map(key => ({ key, label: key }));
 const memory = () => {
@@ -166,6 +167,7 @@ test("Reports tables apply the same saved column order through their controlled 
   const main = readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
   let capturedKey;
   const render = await harness(main.slice(main.indexOf("function ReportTable("), main.indexOf("function parseCsv(")), "ReportTable", {
+    SERIAL_COLUMN_KEY, SERIAL_COLUMN_LABEL, serialTone,
     primaryRecordDateColumn, isDurationColumn,
     useRequestShiftData:()=>({shifts:[]}),requestShiftColumns:columns=>columns,
     defaultDurationSort, reportTime12, mobileTablePageSize: () => 0, tableFilterText: value => String(value || ""),
@@ -186,5 +188,7 @@ test("Reports tables apply the same saved column order through their controlled 
   assert.equal(capturedKey, "Equipment report");
   const table = descendants(tree, node => node.type === "table")[0];
   assert.deepEqual(descendants(table, node => node.props.sortKey).map(node => node.props.label), ["model", "door"]);
-  assert.deepEqual(descendants(table, node => node.type === "td").slice(1).map(content), ["M-1", "D-1"]);
+  // The Sr. No. cell is its own element (coloured since 17 Nov 2026), ahead of the data cells.
+  assert.deepEqual(descendants(table, node => node.type?.name === "SerialCell").map(node => node.props.serial), [1]);
+  assert.deepEqual(descendants(table, node => node.type === "td").map(content), ["M-1", "D-1"]);
 });

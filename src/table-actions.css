@@ -68,3 +68,12 @@
 tr.report-row-clickable{cursor:pointer}
 tr.report-row-clickable:hover>td,tr.report-row-clickable:focus-visible>td{background:#f3edfa}
 tr.report-row-clickable:focus-visible{outline:2px solid #522e90;outline-offset:-2px}
+
+/* Owner, 17 Nov 2026: the Sr. No. is coloured so the top of every list can be watched: 1-5 red, 6-10 orange,
+   11 onwards green. Only the number carries the colour; the line keeps its own colour. */
+.table-serial-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 30px; height: 22px; padding: 0 6px; border-radius: 6px; color: #fff; font-weight: 800; font-size: 12px; line-height: 1; box-sizing: border-box; }
+.table-serial-badge.serial-red { background: #dc2626; }
+.table-serial-badge.serial-orange { background: #ea580c; }
+.table-serial-badge.serial-green { background: #16a34a; }
+.generated-report-section[data-step-look] .table-serial-header, .generated-report-section[data-step-look] .table-serial-cell { min-width: 44px; padding-left: 4px; padding-right: 4px; }
+@media print { .table-serial-badge { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
