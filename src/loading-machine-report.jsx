@@ -176,6 +176,56 @@ function Strip({entry,label,single,onPick,onOpen,picked=false}){
   </div>
  </div>;
 }
+const Legend=()=><p className="lm-tl-legend"><span><i className="lm-part-green"/>Green · first {IDLE_LIMIT} min after a loading</span><span><i className="lm-part-orange"/>Orange · from the {IDLE_LIMIT}th minute</span><span><i className="lm-part-red"/>Red · from the {RED_AFTER}th minute, till the next loading</span><span><i className="lm-part-bd"/>Black · breakdown in Pulse, not idle</span><span><i className="lm-tl-rest"/>Before the first or after the last loading</span></p>;
+// The Sr. No. of a line: 1 to 5 red, 6 to 10 orange, 11 onwards green (owner, 17 Nov 2026), as in every report table.
+export const srTone=n=>n<=5?'red':n<=10?'orange':'green';
+// Prints a copy of the charts on A3 landscape, three machines a page, so the screen and its scroll stay as they are.
+export function printMachineCharts(node,title){
+ if(!node||typeof document==='undefined')return;
+ const frame=document.createElement('iframe');
+ frame.title='Machine charts print';
+ frame.style.cssText='position:fixed;left:-10000px;top:0;width:1520px;height:1000px;border:0';
+ document.body.append(frame);
+ const doc=frame.contentDocument,win=frame.contentWindow;
+ doc.open();doc.write('<!doctype html><html><head><meta charset="utf-8"></head><body></body></html>');doc.close();
+ doc.title=title;
+ const sheets=[...document.querySelectorAll('style,link[rel="stylesheet"]')].map(el=>el.cloneNode(true));
+ doc.head.append(...sheets);
+ const style=doc.createElement('style');
+ style.textContent='@page{size:A3 landscape;margin:8mm}body{margin:0;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}'
+  +'h1{font:700 18px Arial,sans-serif;margin:0 0 8px;color:#10284c}.lm-charts-print{display:none}.lm-charts{border:0;box-shadow:none;margin:0;padding:0}'
+  +'.lm-chart-card{break-inside:avoid;page-break-inside:avoid}.lm-chart-card:nth-of-type(3n){break-after:page;page-break-after:always}.lm-tl-scroll{overflow:visible}.lm-tl-inner{min-width:0}';
+ doc.head.append(style);
+ const heading=doc.createElement('h1');heading.textContent=title;
+ doc.body.append(heading,node.cloneNode(true));
+ const loaded=sheets.filter(el=>el.tagName==='LINK').map(el=>new Promise(done=>{el.addEventListener('load',done,{once:true});el.addEventListener('error',done,{once:true});}));
+ const remove=()=>frame.remove();
+ win.addEventListener('afterprint',remove,{once:true});
+ Promise.race([Promise.all(loaded),new Promise(done=>setTimeout(done,2500))]).then(()=>setTimeout(()=>{win.focus();win.print();setTimeout(remove,120000);},200));
+}
+// Owner, 17 Nov 2026 (photo 1): the shift time-line of every machine of Step 4, one under the other in the order of the
+// list, each under a line with its Sr. No. (coloured), door, machine, operator, hours worked and total idle. Only one shift
+// is drawn: with every date and shift open there could be hundreds. Pressing a chart opens that machine as Step 5.
+export function MachineCharts({items=[],where='',slotPicked=false,onOpen=()=>{}}){
+ const box=useRef(null);
+ if(!slotPicked)return <p className="tt-insight lm-charts-note" role="status">Pick one shift box in Step 2 above to see the chart of every machine of that shift.</p>;
+ if(!items.length)return <p className="tt-insight lm-charts-note" role="status">No machine in this list has a timed loading or a breakdown in Pulse to draw.</p>;
+ const title='Chart of every machine · '+where;
+ return <section ref={box} className="lm-timeline lm-charts" aria-label="Chart of every machine">
+  <div className="lm-charts-head"><h3>{title}</h3><button type="button" className="secondary lm-charts-print" onClick={()=>printMachineCharts(box.current,title)}>Print charts (A3)</button></div>
+  <Legend/>
+  {items.flatMap(({row,sr,entries})=>entries.map(e=><article key={e.id} className="lm-chart-card">
+   <header className="lm-chart-head">
+    <span className={'lm-chart-sr lm-sr-'+srTone(sr)} title={'Sr. No. '+sr+' in Step 4'}>{sr}</span>
+    <b>{row.door}</b><span>{row.machineName||'—'}</span><span>{row.operator||'—'}</span>
+    <span>Hours worked <b>{blank(row.hours)?'—':row.hours}</b></span><span>Total idle <b>{row.running?idleText(row.idleMinutes):'—'}</b></span><span><b>{row.trips}</b> trips</span>
+    {row.state!=='running'&&<span className={'lm-status lm-status-'+row.state}>{row.statusLabel}</span>}
+   </header>
+   <div className="lm-tl-scroll"><div className="lm-tl-inner"><Strip entry={e} label="" single onPick={()=>{}} onOpen={()=>onOpen(row)}/></div></div>
+  </article>))}
+  <p className="lm-tl-foot">One chart per machine, in the order of Step 4 (the fewest hours worked on top), with its Sr. No. Press a chart to open that machine with every loading below.</p>
+ </section>;
+}
 const stripOrder=(a,b)=>String(b.date).localeCompare(String(a.date))||a.shift.localeCompare(b.shift,undefined,{numeric:true})||a.door.localeCompare(b.door,undefined,{numeric:true});
 // One strip: the shift full width with its clock times. Many strips (a machine over many shifts, or many machines): one
 // under the other, newest shift on top; pressing a strip opens that shift on its own (`onOpen`).
@@ -188,7 +238,7 @@ export function ShiftTimelines({entries=[],title='',step='',onPick=()=>{},onOpen
  const one=drawn[0],heading=single?'Machine '+one.door+' · '+one.site+' · '+day(one.date)+' · '+one.shift+(one.axis.known?' · '+clockAt(one.axis.start)+' to '+clockAt(one.axis.start,one.axis.minutes):''):title;
  return <section className="lm-timeline" aria-label="Shift time-line">
   <h3>{step}{single?'Shift time-line':'Shift time-lines'} · {heading}</h3>
-  <p className="lm-tl-legend"><span><i className="lm-part-green"/>Green · first {IDLE_LIMIT} min after a loading</span><span><i className="lm-part-orange"/>Orange · from the {IDLE_LIMIT}th minute</span><span><i className="lm-part-red"/>Red · from the {RED_AFTER}th minute, till the next loading</span><span><i className="lm-part-bd"/>Black · breakdown in Pulse, not idle</span><span><i className="lm-tl-rest"/>Before the first or after the last loading</span></p>
+  <Legend/>
   <div className="lm-tl-scroll"><div className="lm-tl-inner">{shown.map(e=><Strip key={e.id} entry={e} label={label(e)} single={single} onPick={onPick} onOpen={single?null:onOpen} picked={e.id===pickedId}/>)}</div></div>
   <p className="lm-tl-foot">{single
    ?`Every dark line inside the strip is one loading; the number on a piece is its idle minutes. Black is the time the machine was in breakdown in Pulse: it is not idle, and the idle clock stops while it lasts. Under the strip: when each breakdown began and ended, the clock time each stop turned orange and red, and when a red stop ended with the next loading. Below each hour: the trips loaded in it, by the colour of the gap before each, and its minutes in breakdown. Press a piece, a black breakdown or a clock time to read it in full.`
@@ -203,6 +253,8 @@ export default function LoadingMachineReport({records=[],assets=[],fleet=[],batc
  const [category,setCategory]=useState(null);
  // The machine shift whose Pulse breakdowns are open under Shifts not worked, and the Pulse request opened in full under them.
  const [bdShift,setBdShift]=useState(''),[bdRequest,setBdRequest]=useState('');
+ // Owner, 17 Nov 2026: the tick on Step 4 that draws the chart of every machine of the shift, one under the other.
+ const [chartAll,setChartAll]=useState(false);
  const entries=useMemo(()=>machineShifts(records,{assets,fleet,batches,filters,pulseBreakdowns}),[records,assets,fleet,batches,filters,pulseBreakdowns]);
  const visible=useMemo(()=>loading?entries.filter(e=>e.names.includes(loading)||e.door===loading):entries,[entries,loading]);
  const cardRows=useMemo(()=>card?tripEntries(records).filter(e=>e.recordId===card):[],[records,card]),cardHead=cardRows[0];
@@ -223,6 +275,8 @@ export default function LoadingMachineReport({records=[],assets=[],fleet=[],batc
  const categoryEntries=!category?[]:category.key===EVERY?slotEntries:slotEntries.filter(e=>groupKey('category',e)===category.key);
  const machines=summarise(categoryEntries,'machine'),machinesListed=upper?machines.rows.filter(r=>r[upper]>0):machines.rows;
  const itemEntries=!item?[]:item.key===EVERY?categoryEntries:categoryEntries.filter(e=>groupKey('machine',e)===item.key);
+ // The chart of every machine follows the lines of Step 4 and keeps each line's Sr. No.; only one shift is drawn at a time.
+ const chartItems=chartAll&&slot&&category?machinesListed.map((row,i)=>({row,sr:i+1,entries:categoryEntries.filter(e=>groupKey('machine',e)===row.key&&canDraw(e))})).filter(c=>c.entries.length):[];
  // A machine over many shifts (or many machines) is drawn as one 8-hour strip per shift; pressing a strip opens that
  // shift on its own. With one shift to draw, that shift is open at once.
  const drawable=itemEntries.filter(canDraw).sort(stripOrder),stacked=drawable.length>1;
@@ -305,10 +359,12 @@ export default function LoadingMachineReport({records=[],assets=[],fleet=[],batc
   </>}
   {level>=3&&<>
    <p className="tt-insight">{summaryLine(machines.total)}</p>
-   <ReportSection key={'lm-machines-'+site+(slot?.key||EVERY)+category.key+upper} reportKey={'Loading machines of a shift'+(allShifts?' together':'')} dataReady={dataReady} title={'Step 4 · Loading machines · '+where+filtered} category="operations-loading-machines" description={(allShifts?'Every loading machine of the category over all the dates and shifts above; press a box above for one shift only. ':'')+'One line per loading machine: the running machines first with the most idle on top, then the machines in BD in red, then the machines with no hours in brown. Press a line to see the machine as an 8-hour strip per shift: where it was green, where it turned orange and where red, by the clock. Press a coloured number to see only those stops.'}
+   <ReportSection key={'lm-machines-'+site+(slot?.key||EVERY)+category.key+upper} reportKey={'Loading machines of a shift'+(allShifts?' together':'')} dataReady={dataReady} title={'Step 4 · Loading machines · '+where+filtered} category="operations-loading-machines" description={(allShifts?'Every loading machine of the category over all the dates and shifts above; press a box above for one shift only. ':'')+'One line per loading machine: the running machines first with the fewest hours worked on top, then the machines in BD in red, then the machines with no hours in brown. Press a line to see the machine as an 8-hour strip per shift: where it was green, where it turned orange and where red, by the clock. Press a coloured number to see only those stops. Tick Show chart of every machine to see the strip of every machine of the shift, in the order of this list.'}
+    headingControl={<label className="lm-chart-tick" title={slot?'Show the shift time-line of every machine in this list, one under the other':'Pick one shift box in Step 2 first'}><input type="checkbox" checked={chartAll} onChange={e=>setChartAll(e.target.checked)}/><span>Show chart of every machine</span></label>}
     rows={withTotal(machinesListed,upper?{...machines.total,id:'shown-total'}:machines.total)} columns={machineColumns(openItem,allShifts,manySites)} rowKey={r=>r.id} rowClassName={r=>rowClass(r)+picked(r,item?.key)} isTotalRow={isTotal} onRowClick={r=>openItem(r)} emptyMessage="No such machine in this shift."/>
    {band&&<ReportSection key={'lm-bandstops-'+site+(slot?.key||EVERY)+category.key+band} reportKey="Loading machines stops of a band" dataReady={dataReady} title={'Idle stops of '+BAND_LABELS[band]+' · every machine · '+where} category="operations-loading-bandstops" description={'Every stop of '+BAND_LABELS[band]+' of the machines above, with the tipper trips delayed in it. Press a line to see the shift time-line of that machine.'}
     recordDateFilter={allShifts?null:false} rows={bandStops} columns={tripColumns(true,manySites)} rowKey={l=>l.id} rowClassName={lineClass} onRowClick={l=>openItem({key:l.machineKey,door:l.machine},band)} emptyMessage={'No stop of '+BAND_LABELS[band]+' here.'}/>}
+   {chartAll&&<MachineCharts items={chartItems} where={where} slotPicked={Boolean(slot)} onOpen={row=>openItem(row)}/>}
   </>}
   {level>=4&&<>
    {stacked&&!focus&&<p className="tt-insight">{timelineLine(opened)}</p>}
