@@ -12201,7 +12201,7 @@ function App() {
       />
       <main className="content">
         <div className="top">
-          <button id="erp-sidebar-toggle" type="button" className="erp-sidebar-toggle" aria-label={sidebarClosed?"Show sidebar":"Hide sidebar"} aria-expanded={!sidebarClosed} aria-controls="admin-primary-navigation" onClick={()=>sidebarAuto?setSidebarPeek(!sidebarPeek):changeSidebarHidden(!sidebarHidden)}><Menu/><span>{sidebarClosed?"Show menu":"Hide menu"}</span></button>
+          <button id="erp-sidebar-toggle" type="button" className="erp-sidebar-toggle" aria-label={sidebarClosed?"Show sidebar":"Hide sidebar"} aria-expanded={!sidebarClosed} aria-controls="admin-primary-navigation" title={sidebarClosed?"Show menu":"Hide menu"} onClick={()=>sidebarAuto?setSidebarPeek(!sidebarPeek):changeSidebarHidden(!sidebarHidden)}><Menu/><span>{sidebarClosed?"Show menu":"Hide menu"}</span></button>
           <button type="button" className="menubtn" aria-label={menu ? "Close navigation menu" : "Open navigation menu"} aria-expanded={menu} aria-controls="admin-primary-navigation" onClick={() => {if(sidebarAuto)setSidebarPeek(true);else if(sidebarHidden){setSidebarHidden(false);try{localStorage.setItem("caliberSidebarHidden","false");}catch{}}setMenu(!menu);}}>
             <Menu />
           </button>
