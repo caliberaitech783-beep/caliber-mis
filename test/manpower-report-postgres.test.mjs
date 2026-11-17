@@ -32,4 +32,9 @@ test('manpower HTTP report reads scoped saved books and batches from PostgreSQL'
  // The batch's shift and stage are read from the batch table: Shift 1 has a closed batch, and only this login's site is listed.
  assert.deepEqual(payload.attendanceShifts.find(b=>b.shift==='S1'),{siteKey:'sasti ob',date:'2026-11-10',shift:'S1',state:'closed',batch:'TEST BATCH'});assert.deepEqual([...new Set(payload.attendanceShifts.map(b=>b.siteKey))],['sasti ob']);assert.deepEqual(payload.attendanceSites,[{siteKey:'sasti ob',site:'Sasti OC'}]);
  const filtered=await (await fetch(url+'&batch='+batchId,{headers:{Authorization:'Bearer fixture'}})).json();assert.equal(filtered.details.length,1);assert.match(filtered.ot[0].shifts,/S1.*S2/);
+ // OT & Multiple Duties reads the same cases week by week, with only the duty fields and each card's batches.
+ const ot=await (await fetch(url+'&view=ot',{headers:{Authorization:'Bearer fixture'}})).json();
+ assert.deepEqual(ot.ot,payload.ot);assert.deepEqual(ot.otDuties,payload.otDuties);assert.deepEqual(ot.otSites,payload.otSites);assert.deepEqual(ot.options.batches,payload.options.batches);
+ assert.match(ot.ot[0].batches,/TEST BATCH/);
+ const otBatch=await (await fetch(url+'&view=ot&batch='+batchId,{headers:{Authorization:'Bearer fixture'}})).json();assert.deepEqual(otBatch.ot,filtered.ot);
 });
