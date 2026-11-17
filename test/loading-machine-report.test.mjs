@@ -30,8 +30,9 @@ const records=normalise([
  elb(14,104,'EX4',{openingHmr:0,closingHmr:0,breakdownHours:0,shiftStatus:'not_in_use'}),
  // A dozer has hours but never loads: it is not a loading machine.
  elb(15,201,'DZ1',{assetName:'SAMPLE DOZER'}),
- // Shift III runs through midnight: 23:50, 23:56, 00:10 are gaps of 6 and 14 minutes; 14:00 is a wrongly written time.
- vlb(3,'V9003',[trip('EX1','23:50','00:05'),trip('EX1','00:10','00:30'),trip('EX1','14:00','14:20')],shiftIII),
+ // Shift III runs through midnight: 23:50, 23:56, 00:10 are gaps of 6 and 14 minutes; 07:30 fits the shift neither as
+ // 07:30 nor as 19:30, so it is a wrongly written time (14:00 would be read as 02:00 on the night clock).
+ vlb(3,'V9003',[trip('EX1','23:50','00:05'),trip('EX1','00:10','00:30'),trip('EX1','07:30','07:50')],shiftIII),
  vlb(4,'V9004',[trip('EX1','23:56','00:12')],shiftIII),
  // Another site, saved without times.
  vlb(5,'V9005',[trip('EX9','',''),trip('EX9','','')],{location:'Site B',timeMode:'without'})

@@ -11,6 +11,7 @@ import {cardWorkingHmr} from './log-book-shared-shift.mjs';
 import {fleetDoorKey} from './scan-fleet-door.mjs';
 import {equipmentGroupName} from './equipment-group.mjs';
 import {tripSerialNumber} from './log-book-labels.mjs';
+import {cardOnShiftClock} from './shift-clock.mjs';
 import {siteLabels,minutesBetween,DELAY_LIMIT,DOUBTFUL_MINUTES} from './trip-timing-report.mjs';
 
 // Owner's bands (13 Nov 2026): a machine is idle when more than 5 minutes pass between two loadings.
@@ -101,7 +102,8 @@ export function machineShifts(records,{assets=[],fleet=[],batches=[],filters={},
   slot.names.push(text(r.shiftName));slot.hours.push(num(r.shiftHours));
   if(r.kind==='equipment'){slot.elbStarts.push(text(r.masterShiftStart).slice(0,5));machineOf(slot,'id:'+r.assetId).cards.push(r);continue;}
   slot.starts.push(text(r.masterShiftStart).slice(0,5));
-  const rows=r.trips||[];
+  // Trip times are read on the card's shift clock (owner, 17 Nov 2026): "12:50" on a Shift C card is 00:50.
+  const rows=cardOnShiftClock(r).trips||[];
   rows.forEach((t,i)=>{
    if(isUnloadingOnlyTrip(t))return;
    const name=text(t.equipmentName),asset=t.equipmentId?byId.get(String(t.equipmentId)):doors.get(canonicalSiteName(r.location))?.get(fleetDoorKey(name));
@@ -109,7 +111,8 @@ export function machineShifts(records,{assets=[],fleet=[],batches=[],filters={},
    if(name)machine.names.add(name);
    machine.trips+=num(t.completedTrips)??num(t.tripCount)??0;
    if(text(r.door))machine.tippers.add(text(r.door));
-   const at=r.timeMode==='without'?null:clockMinutes(t.loadingTime);
+   // A time outside the shift hours either way is a card mistake: the loading counts as untimed, not as an idle gap.
+   const at=r.timeMode==='without'||t.outsideShift?null:clockMinutes(t.loadingTime);
    if(at===null){machine.untimed++;return;}
    // The tipper's own wait before this loading: from its unloading on the row above. A wait longer than a shift is a wrongly written time.
    const waited=i>0?minutesBetween(rows[i-1].unloadingTime,t.loadingTime):null;
