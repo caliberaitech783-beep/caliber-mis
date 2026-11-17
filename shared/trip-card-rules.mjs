@@ -1,11 +1,47 @@
 import {normalizeScannedTime,validScannedTime} from './scan-clock.mjs';
 import {canonicalSiteName} from './site-location.mjs';
-export function kmrMeterReplaced({openingKmr,closingKmr}={}){
- return [openingKmr,closingKmr].every(value=>value!=null&&String(value).trim()!==''&&Number.isFinite(Number(value))&&Number(value)>=0)
+export function kmrMeterReplaced({openingKmr,closingKmr}={},kind='vehicle'){
+ return [openingKmr,closingKmr].every(value=>/^(?:\d+(?:\.\d+)?|\.\d+)$/.test(String(value??'').trim())&&Number.isFinite(Number(value)))
   && Number(closingKmr)<Number(openingKmr)
-  && !kmrMissingDigitReadings({openingKmr,closingKmr}).length;
+  && !kmrReadingIssue({openingKmr,closingKmr},kind);
 }
 export const VLB_SHIFT_KMR_LIMIT=250;
+function kmrDecimalIssue({openingKmr,closingKmr}){
+ const readings=[openingKmr,closingKmr].map(value=>String(value??'').trim());
+ if(!readings.every(value=>/^\d+(?:\.\d+)?$/.test(value)))return '';
+ const [opening,closing]=readings.map(Number);
+ if(closing>=opening&&closing-opening<=VLB_SHIFT_KMR_LIMIT)return '';
+ const width=Math.max(...readings.map(value=>value.split('.')[0].length));
+ if(width<6||width>15)return '';
+ const corrected=readings.map(value=>{
+  if(value.includes('.'))return value.split('.')[0].length===width-1?value:null;
+  return value.length===width?value.slice(0,-1)+'.'+value.slice(-1):null;
+ });
+ if(corrected.includes(null)||corrected.every((value,index)=>value===readings[index]))return '';
+ const distance=Number((Number(corrected[1])-Number(corrected[0])).toFixed(3));
+ if(distance<=0||distance>VLB_SHIFT_KMR_LIMIT)return '';
+ return `Possible dropped decimal in KMR readings. Check opening ${corrected[0]} and closing ${corrected[1]} on the original card (${distance} km if confirmed).`;
+}
+function kmrIncompletePrefix({openingKmr,closingKmr}){
+ const opening=String(openingKmr??'').trim(),closing=String(closingKmr??'').trim();
+ if(!/^\d{5,15}(?:\.\d+)?$/.test(opening)||!/^\d+$/.test(closing))return false;
+ const whole=opening.split('.')[0];
+ // A partly typed closing reading can be a prefix of any plausible closing value.
+ const widths=opening.includes('.')?[whole.length]:[whole.length,whole.length-1];
+ return widths.some(width=>{
+  if(closing.length>=width)return false;
+  const lower=Number(closing.padEnd(width,'0')),upper=Number(closing.padEnd(width,'9'));
+  const start=width===whole.length?Number(opening):Number(opening)/10;
+  return upper>=Math.floor(start)&&lower<=start+VLB_SHIFT_KMR_LIMIT;
+ });
+}
+function kmrReadingIssue(draft,kind='vehicle'){
+ const decimal=kind==='vehicle'?kmrDecimalIssue(draft):'';
+ if(decimal)return decimal;
+ const missing=kmrMissingDigitIssue(draft);
+ if(missing)return missing;
+ return kind==='vehicle'&&kmrIncompletePrefix(draft)?'Closing KMR appears incomplete. Enter the full reading from the original card.':'';
+}
 // A closing KMR one digit shorter than the opening (Jayant OC, 7 Nov 2026: 292146.5 then 29276.4)
 // is a digit missed on the card or by the reader, not a new meter: putting one digit back gives a
 // normal shift distance. Those full readings are returned, nearest first. A new meter starts near
@@ -32,13 +68,13 @@ export function shiftMeterIssues(draft={},kind='vehicle'){
  const issues={},hours=Number(draft.shiftHours);
  // Blocks saving whatever the shift hours: below the opening and not a replacement, the
  // reading would otherwise be saved with a negative distance.
- if(kind!=='equipment'){const missing=kmrMissingDigitIssue(draft);if(missing)issues.closingKmr=missing;}
+ if(kind!=='equipment'){const readingIssue=kmrReadingIssue(draft,kind);if(readingIssue)issues.closingKmr=readingIssue;}
  if(kind!=='lmv'&&![8,9,12].includes(hours))return issues;
  for(const meter of (kind==='lmv'?['Kmr']:kind==='vehicle'?['Hmr','Kmr']:['Hmr'])){
   const a=draft['opening'+meter],b=draft['closing'+meter];
   if(a==null||b==null||String(a).trim()===''||String(b).trim()==='')continue;
   const opening=Number(a),closing=Number(b),limit=meter==='Hmr'?hours:VLB_SHIFT_KMR_LIMIT;
-  const replaced=meter==='Kmr'&&kmrMeterReplaced(draft);
+  const replaced=meter==='Kmr'&&kmrMeterReplaced(draft,kind);
   if(!Number.isFinite(opening)||!Number.isFinite(closing)||opening<0||closing<0||(!replaced&&closing<opening))continue;
   const field=replaced?'replacementKmr':'closing'+meter;
   const actual=draft.replacementKmr;
@@ -50,7 +86,7 @@ export function shiftMeterIssues(draft={},kind='vehicle'){
   if(kind!=='lmv'&&difference-limit>Number.EPSILON*(replaced?limit:Math.max(1,Math.abs(opening),Math.abs(closing)))*4){
    const format=n=>Number(n.toFixed(3)),unit=meter==='Hmr'?'hours':'km';
    const label=replaced?'Actual KMR distance':meter.toUpperCase()+' difference (closing - opening)';
-   issues[field]=`${label} is ${format(difference)} ${unit}; maximum for an ${hours}-hour shift is ${limit}. Exceeds limit by ${format(difference-limit)} ${unit}.`;
+   issues[field]||=`${label} is ${format(difference)} ${unit}; maximum for an ${hours}-hour shift is ${limit}. Exceeds limit by ${format(difference-limit)} ${unit}.`;
   }
  }
  return issues;
@@ -64,7 +100,7 @@ export function meterRuleIssues(draft={},kind='vehicle'){
    if(value!==null&&value!==undefined&&String(value).trim()!==''&&Number.isFinite(Number(value))&&Number(value)<0)issues[key]=`${prefix==='opening'?'Opening':'Closing'} ${meter.toUpperCase()} is negative.`;
   }
   const a=draft['opening'+meter],b=draft['closing'+meter];
-  if(a!==null&&b!==null&&a!==undefined&&b!==undefined&&String(a).trim()!==''&&String(b).trim()!==''&&Number.isFinite(Number(a))&&Number.isFinite(Number(b))&&Number(b)<Number(a)&&!(meter==='Kmr'&&(kmrMeterReplaced(draft)||kmrMissingDigitReadings(draft).length)))issues['closing'+meter]=`Closing ${meter.toUpperCase()} is below opening ${meter.toUpperCase()}.`;
+  if(a!==null&&b!==null&&a!==undefined&&b!==undefined&&String(a).trim()!==''&&String(b).trim()!==''&&Number.isFinite(Number(a))&&Number.isFinite(Number(b))&&Number(b)<Number(a)&&!(meter==='Kmr'&&(kmrMeterReplaced(draft,kind)||kmrReadingIssue(draft,kind))))issues['closing'+meter]=`Closing ${meter.toUpperCase()} is below opening ${meter.toUpperCase()}.`;
  }
  return issues;
 }
