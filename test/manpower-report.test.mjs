@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildManpowerReport,manpowerFilters,lockedSiteDays,pendingSiteDays,attendanceWindows,otHistoryWindows,otHistorySummary,otYearWindows,otDriverTally} from '../server/rules/manpower-report.mjs';
+import {buildManpowerReport,manpowerCategoryCells,manpowerFilters,lockedSiteDays,pendingSiteDays,attendanceWindows,otHistoryWindows,otHistorySummary,otYearWindows,otDriverTally} from '../server/rules/manpower-report.mjs';
 import {registerManpowerReports} from '../server/routes/manpower-report-api.mjs';
 import {linkVlbTripHandovers} from '../shared/vlb-trip-handover.mjs';
 
@@ -203,7 +203,9 @@ test('Manpower by Category, Reconciliation, Shift Performance and Equipment Wise
  const range={from:'2026-11-01',to:'2026-11-16'},batches=lockedBatches([site+'|2026-11-08|S1']);
  const one=buildManpowerReport({records:linkVlbTripHandovers(cards),assets,employees,shifts,filters:manpowerFilters(range),batches});
  const byId=list=>[...list].sort((a,b)=>String(a.id).localeCompare(String(b.id)));
- const views={category:['details','summary'],reconciliation:['fleet','fleetWork'],performance:['performance'],equipment:['attendanceEquipment','attendanceShifts']};
+ // 'category-counts' (17 Nov 2026) sends the Category counts worked out from every card instead of the cards themselves.
+ const views={category:['details','summary'],'category-counts':['summary','cells'],reconciliation:['fleet','fleetWork'],performance:['performance'],equipment:['attendanceEquipment','attendanceShifts']};
+ one.cells=manpowerCategoryCells(one.details);
  for(const [view,tables] of Object.entries(views)){
   const h=apiHarness({sites:null},cards,{batches}),r=await h.run({...range,site:'',shift:'',batch:'',employee:'',asset:'',view});
   assert.equal(r.status,200,view+' '+JSON.stringify(r.result));assert.equal(r.released,true);assert.equal(h.calls.at(-1).sql,'COMMIT');
@@ -211,7 +213,7 @@ test('Manpower by Category, Reconciliation, Shift Performance and Equipment Wise
   assert.deepEqual(reads.map(c=>[c.args[0],c.args[1]]),[['2026-11-01','2026-11-08'],['2026-11-07','2026-11-15'],['2026-11-14','2026-11-17']],view+': three weeks, each with its adjoining days');
   for(const c of reads){assert.match(c.sql,/mis_vlb_batch_entries/);assert.ok(!c.sql.includes("l.data-'manualAttachments'"),view+': only the fields the report uses are read');}
   for(const table of tables)assert.deepEqual(r.result[table],one[table],view+' '+table+' as one build of every card');
-  for(const table of ['details','summary','performance','fleet','fleetWork','attendanceEquipment','otDuties','ot','shiftAttendance'].filter(t=>!tables.includes(t)))assert.equal(r.result[table],undefined,view+' sends no '+table);
+  for(const table of ['details','summary','cells','performance','fleet','fleetWork','attendanceEquipment','otDuties','ot','shiftAttendance'].filter(t=>!tables.includes(t)))assert.equal(r.result[table],undefined,view+' sends no '+table);
   assert.deepEqual(r.result.totals,one.totals,view+' totals');assert.deepEqual(byId(r.result.exceptions),byId(one.exceptions));assert.deepEqual(r.result.otSites,one.otSites);
   assert.deepEqual(r.result.options.employees,one.options.employees);assert.deepEqual(r.result.options.sites,one.options.sites);assert.deepEqual(r.result.notes,one.notes);
  }
@@ -219,6 +221,22 @@ test('Manpower by Category, Reconciliation, Shift Performance and Equipment Wise
  assert.ok(one.details.length>=5&&one.performance.length>=5&&one.fleetWork.length>=5&&one.attendanceEquipment.length>=5,'the fixture fills every table');
  const tooMany=apiHarness({sites:null},Array.from({length:50001},(_,i)=>on(i+1,'2026-11-02',1)),{batches});
  const stop=await tooMany.run({...range,view:'category'});assert.equal(stop.status,400);assert.match(stop.result.error,/One week of saved cards is too large/);
+ // The Category card list is one opened date: the same card lines as one build of that day, and never a longer range.
+ const day={from:'2026-11-10',to:'2026-11-10'},oneDay=buildManpowerReport({records:linkVlbTripHandovers(cards),assets,employees,shifts,filters:manpowerFilters(day),batches});
+ const h=apiHarness({sites:null},cards,{batches}),list=await h.run({...day,site:'',shift:'',batch:'',employee:'',asset:'',view:'category-cards'});
+ assert.equal(list.status,200,JSON.stringify(list.result));assert.ok(oneDay.details.length>0);assert.deepEqual(list.result.details,oneDay.details);
+ assert.equal(list.result.summary,undefined);assert.equal(list.result.cells,undefined);assert.equal(h.calls.filter(c=>c.sql.includes('SELECT l.id')).length,1);
+ const longer=await apiHarness({sites:null},cards,{batches}).run({...range,view:'category-cards'});assert.equal(longer.status,400);assert.match(longer.result.error,/one day at a time/);
+});
+test('Category counts: different machines, employees and duties for every site, date, shift and category, and each total',()=>{
+ const key=(employee,site,date,shift)=>employee&&JSON.stringify([employee,site,date,shift]);
+ const line=(site,date,shift,equipment,asset,employee)=>({siteKey:site,date,shift,equipment,assetKey:asset,employeeKey:employee,dutyKey:key(employee,site,date,shift)});
+ // V1 works S1 and S2 with the same driver; V2 has a card with no matched driver; a card with no group falls under "Group missing in master".
+ const cells=manpowerCategoryCells([line('a','2026-11-10','S1','Tipper','a|V1','E1'),line('a','2026-11-10','S2','Tipper','a|V1','E1'),line('a','2026-11-10','S1','Tipper','a|V2',''),line('b','2026-11-11','S1','','b|X1','E2')]);
+ const at=(...k)=>cells.find(c=>c.slice(0,4).join('|')===k.join('|'))?.slice(4);
+ assert.deepEqual(at('a','2026-11-10','S1','Tipper'),[2,1,1,2],'two machines, one driver, one duty, two cards');
+ assert.deepEqual(at('a','2026-11-10','*','Tipper'),[2,1,2,3],'over the day: the same machine and driver count once, the duties twice');
+ assert.deepEqual(at('*','*','*','*'),[3,2,3,4]);assert.deepEqual(at('b','*','*','Group missing in master'),[1,1,1,1]);assert.equal(at('b','*','*',''),undefined);
 });
 test('locked days only (owner, 16 Nov 2026): an open, reopened or missing shift keeps the whole site-day out until it is locked again',async()=>{
  let open=['Sasti OC|2026-11-10|S3'],drop='';

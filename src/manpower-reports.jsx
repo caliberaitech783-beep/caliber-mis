@@ -340,22 +340,23 @@ function attendanceOverview({report,filters,query,ReportSection,pick,setPick,tal
 
 // Manpower by Category in steps: every site, one site date by shift, one date and shift by equipment category,
 // then the two lists (category, make and model; saved cards) for what is open. Plain render function: its state lives in ManpowerReports.
-// Machines, employees and duties are counted from the keys on the saved cards, so every table agrees with the count cards on top.
-function manpowerOverview({report,filters,query,description,ReportSection,sites,mpPick,setMpPick}){
- const cards=report.details||[],distinct=(list,key)=>new Set(list.map(r=>r[key]).filter(Boolean)).size;
- const tallyOf=list=>({machines:distinct(list,'assetKey'),employees:distinct(list,'employeeKey'),duties:distinct(list,'dutyKey'),cards:list.length});
- const within=site=>cards.filter(r=>site===EVERY||r.siteKey===site);
- const siteKey=openSite(sites,mpPick.siteKey),inSite=siteKey?within(siteKey):[];
+// Machines, employees and duties are counted on the server from the keys on the saved cards (manpowerCategoryCells): one line per
+// site, date, shift and equipment category and for every total of them ('*'), so every table agrees with the count cards on top.
+// A month of every site is too many cards to send, so the saved card list is read for one opened date (cards, from ManpowerReports).
+function manpowerOverview({report,filters,query,description,ReportSection,sites,mpPick,setMpPick,cards={rows:null,error:''}}){
+ const lines=report.cells||[],cells=new Map(lines.map(c=>[c.slice(0,4).join('\u0001'),c]));
+ const tallyOf=(site,day,code,group)=>{const c=cells.get([site,day||EVERY,code||EVERY,group||EVERY].join('\u0001'));return {machines:c?.[4]||0,employees:c?.[5]||0,duties:c?.[6]||0,cards:c?.[7]||0};};
+ const siteKey=openSite(sites,mpPick.siteKey),inSite=siteKey?lines.filter(c=>c[0]===siteKey):[];
  const span=[];for(let day=filters.from;day<=filters.to&&span.length<32;day=nextDay(day))span.push(day);
- const gridDates=[...new Set([...span,...inSite.map(r=>r.date)])].sort(),gridShifts=[...new Set(['S1','S2','S3',...inSite.map(r=>r.shift).filter(Boolean)])].sort();
+ const gridDates=[...new Set([...span,...inSite.filter(c=>c[1]!==EVERY).map(c=>c[1])])].sort(),gridShifts=[...new Set(['S1','S2','S3',...inSite.filter(c=>c[2]!==EVERY).map(c=>c[2])])].sort();
  const scope=Boolean(siteKey&&mpPick.scope),date=scope&&gridDates.includes(mpPick.date)?mpPick.date:'',shift=scope&&gridShifts.includes(mpPick.shift)?mpPick.shift:'';
- const at=(day,code)=>inSite.filter(r=>(!day||r.date===day)&&(!code||r.shift===code)),scoped=scope?at(date,shift):[];
- const groups=new Map();for(const r of scoped){const name=r.equipment||'Group missing in master';if(!groups.has(name))groups.set(name,[]);groups.get(name).push(r);}
- const categories=[...groups].map(([equipment,list])=>({id:equipment,equipment,...tallyOf(list)})).sort((a,b)=>b.machines-a.machines||b.cards-a.cards||a.equipment.localeCompare(b.equipment)),everyCategory={id:EVERY,equipment:'All categories',...tallyOf(scoped)};
- const open=scope&&(mpPick.equipment===EVERY||groups.has(mpPick.equipment))?mpPick.equipment:'';
+ const at=(day,code)=>tallyOf(siteKey,day,code,'');
+ const categories=(scope?inSite.filter(c=>c[1]===(date||EVERY)&&c[2]===(shift||EVERY)&&c[3]!==EVERY):[]).map(c=>({id:c[3],equipment:c[3],machines:c[4],employees:c[5],duties:c[6],cards:c[7]})).sort((a,b)=>b.machines-a.machines||b.cards-a.cards||a.equipment.localeCompare(b.equipment));
+ const everyCategory={id:EVERY,equipment:'All categories',...(scope?at(date,shift):tallyOf('-','-','-','-'))};
+ const open=scope&&(mpPick.equipment===EVERY||categories.some(c=>c.id===mpPick.equipment))?mpPick.equipment:'';
  // The two lists at the bottom follow whatever is open: nothing, a site, a date and shift, a category.
  const chosen=r=>(!siteKey||siteKey===EVERY||r.siteKey===siteKey)&&(!scope||(!date||r.date===date)&&(!shift||r.shift===shift))&&(!open||open===EVERY||(r.equipment||'Group missing in master')===open);
- const listedCards=siteKey?cards.filter(chosen):cards,listedSummary=siteKey?(report.summary||[]).filter(chosen):report.summary||[];
+ const oneDay=Boolean(scope&&(date||gridDates.length===1)),listedCards=oneDay&&cards.rows?cards.rows.filter(chosen):[],listedSummary=siteKey?(report.summary||[]).filter(chosen):report.summary||[];
  const siteLabel=siteKey===EVERY?'All sites':sites.find(s=>s.siteKey===siteKey)?.site||'',oneDate=gridDates.length===1;
  const dateLabel=filters.from!==filters.to?shortDate(filters.from)+' to '+shortDate(filters.to):shortDate(filters.from);
  const scopeLabel=[date?shortDate(date):oneDate?shortDate(gridDates[0]):'All dates',shift?shiftName(shift):'All shifts'].join(' · ');
@@ -366,8 +367,8 @@ function manpowerOverview({report,filters,query,description,ReportSection,sites,
  const list=name=>setMpPick(open===name?{...base,scope:true,date,shift}:{...base,scope:true,date,shift,equipment:name});
  const zero=<span className="mp-zero">0</span>,measures=[['machines','Vehicles / equipment','vehicle or machine'],['employees','Employees','employee'],['duties','Duties','duty'],['cards','Saved cards','saved card']];
  const said=(n,word)=>word==='duty'?duties(n):many(n,word);
- const siteRows=[...sites.map(s=>({id:s.siteKey,siteKey:s.siteKey,site:s.site,...tallyOf(within(s.siteKey))})),...(sites.length>1?[{id:EVERY,siteKey:EVERY,site:'All sites',...tallyOf(cards)}]:[])];
- const dayRows=[...gridDates.map(day=>({id:day,day,date:shortDate(day)})),...(oneDate?[]:[{id:'all',day:'',date:'All dates'}])].map(row=>{const out={...row,...tallyOf(at(row.day,''))};for(const code of gridShifts){const t=tallyOf(at(row.day,code));out[code+'_duties']=t.duties;out[code+'_machines']=t.machines;out[code+'_cards']=t.cards;}return out;});
+ const siteRows=[...sites.map(s=>({id:s.siteKey,siteKey:s.siteKey,site:s.site,...tallyOf(s.siteKey)})),...(sites.length>1?[{id:EVERY,siteKey:EVERY,site:'All sites',...tallyOf(EVERY)}]:[])];
+ const dayRows=[...gridDates.map(day=>({id:day,day,date:shortDate(day)})),...(oneDate?[]:[{id:'all',day:'',date:'All dates'}])].map(row=>{const out={...row,...at(row.day,'')};for(const code of gridShifts){const t=at(row.day,code);out[code+'_duties']=t.duties;out[code+'_machines']=t.machines;out[code+'_cards']=t.cards;}return out;});
  const numbers=(row,label,press,pressed)=>measures.map(([key,,word])=><td key={key}>{row[key]?<button type="button" className="mp-cat-count mp-ot-duties" aria-pressed={pressed} aria-label={said(row[key],word)+' · '+label} onClick={press}>{row[key]}</button>:0}</td>);
  const box=(row,code)=>{const label=row.date+' · '+shiftName(code);if(!row[code+'_cards'])return zero;
   return <button type="button" className="mp-att-count" aria-pressed={scope&&date===row.day&&shift===code} aria-label={duties(row[code+'_duties'])+' · '+many(row[code+'_machines'],'machine')+' · '+label} onClick={()=>show(row.day,code)}>{row[code+'_duties']}<small>{many(row[code+'_machines'],'machine')}</small></button>;};
@@ -403,10 +404,13 @@ function manpowerOverview({report,filters,query,description,ReportSection,sites,
       <tbody>{[...categories,everyCategory].map(c=><tr key={c.id} className={[c.id===EVERY&&'mp-att-total',open===c.id&&'mp-on'].filter(Boolean).join(' ')||undefined}><td><button type="button" className="mp-cat-open" aria-pressed={open===c.id} onClick={()=>list(c.id)}>{c.equipment}</button></td>{numbers(c,c.equipment,()=>list(c.id),open===c.id)}</tr>)}</tbody>
      </table>:<p>No saved card in this selection.</p>}
     </div>
-   </ReportSection>:<p className="mp-notice">Press a box in the date table to see that date and shift by equipment category. The two lists below show the whole site until then.</p>}
-  </>:<p className="mp-notice">Press a number above to open a site date by shift. The two lists below show every site until then.</p>}
+   </ReportSection>:<p className="mp-notice">Press a box in the date table to see that date and shift by equipment category and list its saved cards. The make and model list below shows the whole site until then.</p>}
+  </>:<p className="mp-notice">Press a number above to open a site date by shift. The make and model list below shows every site until then.</p>}
   <ReportSection key={'summary-'+query+'-'+where} title={'Manpower by Category, Make & Model'+(where?' · '+where:'')} category="manpower-summary" description={description+' · Distinct assets and employees within each category'} rows={listedSummary} columns={summaryColumns} recordDateFilter={false} emptyMessage="No saved asset assignments in this selection. An empty batch has no manpower count."/>
-  <ReportSection key={'details-'+query+'-'+where} title={'Vehicle & Employee Assignments'+(where?' · '+where:'')} category="manpower-assignments" description={description} rows={listedCards} columns={detailColumns} rowKey={r=>r.id} recordDateFilter={false} emptyMessage="No saved assignments match these selections."/>
+  {!oneDay?<p className="mp-notice">The saved cards (Vehicle & Employee Assignments) are listed for one date: open a site, then a date in the date table.</p>
+   :cards.error?<p role="alert">{cards.error}</p>
+   :!cards.rows?<p role="status">Loading the saved cards of {scopeLabel}…</p>
+   :<ReportSection key={'details-'+query+'-'+where} title={'Vehicle & Employee Assignments'+(where?' · '+where:'')} category="manpower-assignments" description={description} rows={listedCards} columns={detailColumns} rowKey={r=>r.id} recordDateFilter={false} emptyMessage="No saved assignments match these selections."/>}
  </>;
 }
 
@@ -568,7 +572,7 @@ function performanceOverview({report,filters,query,description,ReportSection,sit
 
 // On the dashboard (embedded) the report stands alone: it opens on the dates given and shows no tabs for the other views.
 // Each tab reads only its own tables, a week of cards at a time (server/rules/manpower-report.mjs MANPOWER_VIEWS).
-const REPORT_VIEWS={manpower:'category','manpower-reconciliation':'reconciliation',employee:'performance',attendance:'equipment'};
+const REPORT_VIEWS={manpower:'category-counts','manpower-reconciliation':'reconciliation',employee:'performance',attendance:'equipment'};
 export default function ManpowerReports({session,reportId='manpower',onSelect,ReportSection,embedded=false,initialFrom=''}){
  const [filters,setFilters]=useState(()=>{const date=today();return {from:initialFrom||monthStartDate(date),to:date,site:'',shift:'',batch:'',employee:'',asset:''};});
  const [data,setData]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[refresh,setRefresh]=useState(0),[options,setOptions]=useState({});
@@ -577,6 +581,8 @@ export default function ManpowerReports({session,reportId='manpower',onSelect,Re
  const [pick,setPick]=useState(noPick),[otPick,setOtPick]=useState(noOtPick),[mpPick,setMpPick]=useState(noMpPick),[rcPick,setRcPick]=useState(noRcPick);
  // Shift Performance steps; kept after the other state.
  const [pfPick,setPfPick]=useState(noPfPick);
+ // Manpower by Category: the saved cards of the opened date, read on their own (kept after the other state).
+ const [mpCards,setMpCards]=useState({key:'',rows:null,error:''});
  // The OT view always loads every assigned site; the Site selection there narrows the list of sites.
  // The attendance register reads every shift of every site: a day is coded from all its shifts and a person's other sites.
  const register=['attendance-batch','attendance-month'].includes(reportId);
@@ -605,6 +611,21 @@ export default function ManpowerReports({session,reportId='manpower',onSelect,Re
    .catch(e=>{if(!controller.signal.aborted)setTally({key:tallyKey,data:null,error:e.message});});
   return()=>controller.abort();
  },[tallyWanted,tallyKey,session.token]);
+ // Manpower by Category lists the saved cards of one opened date only (a month of every site is about 59,000 cards):
+ // they are read when a site and a date are open, for that site (or every site), that date and that shift.
+ const mpSite=reportId==='manpower'&&report?openSite(otSites,mpPick.siteKey):'';
+ const mpDay=mpSite&&mpPick.scope?mpPick.date||(filters.from===filters.to?filters.from:''):'';
+ const mpCardsQuery=mpDay?new URLSearchParams({...filters,from:mpDay,to:mpDay,site:mpSite===EVERY?filters.site:otSites.find(s=>s.siteKey===mpSite)?.site||filters.site,shift:mpPick.shift||filters.shift,view:'category-cards'}).toString():'';
+ const mpCardsKey=mpCardsQuery&&mpCardsQuery+'|'+refresh;
+ useEffect(()=>{
+  if(!mpCardsKey||mpCards.key===mpCardsKey&&(mpCards.rows||mpCards.error))return;
+  const controller=new AbortController();setMpCards({key:mpCardsKey,rows:null,error:''});
+  fetch('/api/reports/manpower?'+mpCardsQuery,{headers:{Authorization:'Bearer '+session.token},signal:controller.signal})
+   .then(async response=>{const payload=await response.json();if(!response.ok)throw Error(payload.error||'Unable to load the saved cards of this date.');return payload;})
+   .then(payload=>{if(!controller.signal.aborted)setMpCards({key:mpCardsKey,rows:payload.details||[],error:''});})
+   .catch(e=>{if(!controller.signal.aborted)setMpCards({key:mpCardsKey,rows:null,error:e.message});});
+  return()=>controller.abort();
+ },[mpCardsKey,session.token]);
  // A history opened in one report does not follow into the other.
  useEffect(()=>setDriverOpen(''),[reportId]);
  // An opened history sits below a long list, so bring it into view.
@@ -646,7 +667,7 @@ export default function ManpowerReports({session,reportId='manpower',onSelect,Re
    </>:reportId==='employee'?<>
     {performanceOverview({report,filters,query,description,ReportSection,sites:otSites,pfPick,setPfPick})}
    </>:<>
-    {manpowerOverview({report,filters,query,description,ReportSection,sites:otSites,mpPick,setMpPick})}
+    {manpowerOverview({report,filters,query,description,ReportSection,sites:otSites,mpPick,setMpPick,cards:mpCards.key===mpCardsKey?mpCards:{rows:null,error:''}})}
    </>}
    {embedded?null:register||['attendance','ot','manpower-reconciliation'].includes(reportId)?exceptions.length>0&&<details className="mp-notes mp-review"><summary>{exceptions.length===1?'1 saved card needs':exceptions.length+' saved cards need'} correction (list for the MIS team)</summary>{review}</details>:review}
    {!embedded&&<details className="mp-notes"><summary>Sources and calculation rules</summary><ul>{report.notes.map(note=><li key={note}>{note}</li>)}</ul><p>Manpower requirements, shortages and relief availability are reserved for a later phase.</p></details>}
