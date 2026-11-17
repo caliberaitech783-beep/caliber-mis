@@ -4087,7 +4087,7 @@ function ExportMenu({ title, columns = [], rows = [], smartPrintColumns = column
     window.setTimeout(async () => {
       const startedAt = Date.now();
       // A task that saved through the Save As window says so; the notice then names the file and says it is not in Downloads.
-      try { const outcome = await task(); downloadNotice.success(outcome?.saved || outcome?.fallback ? saveOutcomeMessage(outcome, formatName) : ""); }
+      try { const outcome = await task(); downloadNotice.success(outcome?.name ? saveOutcomeMessage(outcome, formatName) : ""); }
       catch (error) {
         downloadNotice.error(error); alert(error.message);
         void reportClientError(error, { kind: "export", componentStack: `${formatName} export of ${title}` });

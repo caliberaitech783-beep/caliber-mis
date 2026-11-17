@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {XLSX_MIME,chooseSaveTarget,saveAsAvailable,saveCancelled,saveOutcomeMessage,saveToTarget} from '../src/save-as.mjs';
+import {SAVE_AS_REFUSED_WITHIN_MS,XLSX_MIME,chooseSaveTarget,saveAsAvailable,saveCancelled,saveOutcomeMessage,saveToTarget} from '../src/save-as.mjs';
 
 test('Export Excel asks where to save with the Save As window, offering an Excel Workbook',async()=>{
   const asked=[];
@@ -13,7 +13,9 @@ test('Export Excel asks where to save with the Save As window, offering an Excel
 
 test('Cancel in the Save As window stops the export; a browser without the window downloads as before',async()=>{
   const cancel=Object.assign(new Error('The user aborted a request.'),{name:'AbortError'});
-  await assert.rejects(chooseSaveTarget('report.xlsx',{showSaveFilePicker:async()=>{throw cancel;}}),error=>saveCancelled(error));
+  // A person needs time to see the window and press Cancel: the clock moves 2 s between asking and the answer.
+  let clock=0;const slow={now:()=>(clock+=2000)};
+  await assert.rejects(chooseSaveTarget('report.xlsx',{showSaveFilePicker:async()=>{throw cancel;}},slow),error=>saveCancelled(error));
   // Phones, Firefox and Safari have no Save As window.
   assert.equal(saveAsAvailable({}),false);
   assert.equal(await chooseSaveTarget('report.xlsx',{}),null);
@@ -52,6 +54,27 @@ test('a chosen file that is open in Excel cannot be opened for writing: it is do
 
 test('the notice says where the file went: the chosen folder (not in Downloads), or Downloads',()=>{
   assert.match(saveOutcomeMessage({saved:true,name:'Step 1.xlsx'}),/^Excel saved as Step 1\.xlsx in the folder you chose\. A file saved with Save As does not show in the browser's Downloads list/);
-  assert.equal(saveOutcomeMessage({saved:false,name:'a.xlsx'}),'Excel download started. Check your browser downloads.');
+  assert.equal(saveOutcomeMessage({saved:false,name:'a.xlsx'}),'Excel download started: a.xlsx goes to your Downloads folder. It is also in Download History (the folder button at the top) to open again.');
+  assert.equal(saveOutcomeMessage(null),'Excel download started. Check your browser downloads.');
   assert.match(saveOutcomeMessage({saved:true,name:'a.pdf'},'PDF'),/^PDF saved as a\.pdf/);
+});
+
+test('a Save As window the browser refuses at once (same AbortError as Cancel) downloads the file instead of stopping',async()=>{
+  // Owner, 17 Nov 2026: in the Claude app's browser pane the window is refused in about 0.06 s and nothing was made.
+  const refusedAtOnce=Object.assign(new Error("Failed to execute 'showSaveFilePicker' on 'Window': The user aborted a request."),{name:'AbortError'});
+  let asked=0,clock=1000;
+  const pane={showSaveFilePicker:async()=>{asked++;clock+=60;throw refusedAtOnce;}};
+  assert.equal(saveAsAvailable(pane),true);
+  assert.equal(await chooseSaveTarget('step-1.xlsx',pane,{now:()=>clock}),null,'no place chosen: saveToTarget downloads it');
+  // This page is not asked again: the next export goes straight to Downloads and the menu drops "(Save As)".
+  assert.equal(saveAsAvailable(pane),false);
+  assert.equal(await chooseSaveTarget('step-2.xlsx',pane,{now:()=>clock}),null);
+  assert.equal(asked,1);
+  const downloads=[];
+  assert.deepEqual(await saveToTarget(null,{size:5},'step-1.xlsx',(...args)=>downloads.push(args),{record:null}),{saved:false,name:'step-1.xlsx'});
+  assert.equal(downloads.length,1);
+  // Just under and at the limit.
+  let t=0;const edge=ms=>({now:()=>{const v=t;t+=ms;return v;}});
+  await assert.rejects(chooseSaveTarget('x.xlsx',{showSaveFilePicker:async()=>{throw refusedAtOnce;}},edge(SAVE_AS_REFUSED_WITHIN_MS)),error=>saveCancelled(error));
+  assert.equal(await chooseSaveTarget('x.xlsx',{showSaveFilePicker:async()=>{throw refusedAtOnce;}},edge(SAVE_AS_REFUSED_WITHIN_MS-1)),null);
 });

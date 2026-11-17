@@ -7,20 +7,30 @@ const FILE_TYPES={
   xlsx:{description:'Excel Workbook',accept:{[XLSX_MIME]:['.xlsx']}},
   pdf:{description:'PDF document',accept:{'application/pdf':['.pdf']}},
 };
-export const saveAsAvailable=(win=globalThis.window)=>typeof win?.showSaveFilePicker==='function';
+// Owner, 17 Nov 2026, after PR 396 went live: "Excel still not downloading". He works in a browser (the Claude app's
+// browser pane) that refuses the Save As window at once, in about 0.06 s, with the same AbortError a Cancel gives. The
+// export took that as his Cancel and stopped without a word, so no file was ever made. A person cannot see the window
+// and press Cancel this fast, so an AbortError this quick means "no Save As window here": the file is downloaded to
+// Downloads instead, and this browser page is not asked again.
+export const SAVE_AS_REFUSED_WITHIN_MS=400;
+const refusingWindows=new WeakSet();
+export const saveAsAvailable=(win=globalThis.window)=>typeof win?.showSaveFilePicker==='function'&&!refusingWindows.has(win);
 export const saveCancelled=error=>error?.name==='AbortError';
 
 /**
  * Asks where to save. Call it straight from the click, before the file is built: the browser refuses the
  * window once the click is a few seconds old.
- * Returns the chosen file, or null when there is no Save As window here. Rejects with AbortError on Cancel.
+ * Returns the chosen file, or null when there is no Save As window here (or the browser refused to show it).
+ * Rejects with AbortError only when the user pressed Cancel in the window.
  */
-export async function chooseSaveTarget(fileName,win=globalThis.window){
+export async function chooseSaveTarget(fileName,win=globalThis.window,{now=()=>Date.now()}={}){
   if(!saveAsAvailable(win))return null;
   const type=FILE_TYPES[String(fileName).split('.').pop().toLowerCase()];
+  const askedAt=now();
   try{return await win.showSaveFilePicker({suggestedName:fileName,...(type?{types:[type]}:{})});}
   catch(error){
-    if(saveCancelled(error))throw error;
+    if(saveCancelled(error)&&now()-askedAt>=SAVE_AS_REFUSED_WITHIN_MS)throw error;
+    if(saveCancelled(error)){refusingWindows.add(win);return null;}
     // Not allowed here (inside a frame, or the click went stale): an ordinary download still gives the file.
     return null;
   }
@@ -69,5 +79,7 @@ function writeErrorText(error){
 export function saveOutcomeMessage(outcome,formatName='Excel'){
   if(outcome?.saved)return `${formatName} saved as ${outcome.name} in the folder you chose. A file saved with Save As does not show in the browser's Downloads list: open that folder to find it.`;
   if(outcome?.fallback)return `${formatName} could not be saved as ${outcome.chosenName} in the folder you chose (${outcome.reason}), so it was downloaded to your Downloads folder as ${outcome.name}.`;
+  // Some browsers (the Claude app's browser pane) show no download bar, so the notice names the folder and the file.
+  if(outcome?.name)return `${formatName} download started: ${outcome.name} goes to your Downloads folder. It is also in Download History (the folder button at the top) to open again.`;
   return `${formatName} download started. Check your browser downloads.`;
 }
