@@ -66,4 +66,3 @@ test('HR API preserves the HR grant and query, and excludes service-only routes'
   assert.equal((await get('/hr/api/telegram/joining-webhook', options)).status, 404);
   assert.equal(calls.length, 1);
 });
-

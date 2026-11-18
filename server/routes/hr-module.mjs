@@ -93,4 +93,3 @@ export function registerHrModule(app, {request = fetch, origin = 'https://pulse-
     next();
   }, router);
 }
-

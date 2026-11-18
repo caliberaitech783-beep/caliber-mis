@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-test("MIS sign-in sits beneath the ERP logo without external application links", async () => {
+test("MIS and HR sit beneath the ERP logo without external application links", async () => {
   const source = await readFile(new URL("../src/main.jsx", import.meta.url), "utf8");
   const styles = await readFile(new URL("../src/user-sessions.css", import.meta.url), "utf8");
 
@@ -13,7 +13,7 @@ test("MIS sign-in sits beneath the ERP logo without external application links",
   assert.match(source, /<CaliberBrand className="login-brand"[^>]*\/>\s*<div className="login-application-links">/);
   assert.match(proofRow[0], /login-mis-link/);
   assert.match(proofRow[0], /<strong>MIS<\/strong>Open MIS sign in/);
-  assert.doesNotMatch(proofRow[0], /href=|Accident|Accounts|Tender|Fleet Operation/);
+  assert.doesNotMatch(proofRow[0], /href="(?!\/hr\/")|Accident|Accounts|Tender|Fleet Operation/);
 
   // It is no longer one of the sign-in tabs.
   const tabs = source.match(/function AuthModeTabs\([\s\S]*?\n\}/);
