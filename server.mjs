@@ -1593,6 +1593,16 @@ app.use(express.json({limit:'20mb',type:JSON_BODY_CONTENT_TYPES}));
 const accountSecurity=registerAccountSecurity(app,{pool,requireSession,store:()=>integrationSecrets,enabled:browserSecurityEnabled,requireMfa:false});
 app.use('/api/login',createLoginLimiter());
 const misCredentialClient=installMisCredentialClient(app,{pool,sessionStore});
+app.post('/api/hr-workspace/session',requireSession,async(req,res)=>{
+  req.audit=false;
+  res.set('Cache-Control','no-store');
+  if(!req.session.permissions?.separateMisCredentials)return res.status(403).json({error:'Open HR with your shared Pulse sign-in.'});
+  try{
+    const token=String(req.headers.authorization||'').replace(/^Bearer\s+/i,'').trim();
+    const {status,data}=await misCredentialClient.openHr(token);
+    res.status(status===200||status===401||status===403?status:503).json(status===200||status===401||status===403?data:{error:'HR sign-in is temporarily unavailable.'});
+  }catch{res.status(503).json({error:'HR sign-in is temporarily unavailable.'});}
+});
 const misLoginHandoff=installMisLoginHandoff(app,{pool,sessionStore,credentialClient:misCredentialClient});
 const misSharedSignIn=registerMisSharedSignIn(app,{pool,sessionStore,requireSession,mode:process.env.MIS_SSO_MODE||'client'});
 
@@ -2385,6 +2395,7 @@ app.post('/api/logout',requireSession,async(req,res,next)=>{
   try{
     const token=String(req.headers.authorization||'').replace(/^Bearer\s+/i,'').trim();
     req.audit={eventType:'Security',module:'Authentication',action:'Logout',targetType:'User account',targetReference:req.session.login||req.session.name,changedFields:[]};
+    if(req.session.permissions?.separateMisCredentials)await misCredentialClient.revokeSession(token);
     await pool.query('DELETE FROM auth_sessions WHERE token=$1',[token]);
     res.status(204).end();
   }catch(error){next(error)}
