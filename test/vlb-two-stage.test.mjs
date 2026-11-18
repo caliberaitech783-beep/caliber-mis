@@ -5,6 +5,7 @@ import {randomUUID} from 'node:crypto';
 import {PGlite} from '@electric-sql/pglite';
 import {LOG_BOOK_SCHEMA,registerLogBooks} from '../server/routes/log-book.mjs';
 import {twoStageEnabled,validateFleetEntry,buildMachineSnapshot,buildFleetList,closureBlockers,fleetProgress,activeSiteHolds,holdSummary,machineReportRows} from '../server/rules/vlb-two-stage.mjs';
+process.env.VLB_BATCH_ORDER_FROM='off'; // these tests open batches out of shift order; vlb-batch-order.test.mjs covers the order
 
 const assets=[
  {id:'1',category:'Vehicle',door:'V1',currentLocation:'Sasti OC'},
