@@ -138,6 +138,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
  const employee=options?.employees.find(row=>row.id===String(form.employeeId));
 
  const asset=options?.assets.find(row=>row.id===String(form.assetId));
+ const hmrRequired=!(lmv||vehicle&&asset?.kmrOnly);
  const transferNote=transferPeriodLabel(asset,form,selectedShift);
 
  const datedAssets=(options?.assets||[]).map(asset=>assetForSiteOnDate(asset,form.location,form.bookDate));
@@ -240,8 +241,8 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
 {vehicle&&<><Field label="Opening KMR"><input type="number" step="0.001" required value={form.openingKmr} onChange={e=>update('openingKmr',e.target.value)}/></Field>
 <Field label="Closing KMR"><input type="number" step="0.001" required value={form.closingKmr} onChange={e=>update('closingKmr',e.target.value)}/></Field>
 {replacedKmr&&<Field label="Actual distance (km)" hint="KMR meter replaced during the shift"><input type="number" min="0" max="250" step="0.001" required value={form.replacementKmr??''} onChange={e=>update('replacementKmr',e.target.value)}/></Field>}
-</>}<Field label="Opening HMR"><input type="number" step="0.001" required={!lmv} value={form.openingHmr} onChange={e=>update('openingHmr',e.target.value)}/></Field>
-<Field label="Closing HMR"><input type="number" step="0.001" required={!lmv} value={form.closingHmr} onChange={e=>update('closingHmr',e.target.value)}/></Field>
+</>}<Field label="Opening HMR"><input type="number" step="0.001" required={hmrRequired} value={form.openingHmr} onChange={e=>update('openingHmr',e.target.value)}/></Field>
+<Field label="Closing HMR"><input type="number" step="0.001" required={hmrRequired} value={form.closingHmr} onChange={e=>update('closingHmr',e.target.value)}/></Field>
 <Field label="Remark"><textarea rows={2} maxLength={4000} value={form.remark} onChange={e=>update('remark',e.target.value)}/></Field>{vehicle&&<><Field label="Total running KMR"><output>{fixed(kmr)}</output></Field><div className="logbook-sheet-spacer"/></>}<Field label="Total working HMR"><output>{fixed(hmr)}</output></Field>
      </div></section>
 
