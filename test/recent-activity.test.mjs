@@ -24,7 +24,7 @@ test('log books are counted by save time and shifts by lock time, in 6, 12 and 2
  assert.deepEqual(recent.bySite[24].map(s=>[s.site,s.vehicle,s.lmv,s.equipment]),[['Sasti OC',20,3,0],['Jayant OC',0,0,5]],'site aliases are added together; the site with the most cards is on top');
  assert.deepEqual(recent.bySite[6].map(s=>[s.site,s.total]),[['Sasti OC',4],['Jayant OC',1]]);
  assert.deepEqual(recent.shifts,{6:{vlb:1,lmv:1,elb:0},12:{vlb:1,lmv:2,elb:1},24:{vlb:2,lmv:3,elb:2}});
- assert.deepEqual(completedIn(recent,'lmv',12).map(r=>[r.site,r.dateLabel,r.shiftLabel]),[['Sasti OC','02-11-26','Shift 1'],['Jayant OC','03-11-26','Shift 2']],'newest first');
+ assert.deepEqual(completedIn(recent,'lmv',12).map(r=>[r.site,r.dateLabel,r.shiftLabel]),[['Sasti OC','02-11-26','Shift A'],['Jayant OC','03-11-26','Shift B']],'newest first');
  assert.deepEqual(completedIn(recent,'elb',6),[]);
  assert.deepEqual(batchCompletionTimes({closed_at:null,vlb_locked_at:null,lmv_locked_at:null}),{vlb:null,lmv:null,elb:null});
  // The cards inside the completed shifts: trip cards for VLB, LMV log books for LMV, ELB cards for ELB.
@@ -33,13 +33,13 @@ test('log books are counted by save time and shifts by lock time, in 6, 12 and 2
  assert.deepEqual(completedIn(recent,'vlb',24,'sasti ob').map(r=>r.batchName),['Sasti 02-11 S1'],'one site, whichever way its name is written');
  assert.deepEqual(completedBySite(recent,'lmv',24),[{site:'Sasti OC',shifts:1,cards:5},{site:'Jayant OC',shifts:1,cards:2},{site:'Majri OC',shifts:1,cards:0}],'equal shifts: more cards first');
  // A site opens into its saved cards by card date and shift.
- assert.deepEqual(logShiftsFor(recent,'Sasti OC',12).map(r=>[r.dateLabel,r.shiftLabel,r.counts[12]]),[['02-11-26','Shift 1',{total:11,vehicle:9,lmv:2,equipment:0}]]);
+ assert.deepEqual(logShiftsFor(recent,'Sasti OC',12).map(r=>[r.dateLabel,r.shiftLabel,r.counts[12]]),[['02-11-26','Shift A',{total:11,vehicle:9,lmv:2,equipment:0}]]);
  assert.deepEqual(logShiftsFor(recent,'Sasti OC',6).map(r=>r.counts[6].total),[4]);
  assert.deepEqual(logShiftsFor(recent,'Jayant OC',6).map(r=>[r.dateLabel,r.shift,r.counts[6].equipment]),[['03-11-26','',1]],'a card with no shift recorded is still listed');
  // Batches locked: the whole batch saved and locked. Batch "a" has only its VLB and LMV locked, so it is not one yet.
  assert.deepEqual(recent.batchLocks,{6:0,12:1,24:2});
  assert.deepEqual(locksIn(recent,24).map(r=>[r.batchName,r.site,r.dateLabel,r.shiftLabel,r.vehicle,r.lmv,r.equipment,r.minutesAgo]),
-  [['Jayant 03-11 S2','Jayant OC','03-11-26','Shift 2',55,2,9,420],['Majri 04-11 S3','Majri OC','04-11-26','Shift 3',12,0,3,1200]],'the latest lock first, with every card inside the batch');
+  [['Jayant 03-11 S2','Jayant OC','03-11-26','Shift B',55,2,9,420],['Majri 04-11 S3','Majri OC','04-11-26','Shift C',12,0,3,1200]],'the latest lock first, with every card inside the batch');
  assert.deepEqual(locksIn(recent,6),[]);assert.deepEqual(locksIn(recent,12).map(r=>r.batchId),['b']);
 });
 
@@ -224,12 +224,12 @@ test('the front shows the figures alone; a shift figure opens its sites with the
  assert.deepEqual(listRows(html).map(row=>[...row.slice(0,4),row[5]]),[
   ['Site and batch number','Card date','Shift','ELB cards','How long ago'],
   ['Dudhichua OC 2 shifts','','','63',''],
-  ['CMLL/DUDHICHUA OC/4TH -NOV-26/S1/B01','04-11-26','Shift 1','32','2 h 0 min ago'],
-  ['CMLL/DUDHICHUA OC/3RD -NOV-26/S3/B01','03-11-26','Shift 3','31','5 h 0 min ago'],
+  ['CMLL/DUDHICHUA OC/4TH -NOV-26/S1/B01','04-11-26','Shift A','32','2 h 0 min ago'],
+  ['CMLL/DUDHICHUA OC/3RD -NOV-26/S3/B01','03-11-26','Shift C','31','5 h 0 min ago'],
   ['Jayant OC 1 shift','','','65',''],
-  ['CMLL/JAYANT OC/3RD -NOV-26/S1/B01','03-11-26','Shift 1','65','1 h 0 min ago'],
+  ['CMLL/JAYANT OC/3RD -NOV-26/S1/B01','03-11-26','Shift A','65','1 h 0 min ago'],
   ['Sasti OC 1 shift','','','39',''],
-  ['CMLL/SASTI OC/4TH -NOV-26/S3/B01','04-11-26','Shift 3','39','20 h 0 min ago'],
+  ['CMLL/SASTI OC/4TH -NOV-26/S3/B01','04-11-26','Shift C','39','20 h 0 min ago'],
   ['All sites 4 shifts','','','167','']]);
  assert.equal(listRows(html)[0][4],'Locked at');assert.ok(listRows(html)[2][4],'each batch shows when it was locked');
  // The same list for the trip cards of VLB in 6 hours: only what was locked in those hours.
@@ -265,12 +265,12 @@ test('Batches locked has its own line on the front, and opens the batches with t
  assert.deepEqual(listRows(html).map(row=>[...row.slice(0,6),row[8]]),[
   ['Site and batch number','Card date','Shift','Trip cards','LMV log books','ELB cards','Locked by'],
   ['Dudhichua OC 2 batches','','','273','7','63',''],
-  ['CMLL/DUDHICHUA OC/4TH -NOV-26/S1/B01','04-11-26','Shift 1','140','7','32','Ravi Kumar'],
-  ['CMLL/DUDHICHUA OC/3RD -NOV-26/S3/B01','03-11-26','Shift 3','133','0','31','—'],
+  ['CMLL/DUDHICHUA OC/4TH -NOV-26/S1/B01','04-11-26','Shift A','140','7','32','Ravi Kumar'],
+  ['CMLL/DUDHICHUA OC/3RD -NOV-26/S3/B01','03-11-26','Shift C','133','0','31','—'],
   ['Jayant OC 1 batch','','','300','4','65',''],
-  ['CMLL/JAYANT OC/3RD -NOV-26/S1/B01','03-11-26','Shift 1','300','4','65','Asha Verma'],
+  ['CMLL/JAYANT OC/3RD -NOV-26/S1/B01','03-11-26','Shift A','300','4','65','Asha Verma'],
   ['Sasti OC 1 batch','','','149','0','39',''],
-  ['CMLL/SASTI OC/4TH -NOV-26/S3/B01','04-11-26','Shift 3','149','0','39','Asha Verma'],
+  ['CMLL/SASTI OC/4TH -NOV-26/S3/B01','04-11-26','Shift C','149','0','39','Asha Verma'],
   ['All sites 4 batches','','','722','11','167','']]);
  assert.equal(listRows(html)[0][7],'Locked at');assert.match(listRows(html)[2][7],/11 Nov, 07:30 pm 2 h 0 min ago$/,'the lock time in Indian time, and under it how long ago');
  // Batch start to close: each batch's time with its start time under it; a site's line and the last line show the average.
@@ -357,7 +357,7 @@ test('a batch\'s start to close time opens into the time of VLB, LMV and ELB, wh
  const recent=buildRecentActivity(input);
  let html=await panelHtml(recent,{row:'batch',hours:24,batch:'d2'});
  assert.match(html,/aria-label="Batch start to close · CMLL\/DUDHICHUA OC\/3RD -NOV-26\/S3\/B01"/);
- assert.match(plain(html),/Dudhichua OC · card date 03-11-26 · Shift 3\./);
+ assert.match(plain(html),/Dudhichua OC · card date 03-11-26 · Shift C\./);
  assert.match(plain(html),/Batch start to close: 1 day 5 h 0 min · started 10 Nov, 11:30 am · locked 11 Nov, 04:30 pm/);
  assert.deepEqual(listRows(html),[
   ['Stage','From','To','Time taken','Cards'],

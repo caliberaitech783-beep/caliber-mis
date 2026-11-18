@@ -14,6 +14,7 @@ import {hasReportSteps} from '../src/saved-report-steps-model.mjs';
 import {scanBatchReport,scanBatchReportTables} from '../shared/scan-batch-report.mjs';
 import * as loadClock from '../src/report-load-clock.mjs';
 import {manpowerCategoryCells} from '../server/rules/manpower-report.mjs';
+import * as filterOptions from '../shared/report-filter-options.mjs';
 
 const ReportSection=()=>null;
 const nodes=(tree,type)=>{const found=[];const visit=node=>{if(Array.isArray(node))return node.forEach(visit);if(!React.isValidElement(node))return;if(node.type===type)found.push(node);visit(node.props.children);visit(node.props.rowsView)};visit(tree);return found};
@@ -27,7 +28,7 @@ async function component(file,name,scope={},initial=[]){
   const source=readFileSync(new URL('../src/'+file,import.meta.url),'utf8');
   const {code}=await transformWithOxc(source.replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function'),file,{jsx:{runtime:'classic'}});
   const slots=[...initial];let cursor=0;
-  const environment={...loadClock,TableSmartPrint,StepBackButton:()=>null,encodeDateRange,parseDateRange,isDeletableScanCard,isAbortableScanCard,compactLogBookLabel,canonicalSiteName,SmartSelect: "select",TripTimingReport,LoadingMachineReport,SavedReportSteps,hasReportSteps,React,useRef:()=>({current:null}),useEffect:()=>{},useMemo:fn=>fn(),useState:init=>{const i=cursor++;if(!(i in slots))slots[i]=typeof init==='function'?init():init;return [slots[i],value=>slots[i]=typeof value==='function'?value(slots[i]):value]},...scope};
+  const environment={...loadClock,...filterOptions,TableSmartPrint,StepBackButton:()=>null,encodeDateRange,parseDateRange,isDeletableScanCard,isAbortableScanCard,compactLogBookLabel,canonicalSiteName,SmartSelect: "select",TripTimingReport,LoadingMachineReport,SavedReportSteps,hasReportSteps,React,useRef:()=>({current:null}),useEffect:()=>{},useMemo:fn=>fn(),useState:init=>{const i=cursor++;if(!(i in slots))slots[i]=typeof init==='function'?init():init;return [slots[i],value=>slots[i]=typeof value==='function'?value(slots[i]):value]},...scope};
   const render=new Function(...Object.keys(environment),code+';return '+name)(...Object.values(environment));
   return props=>{cursor=0;return render({...props,ReportSection})};
 }
@@ -173,7 +174,7 @@ test('manpower views route to their dedicated report with shared export controls
 test('manpower reports export complete selected data, separate shift hours, and retain OT colours and reasons',async()=>{
  const filters={from:'2026-11-10',to:'2026-11-10',site:'',shift:'',batch:'',employee:'',asset:''},otQuery=new URLSearchParams({...filters,view:'ot'}).toString(),viewQuery=view=>new URLSearchParams({...filters,view}).toString(),query=viewQuery('category-counts');
  const rows=Array.from({length:137},(_,id)=>({id,date:filters.from,site:'Sasti OC',shift:'S1',employeeId:'E'+id,employeeKey:'E'+id,siteKey:'sasti ob',category:id%2?'Volvo Driver':'Dumper Operator',dates:filters.from,employeeName:'Example',hours:0,trips:null,reason:'RED — Back-to-back OT',severity:'red',combinedHours:15,
-  // Every third case started in Shift 3 (46), the rest in Shift 1 (91).
+  // Every third case started in Shift C (46), the rest in Shift A (91).
   startDate:filters.from,startShift:id%3?'S1':'S3',
   // Log books rotate VLB, ELB, LMV; the first driver worked on two: 46 VLB, 47 ELB and 45 LMV duties from 137 events.
   logBooks:id?[['VLB','ELB','LMV'][id%3]]:['VLB','ELB'],logBook:id?['VLB','ELB','LMV'][id%3]:'VLB + ELB'}));
@@ -197,8 +198,8 @@ test('manpower reports export complete selected data, separate shift hours, and 
   const cols=listed.columns;assert.equal(cols.find(c=>c.key==='hours').value(rows[0]),0);assert.equal(cols.find(c=>c.key==='trips').value(rows[0]),'—');assert.ok(!cols.some(c=>c.key==='combinedHours'));
   assert.deepEqual(sections[2].props.rows.map(r=>[r.equipment,r.duties]),[['Group missing in master',137],['All categories',137]],'a duty without a machine group is counted, not dropped');}
  // OT view in five steps: every site, one site date by shift, a date and shift by equipment category, the drivers of a category, one driver's history.
- // Cases two in three are Shift 1 + Shift 2 (91), the rest Shift 2 + Shift 3 (46); odd drivers work a Tipper, even ones an Excavator.
- // Ten more Tipper drivers worked a normal Shift 1. So 284 duties: Shift 1 = 91 red + 10 normal, Shift 2 = 137 red, Shift 3 = 46 red.
+ // Cases two in three are Shift A + Shift B (91), the rest Shift B + Shift C (46); odd drivers work a Tipper, even ones an Excavator.
+ // Ten more Tipper drivers worked a normal Shift A. So 284 duties: Shift A = 91 red + 10 normal, Shift B = 137 red, Shift C = 46 red.
  const pair=id=>id%3?['S1','S2']:['S2','S3'],machine=id=>id%2?'Tipper':'Excavator';
  const cases=rows.map(r=>({...r,shifts:pair(r.id).map(code=>filters.from+' '+code).join('; ')}));
  const duty=(id,code,flag,key='E'+id)=>({id:key+code,date:filters.from,shift:code,site:'Sasti OC',siteKey:'sasti ob',employeeKey:key,employeeId:key,caliberCode:'C'+key,employeeName:'Example',category:'Volvo Driver',equipment:machine(id),doors:'V'+key,makeModel:'Volvo FMX',logBooks:flag==='normal'?['VLB']:rows[id].logBooks,logBook:'VLB',flag,flagLabel:flag==='normal'?'Normal duty':'RED — Back-to-back OT',others:'',hours:8,trips:null,books:'CARD'});
@@ -223,31 +224,31 @@ test('manpower reports export complete selected data, separate shift hours, and 
   // Step 2: pressing any number of a site opens it date by shift.
   press(view,'137 Red · Sasti OC');assert.deepEqual(categories(view()),['manpower-ot-sites','manpower-ot-dates']);
   const grid=()=>box(view(),'Duties by date and shift');
-  assert.deepEqual(nodes(grid(),'th').filter(n=>n.props.scope==='col').map(n=>[].concat(n.props.children)[0]),['Date','Shift 1','Shift 2','Shift 3','Day duties','OT duties','Red OT %','Orange OT %']);
+  assert.deepEqual(nodes(grid(),'th').filter(n=>n.props.scope==='col').map(n=>[].concat(n.props.children)[0]),['Date','Shift A','Shift B','Shift C','Day duties','OT duties','Red OT %','Orange OT %']);
   assert.deepEqual(nodes(grid(),'th').filter(n=>n.props.scope==='row').map(n=>[].concat(n.props.children)[0]),['10-11-26'],'one selected date: one row and no All dates row');
-  assert.deepEqual(nodes(grid(),'button').filter(n=>/mp-cat-count/.test(n.props.className)).map(n=>n.props['aria-label']),['101 duties · 10-11-26 · Shift 1','91 Red · 10-11-26 · Shift 1','137 duties · 10-11-26 · Shift 2','137 Red · 10-11-26 · Shift 2','46 duties · 10-11-26 · Shift 3','46 Red · 10-11-26 · Shift 3','284 duties · 10-11-26'],'a driver on two shifts is counted in both');
+  assert.deepEqual(nodes(grid(),'button').filter(n=>/mp-cat-count/.test(n.props.className)).map(n=>n.props['aria-label']),['101 duties · 10-11-26 · Shift A','91 Red · 10-11-26 · Shift A','137 duties · 10-11-26 · Shift B','137 Red · 10-11-26 · Shift B','46 duties · 10-11-26 · Shift C','46 Red · 10-11-26 · Shift C','284 duties · 10-11-26'],'a driver on two shifts is counted in both');
   assert.deepEqual(section(view(),'manpower-ot-dates').rows.map(r=>[r.date,r.S1_duties,r.S1_red,r.S2_red,r.S3_duties,r.duties,r.ot,r.redPct]),[['10-11-26',101,91,137,46,284,274,'96.5%']]);
   // Step 3: a box opens that date and shift by equipment category.
-  press(view,'101 duties · 10-11-26 · Shift 1');assert.deepEqual(categories(view()),['manpower-ot-sites','manpower-ot-dates','manpower-ot-categories']);
+  press(view,'101 duties · 10-11-26 · Shift A');assert.deepEqual(categories(view()),['manpower-ot-sites','manpower-ot-dates','manpower-ot-categories']);
   const byCategory=()=>section(view(),'manpower-ot-categories');
-  assert.equal(byCategory().title,'Step 3 · Sasti OC · 10-11-26 · Shift 1 · by equipment category');
+  assert.equal(byCategory().title,'Step 3 · Sasti OC · 10-11-26 · Shift A · by equipment category');
   assert.deepEqual(byCategory().rows.map(r=>[r.equipment,r.people,r.machines,r.red,r.redPct,r.orange,r.ot,r.otPct]),[['Tipper',55,55,45,'81.8%',0,45,'81.8%'],['Excavator',46,46,46,'100%',0,46,'100%'],['All categories',101,101,91,'90.1%',0,91,'90.1%']]);
   assert.ok(!byCategory().columns.some(c=>c.key==='duties'),'one shift: people and duties are the same number');
   // Step 4: a category lists its drivers, OT duties first; a colour lists only those.
   nodes(box(view(),'Duties by equipment category'),'button').find(n=>n.props.className==='mp-cat-open'&&n.props.children==='Tipper').props.onClick();
   assert.deepEqual(categories(view()),['manpower-ot-sites','manpower-ot-dates','manpower-ot-categories','manpower-ot-drivers','manpower-ot']);
   const drivers=()=>section(view(),'manpower-ot-drivers'),each=()=>section(view(),'manpower-ot');
-  assert.equal(drivers().title,'Step 4 · Sasti OC · 10-11-26 · Shift 1 · Tipper · drivers');assert.equal(drivers().rows.length,55);
+  assert.equal(drivers().title,'Step 4 · Sasti OC · 10-11-26 · Shift A · Tipper · drivers');assert.equal(drivers().rows.length,55);
   assert.deepEqual([drivers().rows[0].flag,drivers().rows[44].flag,drivers().rows[45].flag],['red','red','normal'],'OT duties first');
   assert.deepEqual(drivers().columns.map(c=>c.key),['employeeId','caliberCode','employeeName','category','doors','makeModel','logBook','others','flagLabel','hours','trips','otMonthRed','otMonthOrange','otYearRed','otYearOrange','books'],'one date, shift, site and category: none of them is a column');
   assert.deepEqual([drivers().recordDateFilter,each().recordDateFilter],[false,false],'the page dates are the only date control');
   assert.equal(drivers().rowClassName(drivers().rows[0]),'mp-duty-red');assert.match(drivers().columns.find(c=>c.key==='flagLabel').render(drivers().rows[0]).props.className,/mp-flag-red/);
   assert.equal(each().rows.length,45,'the cases behind the listed OT duties');
   {const cols=each().columns;assert.equal(cols.find(c=>c.key==='combinedHours').value(cases[1]),15);const reason=cols.find(c=>c.key==='reason');assert.match(reason.render(cases[1]).props.className,/mp-flag-red/);assert.equal(each().rowClassName(cases[1]),'mp-ot-red');}
-  press(view,'45 Red · Tipper');assert.equal(drivers().title,'Step 4 · Sasti OC · 10-11-26 · Shift 1 · Tipper · Red only · drivers');assert.equal(drivers().rows.length,45);
+  press(view,'45 Red · Tipper');assert.equal(drivers().title,'Step 4 · Sasti OC · 10-11-26 · Shift A · Tipper · Red only · drivers');assert.equal(drivers().rows.length,45);
   press(view,'45 Red · Tipper');assert.deepEqual(categories(view()).slice(-1),['manpower-ot-categories'],'pressing the same number again closes the list');
   // A colour in a box goes straight to those drivers, across every category.
-  press(view,'46 Red · 10-11-26 · Shift 3');assert.equal(drivers().title,'Step 4 · Sasti OC · 10-11-26 · Shift 3 · All categories · Red only · drivers');assert.equal(drivers().rows.length,46);assert.ok(drivers().columns.some(c=>c.key==='equipment'));
+  press(view,'46 Red · 10-11-26 · Shift C');assert.equal(drivers().title,'Step 4 · Sasti OC · 10-11-26 · Shift C · All categories · Red only · drivers');assert.equal(drivers().rows.length,46);assert.ok(drivers().columns.some(c=>c.key==='equipment'));
   // A whole day: people are different persons, so Duties returns as a column.
   press(view,'284 duties · 10-11-26');assert.equal(byCategory().title,'Step 3 · Sasti OC · 10-11-26 · All shifts · by equipment category');
   assert.deepEqual(byCategory().rows.map(r=>[r.equipment,r.people,r.duties]),[['Tipper',78,146],['Excavator',69,138],['All categories',147,284]]);
@@ -256,7 +257,7 @@ test('manpower reports export complete selected data, separate shift hours, and 
   press(view,'Excavator · 138 duties');assert.deepEqual(section(view(),'manpower-ot-dates').rows.map(r=>[r.duties,r.S1_duties]),[[138,46]]);assert.match(section(view(),'manpower-ot-dates').title,/ · Excavator$/);
   // The trail steps back: the site name closes everything under the date table, All sites closes the site.
   const trail=()=>nodes(nodes(view(),'p').find(n=>n.props.className==='mp-trail'),'button');
-  press(view,'46 duties · 10-11-26 · Shift 1');assert.deepEqual(trail().map(n=>n.props.children),['All sites','Sasti OC','10-11-26 · Shift 1']);
+  press(view,'46 duties · 10-11-26 · Shift A');assert.deepEqual(trail().map(n=>n.props.children),['All sites','Sasti OC','10-11-26 · Shift A']);
   trail()[1].props.onClick();assert.deepEqual(categories(view()),['manpower-ot-sites','manpower-ot-dates']);
   trail()[0].props.onClick();assert.deepEqual(categories(view()),['manpower-ot-sites']);}
  // Several dates: every date has a row, then All dates; a stale date or shift is read as the whole selection.
@@ -311,7 +312,7 @@ test('shift attendance equipment wise opens sites, then date by shift, then equi
  const duty=(n,siteKey,site,shift,equipment,flag='normal',actual=true,date=filters.from)=>({id:'d'+n,date,shift,site,siteKey,employeeKey:'E'+n,employeeId:'E'+n,caliberCode:'C'+n,employeeName:'Driver '+n,equipment,doors:'V'+n,makeModel:'VOLVO FMX',status:'Present',trips:1,actual,actualLabel:actual?'Yes':'No — second machine',flag,flagLabel:flag==='red'?'RED — Back-to-back OT':'Normal duty',note:'',reason:'',remarks:''});
  const sasti=['sasti ob','Sasti OC'],rows=[duty(1,...sasti,'S1','Volvo Tippers'),duty(2,...sasti,'S1','Volvo Tippers','red'),duty(7,...sasti,'S1','Volvo Tippers'),duty(3,...sasti,'S1','Graders','zero'),duty(4,...sasti,'S1','Graders','normal',false),duty(5,...sasti,'S2','Volvo Tippers','review'),duty(6,'jayant ob','Jayant OC','S3','Excavator','orange')];
  const sites=[{siteKey:'dhoptala',site:'Dhoptala OC'},{siteKey:'jayant ob',site:'Jayant OC'},{siteKey:'sasti ob',site:'Sasti OC'}];
- // The batch behind each site and shift: Dhoptala has none for the shift that ended, Jayant and Sasti each have one still open, Sasti misses Shift 3.
+ // The batch behind each site and shift: Dhoptala has none for the shift that ended, Jayant and Sasti each have one still open, Sasti misses Shift C.
  const batch=(siteKey,shift,state,name='',date=filters.from)=>({siteKey,date,shift,state,batch:name});
  const shiftBatches=[batch('dhoptala','S1','none'),batch('dhoptala','S2','not_due'),batch('dhoptala','S3','not_due'),batch('jayant ob','S1','closed','J1'),batch('jayant ob','S2','lmv_open','JAYANT-S2'),batch('jayant ob','S3','vlb_open','JAYANT-S3'),batch('sasti ob','S1','closed','S1'),batch('sasti ob','S2','elb_open','SASTI-S2'),batch('sasti ob','S3','none')];
  const payload=(attendanceSites=sites,attendanceShifts=shiftBatches,attendanceEquipment=rows)=>({summary:[],details:[],performance:[],ot:[],otSites:[],shiftAttendance:[],attendanceEquipment,attendanceSites,attendanceShifts,exceptions:[],totals:{},notes:[],options:{},generatedAt:'2026-11-10T10:00:00Z'});
@@ -343,17 +344,17 @@ test('shift attendance equipment wise opens sites, then date by shift, then equi
  assert.deepEqual(categories(second),['shift-attendance-sites','shift-attendance-dates']);
  const datesStep=step(second,'shift-attendance-dates').props;
  assert.equal(datesStep.title,'Step 2 · Sasti OC · date by shift · 10-11-26');
- assert.deepEqual(datesStep.rows.map(r=>[r.dateLabel,r.shiftLabel,r.stateLabel,r.batch,r.actual,r.duties]),[['10-11-26','Shift 1','Closed','S1',4,5],['10-11-26','Shift 2','ELB open','SASTI-S2',1,1],['10-11-26','Shift 3','Batch not created','',0,0]],'Smart Print gets one line per shift');
- assert.deepEqual(labels(gridOf(second),'mp-att-count'),['4 actual duties · 10-11-26 · Shift 1','1 actual duty · 10-11-26 · Shift 2 · ELB open','0 actual duties · 10-11-26 · Shift 3 · No batch']);
- assert.deepEqual(labels(gridOf(second),'mp-att-none'),['0 actual duties · 10-11-26 · Shift 3 · No batch']);
- assert.deepEqual(labels(gridOf(second),'mp-att-open'),['1 actual duty · 10-11-26 · Shift 2 · ELB open']);
+ assert.deepEqual(datesStep.rows.map(r=>[r.dateLabel,r.shiftLabel,r.stateLabel,r.batch,r.actual,r.duties]),[['10-11-26','Shift A','Closed','S1',4,5],['10-11-26','Shift B','ELB open','SASTI-S2',1,1],['10-11-26','Shift C','Batch not created','',0,0]],'Smart Print gets one line per shift');
+ assert.deepEqual(labels(gridOf(second),'mp-att-count'),['4 actual duties · 10-11-26 · Shift A','1 actual duty · 10-11-26 · Shift B · ELB open','0 actual duties · 10-11-26 · Shift C · No batch']);
+ assert.deepEqual(labels(gridOf(second),'mp-att-none'),['0 actual duties · 10-11-26 · Shift C · No batch']);
+ assert.deepEqual(labels(gridOf(second),'mp-att-open'),['1 actual duty · 10-11-26 · Shift B · ELB open']);
  assert.ok(labels(gridOf(second),'mp-ot-duties').includes('5 actual duties · 10-11-26 · All shifts'),'the day total opens the whole day');
 
  // Step 3: a box opens that date and shift by equipment, with both totals and the four colours.
- press(second,'4 actual duties · 10-11-26 · Shift 1');
+ press(second,'4 actual duties · 10-11-26 · Shift A');
  const third=view(),equipmentStep=step(third,'shift-attendance-equipment');
  assert.deepEqual(categories(third),['shift-attendance-sites','shift-attendance-dates','shift-attendance-equipment']);
- assert.equal(equipmentStep.props.title,'Step 3 · Sasti OC · 10-11-26 · Shift 1 · by equipment');
+ assert.equal(equipmentStep.props.title,'Step 3 · Sasti OC · 10-11-26 · Shift A · by equipment');
  assert.deepEqual(equipmentStep.props.rows.map(r=>[r.equipment,r.duties,r.actual,r.second,r.red,r.zero]),[['Volvo Tippers',3,3,0,1,0],['Graders',2,1,1,0,1],['All equipment',5,4,1,1,1]]);
  assert.deepEqual(buttons(equipmentStep,'mp-cat-open').map(n=>n.props.children),['Volvo Tippers','Graders','All equipment']);
  assert.deepEqual(labels(equipmentStep,'mp-cat-count'),['3 equipment-wise duties · Volvo Tippers','1 Red · Volvo Tippers','2 equipment-wise duties · Graders','1 second machine · Graders','1 Blue · Graders','5 equipment-wise duties · All equipment','1 second machine · All equipment','1 Red · All equipment','1 Blue · All equipment'],'Second machine is equipment-wise minus actual duties; a zero is not a button');
@@ -363,7 +364,7 @@ test('shift attendance equipment wise opens sites, then date by shift, then equi
 
  // The Second machine number lists only the drivers for whom this equipment was a second machine in the shift.
  press(third,'1 second machine · Graders');
- {const extra=step(view(),'shift-attendance').props;assert.equal(extra.title,'Step 4 · Sasti OC · 10-11-26 · Shift 1 · Graders · Second machine only · drivers');
+ {const extra=step(view(),'shift-attendance').props;assert.equal(extra.title,'Step 4 · Sasti OC · 10-11-26 · Shift A · Graders · Second machine only · drivers');
   assert.deepEqual(extra.rows.map(r=>[r.equipment,r.actual,r.actualLabel]),[['Graders',false,'No — second machine']]);assert.equal(extra.description.split(' · ').slice(0,2).join(' · '),'1 equipment-wise duty · 0 actual duties');}
  press(view(),'1 second machine · Graders');assert.equal(step(view(),'shift-attendance'),undefined,'pressing the same number again closes the list');
 
@@ -371,7 +372,7 @@ test('shift attendance equipment wise opens sites, then date by shift, then equi
  buttons(step(view(),'shift-attendance-equipment'),'mp-cat-open')[0].props.onClick();
  const list=step(view(),'shift-attendance').props;
  assert.equal(list.rows.length,3);assert.equal(list.recordDateFilter,false);
- assert.equal(list.title,'Step 4 · Sasti OC · 10-11-26 · Shift 1 · Volvo Tippers · drivers');
+ assert.equal(list.title,'Step 4 · Sasti OC · 10-11-26 · Shift A · Volvo Tippers · drivers');
  assert.equal(list.description,'3 equipment-wise duties · 3 actual duties · Saved records only · Press a name for the month-wise history');
  assert.deepEqual(list.columns.map(c=>c.key),['employeeId','caliberCode','employeeName','otMonth','otYear','doors','makeModel','status','trips','actualLabel','flagLabel','note','reason','remarks']);
  assert.deepEqual(list.rows.map(list.rowClassName),['mp-duty-normal','mp-duty-red','mp-duty-normal']);
@@ -380,11 +381,11 @@ test('shift attendance equipment wise opens sites, then date by shift, then equi
  {const red=step(view(),'shift-attendance').props;assert.equal(red.rows.length,1);assert.match(red.title,/Volvo Tippers · Red only · drivers$/);}
 
  // A box without a batch still opens, and says so in words; the day total opens every shift of the day.
- press(view(),'0 actual duties · 10-11-26 · Shift 3 · No batch');
+ press(view(),'0 actual duties · 10-11-26 · Shift C · No batch');
  {const empty=step(view(),'shift-attendance-equipment'),lines=nodes(empty,'p').filter(n=>/mp-att-batch/.test(n.props.className||''));assert.deepEqual(lines.map(n=>n.props.className),['mp-att-batch mp-att-batch-none']);assert.equal(lines[0].props.children.at(-1),'this shift');assert.deepEqual(empty.props.rows,[]);assert.equal(step(view(),'shift-attendance'),undefined);}
  press(view(),'5 actual duties · 10-11-26 · All shifts');
  {const day=step(view(),'shift-attendance-equipment');assert.equal(day.props.title,'Step 3 · Sasti OC · 10-11-26 · All shifts · by equipment');
-  assert.deepEqual(nodes(day,'p').filter(n=>/mp-att-batch/.test(n.props.className||'')).map(n=>n.props.children.at(-1)),['Shift 3','Shift 2 SASTI-S2 (ELB open)']);}
+  assert.deepEqual(nodes(day,'p').filter(n=>/mp-att-batch/.test(n.props.className||'')).map(n=>n.props.children.at(-1)),['Shift C','Shift B SASTI-S2 (ELB open)']);}
 
  // Driver history (Step 5): month and year OT beside the name, and the name opens the month-wise history.
  {const volvo={siteKey:'sasti ob',scope:true,at:'sasti ob',date:'2026-11-10',shift:'S1',equipment:'Volvo Tippers'},event={id:'a',date:'2026-11-09',dates:'2026-11-09',severity:'red',reason:'RED — fixture',shifts:'2026-11-09 S1; 2026-11-09 S2',logBook:'VLB',equipment:'Tipper / Volvo',combinedHours:15,books:'CARD'};
@@ -407,8 +408,8 @@ test('shift attendance equipment wise opens sites, then date by shift, then equi
  {const every=await mount({pick:{siteKey:'*'}}),tree=every();
   assert.deepEqual(nodes(tree,DateShiftGrid)[0].props.grid.lines.map(l=>[l.label,l.sub]),[['Dhoptala OC','10-11-26 TUE'],['Jayant OC','10-11-26 TUE'],['Sasti OC','10-11-26 TUE']]);
   assert.ok(nodes(gridOf(tree),'span').some(n=>n.props.children==='Not due'),'a shift still running says Not due');
-  press(tree,'1 actual duty · Jayant OC · 10-11-26 · Shift 3 · VLB open');
-  assert.equal(step(every(),'shift-attendance-equipment').props.title,'Step 3 · Jayant OC · 10-11-26 · Shift 3 · by equipment');
+  press(tree,'1 actual duty · Jayant OC · 10-11-26 · Shift C · VLB open');
+  assert.equal(step(every(),'shift-attendance-equipment').props.title,'Step 3 · Jayant OC · 10-11-26 · Shift C · by equipment');
   const all=step((await mount({pick:{siteKey:'*',scope:true,at:'*',equipment:'*',flag:'zero'}}))(),'shift-attendance').props;
   assert.equal(all.title,'Step 4 · All sites · 10-11-26 · All shifts · All equipment · Blue only · drivers');assert.equal(all.rows.length,1);
   assert.deepEqual(all.columns.map(c=>c.key).filter(key=>['date','site','shift','equipment'].includes(key)),['site','shift','equipment']);
@@ -423,13 +424,13 @@ test('shift attendance equipment wise opens sites, then date by shift, then equi
   assert.deepEqual(nodes(nodes(marked,'div').find(n=>n.props.className==='mp-book-pick'),'button').map(n=>n.props['aria-label']),['All dates · 3','Batch not created · 2','Batch open · 1']);
   press(marked,'All dates · 3');assert.equal(nodes(view(),DateShiftGrid)[0].props.grid.lines.length,3);
   // The All dates line carries each shift over every date and opens it.
-  press(view(),'5 actual duties · Sasti OC · All dates · Shift 1 · 1 no batch');assert.equal(step(view(),'shift-attendance-equipment').props.title,'Step 3 · Sasti OC · 10-11-26 to 12-11-26 · Shift 1 · by equipment');
+  press(view(),'5 actual duties · Sasti OC · All dates · Shift A · 1 no batch');assert.equal(step(view(),'shift-attendance-equipment').props.title,'Step 3 · Sasti OC · 10-11-26 to 12-11-26 · Shift A · by equipment');
   const tree=(await mount({pick:{siteKey:'sasti ob',scope:true,at:'sasti ob',shift:'S1',equipment:'Graders'},chosen:range,data:payload(sites,later,moreRows)}))(),days=step(tree,'shift-attendance').props;
-  assert.equal(days.columns[0].key,'date');assert.equal(days.title,'Step 4 · Sasti OC · 10-11-26 to 12-11-26 · Shift 1 · Graders · drivers');assert.equal(days.description,'3 equipment-wise duties · 2 actual duties · Saved records only · Press a name for the month-wise history');
+  assert.equal(days.columns[0].key,'date');assert.equal(days.title,'Step 4 · Sasti OC · 10-11-26 to 12-11-26 · Shift A · Graders · drivers');assert.equal(days.description,'3 equipment-wise duties · 2 actual duties · Saved records only · Press a name for the month-wise history');
   assert.equal(nodes(step(tree,'shift-attendance-equipment'),'p').find(n=>n.props.className==='mp-att-batch mp-att-batch-none').props.children.at(-1),'12-11-26');}
 
  // Owner, 16 Nov 2026: every Shift Master shift is shown, Day and Night too, even with 0 duties and no batch,
- // also at a site working Shift 1 to 3. Nothing is left out, so there is no "Not shown" line.
+ // also at a site working Shift A to 3. Nothing is left out, so there is no "Not shown" line.
  {const extra=[...shiftBatches,batch('jayant ob','D','none'),batch('jayant ob','N','none'),batch('dhoptala','D','none')];
   const tree=(await mount({data:payload(sites,extra)}))(),rowsNow=step(tree,'shift-attendance-sites').props.rows;
   assert.deepEqual(rowsNow.map(r=>[r.site,r.none]),[['Dhoptala OC',2],['Jayant OC',2],['Sasti OC',1],['All sites',5]]);
@@ -451,7 +452,7 @@ test('manpower by category opens sites, then date by shift, then equipment categ
  const line=(date,shift,equipment,siteKey='sasti ob')=>({date,site:names[siteKey],siteKey,shift,equipment,category:'VEHICLE',group:equipment,make:'Make',model:'Model',assets:1,employees:1});
  const summary=[line('2026-11-10','S1','Tipper'),line('2026-11-10','S1','Excavator'),line('2026-11-10','S2','Tipper'),line('2026-11-11','S1','Tipper'),line('2026-11-10','S1','Dozer','jayant ob')];
  // The server sends the counts (manpowerCategoryCells over these cards), not the cards. The cards of one opened date come in a
- // second read: here that read has already returned Sasti OC, 10 Nov, Shift 1 (state slot 16 holds it, with the query it was for).
+ // second read: here that read has already returned Sasti OC, 10 Nov, Shift A (state slot 16 holds it, with the query it was for).
  const payload={summary,cells:manpowerCategoryCells(details),performance:[],ot:[],otSites:[{site:'Jayant OC',siteKey:'jayant ob'},{site:'Sasti OC',siteKey:'sasti ob'}],exceptions:[],totals:{assets:4,employees:4,duties:6,exceptions:0},notes:[],options:{},generatedAt:'2026-11-11T10:00:00Z'};
  const cardsQuery=new URLSearchParams({...filters,from:'2026-11-10',to:'2026-11-10',site:'Sasti OC',shift:'S1',view:'category-cards'}).toString();
  const day=details.filter(r=>r.siteKey==='sasti ob'&&r.date==='2026-11-10'&&r.shift==='S1');
@@ -472,12 +473,12 @@ test('manpower by category opens sites, then date by shift, then equipment categ
  assert.deepEqual(section('manpower-dates').rows.map(r=>[r.date,r.S1_duties,r.S1_machines,r.S2_duties,r.S3_duties,...counts(r)]),[['10-11-26',3,3,1,0,3,3,4,5],['11-11-26',1,1,0,0,1,1,1,1],['All dates',4,3,1,0,3,3,5,6]]);
  assert.equal(section('manpower-summary').rows.length,4);assert.equal(section('manpower-assignments'),undefined);
  // Step 3: a box opens that date and shift by equipment category, and lists that date's saved cards.
- press('3 duties · 3 machines · 10-11-26 · Shift 1');assert.equal(section('manpower-categories').title,'Step 3 · Sasti OC · 10-11-26 · Shift 1 · by equipment category');
+ press('3 duties · 3 machines · 10-11-26 · Shift A');assert.equal(section('manpower-categories').title,'Step 3 · Sasti OC · 10-11-26 · Shift A · by equipment category');
  assert.deepEqual(section('manpower-categories').rows.map(r=>[r.equipment,...counts(r)]),[['Tipper',2,2,2,3],['Excavator',1,1,1,1],['All categories',3,3,3,4]],'a card without a matched employee is a saved card, not a duty');
- assert.equal(section('manpower-assignments').title,'Vehicle & Employee Assignments · Sasti OC · 10-11-26 · Shift 1');assert.equal(section('manpower-assignments').rows.length,4);
+ assert.equal(section('manpower-assignments').title,'Vehicle & Employee Assignments · Sasti OC · 10-11-26 · Shift A');assert.equal(section('manpower-assignments').rows.length,4);
  // A category narrows the two lists to its makes, models and cards.
  nodes(tree(),'button').find(n=>n.props.className==='mp-cat-open'&&n.props.children==='Tipper').props.onClick();
- assert.equal(section('manpower-assignments').title,'Vehicle & Employee Assignments · Sasti OC · 10-11-26 · Shift 1 · Tipper');
+ assert.equal(section('manpower-assignments').title,'Vehicle & Employee Assignments · Sasti OC · 10-11-26 · Shift A · Tipper');
  assert.deepEqual([section('manpower-summary').rows.length,section('manpower-assignments').rows.map(r=>r.id)],[1,[1,2,6]]);
  // The whole day, then the trail back to every site.
  // The whole day is another read: until it returns the page says it is loading.
@@ -490,8 +491,8 @@ test('manpower by category opens sites, then date by shift, then equipment categ
 
 test('manpower by category reconciliation compares the fleet with saved cards, shift by shift, down to the machines',async()=>{
  const filters={from:'2026-11-10',to:'2026-11-10',site:'',shift:'',batch:'',employee:'',asset:''},query=new URLSearchParams({...filters,view:'reconciliation'}).toString();
- // Sasti fleet: three tippers and one excavator. Shift 1: V1 worked, V2 has a card with 0 trips and 0 km, X1 worked, V3 has no card,
- // and V9 (listed at another site) has a card here. Shift 2: only V1 worked, with 0 km written.
+ // Sasti fleet: three tippers and one excavator. Shift A: V1 worked, V2 has a card with 0 trips and 0 km, X1 worked, V3 has no card,
+ // and V9 (listed at another site) has a card here. Shift B: only V1 worked, with 0 km written.
  const machine=(door,equipment)=>({siteKey:'sasti ob',key:'k'+door,door,equipment,makeModel:'Make Model'});
  const fleet=[machine('V1','Tipper'),machine('V2','Tipper'),machine('V3','Tipper'),machine('X1','Excavator')];
  const did=(door,shift,equipment,active,zeroKm,inFleet=true)=>({siteKey:'sasti ob',date:filters.from,shift,key:'k'+door,inFleet,door,equipment,makeModel:'Make Model',logBook:equipment==='Tipper'?'VLB':'ELB',trips:equipment==='Tipper'?(active?5:0):null,km:equipment==='Tipper'?(zeroKm?0:40):null,hours:7,active,zeroKm,employees:'SAMPLE DRIVER',books:'CARD-'+door+shift});
@@ -509,15 +510,15 @@ test('manpower by category reconciliation compares the fleet with saved cards, s
  assert.deepEqual(section('manpower-rc-sites').rows.map(r=>[r.site,r.machines,...counts(r)]),[['Jayant OC',0,0,0,0,0,0,0,'—',0],['Sasti OC',4,12,4,3,1,2,8,'33.3%',1],['All sites',4,12,4,3,1,2,8,'33.3%',1]]);
  // Step 2: one line per date and shift.
  press('4 machines · Sasti OC');
- assert.deepEqual(section('manpower-rc-shifts').rows.map(r=>[r.date,r.shift,...counts(r)]),[['10-11-26','Shift 1',4,3,2,1,1,1,'75%',1],['10-11-26','Shift 2',4,1,1,0,1,3,'25%',0],['10-11-26','Shift 3',4,0,0,0,0,4,'0%',0],['All dates','All shifts',12,4,3,1,2,8,'33.3%',1]]);
+ assert.deepEqual(section('manpower-rc-shifts').rows.map(r=>[r.date,r.shift,...counts(r)]),[['10-11-26','Shift A',4,3,2,1,1,1,'75%',1],['10-11-26','Shift B',4,1,1,0,1,3,'25%',0],['10-11-26','Shift C',4,0,0,0,0,4,'0%',0],['All dates','All shifts',12,4,3,1,2,8,'33.3%',1]]);
  // Step 3: the shift by equipment category; a card of a machine listed elsewhere stays outside Available and Card saved.
- press('4 Available · 10-11-26 · Shift 1');assert.equal(section('manpower-rc-categories').title,'Step 3 · Sasti OC · 10-11-26 · Shift 1 · by equipment category');
+ press('4 Available · 10-11-26 · Shift A');assert.equal(section('manpower-rc-categories').title,'Step 3 · Sasti OC · 10-11-26 · Shift A · by equipment category');
  assert.deepEqual(section('manpower-rc-categories').rows.map(r=>[r.equipment,...counts(r)]),[['Tipper',3,2,1,1,1,1,'66.7%',1],['Excavator',1,1,1,0,0,0,'100%',0],['All categories',4,3,2,1,1,1,'75%',1]]);
  // Step 4: every machine of the category, or only those of the number pressed.
  nodes(tree(),'button').find(n=>n.props.className==='mp-cat-open'&&n.props.children==='Tipper').props.onClick();
  assert.deepEqual(section('manpower-rc-machines').rows.map(r=>[r.door,r.statusLabel]),[['V1','Active production'],['V2','Zero trips · Zero km'],['V3','No card'],['V9','Not in fleet list · worked']]);
  assert.deepEqual(section('manpower-rc-machines').columns.map(c=>c.key),['door','makeModel','statusLabel','logBook','trips','km','hours','employees','books']);
- press('1 No card · Tipper');assert.equal(section('manpower-rc-machines').title,'Step 4 · Sasti OC · 10-11-26 · Shift 1 · Tipper · No card · machines');assert.deepEqual(section('manpower-rc-machines').rows.map(r=>r.door),['V3']);
+ press('1 No card · Tipper');assert.equal(section('manpower-rc-machines').title,'Step 4 · Sasti OC · 10-11-26 · Shift A · Tipper · No card · machines');assert.deepEqual(section('manpower-rc-machines').rows.map(r=>r.door),['V3']);
  press('1 Zero km · Tipper');assert.deepEqual(section('manpower-rc-machines').rows.map(r=>r.door),['V2']);
  press('1 Not in fleet list · All categories');assert.deepEqual(section('manpower-rc-machines').rows.map(r=>r.door),['V9']);
  // The total line opens every shift together, with Date and Shift as columns of the machine list.
