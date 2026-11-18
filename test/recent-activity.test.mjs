@@ -161,16 +161,16 @@ test('the dashboard reads the last 24 hours within the login\'s sites and lists 
  }finally{server?.closeAllConnections();await new Promise(r=>server?server.close(r):r());await db.close()}
 });
 
-test('the dashboard shows the last 6, 12 and 24 hours, Trip Timing in place of the daily trend, and the site comparison below it',()=>{
+test('the dashboard shows the last 6, 12 and 24 hours with Batch Status under them, then Trip Timing in place of the daily trend',()=>{
  const read=file=>fs.readFileSync(new URL('../src/'+file,import.meta.url),'utf8');
  const screen=read('log-book-dashboard.jsx'),panel=read('log-book-recent-activity.jsx'),css=read('log-book-dashboard.css');
  assert.ok(!screen.includes('Daily entry trend'),'the daily trend graph is removed');
  assert.match(screen,/<RecentActivityPanel recent=\{live\.recent\} error=\{live\.error\} Dialog=\{Dialog\} customHours=\{live\.customHours\} onCustomHours=\{live\.setCustomHours\}\/>/);
- const timing=screen.indexOf('<OperationsReports session={session} reportId="timing" ReportSection={ReportSection}/>'),sites=screen.indexOf('<h3>Site comparison</h3>'),batch=screen.indexOf('<BatchStatusReport');
- assert.ok(timing>0&&sites>timing&&batch>sites,'Trip Timing, then the site comparison, then the other reports');
+ const timing=screen.indexOf('<OperationsReports session={session} reportId="timing" ReportSection={ReportSection}/>'),batch=screen.indexOf('<BatchStatusReport');
+ assert.ok(batch>0&&timing>batch,'Batch Status (Sr 1), then Trip Timing');
+ assert.ok(!screen.includes('<h3>Site comparison</h3>'),'the site comparison is removed (owner, 18 Nov 2026)');
  const overtime=screen.indexOf('<ManpowerReports session={session} reportId="ot"'),loading=screen.indexOf('<OperationsReports session={session} reportId="loading" ReportSection={ReportSection}/>');
- assert.ok(overtime>batch&&loading>overtime,'the Loading Equipment-wise Report is the last report on the dashboard');
- assert.match(screen,/RECENT_WINDOWS\.map\(hours=><button key=\{hours\} type="button" aria-pressed=\{siteHours===hours\} onClick=\{\(\)=>setSiteHours\(hours\)\}>/,'6, 12 and 24 hour buttons on the site comparison');
+ assert.ok(overtime>timing&&loading>overtime,'OT & Multiple Duties, then the Loading Equipment-wise Report (Chart)');
  assert.match(panel,/headers:\{Authorization:'Bearer '\+session\.token\}/,'the read carries the sign-in');
  for(const text of ['Log books saved',' shifts completed','Completed in the last 6, 12 and 24 hours'])assert.ok(panel.includes(text),text);
  // The front shows the figures alone: no batch numbers and no card totals under them (owner, 13 Nov 2026).
