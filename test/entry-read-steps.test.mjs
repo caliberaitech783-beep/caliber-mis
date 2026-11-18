@@ -32,3 +32,20 @@ test('saves in the first 10 minutes after start are left out of afterWarmup only
  save(13*60000,300);
  assert.equal(steps.stats().afterWarmup.warmupSkipped,0);
 });
+
+test('nested card fill measurements accumulate without changing main lap totals',async()=>{
+ let t=0;
+ const timing=createEntryReadSteps({clock:()=>t});
+ const lap=timing.start();
+ t=2;lap('decode');
+ await lap.measureFill('master-matching',()=>{t+=3;});
+ await lap.measureFill('previous-shift-lookup',()=>{t+=5;});
+ await lap.measureFill('previous-shift-lookup',()=>{t+=7;});
+ await lap.measureFill('opening-meter-lookup',()=>{t+=11;});
+ t+=2;lap('card-fill');
+ lap.done({cards:2,partial:false});
+ const [read]=timing.stats().slowest;
+ assert.equal(read.totalMs,30);
+ assert.equal(read.steps['card-fill'],28);
+ assert.deepEqual(read.fillSteps,{'master-matching':3,'previous-shift-lookup':12,'opening-meter-lookup':11});
+});

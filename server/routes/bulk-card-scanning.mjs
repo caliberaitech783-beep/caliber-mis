@@ -602,10 +602,15 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
     return readVlbOpeningMeterRows(db,assetId,date,meterSites);
    };
    const fillDraft=(row,rawKey)=>{
-    const questions={records:async({sql,args})=>({rows:await previousShiftRecords(sql,args)}),meters:readMeterRows};
+    const questions={
+     records:({sql,args})=>lap.measureFill('previous-shift-lookup',async()=>({rows:await previousShiftRecords(sql,args)})),
+     meters:input=>lap.measureFill('opening-meter-lookup',()=>readMeterRows(input)),
+    };
     const compute=async ask=>{
-     matchingMasters??=scanMastersForBook((await readScanMasters(db,MASTER_NAMES)).rows,batch);
-     const matched=matchScanDraft(applyScanContext(batch.expected_context,row.draft),row.raw_fields,batch.kind,matchingMasters);
+     const matched=await lap.measureFill('master-matching',async()=>{
+      matchingMasters??=scanMastersForBook((await readScanMasters(db,MASTER_NAMES)).rows,batch);
+      return matchScanDraft(applyScanContext(batch.expected_context,row.draft),row.raw_fields,batch.kind,matchingMasters);
+     });
      const linked={...row.draft};for(const key of ['assetId','employeeId'])if(matched[key]&&!linked[key])linked[key]=matched[key];
      let draft=await fillScanTripEstimates({query:(sql,args)=>ask.records({sql,args})},linked,row.raw_fields);
      if(fillMeters&&(draft.assetId||draft.openingMeterCarryover))draft=await fillVlbScanOpeningMeters(db,draft,{sites:meterSites,extraction:row.raw_fields?.extractionDraft,context:applyScanContext(batch.expected_context,draft),readRows:(client,assetId,date)=>ask.meters({assetId:String(assetId),date})});
