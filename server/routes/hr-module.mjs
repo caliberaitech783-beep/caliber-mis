@@ -12,9 +12,9 @@ const publicFiles = /^(?:\/assets\/[\w.-]+|\/ocr\/(?:runtime\/)?[\w.-]+|\/(?:cal
 
 // The legacy calculator uses inline scripts and handlers. Keep them in an
 // opaque sandbox so it cannot access the Pulse-II or HR session storage.
-const attendancePolicy = "sandbox allow-scripts allow-downloads; default-src 'none'; script-src 'unsafe-inline'; " +
+const attendancePolicy = "sandbox allow-scripts allow-downloads; default-src 'none'; script-src 'unsafe-inline' https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js; " +
   "style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; " +
-  "img-src data: blob:; frame-ancestors 'self'; base-uri 'none'; form-action 'none'";
+  "img-src data: blob:; connect-src https://api.telegram.org; frame-ancestors 'self'; base-uri 'none'; form-action 'none'";
 
 export function registerHrModule(app, {request = fetch, origin = 'https://pulse-ll.cmll.in'} = {}) {
   const router = express.Router();
