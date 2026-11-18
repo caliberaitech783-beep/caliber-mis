@@ -6,7 +6,7 @@
 // needs only the last shift of the day before; earlier dates are not chased further back.
 // VLB_BATCH_ORDER_FROM=off switches the rule off.
 export const VLB_BATCH_ORDER_FROM='2026-11-19';
-const SHIFT_LABELS={S1:'Shift 1',S2:'Shift 2',S3:'Shift 3',D:'Day shift',N:'Night shift'};
+const SHIFT_LABELS={S1:'Shift A',S2:'Shift B',S3:'Shift C',D:'Shift Day',N:'Shift Night'};
 const PREVIOUS={S2:['same','S1'],S3:['same','S2'],S1:['day','S3'],N:['same','D'],D:['day','N']};
 const dayBefore=date=>new Date(Date.parse(date+'T00:00:00Z')-86400000).toISOString().slice(0,10);
 const displayDate=date=>{const [y,m,d]=date.split('-');return d+'-'+m+'-'+y;};

@@ -2,6 +2,7 @@ import React,{useEffect,useRef,useState} from 'react';
 import EquipmentAliasOtpPanel,{aliasApi} from './equipment-alias-otp-panel.jsx';
 import {formatDisplayDateTime} from '../shared/date-time-format.mjs';
 import TableSmartPrint from './table-smart-print.jsx';
+import {sameSite,siteChoices} from '../shared/report-filter-options.mjs';
 
 // Equipment master overlay: the ALIAS column, the revoke dialog (same two OTP routes as
 // approval) and the administrator list per site with full history and the approver setting.
@@ -56,8 +57,8 @@ export default function EquipmentAliasAdminPanel({session,isAdmin}){
  const setAllSites=async(alias,allSites)=>{setRuleError('');try{await aliasApi(session)('/api/equipment-aliases/'+alias.id+'/all-sites',{allSites},'PUT');await refresh();}catch(e){setRuleError(e.message)}};
  const [site,setSite]=useState(''),[status,setStatus]=useState(''),[open,setOpen]=useState(null),[revoke,setRevoke]=useState(null),[login,setLogin]=useState(''),[notice,setNotice]=useState(''),[saveError,setSaveError]=useState('');
  useEffect(()=>{if(approver?.login)setLogin(approver.login)},[approver?.login]);
- const sites=[...new Set(aliases.map(a=>a.equipmentSite||a.site).filter(Boolean))].sort();
- const rows=aliases.filter(a=>(!site||(a.equipmentSite||a.site)===site)&&(!status||a.status===status));
+ const sites=siteChoices(aliases.map(a=>a.equipmentSite||a.site));
+ const rows=aliases.filter(a=>(!site||sameSite(a.equipmentSite||a.site,site))&&(!status||a.status===status));
  const saveApprover=async event=>{event.preventDefault();setSaveError('');setNotice('');try{await aliasApi(session)('/api/equipment-aliases/settings',{approver:{login}},'PUT');await refresh();setNotice('Equipment mapping approver saved.');}catch(e){setSaveError(e.message)}};
  return <section className="panel equipment-alias-admin"><h2>Equipment aliases</h2>
   <p className="scan-alias-note">Written card labels mapped to Pulse records. Approval by OTP is {otpEnabled?'ON':'OFF'} on this server{approver?.login?' · approver '+approver.login.toUpperCase()+(approverTelegramLinked?' (Telegram linked)':' (Telegram NOT linked: only the emergency PM route works)'):''}.</p>

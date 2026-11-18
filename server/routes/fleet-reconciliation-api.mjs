@@ -1,3 +1,4 @@
+import {siteChoices} from '../../shared/report-filter-options.mjs';
 import {reconcileFleet,shiftForDate,validFleetDate,fleetShift,fleetAssetKind,assetIdentity,IDLE_REASONS} from '../rules/fleet-reconciliation.mjs';
 import {siteAllowed,requireLogBookSite} from '../../shared/log-book-access.mjs';
 import {canonicalSiteName} from '../../shared/site-location.mjs';
@@ -34,7 +35,7 @@ export function registerFleetReconciliation(app,{pool,protect,ensureBooks,pulseM
  app.get('/api/reports/fleet-reconciliation/options',...protect,handle(async(req,res)=>{
   const data=await masters(),kinds=kindsFor(req);
   const assets=kinds.includes('lmv')?data.assets:data.assets.filter(asset=>!data.lmvIds.has(asset.id));
-  const sites=[...new Set(assets.map(a=>a.currentLocation||a.site||a.location).filter(s=>s&&siteAllowed(req.logBookScope,s)))].sort();
+  const sites=siteChoices(assets.map(a=>a.currentLocation||a.site||a.location).filter(s=>s&&siteAllowed(req.logBookScope,s)));
   const shifts=data.shifts.filter(s=>siteAllowed(req.logBookScope,s.site||s.siteName)).map(s=>({...s,code:fleetShift(s.shiftCode||s.shiftName||s.name||s.shift)}));
   res.json({sites,shifts,kinds,reasons:IDLE_REASONS});
  }));
