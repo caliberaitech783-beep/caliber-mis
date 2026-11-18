@@ -1,6 +1,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';import express from 'express';import {createServer} from 'node:http';import {PGlite} from '@electric-sql/pglite';
 import {browserSessionMiddleware,SESSION_COOKIE,CSRF_COOKIE,REMEMBER_COOKIE,REMEMBER_DEVICE_MS} from '../server/middleware/browser-session-security.mjs';
 import {installMisLoginHandoff} from '../server/routes/mis-login-handoff.mjs';
+import {readFileSync} from 'node:fs';
 import {createPulseSignInBridge} from '../server/services/pulse-signin-bridge.mjs';
 
 // "Remember me" on the Pulse MIS sign-in page keeps MIS signed in after the browser
@@ -16,7 +17,7 @@ async function harness(t,remember){
   fetcher:async()=>({ok:true,json:async()=>({grant:'g'.repeat(43),profile,...(remember===undefined?{}:{remember})})})});
  await service.initialize();
  // Stands in for /api/security/account, which renews the cookie each time MIS opens.
- app.get('/api/renew',(req,res)=>res.json({token:req.establishBrowserSession(String(req.headers.authorization).replace(/^Bearer /,''))}));
+ app.get('/api/renew',(req,res)=>res.json({token:req.establishBrowserSession(String(req.headers.authorization).replace(/^Bearer /,'')),remembered:req.browserSessionRemembered}));
  app.post('/api/logout',(_req,res)=>res.status(204).end());
  const server=createServer(app);await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
  t.after(()=>new Promise(resolve=>{server.close(resolve);server.closeAllConnections();}));
@@ -47,6 +48,7 @@ test('Remember me keeps MIS cookies for 30 days and renews them on each visit',a
  assert.equal((await db.query('SELECT remembered FROM mis_credential_sessions')).rows[0].remembered,true);
  const renewed=await call('/api/renew',{headers:{Authorization:'Bearer '+session.body.token}});
  assert.equal(renewed.body.token,session.body.token,'the same browser context is kept');
+ assert.equal(session.body.rememberDevice,true);assert.equal(renewed.body.remembered,true);
  assert.equal(lifetime(renewed.set,SESSION_COOKIE),days);assert.equal(lifetime(renewed.set,REMEMBER_COOKIE),days);
  const out=await call('/api/logout',{method:'POST',headers:{Authorization:'Bearer '+session.body.token,Origin:'https://pulse-ll.cmll.in'}});
  assert.equal(out.response.status,204);assert.equal([...jar.keys()].some(name=>name.startsWith(REMEMBER_COOKIE)),false);
@@ -61,6 +63,7 @@ test('without Remember me (shared site PCs) the cookies still end when the brows
   assert.equal((await db.query('SELECT remembered FROM mis_credential_sessions')).rows[0].remembered,false);
   const renewed=await call('/api/renew',{headers:{Authorization:'Bearer '+session.body.token}});
   assert.equal(lifetime(renewed.set,SESSION_COOKIE),undefined);
+  assert.equal(session.body.rememberDevice,false);assert.equal(renewed.body.remembered,false);
  }
 });
 
@@ -75,4 +78,18 @@ test('a remembered sign-in keeps its Pulse link for 30 days, an ordinary one for
  await bridge.request('requests',{},'kept-user');assert.deepEqual(used,['kept-grant']);
  await assert.rejects(()=>bridge.request('requests',{},'plain-user'),error=>error.status===401);
  await assert.rejects(()=>bridge.request('requests',{},'old-user'),error=>error.status===401);
+});
+
+test('the page keeps a remembered sign-in on the device and any other in the tab',async()=>{
+ // The .jsx module imports CSS, so take the plain function text out of it.
+ const source=readFileSync(new URL('../src/account-security.jsx',import.meta.url),'utf8');
+ const start=source.indexOf('export function storeBrowserSession'),end=source.indexOf('\n}',start)+2;
+ assert.ok(start>=0&&end>start);
+ const store=new Function('return '+source.slice(start,end).replace('export ',''))();
+ const storage=()=>{const m=new Map();return {m,setItem:(k,v)=>m.set(k,v),removeItem:k=>m.delete(k)};};
+ const local=storage(),tab=storage();
+ store({token:'browser-session.abcdefghijklmnop',rememberDevice:true},{local,tab});
+ assert.ok(local.m.has('nerveCenterSession'));assert.equal(tab.m.has('nerveCenterSession'),false);
+ store({token:'browser-session.abcdefghijklmnop'},{local,tab});
+ assert.equal(local.m.has('nerveCenterSession'),false,'an ordinary sign-in leaves nothing on the device');assert.ok(tab.m.has('nerveCenterSession'));
 });
