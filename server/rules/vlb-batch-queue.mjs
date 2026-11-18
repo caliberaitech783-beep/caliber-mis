@@ -13,7 +13,7 @@ export function batchStageWaits(rows){
   if(!active(batch))continue;
   const site=canonicalSiteName(batch.site),stage=stageOrder.indexOf(batchStage(batch));
   const pending=sites.get(site)||[];
-  if(pending[stage])waits.set(batch.id,(stage===2?'Close ':'Lock ')+stageNames[stage]+' in '+pending[stage].name+' first.');
+  if(stage>0&&pending[stage])waits.set(batch.id,(stage===2?'Close ':'Lock ')+stageNames[stage]+' in '+pending[stage].name+' first.');
   for(let index=stage;index<stageOrder.length;index++)pending[index]??=batch;
   sites.set(site,pending);
  }

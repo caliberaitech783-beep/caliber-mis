@@ -138,7 +138,7 @@ export async function lockVlb(client,batch,actor,{assets}={}){
 export async function unlockVlb(client,batch,actor,{reason='',approvedBy=null,via='screen'}={}){
  if(!['lmv_open','elb_open'].includes(batchStage(batch)))fail(batch.closed_at?'Reopen the batch before unlocking VLB.':'VLB is not locked for this batch.',409);
  // Unlock routes hold the exclusive batch write lock because this can make a later stage wait again.
- const {rows}=await client.query("SELECT site,name FROM mis_vlb_batches WHERE id<>$1 AND stage='vlb_open' AND closed_at IS NULL AND archived_at IS NULL AND deleted_at IS NULL AND book_date>=$$2026-11-01$$",[batch.id]);
+ const {rows}=await client.query("SELECT site,name FROM mis_vlb_batches WHERE id<>$1 AND book_date=$2 AND stage='vlb_open' AND closed_at IS NULL AND archived_at IS NULL AND deleted_at IS NULL AND book_date>=$$2026-11-01$$",[batch.id,batch.report_date||batch.book_date]);
  const active=rows.find(row=>canonicalSiteName(row.site)===canonicalSiteName(batch.site));
  if(active)fail('Lock VLB in '+active.name+' before unlocking VLB for this batch.',409);
  await client.query('DELETE FROM mis_vlb_batch_machines WHERE batch_id=$1',[batch.id]);

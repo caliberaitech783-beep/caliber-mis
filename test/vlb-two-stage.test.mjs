@@ -5,7 +5,7 @@ import {randomUUID} from 'node:crypto';
 import {PGlite} from '@electric-sql/pglite';
 import {LOG_BOOK_SCHEMA,registerLogBooks} from '../server/routes/log-book.mjs';
 import {twoStageEnabled,validateFleetEntry,buildMachineSnapshot,buildFleetList,closureBlockers,fleetProgress,activeSiteHolds,holdSummary,machineReportRows} from '../server/rules/vlb-two-stage.mjs';
-process.env.VLB_BATCH_ORDER_FROM='off'; // these tests open batches out of shift order; vlb-batch-order.test.mjs covers the order
+process.env.VLB_BATCH_ORDER_FROM='off'; // The configured shift-order gate is covered separately.
 
 const assets=[
  {id:'1',category:'Vehicle',door:'V1',currentLocation:'Sasti OC'},
@@ -80,6 +80,7 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
   ['Users & employees',{login:'alice',employee:'Alice',employeeId:'CM-1',userRoles:'MIS User',status:'active',site:'Sasti OC'}],
   ['Users & employees',{login:'bob',employee:'Bob',employeeId:'CM-2',userRoles:'MIS User',status:'active',site:'Sasti OC'}],
   ['Shift Master',{site:'Sasti OC',shiftName:'Shift A',shiftCode:'I',startTime:'05:00:00',endTime:'13:00:00'}],
+  ['Shift Master',{site:'Sasti OC',shiftName:'Shift B',shiftCode:'II',startTime:'13:00:00',endTime:'21:00:00'}],
   ['Equipment master',{category:'Equipment',door:'VPC-019',equipmentName:'VPC 019',group:'Excavator',currentLocation:'Sasti OC'}],
   ['Equipment master',{category:'Equipment',door:'D1',equipmentName:'Dozer D1',group:'Dozer',currentLocation:'Sasti OC'}],
   ['Equipment master',{category:'Equipment',door:'VPC-077',equipmentName:'VPC 077',group:'Excavator',currentLocation:'Jayant OC'}],
@@ -119,14 +120,21 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
  view=await call(batch);assert.equal(view.data.holds.length,0,'transfer clears the hold without any batch action');
  {const bob=await call(batch+'/lock-vlb','POST',{},'bob');assert.equal(bob.status,403,JSON.stringify(bob.data));}
  assert.equal((await call('/api/log-books/lmv','POST',lmv())).status,409,'LMV waits for its own VLB lock');
- const secondSelection={...selection,date:'2026-12-19'};
- assert.equal((await call('/api/vlb-batches','POST',{...secondSelection,requestKey:randomUUID()})).status,409,'the next batch waits for VLB');
+ const secondSelection={...selection,shift:'S2'},thirdSelection={...selection,shift:'S3'},tomorrow={...selection,date:'2026-12-19'};
+ const createBatch=(scope,actor='alice')=>call('/api/vlb-batches','POST',{...scope,requestKey:randomUUID()},actor);
+ const previewBatch=scope=>call('/api/vlb-batches/preview?'+new URLSearchParams(scope));
+ assert.equal((await createBatch(secondSelection)).status,409,'another shift on the same date waits for VLB');
+ const preview=await previewBatch(tomorrow);
+ assert.equal(preview.status,200,JSON.stringify(preview.data));
+ assert.equal(preview.data.siteOpenBatch.id,created.data.id);
+ assert.match(preview.data.creationBlocker,/Fully close/);
+ assert.equal((await createBatch(tomorrow)).status,409);
  // 14 Nov 2026: a shift was locked with 42 scanned trip cards still in review. A card still waiting in a
  // scan entry for this site/date/shift now holds Lock VLB; another shift's or another site's does not.
  await db.exec("CREATE TABLE mis_scan_batches(id UUID PRIMARY KEY,kind TEXT NOT NULL,name TEXT NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),expected_context JSONB);CREATE TABLE mis_scan_cards(id UUID PRIMARY KEY,batch_id UUID NOT NULL,filename TEXT NOT NULL DEFAULT '',status TEXT NOT NULL,duplicate_of UUID,review_note TEXT NOT NULL DEFAULT '',raw_fields JSONB NOT NULL DEFAULT '{}')");
  const scanEntry=async(name,context,statuses)=>{const id=randomUUID();await db.query('INSERT INTO mis_scan_batches(id,kind,name,expected_context) VALUES($1,$2,$3,$4)',[id,'vehicle',name,JSON.stringify(context)]);for(const status of statuses)await db.query('INSERT INTO mis_scan_cards(id,batch_id,status) VALUES($1,$2,$3)',[randomUUID(),id,status]);return id;};
  const waitingEntry=await scanEntry('CMLL/2026-12-18/SASTI OB/S1/ALICE/B02',{bookDate:'2026-12-18',location:'Sasti OB',cardShift:'I',confirmed:true},['review','review','error','posted','rejected']);
- await scanEntry('other shift',{bookDate:'2026-12-18',location:'Sasti OC',cardShift:'II'},['review']);
+ const otherShiftScan=await scanEntry('other shift',{bookDate:'2026-12-18',location:'Sasti OC',cardShift:'II'},['review']);
  await scanEntry('other site',{bookDate:'2026-12-18',location:'Jayant OC',cardShift:'I'},['review']);
  await scanEntry('cancelled',{bookDate:'2026-12-18',location:'Sasti OC',cardShift:'I',cancelled:true},['review']);
  view=await call(batch);assert.equal(view.data.canLockVlb,false,'waiting scanned cards disable Lock VLB');
@@ -143,16 +151,23 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
  assert.equal(vlbLocked.data.canClose,false);
  const savedLmv=await call('/api/log-books/lmv','POST',lmv());
  assert.equal(savedLmv.status,201,JSON.stringify(savedLmv.data));
- const next=await call('/api/vlb-batches','POST',{...secondSelection,requestKey:randomUUID()},'bob');
+ assert.equal((await createBatch(tomorrow)).status,409,'locking VLB alone does not release the next report date');
+ const sameDayPreview=await previewBatch(secondSelection);
+ assert.equal(sameDayPreview.data.siteOpenBatch,null);
+ const next=await createBatch(secondSelection,'bob');
  assert.equal(next.status,201,JSON.stringify(next.data));
  const nextPath='/api/vlb-batches/'+next.data.id;
  assert.equal(next.data.stage,'vlb_open');
- const nextCard=await call('/api/log-books/vehicle','POST',{...card('V1',[{equipmentName:'V19',tripCount:1}]),bookDate:secondSelection.date,openingHmr:106,closingHmr:110,openingKmr:1050,closingKmr:1060});
+ assert.equal((await createBatch(thirdSelection)).status,409);
+ const nextCard=await call('/api/log-books/vehicle','POST',{...card('V1',[{equipmentName:'V19',tripCount:1}]),shiftId:ids['Shift B'],cardShift:'II',openingHmr:106,closingHmr:110,openingKmr:1050,closingKmr:1060});
  assert.equal(nextCard.status,201,JSON.stringify(nextCard.data));
+ await db.query("UPDATE mis_scan_cards SET status='posted' WHERE batch_id=$1",[otherShiftScan]);
  const nextVlb=await call(nextPath+'/lock-vlb','POST',{},'bob');
  assert.equal(nextVlb.status,200,JSON.stringify(nextVlb.data));
  assert.match(nextVlb.data.stageWait,/Lock LMV/);
- const nextLmv={...lmv(),bookDate:secondSelection.date,openingHmr:106,closingHmr:110,openingKmr:1050,closingKmr:1060};
+ const third=await createBatch(thirdSelection);
+ assert.equal(third.status,201,JSON.stringify(third.data));
+ const nextLmv={...lmv(),shiftId:ids['Shift B'],cardShift:'II',openingHmr:106,closingHmr:110,openingKmr:1050,closingKmr:1060};
  assert.equal((await call('/api/log-books/lmv','POST',nextLmv)).status,409);
  assert.equal((await call(nextPath+'/lock-lmv','POST',{},'bob')).status,409);
  assert.equal((await call(batch+'/close','POST',{})).status,409);
@@ -263,9 +278,15 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
  const closedNext=await call(nextPath+'/close','POST',{},'bob');
  assert.equal(closedNext.status,200,JSON.stringify(closedNext.data));
  assert.equal(closedNext.data.stage,'closed');
+ assert.equal((await previewBatch(tomorrow)).data.siteOpenBatch.id,third.data.id);
+ assert.equal((await createBatch(tomorrow)).status,409,'the last unfinished shift still blocks the next date');
+ await db.query("UPDATE mis_vlb_batches SET stage='closed',closed_at=NOW() WHERE id=$1",[third.data.id]);
+ assert.equal((await previewBatch(tomorrow)).data.siteOpenBatch,null);
+ const tomorrowBatch=await createBatch(tomorrow);
+ assert.equal(tomorrowBatch.status,201,JSON.stringify(tomorrowBatch.data));
  assert.equal((await call('/api/log-books/equipment/'+replacement.data.id,'DELETE',{revision:replacement.data.revision})).status,403);
  assert.equal((await call(fleet(ids['VPC-019']),'POST',{shiftStatus:'not_in_use'})).status,409,'closed batch freezes machines');
- const list=await call('/api/vlb-batches');assert.equal(list.data.twoStage,true);assert.equal(list.data.batches[0].stage,'closed');
+ const list=await call('/api/vlb-batches');assert.equal(list.data.twoStage,true);assert.equal(list.data.batches.find(row=>row.id===created.data.id).stage,'closed');
  assert.ok(closed.data.audit.some(e=>e.action==='vlb_locked')&&closed.data.audit.some(e=>e.action==='machine_saved')&&closed.data.audit.some(e=>e.action==='elb_card_linked'));
  // Both manual and scanned inserts may append to locked batches; existing cards remain protected.
  const frozen=(await db.query('SELECT closed_at,stage,vlb_locked_at,closure_revision FROM mis_vlb_batches WHERE id=$1',[created.data.id])).rows[0];

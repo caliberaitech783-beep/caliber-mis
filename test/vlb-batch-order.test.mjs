@@ -36,6 +36,7 @@ test('a batch opens only after the previous shift batch of the site exists and i
  const call=async(route='',method='GET',body)=>{const r=await fetch(`http://127.0.0.1:${server.address().port}/api/vlb-batches${route}`,{method,headers:{'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,data:await r.json()}};
  const create=(date,shift,site='Sasti OC')=>call('','POST',{site,date,shift,requestKey:randomUUID()});
  const preview=(date,shift)=>call('/preview?'+new URLSearchParams({site:'Sasti OC',date,shift}));
+ const close=id=>db.query("UPDATE mis_vlb_batches SET stage='closed',closed_at=NOW() WHERE id=$1",[id]);
  const lockVlb=id=>db.query("UPDATE mis_vlb_batches SET stage='lmv_open' WHERE id=$1",[id]);
 
  // 15th: no batch of the day before at all, so the 16th Shift 1 cannot open.
@@ -45,9 +46,12 @@ test('a batch opens only after the previous shift batch of the site exists and i
 
  // The 15th is before the rule's start, so its Shift 3 opens on its own.
  const s3=await create('2026-12-15','S3');assert.equal(s3.status,201,JSON.stringify(s3.data));
- res=await create('2026-12-16','S1');assert.equal(res.status,409,'15th Shift 3 still has VLB open');
+ res=await create('2026-12-16','S1');assert.equal(res.status,409,'15th Shift 3 is still open');
  await lockVlb(s3.data.id);
- assert.equal((await preview('2026-12-16','S1')).data.previousShift,null);
+ assert.match((await preview('2026-12-16','S1')).data.creationBlocker,/Fully close/);
+ assert.equal((await create('2026-12-16','S1')).status,409,'locking VLB does not release the next date');
+ await close(s3.data.id);
+ assert.equal((await preview('2026-12-16','S1')).data.creationBlocker,null);
  const s1=await create('2026-12-16','S1');assert.equal(s1.status,201,JSON.stringify(s1.data));
  await lockVlb(s1.data.id);
 
@@ -55,7 +59,17 @@ test('a batch opens only after the previous shift batch of the site exists and i
  res=await create('2026-12-16','S3');assert.equal(res.status,409);assert.match(res.data.error,/Shift 2 of 16-12-2026/);
  const s2=await create('2026-12-16','S2');assert.equal(s2.status,201,JSON.stringify(s2.data));
  await lockVlb(s2.data.id);
- assert.equal((await create('2026-12-16','S3')).status,201);
+ const last=await create('2026-12-16','S3');
+ assert.equal(last.status,201,JSON.stringify(last.data));
+ await lockVlb(last.data.id);
+ await close(last.data.id);
+ await close(s2.data.id);
+ const earlier=await preview('2026-12-17','S1');
+ assert.equal(earlier.data.siteOpenBatch.id,s1.data.id,'an unfinished earlier shift blocks even with the last shift closed');
+ assert.match(earlier.data.creationBlocker,/Fully close/);
+ assert.equal((await create('2026-12-17','S1')).status,409);
+ await close(s1.data.id);
+ assert.equal((await create('2026-12-17','S1')).status,201);
 
  // Another site keeps its own order.
  res=await create('2026-12-17','S1','Jayant OC');assert.equal(res.status,409);assert.match(res.data.error,/Shift 3 of 16-12-2026/);

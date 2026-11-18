@@ -32,9 +32,18 @@ async function eligible(client,selection){
  AND NOT EXISTS(SELECT 1 FROM mis_vlb_batch_entries e WHERE e.logbook_id=l.id) ORDER BY l.id FOR UPDATE OF l`,[selection.date]);
  return rows.filter(r=>canonicalSiteName(r.site)===selection.site&&vlbRecordShift(r.data)===selection.shift);
 }
-async function openSiteBatch(client,site,{excludeId,vlbOnly=false}={}){
- const rows=(await client.query("SELECT *,book_date::text AS report_date FROM mis_vlb_batches WHERE book_date>=$$2026-11-01$$ AND closed_at IS NULL AND archived_at IS NULL AND deleted_at IS NULL AND ($1::uuid IS NULL OR id<>$1) AND (NOT $2::boolean OR stage='vlb_open') ORDER BY created_at,id",[excludeId||null,vlbOnly])).rows;
+async function openSiteBatch(client,site,{excludeId,creationDate=null}={}){
+ const rows=(await client.query("SELECT *,book_date::text AS report_date FROM mis_vlb_batches WHERE book_date>=$$2026-11-01$$ AND closed_at IS NULL AND archived_at IS NULL AND deleted_at IS NULL AND ($1::uuid IS NULL OR id<>$1) AND ($2::date IS NULL OR book_date<$2 OR (book_date=$2 AND stage='vlb_open')) ORDER BY book_date,created_at,id",[excludeId||null,creationDate])).rows;
  return rows.find(batch=>canonicalSiteName(batch.site)===canonicalSiteName(site))||null;
+}
+async function openBatchCreationBlock(client,selection){
+ const twoStage=twoStageEnabled();
+ const siteOpenBatch=await openSiteBatch(client,selection.site,{creationDate:twoStage?selection.date:null});
+ if(!siteOpenBatch)return {siteOpenBatch:null,creationBlocker:null};
+ const creationBlocker=twoStage&&siteOpenBatch.report_date===selection.date
+  ?'Lock VLB in '+siteOpenBatch.name+' before creating another shift for this report date.'
+  :'Fully close '+siteOpenBatch.name+' before creating this batch.';
+ return {siteOpenBatch,creationBlocker};
 }
 // Batches of a site open in shift order: the shift before this one must exist with its VLB locked.
 async function previousShiftBlock(client,selection){
@@ -188,11 +197,11 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
  app.get('/api/vlb-batches/preview',...protect,handle(async(req,res)=>{
   const selection=vlbBatchSelection(req.query);requireLogBookSite(req.logBookScope,selection.site);
   const existingBatch=await matchingVlbBatch(pool,{location:selection.site,bookDate:selection.date,bookShiftCode:selection.shift});
-  const siteOpenBatch=await openSiteBatch(pool,selection.site,{vlbOnly:twoStageEnabled()});
+  const blocker=await openBatchCreationBlock(pool,selection);
   const previousShift=await previousShiftBlock(pool,selection);
   const records=await eligible(pool,selection);
   const sequence=Number((await pool.query('SELECT COALESCE(MAX(sequence),0)+1 AS n FROM mis_vlb_batches WHERE site=$1 AND book_date=$2 AND shift=$3',[selection.site,selection.date,selection.shift])).rows[0].n);
-  res.json({selection,records,name:existingBatch?.name||vlbBatchName(selection,sequence),existingBatch,siteOpenBatch,previousShift});
+  res.json({selection,records,name:existingBatch?.name||vlbBatchName(selection,sequence),existingBatch,...blocker,previousShift});
  }));
  app.get('/api/vlb-batches/:id/card-counts',...protect,handle(async(req,res)=>{
   const batch=await visible(pool,req.params.id,req);
@@ -223,8 +232,8 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
    if(prior){if(batchLogin(creator(prior))!==user||prior.site!==selection.site||prior.report_date!==selection.date||prior.shift!==selection.shift)fail('Batch save reference already used.');repeated=true;return details(client,await visible(client,prior.id,req),req)}
    const existing=await matchingVlbBatch(client,{location:selection.site,bookDate:selection.date,bookShiftCode:selection.shift});
    if(existing)fail('A batch already exists for this site, date and shift. Open that batch; closed batches require site PM approval to reopen.');
-   const siteOpen=await openSiteBatch(client,selection.site,{vlbOnly:twoStageEnabled()});
-   if(siteOpen)fail(twoStageEnabled()?'Lock VLB in '+siteOpen.name+' before creating the next batch for this site.':'Close the open batch '+siteOpen.name+' before creating another batch for this site.');
+   const {creationBlocker}=await openBatchCreationBlock(client,selection);
+   if(creationBlocker)fail(creationBlocker);
    const previousShift=await previousShiftBlock(client,selection);
    if(previousShift)fail(previousShift.message);
    if(!twoStageEnabled()&&!req.batchActor.admin&&(await client.query('SELECT id FROM mis_vlb_batches WHERE (lower(COALESCE(creator_login,created_by))=$1 OR lower(amendment_by)=$1) AND book_date>=$$2026-11-01$$ AND closed_at IS NULL AND archived_at IS NULL',[user])).rows.length)fail('Close the previous batch before creating a new batch.');

@@ -69,7 +69,8 @@ export const VLB_BATCH_SCHEMA=`
  ) INSERT INTO mis_vlb_batch_audit(batch_id,actor,action,detail)
  SELECT id,created_by,'saved_lock_policy_enabled','{"reason":"Saved batches require PM approval and lock again after saving."}'::jsonb FROM migrated;
  ${VLB_TWO_STAGE_SCHEMA}
- CREATE UNIQUE INDEX IF NOT EXISTS mis_vlb_one_open_vlb_per_site ON mis_vlb_batches(site)
+ DROP INDEX IF EXISTS mis_vlb_one_open_vlb_per_site;
+ CREATE UNIQUE INDEX IF NOT EXISTS mis_vlb_one_open_vlb_per_site_date ON mis_vlb_batches(site,book_date)
   WHERE closed_at IS NULL AND archived_at IS NULL AND deleted_at IS NULL AND stage='vlb_open' AND book_date>=$$2026-11-01$$;
  ${VLB_APPROVAL_OTP_SCHEMA}`;
 export const batchLogin=value=>String(value||'').trim().toLowerCase();
