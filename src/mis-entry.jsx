@@ -18,7 +18,7 @@ function saveSession(session){sessionStorage.setItem(sessionKey,JSON.stringify(s
 function MisApp(){
   const [session,setSession]=useState(readSession);
   const [signedOut,setSignedOut]=useState(false);
-  const signIn=useMisSharedSignIn(session,{paused:signedOut,autoStart:false});
+  const signIn=useMisSharedSignIn(session,{paused:signedOut,autoStart:true});
   const locationGate=useSignInLocationGate(session?.token);
   useEffect(()=>{
     const receive=event=>{

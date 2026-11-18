@@ -9,7 +9,3 @@ body{margin:0;background:#fff;color:#19293d;font-family:Inter,system-ui,-apple-s
 .mis-workspace main{min-height:calc(100dvh - 80px)}
 
 .mis-credential-login{width:min(100%,440px);box-sizing:border-box}.mis-credential-login form{display:grid;gap:16px;text-align:left}.mis-credential-login label{display:grid;gap:6px}.mis-credential-login input{box-sizing:border-box;width:100%;padding:12px;border:1px solid #b8a5d2;border-radius:8px;font:inherit}.mis-credential-login [role="alert"]{color:#b42318}.mis-credential-login button{width:100%;padding:12px;background:#522e90;color:white;border:0;border-radius:8px;font:inherit}.mis-credential-login p{font-weight:400}
-.pulse-ii-signin-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:20px 0}
-.pulse-ii-signin-options a{display:block;padding:12px;border:1px solid #d9cbe7;border-radius:8px;background:#f3ecfa;color:#4c257f;text-align:center;text-decoration:none;font-weight:700}
-.pulse-ii-signin-options a:hover{background:#eadff5}
-.pulse-ii-signin-options a:focus-visible{outline:2px solid #6b4596;outline-offset:3px}
