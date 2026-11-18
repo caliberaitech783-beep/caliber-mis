@@ -1,3 +1,4 @@
+import {siteChoices} from '../../shared/report-filter-options.mjs';
 import {fleetCapacitySeed,fleetPopulationReports} from '../../shared/fleet-population.mjs';
 import {buildProductionReport,productionFilters,productionShifts,validateCapacity,assetCapacityPair,capacityKey,pairKey} from '../../shared/production-report.mjs';
 import {withEquipmentAliases} from '../../shared/equipment-aliases.mjs';
@@ -86,8 +87,8 @@ export function registerProductionReports(app,{pool,protect,ensureBooks}){
  });
  app.get('/api/reports/production/options',...protect,async(req,res,next)=>{
   try{await ensure();const masters=await masterRows(pool),shifts=masterList(masters,'Shift Master').filter(s=>siteAllowed(req.logBookScope,s.site||s.siteName));
-   const sites=new Map();for(const r of [...shifts,...masterList(masters,'Equipment master')]){const site=r.currentLocation||r.site||r.siteName||r.location;if(site&&siteAllowed(req.logBookScope,site)&&!sites.has(canonicalSiteName(site)))sites.set(canonicalSiteName(site),site);}
-   res.set('Cache-Control','private, no-store').json({sites:[...sites.values()].sort(),shifts:shifts.map(s=>({site:s.site||s.siteName,shiftCode:s.shiftCode,shiftName:s.shiftName,startTime:s.startTime,endTime:s.endTime,effectiveFrom:s.effectiveFrom,effectiveTo:s.effectiveTo,status:s.status,sourceMissing:s.sourceMissing}))});
+   const sites=siteChoices([...shifts,...masterList(masters,'Equipment master')].map(r=>r.currentLocation||r.site||r.siteName||r.location).filter(site=>site&&siteAllowed(req.logBookScope,site)));
+   res.set('Cache-Control','private, no-store').json({sites,shifts:shifts.map(s=>({site:s.site||s.siteName,shiftCode:s.shiftCode,shiftName:s.shiftName,startTime:s.startTime,endTime:s.endTime,effectiveFrom:s.effectiveFrom,effectiveTo:s.effectiveTo,status:s.status,sourceMissing:s.sourceMissing}))});
   }catch(e){next(e);}
  });
  app.get('/api/reports/production',...protect,async(req,res,next)=>{

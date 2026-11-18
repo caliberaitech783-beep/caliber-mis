@@ -25,7 +25,7 @@ test('working now means a save in a batch within the last 10 minutes; last actio
   {actor:'',action:'card_added',at:ago(1),batchId:A,site:'Sasti',date:'2026-11-11',shift:'S1'}];
  const live=buildWorkingNow({now,actions,names:{ramesh:'Ramesh Kumar'}});
  assert.equal(live.count,2,'Ramesh (two saves, either spelling) and Sunil; 11 minutes ago is not working now');
- assert.deepEqual(live.people.map(p=>[p.name,p.saves,p.stage,p.minutesAgo,p.shiftLabel]),[['Ramesh Kumar',2,'VLB',2,'Shift 1'],['sunil',1,'ELB',9,'Shift 3']]);
+ assert.deepEqual(live.people.map(p=>[p.name,p.saves,p.stage,p.minutesAgo,p.shiftLabel]),[['Ramesh Kumar',2,'VLB',2,'Shift A'],['sunil',1,'ELB',9,'Shift C']]);
  assert.equal(live.people[0].site,displaySiteName('Sasti'));assert.equal(live.people[0].dateLabel,'11-11-26');
  assert.deepEqual(live.sites[sasti],{working:['Ramesh Kumar','sunil'],count:2,lastAt:ago(2),minutesAgo:2},'a history line with no person is ignored');
  assert.deepEqual([live.sites[jayant].count,live.sites[jayant].minutesAgo],[0,300]);

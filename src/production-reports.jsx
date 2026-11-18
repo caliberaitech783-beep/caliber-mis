@@ -3,7 +3,7 @@ import {OPERATIONAL_START} from '../shared/operational-start.mjs';
 import {productionShifts} from '../shared/production-report.mjs';
 import './production-reports.css';
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
-const labels={S1:'Shift 1',S2:'Shift 2',S3:'Shift 3',D:'Day shift',N:'Night shift'};
+const labels={S1:'Shift A',S2:'Shift B',S3:'Shift C',D:'Shift Day',N:'Shift Night'};
 const column=(key,label)=>({key,label,value:r=>r[key]??'—'});
 const request=async(url,token,signal)=>{const r=await fetch(url,{headers:{Authorization:`Bearer ${token}`},signal});const data=await r.json();if(!r.ok)throw Error(data.error||'Unable to load report.');return data;};
 export default function ProductionReports({session,reportId,onSelect,ReportSection}){
@@ -28,7 +28,7 @@ export default function ProductionReports({session,reportId,onSelect,ReportSecti
    <label>1. Site<select value={filters.site} required onChange={e=>set('site',e.target.value)}><option value="">Select site</option>{options.sites.map(s=><option key={s}>{s}</option>)}</select></label>
    <label>2. Date<input type="date" required min={OPERATIONAL_START} value={filters.date} onChange={e=>set('date',e.target.value)}/></label>
    <label>3. Report type<select value={filters.mode} onChange={e=>set('mode',e.target.value)}><option value="shift">Shift-wise</option><option value="day">Day-wise</option></select></label>
-   {filters.mode==='shift'?<label>Shift<select required value={filters.shift} onChange={e=>set('shift',e.target.value)}><option value="">Select shift</option>{shifts.map(s=><option key={s} value={s}>{labels[s]}</option>)}</select></label>:mixed&&<label>Applicable schedule<select required value={filters.schedule} onChange={e=>set('schedule',e.target.value)}><option value="">Select schedule</option><option value="three">Shift 1 / 2 / 3</option><option value="daynight">Day / Night</option></select></label>}
+   {filters.mode==='shift'?<label>Shift<select required value={filters.shift} onChange={e=>set('shift',e.target.value)}><option value="">Select shift</option>{shifts.map(s=><option key={s} value={s}>{labels[s]}</option>)}</select></label>:mixed&&<label>Applicable schedule<select required value={filters.schedule} onChange={e=>set('schedule',e.target.value)}><option value="">Select schedule</option><option value="three">Shift A / B / C</option><option value="daynight">Day / Night</option></select></label>}
    <button type="submit" disabled={!valid||busy}>{busy?'Checking batches…':'Show report'}</button>
   </form>
   {error&&<p className="production-error" role="alert">{error}</p>}

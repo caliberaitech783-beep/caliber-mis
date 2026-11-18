@@ -8,16 +8,17 @@ import {transformWithOxc} from 'vite';
 import {buildAttendanceRegister,batchPeople,batchCategories,registerCategories,personCategories,shiftDigit,strongest,registerDays} from '../src/attendance-register-model.mjs';
 import {operationReports} from '../src/operations-report-model.mjs';
 import {defaultDurationSort} from '../src/duration-sort.mjs';
+import {shiftChoiceLabel} from '../shared/report-filter-options.mjs';
 
 const JAYANT='jayant oc',DUDHI='dudhichua oc';
 const duty=(who,date,shift,extra={})=>({id:[who,date,shift,extra.siteKey||JAYANT].join('|'),date,shift,site:extra.siteKey===DUDHI?'Dudhichua OC':'Jayant OC',siteKey:JAYANT,employeeKey:'CMLL'+who,employeeId:'CMLL'+who,caliberCode:'CMLL'+who,employeeName:'Driver '+who,category:'Tipper Driver',equipment:'Tipper',doors:'T-'+who,logBook:'VLB',flag:'normal',flagLabel:'Normal duty',hours:7,trips:10,km:50,books:'B-'+who+'-'+date+shift,...extra});
 const batch=(siteKey,date,shift,state)=>({siteKey,date,shift,state,batch:siteKey+' '+date+' '+shift});
 const days=['2026-11-10','2026-11-11','2026-11-12'];
-// Jayant: 10th all three shifts locked; 11th Shift 3 still open (VLB stage); 12th Shift 1 locked, Shift 2 not created, Shift 3 not ended.
+// Jayant: 10th all three shifts locked; 11th Shift C still open (VLB stage); 12th Shift A locked, Shift B not created, Shift C not ended.
 const shifts=[...['S1','S2','S3'].map(s=>batch(JAYANT,days[0],s,'closed')),batch(JAYANT,days[1],'S1','closed'),batch(JAYANT,days[1],'S2','closed'),batch(JAYANT,days[1],'S3','vlb_open'),
  batch(JAYANT,days[2],'S1','closed'),batch(JAYANT,days[2],'S2','none'),batch(JAYANT,days[2],'S3','not_due'),...days.flatMap(d=>['S1','S2','S3'].map(s=>batch(DUDHI,d,s,'closed')))];
 const duties=[
- duty('101',days[0],'S1'),duty('101',days[0],'S3',{flag:'orange',flagLabel:'ORANGE — Shift 1 and Shift 3 with a shift gap'}),duty('101',days[1],'S1'),
+ duty('101',days[0],'S1'),duty('101',days[0],'S3',{flag:'orange',flagLabel:'ORANGE — Shift A and Shift C with a shift gap'}),duty('101',days[1],'S1'),
  duty('102',days[0],'S2'),duty('102',days[1],'S2',{siteKey:DUDHI}),
  duty('103',days[1],'S1',{logBook:'ELB',trips:null,km:null,hours:6.5}),duty('103',days[2],'S1',{logBook:'ELB',trips:null,km:null,hours:7.5}),
 ];
@@ -27,8 +28,8 @@ const presence=[{actual:true,employeeKey:'CMLL104',employeeId:'CMLL104',caliberC
 const sites=[{siteKey:DUDHI,site:'Dudhichua OC'},{siteKey:JAYANT,site:'Jayant OC'}];
 const build=()=>buildAttendanceRegister({duties,presence,shifts,sites,from:days[0],to:'2026-11-13',today:'2026-11-12'});
 const codes=(register,siteKey)=>Object.fromEntries(register.register(siteKey).map(p=>[p.caliberCode,p.cells.map(c=>c.code).join(' ')]));
-test('the server\'s locked days decide a day, whatever the batch boxes show (Day and Night shift without a batch)',()=>{
- // The 11th at Jayant: the boxes show Shift 3 open, but the server's list says the day is locked.
+test('the server\'s locked days decide a day, whatever the batch boxes show (Day and Shift Night without a batch)',()=>{
+ // The 11th at Jayant: the boxes show Shift C open, but the server's list says the day is locked.
  const r=buildAttendanceRegister({duties,presence,shifts,sites,from:days[0],to:'2026-11-13',today:'2026-11-12',lockedDays:[JAYANT+'|2026-11-10',JAYANT+'|2026-11-11']});
  assert.equal(codes(r,JAYANT).CMLL101,'P1+3 P1 ? ');
  assert.equal(buildAttendanceRegister({duties,presence,shifts,sites,from:days[0],to:'2026-11-13',today:'2026-11-12',lockedDays:[]}).register(JAYANT).find(p=>p.caliberCode==='CMLL101').cells[0].code,'?','a day the server does not list is not locked');
@@ -37,10 +38,10 @@ test('the server\'s locked days decide a day, whatever the batch boxes show (Day
 test('a day is P with its shifts, TR at another site, A only once every batch of the day is locked, ? before that, blank later',()=>{
  const r=build();
  assert.deepEqual(r.days,['2026-11-10','2026-11-11','2026-11-12','2026-11-13']);
- // Locked days only (owner, 16 Nov 2026): the 11th at Jayant has Shift 1 and 2 locked but Shift 3 open, so even the duties
- // saved in its locked shifts are not counted; the whole day is ? until Shift 3 is locked too.
+ // Locked days only (owner, 16 Nov 2026): the 11th at Jayant has Shift A and 2 locked but Shift C open, so even the duties
+ // saved in its locked shifts are not counted; the whole day is ? until Shift C is locked too.
  assert.deepEqual(codes(r,JAYANT),{
-  'CMLL101':'P1+3 ? ? ',    // 11th: P1 saved, but the day is not locked; 12th: Shift 2 has no batch, Shift 3 not ended
+  'CMLL101':'P1+3 ? ? ',    // 11th: P1 saved, but the day is not locked; 12th: Shift B has no batch, Shift C not ended
   'CMLL102':'P2 ? ? ',      // 11th worked at Dudhichua, but the Jayant day is not locked, so ? and not TR
   'CMLL103':'A ? ? ',       // 10th: every Jayant batch locked and no card anywhere
   'CMLL104':'P1 ? ? ',      // zero-trip entry counts as present
@@ -111,7 +112,7 @@ async function screen(state,extra=[]){
  const parts=new Function('React',grid+';return {DateShiftGrid,dateShiftGrid,dateShiftExport};')(React);
  const ReportSection=({title,rows,columns,children})=>(seenTables.push({title,columns}),React.createElement('section',{'data-title':title},React.createElement('h2',null,title),children||React.createElement('table',null,React.createElement('tbody',null,rows.map((r,i)=>React.createElement('tr',{key:i},columns.map(c=>React.createElement('td',{key:c.key},c.render?c.render(r):String(c.value(r))))))))));
  let slot=0;const useState=initial=>{const value=state[slot++]??(typeof initial==='function'?initial():initial);return [value,()=>{}];};
- const env={React,useMemo:fn=>fn(),useState,...parts,StepBackButton:()=>null,buildAttendanceRegister,batchPeople,batchCategories,registerCategories,personCategories};
+ const env={React,useMemo:fn=>fn(),useState,...parts,StepBackButton:()=>null,shiftChoiceLabel,buildAttendanceRegister,batchPeople,batchCategories,registerCategories,personCategories};
  const Register=new Function(...Object.keys(env),register+';return AttendanceRegister;')(...Object.values(env));
  const report={otDuties:[...duties,...extra],attendanceEquipment:presence,attendanceShifts:shifts};
  return mode=>{slot=0;return renderToStaticMarkup(React.createElement(Register,{report,filters:{from:days[0],to:'2026-11-13'},mode,ReportSection,sites,query:'q'}));};
@@ -120,15 +121,15 @@ async function screen(state,extra=[]){
 test('Batch-wise draws Step 1, the date by shift table, the batch by equipment category and its people, one below the other',async()=>{
  const html=(await screen([JAYANT,{date:days[0],shift:'S1'},'']))('attendance-batch');
  const titles=[...html.matchAll(/data-title="([^"]+)"/g)].map(m=>m[1]);
- assert.deepEqual(titles.slice(0,3),['Step 1 · All sites · 10-11-26 to 13-11-26','Step 2 · Jayant OC · date by shift · 10-11-26 to 13-11-26','Step 3 · Jayant OC · 10-11-26 · Shift 1 · by equipment category']);
+ assert.deepEqual(titles.slice(0,3),['Step 1 · All sites · 10-11-26 to 13-11-26','Step 2 · Jayant OC · date by shift · 10-11-26 to 13-11-26','Step 3 · Jayant OC · 10-11-26 · Shift A · by equipment category']);
  assert.ok(!titles.some(t=>t.startsWith('Step 4')),'the people wait for a category');
- assert.match(html,/aria-label="2 persons present · 10-11-26 · Shift 1 · Locked"/);
+ assert.match(html,/aria-label="2 persons present · 10-11-26 · Shift A · Locked"/);
  assert.match(html,/<td>Tipper<\/td><td>2<\/td>/);
  assert.match(html,/not on any card here that day/);
  const opened=(await screen([JAYANT,{date:days[0],shift:'S1'},'','Tipper']))('attendance-batch');
- assert.ok(opened.includes('data-title="Step 4 · Jayant OC · 10-11-26 · Shift 1 · Tipper · people"'));
+ assert.ok(opened.includes('data-title="Step 4 · Jayant OC · 10-11-26 · Shift A · Tipper · people"'));
  assert.match(opened,/<td class="ar-sticky ar-id">CMLL101<\/td><th scope="row" class="ar-sticky ar-name"><button[^>]*aria-label="Duties of Driver 101"[^>]*>Driver 101<\/button><small>Tipper Driver<\/small><\/th>/,'Caliber ID beside the name to press, designation under it, as in the month-wise register');
- assert.match(opened,/<td class="ar-code ar-present ar-flag-orange" title="Shift 1[^"]*">P1\+3<\/td>/,'the day code in the register\'s coloured box, the shifts on hover');
+ assert.match(opened,/<td class="ar-code ar-present ar-flag-orange" title="Shift A[^"]*">P1\+3<\/td>/,'the day code in the register\'s coloured box, the shifts on hover');
  assert.match(opened,/<span class="ar-code ar-code-box ar-absent" title="Absent">A<\/span>/,'the people not on a card get the register\'s code boxes too');
  assert.ok(!opened.includes('data-title="Step 5'),'the duties wait for a name');
 });

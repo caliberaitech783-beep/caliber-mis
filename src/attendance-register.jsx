@@ -1,3 +1,4 @@
+import {shiftChoiceLabel} from '../shared/report-filter-options.mjs';
 import React,{useMemo,useState} from 'react';
 import {DateShiftGrid,dateShiftGrid,dateShiftExport} from './date-shift-grid.jsx';
 import {StepBackButton} from './step-back.jsx';
@@ -10,14 +11,14 @@ const todayIst=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year
 const shortDate=date=>date?date.slice(8,10)+'-'+date.slice(5,7)+'-'+date.slice(2,4):'';
 const WEEKDAYS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const weekday=date=>WEEKDAYS[new Date(date+'T00:00:00Z').getUTCDay()];
-const shiftName=code=>({S1:'Shift 1',S2:'Shift 2',S3:'Shift 3',D:'Day shift',N:'Night shift'})[code]||code;
+const shiftName=code=>shiftChoiceLabel(code)||code;
 const STATUS={locked:'Locked',open:'Batch open',none:'No batch',not_due:'Shift not ended'};
 const many=(n,word)=>n+' '+word+(n===1?'':'s');
 const blank=v=>v===null||v===undefined||v==='';
 const shown=v=>blank(v)?'—':v;
 // The OT & Multiple Duties colours, then blue for present with 0 trips.
-const COLOURS=[['red','Red','Back-to-back shifts, or all three shifts'],['orange','Orange','Shift 1 and Shift 3 with a gap'],['review','Brown','Shift pattern needs review'],['zero','Blue','Present with 0 trips']];
-export const CODE_LEGEND=[['P1 / P2 / P3','Present in Shift 1 / 2 / 3 (saved card)','present'],['P1+3','Two duties in one day; colour as in OT & Multiple Duties','double'],['A','Absent: no card anywhere, every batch of the day locked','absent'],['?','Not locked: a batch of the day is open, reopened, not created or the shift has not ended. Nothing of that day is counted until every shift is locked','pending'],['TR','Worked at another site that day','away']];
+const COLOURS=[['red','Red','Back-to-back shifts, or all three shifts'],['orange','Orange','Shift A and Shift C with a gap'],['review','Brown','Shift pattern needs review'],['zero','Blue','Present with 0 trips']];
+export const CODE_LEGEND=[['P1 / P2 / P3','Present in Shift A / B / C (saved card)','present'],['P1+3','Two duties in one day; colour as in OT & Multiple Duties','double'],['A','Absent: no card anywhere, every batch of the day locked','absent'],['?','Not locked: a batch of the day is open, reopened, not created or the shift has not ended. Nothing of that day is counted until every shift is locked','pending'],['TR','Worked at another site that day','away']];
 const cols=list=>list.map(([key,label,value])=>({key,label,value:value||(r=>shown(r[key]))}));
 // The hover text of a day's code: each duty's shift, door, hours and trips, then the colour's reason.
 const tip=c=>c.kind==='present'?c.lines.map(l=>shiftName(l.shift)+' · '+[l.doors,l.equipment,l.logBook].filter(Boolean).join(' · ')+(blank(l.hours)?'':' · '+l.hours+' h')+(blank(l.trips)?'':' · '+l.trips+' trips')).join('\n')+(c.lines[0]?.flagLabel&&c.flag!=='normal'?'\n'+[...new Set(c.lines.map(l=>l.flagLabel))].join('; '):''):c.kind==='away'?'Worked at '+c.where:c.kind==='absent'?'Absent: no saved card, day locked':c.kind==='pending'?'Pending: a batch of this day is open, not created or not ended':'';

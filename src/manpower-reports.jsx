@@ -1,3 +1,4 @@
+import {compareShiftLabels,isSiteName,shiftChoiceLabel} from '../shared/report-filter-options.mjs';
 import './log-book-readability.css';
 import {compactLogBookLabel} from '../shared/log-book-labels.mjs';
 import React,{useEffect,useMemo,useRef,useState} from 'react';
@@ -15,7 +16,8 @@ const columns=entries=>entries.map(([key,label])=>({key,label:compactLogBookLabe
 const context=[['date','Duty date'],['site','Site'],['shift','Shift']];
 const person=[['employeeId','Employee ID'],['caliberCode','Caliber ID'],['employeeName','Driver / operator']];
 const EVERY='*';
-const shiftName=code=>({S1:'Shift 1',S2:'Shift 2',S3:'Shift 3',D:'Day shift',N:'Night shift'})[code]||code;
+// Shift A, B and C everywhere (S1, S2, S3 on the cards), as the Shift Master names them; Day and Night at Dudhichua East.
+const shiftName=code=>shiftChoiceLabel(code)||code;
 const stageName=state=>({vlb_open:'VLB open',lmv_open:'LMV open',elb_open:'ELB open'})[state]||'Open';
 const batchOpen=b=>/_open$/.test(b.state);
 const shortDate=date=>date.slice(8,10)+'-'+date.slice(5,7)+'-'+date.slice(2,4);
@@ -28,7 +30,7 @@ const percent=(part,whole)=>whole?Math.round(part*1000/whole)/10+'%':'—';
 const FLAG_ORDER={red:0,orange:1,review:2,normal:3};
 const dutyCount=(n,kind)=>n+' '+kind+(n===1?' duty':' duties');
 // Colours shared by both reports. Red, orange and brown are the OT patterns; blue is attendance only.
-const dutyFlags=[['red','Red','Back-to-back shifts, or all three shifts'],['orange','Orange','Shift 1 and Shift 3 with a gap'],['review','Brown','Shift pattern needs review'],['zero','Blue','Present with 0 trips']];
+const dutyFlags=[['red','Red','Back-to-back shifts, or all three shifts'],['orange','Orange','Shift A and Shift C with a gap'],['review','Brown','Shift pattern needs review'],['zero','Blue','Present with 0 trips']];
 const otFlags=dutyFlags.slice(0,3);
 const logBooks=[['VLB','Vehicle Log Book'],['ELB','Equipment Log Book'],['LMV','LMV Log Book']];
 const flagChip=key=>c=>c.key===key?{...c,render:r=><strong className={'mp-flag mp-flag-'+(r.flag||r.severity)}>{r[key]}</strong>}:c;
@@ -160,7 +162,7 @@ function otOverview({report,filters,query,ReportSection,sites,otPick,setOtPick,l
  const dateColumns=columns([['date','Date'],...gridShifts.flatMap(code=>[[code+'_duties',shiftName(code)+' duties'],[code+'_red',shiftName(code)+' red'],[code+'_orange',shiftName(code)+' orange'],[code+'_review',shiftName(code)+' brown']]),['duties','Day duties'],['ot','OT duties'],['redPct','Red OT %'],['orangePct','Orange OT %']]);
  const categoryColumns=columns([['equipment','Equipment category'],['people','People'],...(wide?[['duties','Duties']]:[]),['machines','Equipment worked (nos.)'],['red','Red OT'],['redPct','Red OT %'],['orange','Orange OT'],['orangePct','Orange OT %'],['review','Brown'],['ot','Total OT'],['otPct','Total OT %']]);
  return <>
-  <p className="mp-notice">A case is one driver working more than one shift: back to back (red), Shift 1 and Shift 3 on one day (orange), or a pattern that needs checking (brown). {many(cases.length,'case')} and {many(driversIn(cases),'driver')} in the selected dates, out of {duties(lines.length)}.</p>
+  <p className="mp-notice">A case is one driver working more than one shift: back to back (red), Shift A and Shift C on one day (orange), or a pattern that needs checking (brown). {many(cases.length,'case')} and {many(driversIn(cases),'driver')} in the selected dates, out of {duties(lines.length)}.</p>
   <div className="mp-book-pick" role="group" aria-label="Log book">{[['','All log books'],...logBooks].map(([code,name])=><button key={code||'all'} type="button" aria-pressed={logBook===code} title={name} onClick={()=>setLogBook(code)}>{code||name}</button>)}</div>
   {siteKey&&<p className="mp-trail" aria-label="Where you are">{(open||scope||sites.length>1)&&<StepBackButton onBack={()=>setOtPick(open?{...base,scope:true,date,shift}:scope?base:noOtPick)}/>}{sites.length>1&&<><button type="button" onClick={()=>setOtPick(noOtPick)}>All sites</button><span>›</span></>}<button type="button" onClick={()=>setOtPick(base)}>{siteLabel}</button>{scope&&<><span>›</span><button type="button" onClick={()=>setOtPick({...base,scope:true,date,shift})}>{scopeLabel}</button></>}{open&&<><span>›</span><strong>{openLabel}{colour?' · '+colour+' only':''}</strong></>}</p>}
   <ReportSection key={'ot-sites-'+query+'-'+logBook} title={'Step 1 · All sites · '+dateLabel+' · '+books} category="manpower-ot-sites" description="One line per site. Red, Orange and Brown are cases; the percentages are OT duties out of total duties. Press a number to open that site date by shift." rows={siteRows} columns={siteColumns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
@@ -640,7 +642,7 @@ export default function ManpowerReports({session,reportId='manpower',onSelect,Re
  const exceptions=!report?[]:reportId!=='ot'?report.exceptions.filter(e=>e.logBook!=='LMV'):siteKey?report.exceptions.filter(e=>e.siteKey===siteKey):report.exceptions;
  // Cards with a data problem are for the MIS team to correct. The attendance and OT pages keep them behind one line.
  const review=report&&<ReportSection key={'exceptions-'+query} title="Manpower Data Review" category="manpower-review" description="Saved cards with a data problem that affects the counts: an employee ID that matches nobody, a machine missing from the Equipment master, the same card saved twice, a shift written two ways or impossible meter hours. Correct the card or the master and the row disappears." rows={exceptions} columns={exceptionColumns} rowKey={r=>r.id} recordDateFilter={false} emptyMessage="No card needs correction in these selections."/>;
- const selectors=<><label>From<input type="date" min={OPERATIONAL_START} value={filters.from} onChange={e=>set('from',e.target.value)}/></label><label>To<input type="date" min={OPERATIONAL_START} value={filters.to} onChange={e=>set('to',e.target.value)}/></label>{choice('site','Site',options.sites)}{choice('shift','Shift',options.shifts)}{choice('batch','Saved batch',options.batches)}{choice('employee','Employee',options.employees)}{choice('asset','Door / equipment',options.assets)}<button type="button" onClick={()=>{const date=today();setFilters(f=>({...f,from:date,to:date}));}}>Today</button><button type="button" onClick={()=>setFilters(f=>({...f,site:'',shift:'',batch:'',employee:'',asset:''}))}>Clear selections</button></>;
+ const selectors=<><label>From<input type="date" min={OPERATIONAL_START} value={filters.from} onChange={e=>set('from',e.target.value)}/></label><label>To<input type="date" min={OPERATIONAL_START} value={filters.to} onChange={e=>set('to',e.target.value)}/></label>{choice('site','Site',(options.sites||[]).filter(isSiteName))}{choice('shift','Shift',(options.shifts||[]).map(code=>({value:code,label:shiftName(code)})).sort((x,y)=>compareShiftLabels(x.label,y.label)))}{choice('batch','Saved batch',options.batches)}{choice('employee','Employee',options.employees)}{choice('asset','Door / equipment',options.assets)}<button type="button" onClick={()=>{const date=today();setFilters(f=>({...f,from:date,to:date}));}}>Today</button><button type="button" onClick={()=>setFilters(f=>({...f,site:'',shift:'',batch:'',employee:'',asset:''}))}>Clear selections</button></>;
  // On the dashboard the heading and the selectors share one row; the list for the MIS team and the rules stay on the Reports page.
  return <section className="mp-reports" aria-label="Manpower and OT reports">
   {embedded?<div className="mp-compact">
