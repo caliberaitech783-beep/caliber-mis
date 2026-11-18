@@ -11,7 +11,7 @@ const isTotal=r=>Boolean(r.total);
 
 export default function SavedReportSteps({id,title,period,report,records,data,build,ReportSection,dataReady,recordDateFilter}){
  const [site,setSite]=useState(''),[slot,setSlot]=useState(null),[category,setCategory]=useState(null);
- const items=useMemo(()=>stepItems(id,{records,cards:data?.cards||[],report,assets:data?.assets||[]}),[id,records,data,report]);
+ const items=useMemo(()=>stepItems(id,{records,cards:data?.cards||[],report,assets:data?.assets||[],shifts:data?.shifts||[]}),[id,records,data,report]);
  const label=countLabel(id),noun=label.toLowerCase();
  const sites=stepLines(items,'site');
  const siteItems=site?openedItems(items,{site}):[],siteLabel=site===EVERY?'All sites':siteItems[0]?.site||site;
