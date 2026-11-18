@@ -7,7 +7,7 @@ export function isMisAdministrator(session){
 }
 // Diagnostics is listed here so the sidebar's Admin group opens it with one click;
 // the Database clock menu in the header opens it as well.
-export const MIS_ADMIN_PAGES=['User Sessions','Print helper','Full Backup','Audit Trail','Database','Diagnostics'];
+export const MIS_ADMIN_PAGES=['User Sessions','Print helper','Full Backup','Audit Trail','Database','Diagnostics','Speed Test'];
 export function requireMisAdministrator(req,res,next){
  if(isMisAdministrator(req.session))return next();
  return res.status(403).json({error:'Only an authorized MIS administrator can use this feature.'});
