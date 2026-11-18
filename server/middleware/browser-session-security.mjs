@@ -41,6 +41,8 @@ export function browserSessionMiddleware({publicUrl='https://pulse-ll.cmll.in',e
    const selected=!newContext&&req.browserSessionId||randomBytes(12).toString('base64url');
    const remember=newContext?req.rememberDevice===true:Boolean(req.browserSessionId)&&cookie(req,REMEMBER_COOKIE+'_'+req.browserSessionId)==='1';
    req.browserSessionId=selected;req.browserSessionMarker=BROWSER_SESSION_MARKER+'.'+selected;
+   // Tells the page it may keep its pointer (the marker, not a credential) on the device.
+   req.browserSessionRemembered=remember;
    const lifetime=remember?{maxAge:REMEMBER_DEVICE_MS}:{};
    res.cookie(SESSION_COOKIE+'_'+selected,value,{...options,...lifetime});
    res.cookie(CSRF_COOKIE+'_'+selected,csrfFor(value),{...options,httpOnly:false,...lifetime});
@@ -49,7 +51,7 @@ export function browserSessionMiddleware({publicUrl='https://pulse-ll.cmll.in',e
   };
   if(authPaths.has(req.path)){
    const json=res.json.bind(res);res.json=body=>{
-    if(uuid(body?.token)&&res.statusCode<300){const marker=req.establishBrowserSession(body.token,{newContext:true});body={...body,token:marker,browserSession:true};res.set('Cache-Control','no-store');}
+    if(uuid(body?.token)&&res.statusCode<300){const marker=req.establishBrowserSession(body.token,{newContext:true});body={...body,token:marker,browserSession:true,rememberDevice:req.browserSessionRemembered===true};res.set('Cache-Control','no-store');}
     return json(body);
    };
   }

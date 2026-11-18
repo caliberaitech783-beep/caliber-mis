@@ -21,9 +21,10 @@ test('successful sign-in persists until the explicit sign-out clears storage',()
   assert.match(logout,/clearStoredSession\(\)/);
 });
 
-test('secure browser session is moved into tab storage before persistent storage is cleared',()=>{
+test('secure browser session is stored by the server-reported Remember me choice',()=>{
   const source=fs.readFileSync(new URL('../src/account-security.jsx',import.meta.url),'utf8');
-  const browserSession=source.slice(source.indexOf("if(!isBrowserSessionToken"),source.indexOf("const response=await fetch('/api/security/account'"));
-  assert.match(browserSession,/sessionStorage\.setItem\('nerveCenterSession',JSON\.stringify\(session\)\)/);
-  assert.ok(browserSession.indexOf("sessionStorage.setItem('nerveCenterSession',JSON.stringify(session))")<browserSession.indexOf("localStorage.removeItem('nerveCenterSession')",browserSession.indexOf('window.location.reload();return;')));
+  const browserSession=source.slice(source.indexOf("if(!isBrowserSessionToken"),source.indexOf("if(!stopped)setState({...result"));
+  assert.ok(browserSession.includes('storeBrowserSession(session);'));
+  assert.ok(browserSession.includes('result.profile?.rememberDevice===true'));
+  assert.ok(!browserSession.includes('localStorage.setItem'),'only storeBrowserSession may write the device copy');
 });

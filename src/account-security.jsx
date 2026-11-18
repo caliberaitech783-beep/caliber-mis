@@ -1,6 +1,14 @@
 import React,{useEffect,useState} from 'react';
 import './account-security.css';
 import {isBrowserSessionToken} from './browser-session-transport.mjs';
+// The stored value is only the browser-session marker and profile; the credential is the
+// HttpOnly cookie. A "Remember me" sign-in (30-day cookie) keeps the marker on the device
+// so MIS reopens signed in after a browser restart; any other sign-in keeps it in this tab.
+export function storeBrowserSession(value,{local=globalThis.localStorage,tab=globalThis.sessionStorage}={}){
+ const keep=value?.rememberDevice===true;
+ (keep?local:tab).setItem('nerveCenterSession',JSON.stringify(value));
+ (keep?tab:local).removeItem('nerveCenterSession');
+}
 export function useAccountSecurity(session,{enabled=Boolean(session?.browserSession||session?.permissions?.separateMisCredentials)}={}){
  const key=(session?.login||'')+'|'+(session?.token||'');
  const [state,setState]=useState({loading:false,required:false,verified:false,error:''});
@@ -17,11 +25,14 @@ export function useAccountSecurity(session,{enabled=Boolean(session?.browserSess
     const result=await migration.json();if(!migration.ok)throw Error(result.error||'Please sign in again.');
     sessionStorage.setItem('nerveCenterSession',JSON.stringify(result));window.location.reload();return;
    }
-   sessionStorage.setItem('nerveCenterSession',JSON.stringify(session));
-   localStorage.removeItem('nerveCenterSession');
+   storeBrowserSession(session);
    const response=await fetch('/api/security/account',{headers:{Authorization:`Bearer ${session.token}`},cache:'no-store'}),result=await response.json();
    if(!response.ok)throw Error(result.error||'Account verification is unavailable.');
-   if(result.profile?.login&&(result.profile.login!==session.login||result.profile.token!==session.token)){sessionStorage.setItem('nerveCenterSession',JSON.stringify(result.profile));window.location.reload();return;}
+   if(result.profile?.login&&(result.profile.login!==session.login||result.profile.token!==session.token)){storeBrowserSession(result.profile);window.location.reload();return;}
+   // The server knows whether this sign-in had "Remember me"; follow it so a remembered
+   // sign-in survives a browser restart and an ordinary one ends with the tab.
+   const remembered=result.profile?.rememberDevice===true;
+   if(result.profile&&remembered!==(session.rememberDevice===true))storeBrowserSession({...session,rememberDevice:remembered});
    if(!stopped)setState({...result,checkedFor:key,loading:false,error:''});
   };
   void load().catch(error=>{if(!stopped)setState({checkedFor:key,loading:false,required:true,verified:false,error:error.message});});
