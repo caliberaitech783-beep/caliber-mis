@@ -62,6 +62,26 @@ test('a built report is built again from the log books opened',()=>{
  assert.equal(table.rows[0][2],'Shift B');
 });
 
+test('the Vehicle-wise Trip Report counts only vehicles in its steps, as its own table does',()=>{
+ const items=stepItems('vehicle-trips',{records,report:{rows:[]},assets});
+ assert.equal(items.length,4,'the excavator log book is left out');
+ assert.ok(!stepLines(items,'category').rows.some(r=>r.category==='Excavator'));
+ assert.equal(stepItems('daily',{records,report:{rows:[]},assets}).length,5,'other built reports keep every log book');
+});
+
+test('Potential missing logbooks over 18 days and 1,600 assets are found in seconds, not minutes',()=>{
+ const sites=['S1','S2','S3','S4','S5','S6','S7','S8'];
+ const many=Array.from({length:1600},(_,i)=>({id:String(i+1),door:'D'+(i+1),site:sites[i%8],kind:'vehicle',group:'TIPPER'}));
+ const manyShifts=sites.flatMap((s,j)=>['A','B','C'].map((n,k)=>({id:String(j*3+k+1),site:s,name:'Shift '+n})));
+ const books=[];
+ for(let day=1;day<=18;day++)for(const a of many)for(const s of manyShifts.filter(s=>s.site===a.site))if((Number(a.id)+day+Number(s.id))%3)books.push({id:books.length+1,book:'B'+books.length,kind:'vehicle',assetId:Number(a.id),door:a.door,bookDate:'2026-11-'+String(day).padStart(2,'0'),location:a.site,shiftId:Number(s.id),shiftName:s.name,employeeName:'',caliberId:'',trips:[]});
+ const started=Date.now();
+ const report=buildOperationReport('missing',books,{assets:many,shifts:manyShifts,filters:{from:'2026-11-01',to:'2026-11-18'}});
+ assert.ok(Date.now()-started<5000,'took '+(Date.now()-started)+' ms');
+ const expected=18*1600*3-books.length;
+ assert.equal(report.rows.filter(r=>r[6]==='Potential missing').length,expected);
+});
+
 test('scanned cards open by their own date, site, shift and door',()=>{
  const cards=[{id:9,scanned_date:'2026-11-02',status:'pending',draft:{bookDate:'2026-11-01',location:site,shiftName:'Shift A',door:'V103'}},{id:10,scanned_date:'2026-11-02',status:'failed',draft:null}];
  const items=stepItems('scans',{records,cards,report:{rows:[]},assets});
@@ -70,7 +90,7 @@ test('scanned cards open by their own date, site, shift and door',()=>{
 
 test('the Operations screen draws these reports through the steps, each step under the one before',()=>{
  const screen=readFileSync(new URL('../src/operations-reports.jsx',import.meta.url),'utf8');
- assert.match(screen,/hasReportSteps\(id\)\?<SavedReportSteps /);
+ assert.match(screen,/hasReportSteps\(id\)\?<SavedReportSteps key=\{id\} /,'another report starts again at Step 1');
  const steps=readFileSync(new URL('../src/saved-report-steps.jsx',import.meta.url),'utf8');
  for(const n of [1,2,3,4])assert.match(steps,new RegExp("'Step "+n+" · '"));
  assert.match(steps,/level>=2&&/);assert.match(steps,/level>=3&&/);assert.match(steps,/level>=4&&/);
