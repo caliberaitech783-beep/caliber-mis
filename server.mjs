@@ -319,6 +319,7 @@ function sendDataUrlMedia(res,data,{name='attachment',fallbackType='application/
 const connectionString=misDatabaseConfig().connectionString;
 const databaseSsl=misDatabaseConfig().ssl;
 const scheduledJobsEnabled=String(process.env.DISABLE_SCHEDULED_JOBS||'true').trim().toLowerCase()!=='true';
+const scheduledBackupsEnabled=String(process.env.ENABLE_SCHEDULED_BACKUPS??scheduledJobsEnabled).trim().toLowerCase()==='true';
 const driverSyncIntervalMs=2*60*1000;
 const reportDateTime=(value)=>formatDisplayDateTime(value);
 const reportFilename=(kind,scope,slot)=>`Caliber-Pulse-${kind}-${scope}-${slot}.pdf`.replace(/[^a-z0-9._-]+/gi,'-').replace(/-+/g,'-');
@@ -2364,13 +2365,13 @@ async function pruneStoredBackups(){
 let scheduledBackupRunning=false;
 async function runScheduledBackup(now=new Date()){
   if(scheduledBackupRunning||!databaseReady)return {skipped:true,reason:'Backup service is busy.'};
-  const {settings}=await readBackupSettings();
-  if(!scheduledBackupDue(settings,now))return {skipped:true,reason:'No backup is due.'};
   scheduledBackupRunning=true;
   try{
+    const {settings}=await readBackupSettings();
+    if(!scheduledBackupDue(settings,now))return {skipped:true,reason:'No backup is due.'};
     const slot=indiaBackupSlot(now);
     const result=await createStoredBackup({triggerType:'Scheduled',scheduleSlot:slot.slotKey,actor:{name:'Automatic schedule'}});
-    await pruneStoredBackups();
+    if(!result.skipped)await pruneStoredBackups();
     if(!result.skipped)await appendScheduledBackupAudit({targetReference:result.fileName,reason:`Completed ${result.sizeBytes} bytes; SHA-256 ${result.checksum}`});
     return result;
   }catch(error){
@@ -4303,7 +4304,7 @@ function diagnosticChecks(){
     {key:'backups',label:'Backups',run:async()=>{
       const {rows}=await pool.query(`SELECT status,completed_at AS "completedAt",started_at AS "startedAt",error_message AS "errorMessage",size_bytes AS size
         FROM backup_runs ORDER BY started_at DESC LIMIT 1`);
-      return {...backupDiagnostic(rows[0]),facts:rows[0]?[['Last backup size',formatBytes(rows[0].size)]]:[]};
+      return {...backupDiagnostic(rows[0]),facts:[['Automatic backups',scheduledBackupsEnabled?'Scheduler enabled':'Scheduler off'],...(rows[0]?[['Last backup size',formatBytes(rows[0].size)]]:[])]};
     }},
     {key:'oracle',label:'Oracle ERP',run:async()=>{
       if(!oracleConfigured)diagnosticState('off','Oracle settings are not configured on this server.');
@@ -8977,7 +8978,6 @@ async function initializeDatabase(){
         ()=>runAuditedBackendProcess({module:'Scheduled reports',action:'Generate hierarchy report bundle'},()=>sendScheduledHierarchyReportBundles()).then(result=>console.log('Scheduled hierarchy WhatsApp report check completed.',result)).catch(error=>console.error('Scheduled hierarchy WhatsApp report check failed.',error)),
         ()=>runAuditedBackendProcess({module:'WhatsApp Integration',action:'Send workflow reminders'},()=>sendScheduledWorkflowWhatsAppReminders()).then(result=>console.log('Scheduled workflow WhatsApp reminder check completed.',result)).catch(error=>console.error('Scheduled workflow WhatsApp reminder check failed.',error)),
         ()=>runAuditedBackendProcess({module:'Audit Trail',action:'Generate two-day audit and user activity reports'},()=>sendScheduledAuditLogExports()).then(result=>console.log('Scheduled Audit Trail export check completed.',result)).catch(error=>console.error('Scheduled Audit Trail export check failed.',error)),
-        ()=>runScheduledBackup().then(result=>{if(!result?.skipped)console.log('Scheduled database backup completed.',result)}).catch(error=>console.error('Scheduled database backup failed.',error)),
         ()=>auditAdminLockIncidents().catch(error=>console.error('CRM admin-lock audit failed.',error)),
         ()=>metaWhatsAppRuntimeEnv().then((whatsappEnv)=>whatsappEnv.META_WHATSAPP_BUSINESS_ACCOUNT_ID?syncStandardWhatsAppTemplates({submit:true}):null).then(result=>{if(result)console.log('Meta WhatsApp template synchronization completed.',result)}).catch(error=>console.error('Meta WhatsApp template configuration check failed.',error)),
       ];
@@ -9065,14 +9065,16 @@ if(scheduledJobsEnabled){
       .catch(error=>console.error('Automatic log clean-up failed.',error));
   },5*60*1000,47_000);
   logRetentionTimer.unref?.();
+  const adminLockAuditTimer=setStaggeredInterval(()=>void auditAdminLockIncidents().catch(error=>console.error('Scheduled CRM admin-lock audit failed.',error)),60*1000,54_000);
+  adminLockAuditTimer.unref?.();
+}
+if(scheduledBackupsEnabled){
   const databaseBackupTimer=setStaggeredInterval(()=>{
     void runScheduledBackup()
       .then(result=>{if(!result?.skipped)console.log('Scheduled database backup completed.',result)})
       .catch(error=>console.error('Scheduled database backup failed.',error));
   },60*1000,47_000);
   databaseBackupTimer.unref?.();
-  const adminLockAuditTimer=setStaggeredInterval(()=>void auditAdminLockIncidents().catch(error=>console.error('Scheduled CRM admin-lock audit failed.',error)),60*1000,54_000);
-  adminLockAuditTimer.unref?.();
 }
 const backupImportCleanupTimer=setStaggeredInterval(()=>{
   void prunePendingBackupImports().catch(error=>console.error('Backup import cleanup failed.',error));
