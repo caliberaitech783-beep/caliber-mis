@@ -20,16 +20,13 @@ const batch={id:'b1',name:'CMLL/SASTI OC/30TH -DEC-26/S1/B01',site:'sasti oc',cl
 
 test('the approval OTP panel offers the request first, then the code entry with countdown and resend',async()=>{
  const h=hooks();
- const {ApprovalOtpPanel,VlbUnlockOtpDialog}=await compile('vlb-approval-otp.jsx',{React,useState:h.useState,useEffect:h.useEffect,useRef:h.useRef,displaySiteName,otpCountdown,otpSentText},['ApprovalOtpPanel','VlbUnlockOtpDialog']);
- h.reset();let html=renderToStaticMarkup(React.createElement(ApprovalOtpPanel,{session,batch,purpose:'unlock_vlb',reason:'Wrong tipper on card 12',requestLabel:'Request unlock OTP'}));
- assert.match(html,/Request unlock OTP/);assert.match(html,/approve by phone/);assert.match(html,/Sasti OC/);assert.doesNotMatch(html,/Verify OTP/);
- const live={id:'o1',purpose:'unlock_vlb',status:'sent',sentTo:['pm','pm2'],channels:['telegram'],expiresAt:new Date(Date.now()+9*60000).toISOString(),reason:'Wrong tipper on card 12'};
- const h2=hooks();const mod=await compile('vlb-approval-otp.jsx',{React,useState:h2.useState,useEffect:h2.useEffect,useRef:h2.useRef,displaySiteName,otpCountdown,otpSentText},['ApprovalOtpPanel','VlbUnlockOtpDialog']);
- html=renderToStaticMarkup(React.createElement(mod.ApprovalOtpPanel,{session,batch:{...batch,approvalOtps:[live]},purpose:'unlock_vlb',reason:'x'}));
- assert.match(html,/OTP sent to 2 PMs via Telegram/);assert.match(html,/left\. Phone the PM/);assert.match(html,/aria-label="Unlock VLB OTP"/);assert.match(html,/Verify OTP/);assert.match(html,/Resend/);assert.doesNotMatch(html,/Request unlock OTP/);
- const h3=hooks();const dlg=await compile('vlb-approval-otp.jsx',{React,useState:h3.useState,useEffect:h3.useEffect,useRef:h3.useRef,displaySiteName,otpCountdown,otpSentText},['VlbUnlockOtpDialog']);
- html=renderToStaticMarkup(React.createElement(dlg.VlbUnlockOtpDialog,{session,batch:{...batch,approvalOtps:[live]},onChanged(){},onDismiss(){}}));
- assert.match(html,/Unlock VLB with PM approval/);assert.match(html,/Reason sent to the PM: Wrong tipper on card 12/);assert.doesNotMatch(html,/<textarea/,'no second reason box while a code is live');
+ const {ApprovalOtpPanel}=await compile('vlb-approval-otp.jsx',{React,useState:h.useState,useEffect:h.useEffect,useRef:h.useRef,displaySiteName,otpCountdown,otpSentText},['ApprovalOtpPanel']);
+ h.reset();let html=renderToStaticMarkup(React.createElement(ApprovalOtpPanel,{session,batch,purpose:'reopen',reason:'Wrong tipper on card 12',requestLabel:'Request reopen OTP'}));
+ assert.match(html,/Request reopen OTP/);assert.match(html,/approve by phone/);assert.match(html,/Sasti OC/);assert.doesNotMatch(html,/Verify OTP/);
+ const live={id:'o1',purpose:'reopen',status:'sent',sentTo:['pm','pm2'],channels:['telegram'],expiresAt:new Date(Date.now()+9*60000).toISOString(),reason:'Wrong tipper on card 12'};
+ const h2=hooks();const mod=await compile('vlb-approval-otp.jsx',{React,useState:h2.useState,useEffect:h2.useEffect,useRef:h2.useRef,displaySiteName,otpCountdown,otpSentText},['ApprovalOtpPanel']);
+ html=renderToStaticMarkup(React.createElement(mod.ApprovalOtpPanel,{session,batch:{...batch,approvalOtps:[live]},purpose:'reopen',reason:'x'}));
+ assert.match(html,/OTP sent to 2 PMs via Telegram/);assert.match(html,/left\. Phone the PM/);assert.match(html,/aria-label="Reopen OTP"/);assert.match(html,/Verify OTP/);assert.match(html,/Resend/);assert.doesNotMatch(html,/Request reopen OTP/);
 });
 
 test('the reopen dialog offers the PM OTP next to the on-screen request and while the request is pending',async()=>{

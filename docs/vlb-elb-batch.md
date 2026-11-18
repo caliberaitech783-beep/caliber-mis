@@ -22,7 +22,7 @@ One batch per site, date and shift carries both the tipper cards (Vehicle Log Bo
 | ELB entry style | One small dialog per machine with Next, Previous, Skip and auto-save. Only hours, status and breakdown details are typed. |
 | ELB outside a batch | Not allowed (2 November 2026). ELB Manual and ELB Scan open from the same site batch picker as VLB and show the editor only when the selected batch is at the ELB stage. The server refuses an ELB whose site, date and shift have no batch, or whose batch still has VLB open, with the same 409 as a standalone VLB. Standalone ELB saving is discontinued; with the flag off the old behaviour returns. |
 | Go-live | Test platform first with a feature flag; live on Pulse-II only after team sign-off. |
-| Reopen and Unlock VLB by OTP (added 2 November 2026) | The site PM may approve a batch reopening, or an Unlock VLB, by reading out an OTP to the MIS user by phone instead of signing in. On-screen approval stays available. A PM who is also the MIS requester may approve their own reopening request on screen; the audit records both roles. |
+| Reopen by OTP | The site PM may approve a batch reopening by reading out an OTP to the MIS user by phone instead of signing in. On-screen approval stays available. A PM who is also the MIS requester may approve their own reopening request on screen; the audit records both roles. |
 
 ## 3. Batch lifecycle
 
@@ -32,7 +32,7 @@ Today a batch has one lifecycle field, `closed_at`. Replace it with an explicit 
 |---|---|---|
 | `vlb_open` | Add, correct, delete VLB cards (manual, scan, PDF upload). ELB entry is disabled for this batch. | **Lock VLB** by the batch owner. Blocked while any VLB card is awaiting a transfer or has unresolved machine labels. |
 | `elb_open` | VLB cards are frozen. The full site fleet list opens, trips pre-filled from VLB. Work through machines one by one in the stepper dialog, or scan/upload ELB cards. | **Close batch** by the batch owner. Blocked by the checks in section 5. |
-| `closed` | Everything frozen. Reports and exports run. `closed_at` set, `closure_revision + 1`. | **Reopen** via the existing reopen request and PM approval, given on screen or by the PM's OTP (section 6, last part). Reopen returns the batch to `elb_open`; a second explicit "Unlock VLB" action, by the PM on screen or by the MIS user with the PM's OTP, returns it to `vlb_open` and clears the machine snapshot. |
+| `closed` | Everything frozen. Reports and exports run. `closed_at` set, `closure_revision + 1`. | **Reopen** via the existing reopen request and PM approval, given on screen or by the PM's OTP (section 6, last part). Reopen returns the batch to `elb_open`; a second explicit "Unlock VLB" action, available directly to the batch owner, site-scoped MIS users, MIS administrators and the site PM, returns it to `vlb_open` and clears the machine snapshot. |
 
 Batch creation sets `stage='vlb_open'`. The "one open batch per site" guard treats `vlb_open` and `elb_open` both as open, which it already does because `closed_at IS NULL` in both.
 
@@ -262,17 +262,17 @@ Guard rails:
 - One pending new-equipment request per door per site at a time. Same OTP controls as transfers: ten minutes, five attempts, one request per minute. The draft form is kept so the operator does not retype.
 - Express creation is allowed only from a VLB or ELB entry screen with an open batch. It is not a general master-entry shortcut.
 
-### PM approval by OTP for reopen and Unlock VLB (added 2 November 2026)
+### PM approval by OTP for reopening a closed batch
 
 Both batch controls that need the site PM can now be approved by phone, with the same OTP engine and the same controls as the express transfer: six digits, hash only, ten minutes, five wrong attempts, one request per minute, single use. On-screen approval is unchanged and remains available; the OTP is a faster alternative, not a replacement.
 
 **Reopen a closed batch.** In the reopen dialog the MIS user types the reason and presses *Request reopen OTP*. The server creates (or reuses) the same reopening request the screen uses, then sends the code to every current Project Manager of the batch site on Telegram, or WhatsApp when Telegram is not linked. The message names the batch, the site, date and shift, the requester and the reason, and says that reading out the code is the approval. The MIS user phones the PM, enters the code, and the request is marked approved (`decided_by` = the first PM the code went to, `decision_note` = "Approved by OTP sent to pm1, pm2"). The server then reopens the batch at once for that MIS user, exactly as the Reopen button would. If the reopen itself is blocked, for example another batch is open at the site, the approval is kept and the Reopen button works once the blocker is cleared. The OTP button is hidden while the owner-authorized PM trial is active, because no approval is needed then.
 
-**Unlock VLB.** At the machine stage the batch owner or any MIS user sees *Unlock VLB (PM OTP)* next to the PM-only *Unlock VLB*. They type the reason, request the code, phone the PM and enter it. VLB unlocks with the usual effect (machine snapshot cleared, stage back to `vlb_open`); the audit entry `vlb_unlocked` carries `via: otp`, the PM logins the code went to, and the reason.
+**Unlock VLB.** The batch owner, site-scoped MIS users, MIS administrators and the site PM can unlock directly with a reason. VLB returns to `vlb_open`, the machine snapshot is cleared, and the actor and reason are recorded in the batch audit.
 
 **Self-approval.** A user who is both the site PM and the MIS requester may approve their own reopening request on screen. The earlier block was removed on the owner's instruction; the audit still shows the same login as requester and approver.
 
-**Storage and routes.** Table `mis_vlb_approval_otps` (purpose `reopen` or `unlock_vlb`, reopen request id, reason, requester, PM logins, hash, expiry, attempts, status). Routes: `POST /api/vlb-batches/:id/approval-otp {purpose, reason}`, `POST /api/vlb-batches/:id/approval-otp/:otpId/verify {otp}`, `GET /api/vlb-batches/:id/approval-otp`. The batch detail returns `approvalOtps` (the requester's live codes, so a reload resumes the entry) and `canRequestUnlockOtp`. Only the user who requested a code can enter it, and only against the batch it was issued for.
+**Storage and routes.** Table `mis_vlb_approval_otps` (purpose `reopen`, reopen request id, reason, requester, PM logins, hash, expiry, attempts, status). Routes: `POST /api/vlb-batches/:id/approval-otp {purpose, reason}`, `POST /api/vlb-batches/:id/approval-otp/:otpId/verify {otp}`, `GET /api/vlb-batches/:id/approval-otp`. The batch detail returns `approvalOtps` (the requester's live codes, so a reload resumes the entry). Only the user who requested a code can enter it, and only against the batch it was issued for.
 
 ## 7. Machine-wise batch report
 
@@ -305,7 +305,7 @@ A footer row totals trips and hours. Machines with zero trips appear below the l
 
 1. `server/rules/vlb-batch-policy.mjs`: schema additions, `stage` helpers, snapshot builder, closure checks, hold helpers. Pure functions with unit tests for: label resolution (V19 = VPC 019), missing machine, other equipment ignored, held card blocking, duplicate ELB.
 2. `vlb-batch-fleet.mjs`: fleet list builder at lock, `GET /api/vlb-batches/:id/fleet`, `PUT /api/vlb-batches/:id/fleet/:assetId/draft` (auto-save), `POST /api/vlb-batches/:id/fleet/:assetId` (validate, write ELB log book, link), shift-status rules with tests for the trips-versus-status refusal.
-3. `server/routes/vlb-batches.mjs`: new routes `POST /api/vlb-batches/:id/lock-vlb`, `POST /api/vlb-batches/:id/unlock-vlb` (PM), rename close semantics to run section 5 checks, `GET /api/vlb-batches/:id/machines`.
+3. `server/routes/vlb-batches.mjs`: new routes `POST /api/vlb-batches/:id/lock-vlb`, `POST /api/vlb-batches/:id/unlock-vlb`, rename close semantics to run section 5 checks, `GET /api/vlb-batches/:id/machines`.
 4. `server/routes/log-book.mjs`: equipment books link into the batch when an `elb_open` batch matches; site mismatch produces a hold instead of a 400 for both kinds. Scan path: `scanFleetBlockingMessage` becomes a hold warning rather than a save block.
 5. New `server/routes/vehicle-transfer-express.mjs`: OTP table, `POST /api/vehicle-transfers/express` (create or reuse pending transfer, send OTP to source PMs), `POST /api/vehicle-transfers/:id/express-otp` (verify and complete all three steps in one transaction), informational Telegram to the destination PM. Site-hold evaluation lives in `server/rules/vlb-batch-policy.mjs` and runs against the current Equipment master on every batch read.
 6. New `server/routes/equipment-create-express.mjs`: pending table, `POST /api/equipment/express` (duplicate check across all sites, draft, OTP to entering-site PM), `POST /api/equipment/express/:id/otp` (create master record, save waiting card, link to batch). Reuse the OTP hashing and attempt rules from the transfer module.
