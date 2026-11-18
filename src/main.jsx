@@ -858,6 +858,7 @@ function Login({ onLogin, theme, toggleTheme }) {
         <CaliberBrand className="login-brand" subtitle="All Departments Linked In One Place" />
         <div className="login-application-links">
           <button type="button" className="login-mis-link" aria-pressed="true" onClick={()=>selectLoginPortal(false)}><FileBarChart /><span><strong>MIS</strong>Open MIS sign in</span></button>
+          <a className="login-hr-link" href="/hr/"><Users aria-hidden="true" /><span><strong>HR</strong>Open HR sign in</span></a>
         </div>
         <div className="login-message">
           <div className="eyebrow"><span /> All Departments Linked In One Place</div>

@@ -40,6 +40,7 @@ import {installMisLoginHandoff} from './server/routes/mis-login-handoff.mjs';
 import {authorizeMisRequest} from './shared/mis-application-access.mjs';
 import {misDatabaseConfig,databasePoolMax} from './server/rules/mis-database-config.mjs';
 import {registerMisDomainRedirect} from './server/routes/mis-domain.mjs';
+import {registerHrModule} from './server/routes/hr-module.mjs';
 import {registerMisSharedSignIn} from './server/routes/mis-shared-signin.mjs';
 import {sharedMisDashboardIdentity} from './server/rules/mis-dashboard-identity.mjs';
 import {registerMasterSync} from './server/routes/master-sync.mjs';
@@ -214,6 +215,8 @@ app.use(enforceContentDeletionPolicy);
 // OTP requests) fired for the whole site instead of one user.
 app.set('trust proxy',true);
 registerMisDomainRedirect(app);
+app.use('/hr/session/authenticate', createLoginLimiter({key: req => req.ip}));
+registerHrModule(app);
 app.use(compression({
   threshold:1024,
   filter(req,res){
