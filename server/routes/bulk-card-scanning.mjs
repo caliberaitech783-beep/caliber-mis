@@ -36,7 +36,7 @@ import {withVlbTripHandovers} from '../../shared/vlb-trip-handover.mjs';
 import {SCAN_IMAGE_TYPES,scanImageDimensions,scanImageMime} from '../rules/scan-image-format.mjs';
 import {scanBlobKey} from '../services/scan-blob-storage.mjs';
 import {allowedScanBatches,requireLogBookSite,createLogBookSiteCache,scanDeletionAllowed} from '../../shared/log-book-access.mjs';
-import {fillVlbScanOpeningMeters,readVlbOpeningMeterRows,preloadVlbOpeningMeterRows} from '../rules/vlb-scan-opening-meters.mjs';
+import {fillVlbScanOpeningMeters,readVlbOpeningMeterRows,preloadVlbOpeningMeterRows,ensureVlbOpeningMeterIndex} from '../rules/vlb-scan-opening-meters.mjs';
 import {createScanCheckMemo,memoKey} from '../rules/scan-check-memo.mjs';
 import {stableJson} from '../services/log-book-deletion-scope.mjs';
 import {fillScanTripEstimates,previousShiftRecordReader} from '../../shared/scan-trip-estimates.mjs';
@@ -928,6 +928,15 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
   if(role==='engine')await keepLeases();
   timer=setInterval(()=>void pump(),2000);timer.unref?.();leaseTimer=setInterval(()=>void keepLeases(),30000);leaseTimer.unref?.();void pump();
   if(role==='app'&&fingerprintBackfill)void backfillScanFingerprints(pool,{imageStorage}).catch(error=>console.error('Scan fingerprint backfill stopped:',error?.message||String(error)));
+  if(role==='app'&&!localDrafts&&typeof pool.connect==='function'){
+   const ensureMeterIndex=async(tries=0)=>{
+    if(stopped)return;
+    try{if(await ensureVlbOpeningMeterIndex(pool)!=='busy')return;}
+    catch(error){console.error('Opening meter index not built:',error?.message||String(error));}
+    if(tries<12){const retry=setTimeout(()=>void ensureMeterIndex(tries+1),600000);retry.unref?.();}
+   };
+   void ensureMeterIndex();
+  }
   // Another server building the index answers 'busy'; this one looks again every 10 minutes for 2 hours.
   if(role==='app'){const ensureIndex=(tries=0)=>void ensureSavedCardNumberIndex(pool).then(result=>{if(result==='busy'&&tries<12&&!stopped){const retry=setTimeout(()=>ensureIndex(tries+1),600000);retry.unref?.();}}).catch(error=>console.error('Saved card number index not built:',error?.message||String(error)));ensureIndex();}
  },pump,
