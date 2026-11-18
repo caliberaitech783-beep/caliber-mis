@@ -51,6 +51,8 @@ export function misRequestAllowed(session,req){
  // ELB BD hours repair after the Pulse machine match fix (PR 414): dry run (GET) and apply (POST), MIS administrators only.
  // 17 Nov 2026: the owner's MIS login got "This MIS menu is not assigned to your login" because PR 414 left it off this list.
  if(route==='/api/admin/elb-pulse-repair')return (read||req.method==='POST')&&isMisAdministrator(session);
+ // 18 Nov 2026: the list of sites with Pulse-filled cards, read only, same administrators.
+ if(route==='/api/admin/elb-pulse-repair/sites')return read&&isMisAdministrator(session);
  // Only session maintenance and menu discovery are unconditional. New routes fail closed.
  if(['/api/logout','/api/session-heartbeat','/api/session-messages','/api/preferred-language','/api/navigation-settings','/api/request-shifts','/api/announcements','/api/notifications'].includes(route))return read||['/api/logout','/api/session-heartbeat','/api/preferred-language'].includes(route);
  if(route==='/api/session-location')return read||req.method==='POST';
