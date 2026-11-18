@@ -83,6 +83,6 @@ export function useMisSharedSignIn(session,{paused=false,autoStart=true}={}){
   return status;
 }
 
-export function MisSharedLogin({error,message='Continue to Pulse, select MIS, and enter your existing Pulse username and password there.'}){
- return <main className="boot-status"><section className="boot-card mis-credential-login"><h1>Caliber MIS</h1><p>{error||message}</p><a href="/api/mis-credentials/start">Sign in through Pulse</a><p>Your session will open automatically in MIS after sign-in.</p><p>{SIGN_IN_LOCATION_NOTICE}</p></section></main>;
+export function MisSharedLogin({error,message='Choose a workspace and sign in with your Pulse credentials.'}){
+ return <main className="boot-status"><section className="boot-card mis-credential-login"><h1>Caliber Pulse-II</h1><p>{message}</p>{error&&<p role="alert">{error}</p>}<nav className="pulse-ii-signin-options" aria-label="Caliber Pulse-II applications"><a href="/api/mis-credentials/start">MIS sign in</a><a href="/hr/">HR sign in</a></nav><p>{SIGN_IN_LOCATION_NOTICE}</p></section></main>;
 }
