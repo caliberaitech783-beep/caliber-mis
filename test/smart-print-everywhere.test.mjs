@@ -48,14 +48,14 @@ test('a table drawn by hand reaches the same menu and is read from the screen at
   assert.match(read('sortable-table.css'),/\.smart-print-row\{display:flex;justify-content:flex-end/);
 });
 
-test('Dashboard: the card pop-ups, the last 6, 12 and 24 hours table, each list a figure opens and the site comparison have the menu',()=>{
+test('Dashboard: the card pop-ups, the last 6, 12 and 24 hours table, and each list a figure opens have the menu',()=>{
   const dashboard=read('log-book-dashboard.jsx'),recent=read('log-book-recent-activity.jsx');
   assert.match(dashboard,/function Dialog\(\{title,close,children,actions=null\}\)/);
   assert.match(dashboard,/<span className="lb-dialog-tools">\{actions\}<button autoFocus/);
   assert.match(dashboard,/actions=\{state\.records\.length>0&&<TableSmartPrint title=\{title\+' · '\+period\+\(state\.cursor\?' · first '/,'VLB and ELB saved cards, saying when only the first cards are loaded');
   assert.match(dashboard,/<th data-smart-print-skip="">Original<\/th>/,'the Download scan column stays off paper');
   assert.match(dashboard,/<Dialog title="Sites with saved entries" close=\{\(\)=>setSelection\(null\)\} actions=\{<TableSmartPrint /);
-  assert.match(dashboard,/<TableSmartPrint title=\{'Site comparison · '\+[^}]+\} rows=\{rankedSites\} columns=\{\[\{key:'site',label:'Site'/);
+  assert.ok(!dashboard.includes('Site comparison ·'),'the site comparison left the dashboard on 18 Nov 2026');
   assert.match(recent,/<span className="lb-recent-print" data-print-hide=""><TableSmartPrint title=\{'Completed in the last 6, 12 and 24 hours · as of '\+timeLabel\(recent\.asOf\)\}\/>/);
   assert.match(recent,/<Dialog title=\{openLabel\} close=\{\(\)=>setOpen\(null\)\} actions=\{\(timed\?stages\.length>0:!empty\)&&<TableSmartPrint title=\{openLabel\+' · as of '/,'one menu serves every list and the VLB / LMV / ELB time; none when there is nothing to print');
 });
