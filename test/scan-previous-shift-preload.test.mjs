@@ -57,5 +57,5 @@ test('fillScanTripEstimates still asks the shared query and the entry read answe
  assert.deepEqual(asked,[PREVIOUS_SHIFT_RECORDS_SQL]);
  const source=readFileSync(new URL('../server/routes/bulk-card-scanning.mjs',import.meta.url),'utf8');
  assert.match(source,/previousShiftRecords=previousShiftRecordReader\(\(sql,args\)=>validationClient\.query\(sql,args\),toFill\.map\(row=>row\.draft\?\.assetId\)\)/);
- assert.match(source,/records:async\(\{sql,args\}\)=>\(\{rows:await previousShiftRecords\(sql,args\)\}\)/);
+ assert.match(source,/records:\(\{sql,args\}\)=>lap\.measureFill\('previous-shift-lookup',async\(\)=>\(\{rows:await previousShiftRecords\(sql,args\)\}\)\)/);
 });
