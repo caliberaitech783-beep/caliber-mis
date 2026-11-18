@@ -6,6 +6,7 @@ import {PGlite} from '@electric-sql/pglite';
 import {registerVlbBatches} from '../server/routes/vlb-batches.mjs';
 import {approvalOtpMessage,APPROVAL_PURPOSES} from '../server/services/vlb-approval-otp.mjs';
 import {LOG_BOOK_SCHEMA} from '../server/routes/log-book.mjs';
+process.env.VLB_BATCH_ORDER_FROM='off'; // these tests open batches out of shift order; vlb-batch-order.test.mjs covers the order
 
 // Flag unset: the two-stage batch is on, as in production.
 test('approval OTP message names the batch, the reason and the ten-minute rule',()=>{

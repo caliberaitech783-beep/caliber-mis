@@ -17,6 +17,7 @@ import {readFleetBreakdowns,stageDetails,lockVlb,lockLmv,unlockVlb,assertCloseAl
 import {twoStageEnabled,batchStage,FLEET_STATUSES} from '../rules/vlb-two-stage.mjs';
 import {APPROVAL_PURPOSES,consumeApprovalOtp,liveApprovalOtps,publicApprovalOtp} from '../services/vlb-approval-otp.mjs';
 import {batchStageWaits} from '../rules/vlb-batch-queue.mjs';
+import {previousBatchScope,batchOrderBlock} from '../../shared/vlb-batch-order.mjs';
 export {VLB_BATCH_SCHEMA} from '../rules/vlb-batch-policy.mjs';
 const uuid=value=>/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value||'');
 const fail=batchFail;
@@ -35,6 +36,15 @@ async function eligible(client,selection){
 async function openSiteBatch(client,site,{excludeId,vlbOnly=false}={}){
  const rows=(await client.query("SELECT *,book_date::text AS report_date FROM mis_vlb_batches WHERE book_date>=$$2026-11-01$$ AND closed_at IS NULL AND archived_at IS NULL AND deleted_at IS NULL AND ($1::uuid IS NULL OR id<>$1) AND (NOT $2::boolean OR stage='vlb_open') ORDER BY created_at,id",[excludeId||null,vlbOnly])).rows;
  return rows.find(batch=>canonicalSiteName(batch.site)===canonicalSiteName(site))||null;
+}
+// Batches of a site open in shift order: the shift before this one must exist with its VLB locked.
+async function previousShiftBlock(client,selection){
+ const scope=previousBatchScope(selection);if(!scope)return null;
+ const rows=(await client.query('SELECT *,book_date::text AS report_date FROM mis_vlb_batches WHERE book_date=$1 AND shift=$2 AND archived_at IS NULL AND deleted_at IS NULL ORDER BY created_at DESC,id DESC',[scope.date,scope.shift])).rows;
+ const previous=rows.find(batch=>canonicalSiteName(batch.site)===selection.site)||null;
+ const locked=Boolean(previous)&&(twoStageEnabled()?batchStage(previous)!=='vlb_open':Boolean(previous.closed_at));
+ const message=batchOrderBlock(scope,previous,locked);
+ return message?{...scope,batchId:previous?.id||null,name:previous?.name||null,message}:null;
 }
 async function visible(client,id,req){
  if(!uuid(id))fail('Invalid batch ID.',400);
@@ -171,9 +181,10 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
   const selection=vlbBatchSelection(req.query);requireLogBookSite(req.logBookScope,selection.site);
   const existingBatch=await matchingVlbBatch(pool,{location:selection.site,bookDate:selection.date,bookShiftCode:selection.shift});
   const siteOpenBatch=await openSiteBatch(pool,selection.site,{vlbOnly:twoStageEnabled()});
+  const previousShift=await previousShiftBlock(pool,selection);
   const records=await eligible(pool,selection);
   const sequence=Number((await pool.query('SELECT COALESCE(MAX(sequence),0)+1 AS n FROM mis_vlb_batches WHERE site=$1 AND book_date=$2 AND shift=$3',[selection.site,selection.date,selection.shift])).rows[0].n);
-  res.json({selection,records,name:existingBatch?.name||vlbBatchName(selection,sequence),existingBatch,siteOpenBatch});
+  res.json({selection,records,name:existingBatch?.name||vlbBatchName(selection,sequence),existingBatch,siteOpenBatch,previousShift});
  }));
  app.get('/api/vlb-batches/:id/card-counts',...protect,handle(async(req,res)=>{
   const batch=await visible(pool,req.params.id,req);
@@ -206,6 +217,8 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
    if(existing)fail('A batch already exists for this site, date and shift. Open that batch; reopen a closed batch from its batch page.');
    const siteOpen=await openSiteBatch(client,selection.site,{vlbOnly:twoStageEnabled()});
    if(siteOpen)fail(twoStageEnabled()?'Lock VLB in '+siteOpen.name+' before creating the next batch for this site.':'Close the open batch '+siteOpen.name+' before creating another batch for this site.');
+   const previousShift=await previousShiftBlock(client,selection);
+   if(previousShift)fail(previousShift.message);
    if(!twoStageEnabled()&&!req.batchActor.admin&&(await client.query('SELECT id FROM mis_vlb_batches WHERE (lower(COALESCE(creator_login,created_by))=$1 OR lower(amendment_by)=$1) AND book_date>=$$2026-11-01$$ AND closed_at IS NULL AND archived_at IS NULL',[user])).rows.length)fail('Close the previous batch before creating a new batch.');
    const workOrderId=String(req.body.workOrderId||'');
    if(workOrderId){
