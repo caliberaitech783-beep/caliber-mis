@@ -7,6 +7,7 @@ import {registerVlbBatches} from '../server/routes/vlb-batches.mjs';
 import {VLB_TRIP_HANDOVER_SCHEMA} from '../server/rules/vlb-trip-handover-schema.mjs';
 import {syncVlbBatchRecord} from '../server/rules/vlb-batch-policy.mjs';
 import {vlbEntryContext,vlbEntryFields,sameVlbEntryContext,withLmvEntrySite} from '../src/vlb-entry-context.mjs';
+process.env.VLB_BATCH_ORDER_FROM='off'; // these tests open batches out of shift order; vlb-batch-order.test.mjs covers the order
 
 test('LMV defaults to the assigned site or a previously selected authorized VLB or ELB batch site',async()=>{
  const options={sites:['Sasti OC','Jayant OC']};

@@ -6,6 +6,7 @@ import {randomUUID} from 'node:crypto';
 import {registerLogBooks,insertLogBook,resolveLogBookData,LOG_BOOK_SCHEMA} from '../server/routes/log-book.mjs';
 import {vlbBatchActor,batchPmAtSite} from '../server/rules/vlb-batch-access.mjs';
 import {VLB_BATCH_SCHEMA,matchingVlbBatch,lockSavedVlbBatches} from '../server/rules/vlb-batch-policy.mjs';
+process.env.VLB_BATCH_ORDER_FROM='off'; // these tests open batches out of shift order; vlb-batch-order.test.mjs covers the order
 
 process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 test('live saves auto-attach, closure blocks existing-card edits, and only the site-PM-approved MIS user can amend once',async t=>{

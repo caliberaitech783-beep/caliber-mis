@@ -6,6 +6,7 @@ import {PGlite} from '@electric-sql/pglite';
 import {registerVlbBatches} from '../server/routes/vlb-batches.mjs';
 import {VLB_TRIP_HANDOVER_SCHEMA} from '../server/rules/vlb-trip-handover-schema.mjs';
 import {vlbBatchName,vlbBatchSelection} from '../shared/vlb-batch-format.mjs';
+process.env.VLB_BATCH_ORDER_FROM='off'; // these tests open batches out of shift order; vlb-batch-order.test.mjs covers the order
 
 process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 test('batch format uses site, ordinal date, shift and padded sequence',()=>{

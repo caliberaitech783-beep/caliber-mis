@@ -9,6 +9,7 @@ import {enforceContentDeletionPolicy} from '../server/rules/content-deletion-pol
 import {withVlbTripHandovers} from '../shared/vlb-trip-handover.mjs';
 import {VLB_TRIP_HANDOVER_SCHEMA} from '../server/rules/vlb-trip-handover-schema.mjs';
 import {misRequestAllowed} from '../shared/mis-application-access.mjs';
+process.env.VLB_BATCH_ORDER_FROM='off'; // these tests open batches out of shift order; vlb-batch-order.test.mjs covers the order
 
 process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 async function setup(t){
