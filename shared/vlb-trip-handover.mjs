@@ -57,6 +57,23 @@ export function linkVlbTripHandovers(records){
  return output;
 }
 
+// The trip counts linkVlbTripHandovers writes on each card (completed, opening, ending, total and each row's completed
+// trips), without the handover links. They come from the card's own rows only, so a reading that keeps no handover
+// detail (the full Operations reading) needs neither the other cards nor the second database read.
+export function withVlbTripCounts(records){
+ return records.filter(r=>operationalDate(r.data?.bookDate)).map(record=>{
+  const data={...record.data,openingTrips:0,endingTrips:0,completedTrips:0};
+  data.trips=(record.data.trips||[]).map(source=>{
+   const row={...source},count=Number(row.tripCount)||0;
+   data.openingTrips+=Boolean(row.loadingTime)&&!isUnloadingOnlyTrip(row)?count:0;data.endingTrips+=row.unloadingTime?count:0;
+   row.completedTrips=vlbCountedTrips(row,data.timeMode);data.completedTrips+=row.completedTrips;
+   return row;
+  });
+  data.totalTrips=data.completedTrips;
+  return {...record,data};
+ });
+}
+
 export async function withVlbTripHandovers(client,records,permittedSites=null){
  if(!records.length)return records;
  const partial=(await client.query(`SELECT id,book_no,book_type,data FROM mis_log_books
