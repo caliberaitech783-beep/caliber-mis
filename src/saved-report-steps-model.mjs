@@ -84,6 +84,23 @@ export function stepLines(items,by){
  return {rows,total:{id:'total',key:EVERY,total:true,site:'All sites',category:'All categories',...tally(items)}};
 }
 
+// The lines of every step that is open (owner, 18 Nov 2026, second stage: the server works them out and sends only these,
+// not every card). `open` is what was pressed: site (a site key or EVERY), slot ({key, siteKey}: a date|shift or EVERY;
+// siteKey when a box of the All sites grid was pressed) and category (a category or EVERY).
+export function stepLevels(id,{items,report,build},{site='',slot=null,category=''}={}){
+ const sites=stepLines(items,'site');
+ if(!site)return {sites,slots:null,categories:null,table:null,siteLabel:''};
+ const many=site===EVERY,siteItems=openedItems(items,{site});
+ const siteLabel=many?'All sites':siteItems[0]?.site||site;
+ const slots=stepLines(siteItems,many?'slot-site':'slot');
+ if(!slot?.key)return {sites,slots,categories:null,table:null,siteLabel};
+ const slotItems=openedItems(slot.siteKey?openedItems(siteItems,{site:slot.siteKey}):siteItems,{slot:slot.key});
+ const categories=stepLines(slotItems,'category');
+ if(!category)return {sites,slots,categories,table:null,siteLabel};
+ const table=stepTable(id,report,openedItems(slotItems,{category}),build);
+ return {sites,slots,categories,table:{columns:table.columns,rows:table.rows,note:table.note||''},siteLabel};
+}
+
 // The narrowed table of Step 4. A line report keeps its own lines; a built report is built again from what is open,
 // with the dates, site and shift of the opening, so "Potential missing" and the scanned cards follow them too.
 export function stepTable(id,report,opened,build){
