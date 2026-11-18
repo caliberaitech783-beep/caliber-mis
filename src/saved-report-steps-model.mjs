@@ -41,7 +41,9 @@ export function stepItems(id,{records=[],cards=[],report={rows:[]},assets=[]}){
  const at=LINE_REPORTS[id];
  if(at)return report.rows.map(row=>item({date:row[at.date],site:row[at.site],door:row[at.door],shift:row[at.shift],assetId:null},row));
  if(id==='scans')return cards.map(c=>{const d=c.draft||{};return item({date:d.bookDate||c.scanned_date,site:d.location,door:d.door,shift:d.shiftName?shiftDisplayName(d.shiftName):'',assetId:d.assetId},c);});
- return records.map(r=>item({date:r.bookDate,site:r.location,door:r.door,shift:r.shiftName,assetId:r.assetId},r));
+ // A built report counts only the log books it is built from: the Vehicle-wise Trip Report leaves equipment out.
+ const counted=id==='vehicle-trips'?records.filter(r=>r.kind==='vehicle'):records;
+ return counted.map(r=>item({date:r.bookDate,site:r.location,door:r.door,shift:r.shiftName,assetId:r.assetId},r));
 }
 
 // What is open: a site (or EVERY), a date and shift (or EVERY for all of them) and an equipment category (or EVERY).
