@@ -20,7 +20,12 @@ export function registerAccountSecurity(app,{pool,requireSession,store,requireMf
   if(!result.rows.length)throw Object.assign(new Error('Sign in again to continue.'),{status:401});
   for(const table of ['mis_credential_sessions','mis_sso_sessions']){
    // Table names are a fixed server-side allowlist, never request input.
-   if((await client.query('SELECT to_regclass($1) AS name',[table])).rows[0]?.name)await client.query(`INSERT INTO ${table}(session_token,grant_token) SELECT $2,grant_token FROM ${table} WHERE session_token=$1`,[before,after]);
+   if(!(await client.query('SELECT to_regclass($1) AS name',[table])).rows[0]?.name)continue;
+   // Carry the "Remember me" mark across so the renewed session keeps its 30-day Pulse link.
+   const remembered=(await client.query("SELECT 1 FROM information_schema.columns WHERE table_name=$1 AND column_name='remembered'",[table])).rows.length;
+   await client.query(remembered
+    ?`INSERT INTO ${table}(session_token,grant_token,remembered) SELECT $2,grant_token,remembered FROM ${table} WHERE session_token=$1`
+    :`INSERT INTO ${table}(session_token,grant_token) SELECT $2,grant_token FROM ${table} WHERE session_token=$1`,[before,after]);
   }
   if(verified)await client.query('INSERT INTO mis_mfa_sessions(session_token,method) VALUES($1,$2)',[after,method]);
   await client.query('DELETE FROM auth_sessions WHERE token=$1',[before]);return after;

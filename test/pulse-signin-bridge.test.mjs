@@ -24,7 +24,7 @@ test('expired source login is reported for normal sign-in rather than requesting
 });
 
 test('real session selection requires the card owner and a relevant assigned MIS menu',async t=>{
- const db=new PGlite();t.after(()=>db.close());await db.exec('CREATE TABLE auth_sessions(token TEXT PRIMARY KEY,login_name TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),permissions JSONB);CREATE TABLE mis_credential_sessions(session_token TEXT,grant_token TEXT);');
+ const db=new PGlite();t.after(()=>db.close());await db.exec('CREATE TABLE auth_sessions(token TEXT PRIMARY KEY,login_name TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),permissions JSONB);CREATE TABLE mis_credential_sessions(session_token TEXT,grant_token TEXT,remembered BOOLEAN NOT NULL DEFAULT false);');
  await db.query('INSERT INTO auth_sessions(token,login_name,permissions) VALUES($1,$2,$3)', ['one','owner',JSON.stringify({misDesktopAccess:['Vehicle Log Book']})]);await db.query("INSERT INTO mis_credential_sessions VALUES('one','owner-grant')");
  const bridge=createPulseSignInBridge({pool:db,fetchImpl:async(_url,options)=>{assert.equal(JSON.parse(options.body).grant,'owner-grant');return Response.json([])}});await bridge.start();t.after(()=>bridge.stop());
  assert.equal(bridge.status().connected,true);await bridge.request('requests',{},'owner');await assert.rejects(()=>bridge.request('requests',{},'other'),error=>error.status===401);
@@ -39,7 +39,7 @@ test('an unavailable Oracle connection does not hide the automatic Pulse connect
 });
 
 test('ordinary ELB-only MIS session can request fleet verification using only its own grant',async t=>{
- const db=new PGlite();t.after(()=>db.close());await db.exec('CREATE TABLE auth_sessions(token TEXT PRIMARY KEY,login_name TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),permissions JSONB);CREATE TABLE mis_credential_sessions(session_token TEXT,grant_token TEXT);');
+ const db=new PGlite();t.after(()=>db.close());await db.exec('CREATE TABLE auth_sessions(token TEXT PRIMARY KEY,login_name TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),permissions JSONB);CREATE TABLE mis_credential_sessions(session_token TEXT,grant_token TEXT,remembered BOOLEAN NOT NULL DEFAULT false);');
  await db.query('INSERT INTO auth_sessions(token,login_name,permissions) VALUES($1,$2,$3)',['elb','ordinary-elb',JSON.stringify({misDesktopAccess:['Equipment Log Book']})]);
  await db.query("INSERT INTO mis_credential_sessions VALUES('elb','elb-grant')");
  const bridge=createPulseSignInBridge({pool:db,fetchImpl:async(_url,options)=>{const body=JSON.parse(options.body);assert.deepEqual(body,{grant:'elb-grant',action:'fleet',site:'Jayant OB'});return Response.json({'Equipment master':[{door:'TPC35'}]});}});
