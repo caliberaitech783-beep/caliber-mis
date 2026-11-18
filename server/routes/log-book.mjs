@@ -11,7 +11,7 @@ import {registerFleetReconciliation} from './fleet-reconciliation-api.mjs';
 import {withEquipmentAliases,aliasOtpEnabled} from '../../shared/equipment-aliases.mjs';
 import {recordMeterCorrection} from '../../shared/scan-meter-history.mjs';
 import {requireOperationalDate} from '../../shared/operational-start.mjs';
-import {assetBookKind,allowsLogBookKind,isLmv} from '../../shared/equipment-kind.mjs';
+import {assetBookKind,allowsLogBookKind,isLmv,isKmrOnlyVlbVehicle} from '../../shared/equipment-kind.mjs';
 import {ATTENDANCE_DAY_STORE_SCHEMA,attendanceDayStoreSweep} from '../services/attendance-day-store.mjs';
 export {assetBookKind} from '../../shared/equipment-kind.mjs';
 import {validateTripEquipment} from '../../shared/trip-equipment-validation.mjs';
@@ -79,9 +79,9 @@ export function timeGapMinutes(start,end){
  const parse=value=>{const m=text(value).match(/^(\d{2}):(\d{2})(?::(\d{2}))?$/);if(!m||Number(m[1])>23||Number(m[2])>59||Number(m[3]||0)>59)fail('Loading and unloading times must be valid clock times.');return Number(m[1])*3600+Number(m[2])*60+Number(m[3]||0)};
  let seconds=parse(end)-parse(start);if(seconds<0)seconds+=86400;return rounded(seconds/60);
 }
-export function normalizeLogBook(kind,input={},{manualEntry=false}={}){
+export function normalizeLogBook(kind,input={},{manualEntry=false,kmrOnly=false}={}){
  if(!['vehicle','equipment','lmv'].includes(kind))fail('Invalid log book type.');
- const vehicle=kind==='vehicle'||kind==='lmv',optionalHmr=kind==='lmv',meterKind=optionalHmr?'lmv':vehicle?'vehicle':'equipment';
+ const vehicle=kind==='vehicle'||kind==='lmv',optionalHmr=kind==='lmv'||kind==='vehicle'&&kmrOnly,meterKind=kind==='lmv'?'lmv':vehicle?'vehicle':'equipment';
  if(String(input.bookDateSource||'').startsWith('scan')&&!input.bookDate)fail('Enter the Book Date from the scanned card.');const bookDate=text(input.bookDate||systemBookDate());requireOperationalDate(bookDate);if(!/^\d{4}-\d{2}-\d{2}$/.test(bookDate)||!Number.isFinite(Date.parse(bookDate+'T00:00:00Z'))||new Date(bookDate+'T00:00:00Z').toISOString().slice(0,10)!==bookDate)fail('Enter a valid book date.');
  const location=text(input.location);if(!location)fail('Select a location.');
  const optionalShift=kind==='lmv'||manualEntry&&vehicle&&!input.scanCardId;
@@ -131,7 +131,8 @@ export async function resolveLogBookData(client,kind,input,{enforceEmployeeSite=
  input=validation.draft;
  const differences=machineDiscrepancies(input.trips,input.scanMachineSummary);if(differences.length)fail(differences.join(' '));
  }
- const data=normalizeLogBook(kind,input,{manualEntry});
+ const selectedAsset=historicalAssets.find(asset=>String(asset.id)===String(input.assetId));
+ const data=normalizeLogBook(kind,input,{manualEntry,kmrOnly:kind==='vehicle'&&isKmrOnlyVlbVehicle(selectedAsset)});
  const jobRows=[...(data.trips||[]),...(data.jobDetails||[])];
  const tripOrderIds=[...new Set(jobRows.filter(row=>row.workOrderId).map(row=>String(number(row.workOrderId,'Job Work Order',{integer:true}))))];
  if(tripOrderIds.length){
@@ -356,7 +357,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
      const {rows}=await pool.query("SELECT id,master_name,record_data FROM master_records WHERE master_name=ANY($1::text[]) ORDER BY id",[batchPicker?['Shift Master','Users & employees','Region master',...woNames]:['Equipment master','Vehicle transfers','Shift Master','Users & employees','Employee master','ERP Employee master','Region master','C-Dir Employee master',...woNames]]);
      const assets=[],employees=[],shifts=[],workOrders=[],regionSites=[];const hasEmployees=rows.some(r=>r.master_name==='C-Dir Employee master');
      for(const row of rows){const r=row.record_data;
-       if(row.master_name==='Equipment master'){const site=text(r.currentLocation||r.site||r.location);assets.push({id:String(row.id),door:text(r.door||r.doorNo||equipmentDoorNumber(r)),registration:text(r.registration||r.reg),name:text(r.equipmentName||r.equipment||r.name||r.group),kind:assetBookKind(r),lmv:isLmv(r),...(isLmv(r)?{lmvDoor:text(r.door)||text(r.doorNo),registration:text(r.registration)||text(r.reg)||text(r.registrationNumber)}:{}),site});}
+       if(row.master_name==='Equipment master'){const site=text(r.currentLocation||r.site||r.location);assets.push({id:String(row.id),door:text(r.door||r.doorNo||equipmentDoorNumber(r)),registration:text(r.registration||r.reg),name:text(r.equipmentName||r.equipment||r.name||r.group),kind:assetBookKind(r),lmv:isLmv(r),kmrOnly:isKmrOnlyVlbVehicle(r),...(isLmv(r)?{lmvDoor:text(r.door)||text(r.doorNo),registration:text(r.registration)||text(r.reg)||text(r.registrationNumber)}:{}),site});}
        if(row.master_name==='Employee master'||row.master_name==='ERP Employee master'||row.master_name==='C-Dir Employee master'||(!hasEmployees&&row.master_name==='Users & employees'))employees.push({id:String(row.id),name:text(r.employee||r.name||r.login),caliberId:employeeCode(r),caliberCode:employeeIdentity(r).caliberCode,employeeCode:text(r.employeeCode||r.erpEmployeeCode),masterName:row.master_name,site:text(r.site||r.location||r.currentLocation),designation:text(r.currentDesignationName)||text(r.designationName)||text(r.designation)||text(r.userGroup)});
        if(row.master_name==='Shift Master'){const site=text(r.site||r.siteName);shifts.push({id:String(row.id),name:text(r.shiftName||r.name||r.shift),site,shiftCode:text(r.shiftCode),status:text(r.status),sourceMissing:Boolean(r.sourceMissing),effectiveFrom:text(r.effectiveFrom),effectiveTo:text(r.effectiveTo),startTime:text(r.startTime||r.start),endTime:text(r.endTime||r.end)});}
        if(woNames.includes(row.master_name)&&!r.sourceMissing)workOrders.push({id:String(row.id),number:woNumber(r),jobs:workOrderJobTypes(r),status:text(r.status),site:text(r.site||r.location),workOrderDate:text(r.workOrderDate),begin:text(r.commencementDate),end:text(r.completionDate)});
@@ -436,14 +437,14 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
  async function save(req,res,next){
    let client;
    try{
-     requireOperationalDate(req.body?.bookDate||systemBookDate());await ensure();const kind=req.params.kind,data=normalizeLogBook(kind,req.body,{manualEntry:true}),updating=Boolean(req.params.id);
-     requireLogBookSite(req.logBookScope,data.location);
+     requireOperationalDate(req.body?.bookDate||systemBookDate());await ensure();const kind=req.params.kind,updating=Boolean(req.params.id);
+     requireLogBookSite(req.logBookScope,text(req.body?.location));
      const requestKey=text(req.body.requestKey||randomUUID());if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestKey))fail('Invalid save reference.');
      if(updating&&!/^\d+$/.test(req.params.id))fail('Invalid log book ID.');
      // Pulse is read before any lock, so the remote call never runs while other users queue.
      const actor=req.session.login||req.session.name,prefetched=await prefetchBreakdownRows(readBreakdownRows,actor);
      client=await pool.connect();await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock_shared(709224102)');
-     Object.assign(data,await resolveLogBookData(client,kind,req.body,{enforceEmployeeSite:true,manualEntry:true}));
+     const data=await resolveLogBookData(client,kind,req.body,{enforceEmployeeSite:true,manualEntry:true});
      // The site, date and shift scope is locked before the record row, the same order the
      // batch routes use, so a batch action and a card edit never wait on each other.
      await lockVlbBatchScope(client,vlbRecordScope(data));

@@ -5,6 +5,7 @@ import {randomUUID} from 'node:crypto';
 import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
 import {normalizeLogBook,timeGapMinutes,registerLogBooks,assetBookKind} from '../server/routes/log-book.mjs';
+import {isKmrOnlyVlbVehicle} from '../shared/equipment-kind.mjs';
 
 process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 const input=()=>({bookDate:'2026-12-18',location:'Sasti OC',assetId:1,employeeId:2,shiftId:3,shiftHours:8,openingKmr:1000,closingKmr:1050,openingHmr:200,closingHmr:206.5,timeMode:'with',trips:[{equipmentName:'VPC-60',loadingTime:'08:20:00',unloadingTime:'08:40:00',tripCount:1}]});
@@ -29,6 +30,17 @@ test('trip modes, overnight times and invalid meter/date inputs are validated',(
  assert.equal(normalizeLogBook('vehicle',{...input(),timeMode:'without',trips:[{equipmentName:'L1',tripCount:3}]}).totalTrips,3);
  for(const patch of [{bookDate:'2026-02-31'},{closingHmr:'bad'},{openingKmr:''},{shiftHours:9},{assetId:true},{trips:[null]},{trips:[{equipmentName:'L1',tripCount:0}]},{trips:[{equipmentName:'L1',tripCount:1,loadingTime:'29:00',unloadingTime:'30:00'}]}])assert.throws(()=>normalizeLogBook('vehicle',{...input(),...patch}));
  assert.equal(assetBookKind({category:'Equipment'}),'equipment');assert.equal(assetBookKind({category:'Vehicle'}),'vehicle');
+});
+
+test('diesel tanker, water tanker and service van VLB entries require KMR but not HMR',()=>{
+ for(const equipmentGroup of ['Diesel Tanker','WATER TANKER','Service Van']){
+  assert.equal(isKmrOnlyVlbVehicle({equipmentGroup}),true);
+  const row=normalizeLogBook('vehicle',{...input(),openingHmr:'',closingHmr:''},{kmrOnly:true});
+  assert.equal(row.openingHmr,null);assert.equal(row.closingHmr,null);assert.equal(row.totalWorkingHmr,null);
+ }
+ assert.equal(isKmrOnlyVlbVehicle({equipmentGroup:'Tipper'}),false);
+ assert.throws(()=>normalizeLogBook('vehicle',{...input(),openingHmr:'',closingHmr:''}),/Opening HMR is required/);
+ assert.throws(()=>normalizeLogBook('vehicle',{...input(),openingKmr:'',closingKmr:''},{kmrOnly:true}),/Opening KMR is required/);
 });
 
 test('saved log books retain estimated time and previous-shift provenance',()=>{
