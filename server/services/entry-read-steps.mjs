@@ -26,6 +26,7 @@ export function createEntryReadSteps({keep=40,slowest=3,warmupMs=10*60*1000,cloc
     .map(([name,step])=>[name,{avgMs:round(step.totalMs/step.count),maxMs:round(step.maxMs)}])),
    slowest:[...list].sort((a,b)=>b.totalMs-a.totalMs).slice(0,slowest).map(read=>({
     totalMs:round(read.totalMs),cards:read.cards,partial:read.partial,
+    ...(Object.keys(read.fillSteps).length?{fillSteps:Object.fromEntries(Object.entries(read.fillSteps).map(([name,ms])=>[name,round(ms)]))}:{}),
     steps:Object.fromEntries(Object.entries(read.steps).filter(([,ms])=>ms>=1).sort((a,b)=>b[1]-a[1]).map(([name,ms])=>[name,round(ms)])),
    })),
   };
@@ -35,12 +36,18 @@ export function createEntryReadSteps({keep=40,slowest=3,warmupMs=10*60*1000,cloc
   // step (a step inside the card loop adds up over every card), and done(extra)
   // records the read with its total.
   start(now=clock){
-   const steps={},began=now();let last=began;
+   const steps={},fillSteps={},began=now();let last=began;
    const warm=began-createdAt>=warmupMs;
    const lap=name=>{const at=now();steps[name]=(steps[name]||0)+(at-last);last=at;};
+   // These timings sit inside card-fill and must not advance the main lap clock.
+   lap.measureFill=async(name,work)=>{
+    const started=now();
+    try{return await work();}
+    finally{fillSteps[name]=(fillSteps[name]||0)+(now()-started);}
+   };
    lap.done=(extra={})=>{
     const totalMs=now()-began;
-    reads.push({totalMs,steps,warm,...extra});
+    reads.push({totalMs,steps,fillSteps,warm,...extra});
     if(reads.length>keep)reads.shift();
    };
    return lap;
