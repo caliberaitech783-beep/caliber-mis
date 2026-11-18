@@ -1,6 +1,7 @@
 import {createHmac,timingSafeEqual,randomBytes} from 'node:crypto';
 export const BROWSER_SESSION_MARKER='browser-session';
-export const SESSION_COOKIE='__Host-mis_session',CSRF_COOKIE='__Host-mis_csrf';
+export const SESSION_COOKIE='__Host-mis_session',CSRF_COOKIE='__Host-mis_csrf',REMEMBER_COOKIE='__Host-mis_remember';
+export const REMEMBER_DEVICE_MS=30*24*60*60*1000;
 const uuid=value=>typeof value==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 const cookie=(req,name)=>String(req.headers.cookie||'').split(';').map(x=>x.trim()).find(x=>x.startsWith(name+'='))?.slice(name.length+1)||'';
 const contextId=value=>/^browser-session\.([A-Za-z0-9_-]{16})$/.exec(value||'')?.[1]||'';
@@ -33,12 +34,17 @@ export function browserSessionMiddleware({publicUrl='https://pulse-ll.cmll.in',e
   }
   req.establishBrowserSession=(value,{newContext=false}={})=>{
    if(!uuid(value))throw Error('Invalid browser session');
-   // MIS shared sign-in was tab/session based; do not introduce a persistent
-   // credential on shared PCs. Database and central-grant expiry still apply.
+   // MIS shared sign-in is tab/session based by default, so shared site PCs
+   // never keep a credential after the browser closes. Only a person who ticked
+   // "Remember me" on the Pulse sign-in page gets cookies that survive a browser
+   // restart; they last REMEMBER_DEVICE_MS and renew each time MIS is opened.
    const selected=!newContext&&req.browserSessionId||randomBytes(12).toString('base64url');
+   const remember=newContext?req.rememberDevice===true:Boolean(req.browserSessionId)&&cookie(req,REMEMBER_COOKIE+'_'+req.browserSessionId)==='1';
    req.browserSessionId=selected;req.browserSessionMarker=BROWSER_SESSION_MARKER+'.'+selected;
-   res.cookie(SESSION_COOKIE+'_'+selected,value,options);
-   res.cookie(CSRF_COOKIE+'_'+selected,csrfFor(value),{...options,httpOnly:false});
+   const lifetime=remember?{maxAge:REMEMBER_DEVICE_MS}:{};
+   res.cookie(SESSION_COOKIE+'_'+selected,value,{...options,...lifetime});
+   res.cookie(CSRF_COOKIE+'_'+selected,csrfFor(value),{...options,httpOnly:false,...lifetime});
+   if(remember)res.cookie(REMEMBER_COOKIE+'_'+selected,'1',{...options,...lifetime});
    return req.browserSessionMarker;
   };
   if(authPaths.has(req.path)){
@@ -50,6 +56,7 @@ export function browserSessionMiddleware({publicUrl='https://pulse-ll.cmll.in',e
   if(['/api/logout','/api/mis-credentials/logout'].includes(req.path)){
    const suffix=req.browserSessionId?'_'+req.browserSessionId:'';
    res.clearCookie(SESSION_COOKIE+suffix,options);res.clearCookie(CSRF_COOKIE+suffix,{...options,httpOnly:false});
+   if(suffix)res.clearCookie(REMEMBER_COOKIE+suffix,options);
   }
   return next();
  };

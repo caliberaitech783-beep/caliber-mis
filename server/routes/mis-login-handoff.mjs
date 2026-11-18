@@ -3,7 +3,7 @@ const digest=value=>createHash('sha256').update(String(value)).digest('hex');
 const proof=value=>createHash('sha256').update(String(value)).digest('base64url');
 const valid=value=>typeof value==='string'&&/^[A-Za-z0-9_-]{43}$/.test(value);
 const cookie=(req,name)=>String(req.headers.cookie||'').split(';').map(value=>value.trim()).find(value=>value.startsWith(name+'='))?.slice(name.length+1)||'';
-const stateCookie='__Host-mis_credential_state',readyCookie='__Host-mis_credential_ready';
+const stateCookie='__Host-mis_credential_state',readyCookie='__Host-mis_credential_ready',rememberCookie='__Host-mis_credential_remember';
 // Cookies are shared across tabs. Bind each pending attempt independently so a
 // second sign-in cannot replace the first tab's browser binding.
 const pendingCookie=state=>stateCookie+'_'+digest(state);
@@ -47,14 +47,20 @@ export function installMisLoginHandoff(app,{pool,sessionStore,credentialClient,f
   const result=await response.json();
   if(!response.ok||!valid(result.grant)||!result.profile?.permissions?.separateMisCredentials)return signInFailure(req,res,401,'Pulse could not complete MIS sign-in. Please start again.');
   const token=randomUUID();await sessionStore.create({token,...result.profile});
-  await pool.query('INSERT INTO mis_credential_sessions(session_token,grant_token) VALUES($1,$2)',[token,result.grant]);
-  res.cookie(readyCookie+'_'+digest(state),token,{...options,maxAge:60000});res.redirect(303,'/?misCredentialReady='+state);
+  if(result.remember===true)await pool.query('INSERT INTO mis_credential_sessions(session_token,grant_token,remembered) VALUES($1,$2,true)',[token,result.grant]);
+  else await pool.query('INSERT INTO mis_credential_sessions(session_token,grant_token) VALUES($1,$2)',[token,result.grant]);
+  res.cookie(readyCookie+'_'+digest(state),token,{...options,maxAge:60000});
+  // Pulse reports whether "Remember me" was ticked; the session read below turns it into
+  // cookies that survive a browser restart (see browser-session-security.mjs).
+  if(result.remember===true)res.cookie(rememberCookie+'_'+digest(state),'1',{...options,maxAge:60000});
+  res.redirect(303,'/?misCredentialReady='+state);
  },signInFailure));
  app.get('/api/mis-credentials/session',safe(async(req,res)=>{
   const handoff=req.query?.handoff;
   if(handoff!==undefined&&!valid(handoff))return res.status(400).json({error:'Invalid MIS sign-in handoff. Start again from Pulse.'});
   const name=handoff?readyCookie+'_'+digest(handoff):readyCookie;
   const token=cookie(req,name);res.clearCookie(name,options);
+  if(handoff){const remember=rememberCookie+'_'+digest(handoff);req.rememberDevice=cookie(req,remember)==='1';res.clearCookie(remember,options);}
   if(!/^[0-9a-f-]{36}$/i.test(token))return res.status(req.browserSession?409:401).json({error:'Start MIS sign-in from Pulse.'});
   const session=await credentialClient.validateSession(token,await sessionStore.get(token));
   if(!session)return res.status(401).json({error:'MIS sign-in expired. Start again from Pulse.'});
