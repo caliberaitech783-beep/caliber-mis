@@ -36,7 +36,7 @@ import {registerLogBookDeletion} from '../rules/log-book-deletion.mjs';
 import {manualBreakdownHours,applyBreakdownHours,prefetchBreakdownRows,lockedReadHours} from '../../shared/breakdown-hours-source.mjs';
 import {TRIP_VERIFICATION_SCHEMA,enqueueTripVerification} from './pulse-trip-verification.mjs';
 import {decodeScanRow} from '../rules/scan-text-storage.mjs';
-import {validTripTimes,vlbCountedTrips,withVlbTripHandovers} from '../../shared/vlb-trip-handover.mjs';
+import {validTripTimes,vlbCountedTrips,withVlbTripHandovers,withVlbTripCounts} from '../../shared/vlb-trip-handover.mjs';
 import {VLB_TRIP_HANDOVER_SCHEMA} from '../rules/vlb-trip-handover-schema.mjs';
 import {savedLogBookFilters} from '../rules/saved-log-book-filters.mjs';
 import {scanImageMime} from '../rules/scan-image-format.mjs';
@@ -293,7 +293,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
  const ensure=()=>ready??=(pool.query(LOG_BOOK_SCHEMA+SHIFT_ATTENDANCE_SCHEMA+ATTENDANCE_DAY_STORE_SCHEMA).catch(error=>{ready=null;throw error}));
  const protect=[requireSession,requireAdministrator,async(req,res,next)=>{try{req.logBookScope=await getSiteScope(req.session);next()}catch(error){if(error.status)return res.status(error.status).json({error:error.message});next(error)}}];
  registerLogBookDashboard(app,{pool,protect,ensureBooks:ensure});
- registerFleetReconciliation(app,{pool,protect,ensureBooks:ensure,pulseMasterSync});
+ registerFleetReconciliation(app,{pool,protect,ensureBooks:ensure,pulseMasterSync,breakdownMirror});
  const batchScope=protect[2];
  registerManpowerReports(app,{pool,protect,ensureBooks:ensure,withHandovers:withVlbTripHandovers,lane});
  const attendanceAccess=(req,res,next)=>{
@@ -323,10 +323,14 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
      // lane with Batch Status and Manpower, so only a few heavy readings hold database connections at once, and people
      // asking for the same dates with the same site access while one is running share it.
      const body=await lane.run(reportKey('operations',req,{withScans}),async()=>{
-     const sourceRecords=(await pool.query("SELECT id,book_no,book_type,data FROM mis_log_books WHERE deleted_at IS NULL AND book_date>=$$2026-11-01$$ AND book_date BETWEEN $1 AND $2 AND book_type IN ('vehicle','equipment') ORDER BY book_date,id",[from,to])).rows;
+     // The database leaves out the card fields this reading drops anyway (scan and entry details, copied breakdowns),
+     // so neither Postgres nor this server moves and parses them: they were most of each card's bytes.
+     const sourceRecords=(await pool.query("SELECT id,book_no,book_type,data - $3::text[] AS data FROM mis_log_books WHERE deleted_at IS NULL AND book_date>=$$2026-11-01$$ AND book_date BETWEEN $1 AND $2 AND book_type IN ('vehicle','equipment') ORDER BY book_date,id",[from,to,withScans?OPERATIONS_UNUSED_CARD_FIELDS:TIMING_UNUSED_CARD_FIELDS])).rows;
      const visibleRecords=sourceRecords.filter(r=>siteAllowed(req.logBookScope,r.data.location));
-     const permittedSites=await filterLogBookSites(pool,req.logBookScope);
-     const linked=await withVlbTripHandovers(pool,visibleRecords.filter(r=>r.book_type==='vehicle'),permittedSites);
+     const vehicleRecords=visibleRecords.filter(r=>r.book_type==='vehicle');
+     // The full reading keeps only each trip row's counts, which come from the card's own rows: it skips the second
+     // read of every card with a handover trip since 1 Nov and the linking across them. Trip Timing still links them.
+     const linked=withScans?withVlbTripCounts(vehicleRecords):await withVlbTripHandovers(pool,vehicleRecords,await filterLogBookSites(pool,req.logBookScope));
      const allRecords=[...linked,...visibleRecords.filter(r=>r.book_type!=='vehicle')];
      const records=withScans?logBooksForOperations(allRecords):logBooksForTiming(allRecords);
      const masters=(await pool.query("SELECT id,master_name,record_data FROM master_records WHERE master_name=ANY($1::text[])",[['Equipment master','Shift Master']])).rows;

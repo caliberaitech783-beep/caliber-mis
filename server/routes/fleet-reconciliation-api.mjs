@@ -2,6 +2,7 @@ import {reconcileFleet,shiftForDate,validFleetDate,fleetShift,fleetAssetKind,ass
 import {siteAllowed,requireLogBookSite} from '../../shared/log-book-access.mjs';
 import {canonicalSiteName} from '../../shared/site-location.mjs';
 import {misPageAllowed} from '../../shared/mis-application-access.mjs';
+import {mirrorReadAt} from '../services/pulse-breakdown-mirror.mjs';
 
 const fleetBookPages={
  vehicle:['Vehicle Log Book','Trip Card Bulk Scan'],
@@ -11,7 +12,9 @@ const fleetBookPages={
 
 export const FLEET_REASON_SCHEMA=`CREATE TABLE IF NOT EXISTS mis_fleet_idle_reasons(site_key TEXT NOT NULL,book_date DATE NOT NULL,shift TEXT NOT NULL,asset_key TEXT NOT NULL,reason TEXT NOT NULL,remarks TEXT NOT NULL DEFAULT '',updated_by TEXT NOT NULL,updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),PRIMARY KEY(site_key,book_date,shift,asset_key));
 CREATE TABLE IF NOT EXISTS mis_fleet_idle_reason_history(id BIGSERIAL PRIMARY KEY,site_key TEXT NOT NULL,book_date DATE NOT NULL,shift TEXT NOT NULL,asset_key TEXT NOT NULL,reason TEXT NOT NULL,remarks TEXT NOT NULL,updated_by TEXT NOT NULL,updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());`;
-export function registerFleetReconciliation(app,{pool,protect,ensureBooks,pulseMasterSync}){
+// The oldest copy of Pulse's breakdown list the fleet panel uses before it asks Pulse live (the copy is read every minute).
+export const FLEET_BREAKDOWN_COPY_MS=5*60_000;
+export function registerFleetReconciliation(app,{pool,protect,ensureBooks,pulseMasterSync,breakdownMirror=null}){
  let ready;const ensure=async()=>{await ensureBooks();await(ready??=pool.query(FLEET_REASON_SCHEMA).catch(e=>{ready=null;throw e}));};
  const handle=fn=>async(req,res,next)=>{try{res.set('Cache-Control','no-store');await fn(req,res)}catch(e){if(e.status)return res.status(e.status).json({error:e.message});next(e)}};
  const kindsFor=req=>Object.keys(fleetBookPages).filter(kind=>!req.session.permissions?.separateMisCredentials||fleetBookPages[kind].some(page=>misPageAllowed(req.session,page)));
@@ -43,12 +46,21 @@ export function registerFleetReconciliation(app,{pool,protect,ensureBooks,pulseM
  };
  app.get('/api/reports/fleet-reconciliation',...protect,handle(async(req,res)=>{
   const s=await selection(req,req.query);await ensure();
-  let breakdowns;try{breakdowns=await pulseMasterSync.readBreakdownRequests({fresh:true,actor:req.session.login||req.session.name});if(!Array.isArray(breakdowns))throw Error('Invalid feed');}catch{throw Object.assign(Error('Pulse breakdown data is unavailable. Reconnect Pulse and retry; missing breakdown data is not treated as zero.'),{status:503});}
+  // Pulse-II's copy of Pulse's breakdown list (read from Pulse every minute) answers while it is a few minutes old.
+  // 18 Nov 2026: this panel sits on every VLB entry screen, and each opening read Pulse's whole list live; 18 such
+  // reads in 12 minutes took 170 s each and kept the server so busy that every report waited behind them.
+  let breakdowns,breakdownsReadAt=null;
+  try{
+   const copy=breakdownMirror?await breakdownMirror.read({maxAgeMs:FLEET_BREAKDOWN_COPY_MS}).catch(()=>null):null;
+   breakdowns=copy||await pulseMasterSync.readBreakdownRequests({fresh:true,actor:req.session.login||req.session.name});
+   if(!Array.isArray(breakdowns))throw Error('Invalid feed');
+   const readAt=copy?mirrorReadAt(copy):Date.now();breakdownsReadAt=readAt?new Date(readAt).toISOString():null;
+  }catch{throw Object.assign(Error('Pulse breakdown data is unavailable. Reconnect Pulse and retry; missing breakdown data is not treated as zero.'),{status:503});}
   const books=(await pool.query('SELECT id,book_no,book_type,asset_id,site,data FROM mis_log_books WHERE deleted_at IS NULL AND book_date=$1::date AND book_type=ANY($2::text[])',[s.date,s.kinds])).rows.filter(b=>siteAllowed(req.logBookScope,b.site)&&(b.book_type==='lmv'||!s.lmvIds.has(String(b.asset_id||b.data?.assetId))));
   const reasons=(await pool.query('SELECT asset_key,reason,remarks,updated_at,updated_by FROM mis_fleet_idle_reasons WHERE site_key=$1 AND book_date=$2::date AND shift=$3',[canonicalSiteName(s.site),s.date,s.shift])).rows;
   const result=reconcileFleet({...s,assets:s.assets.filter(a=>s.kinds.includes(fleetAssetKind(a))),books,breakdowns,reasons});
   const sync=pulseMasterSync.status?.();
-  res.json({...result,date:s.date,site:s.site,shift:s.shift,window:s.window,partialShift:Date.now()<s.window.end,updatedAt:new Date().toISOString(),masterSync:sync?{connected:sync.connected,lastSuccess:sync.lastSuccess}:null,populationNote:'Fleet population uses the current Pulse-synced Equipment Master location. Historical site assignments are not available; compare unmatched cards before relying on past-date totals.'});
+  res.json({...result,date:s.date,site:s.site,shift:s.shift,window:s.window,partialShift:Date.now()<s.window.end,updatedAt:new Date().toISOString(),breakdownsReadAt,masterSync:sync?{connected:sync.connected,lastSuccess:sync.lastSuccess}:null,populationNote:'Fleet population uses the current Pulse-synced Equipment Master location. Historical site assignments are not available; compare unmatched cards before relying on past-date totals.'});
  }));
  app.put('/api/reports/fleet-reconciliation/idle-reason',...protect,handle(async(req,res)=>{
   const s=await selection(req,req.body),asset=s.assets.find(a=>String(a.id)===String(req.body.assetId));
