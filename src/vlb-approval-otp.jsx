@@ -1,8 +1,8 @@
-import React,{useEffect,useRef,useState} from 'react';
+import React,{useEffect,useState} from 'react';
 import {displaySiteName} from '../shared/region-scope.mjs';
 import {otpCountdown,otpSentText} from './vlb-batch-holds.jsx';
 
-// PM approval by OTP for batch controls (reopen a closed batch, unlock VLB). The MIS user asks
+// PM approval by OTP for reopening a closed batch. The MIS user asks
 // for the code, phones the site PM, and enters it; the server records the PM's approval.
 const post=async(session,url,body)=>{
  const response=await fetch(url,{method:'POST',cache:'no-store',headers:{Authorization:'Bearer '+session.token,'Content-Type':'application/json'},body:JSON.stringify(body||{})});
@@ -11,7 +11,7 @@ const post=async(session,url,body)=>{
  return data;
 };
 const useClock=active=>{const [now,setNow]=useState(()=>Date.now());useEffect(()=>{if(!active)return;const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer)},[active]);return now};
-export const otpLabels={reopen:'Reopen OTP',unlock_vlb:'Unlock VLB OTP'};
+export const otpLabels={reopen:'Reopen OTP'};
 export const liveOtpFor=(batch,purpose)=>(batch?.approvalOtps||[]).find(otp=>otp.purpose===purpose&&otp.status==='sent')||null;
 export const validOtp=code=>/^\d{6}$/.test(String(code||'').trim());
 
@@ -31,21 +31,4 @@ export function ApprovalOtpPanel({session,batch,purpose,reason,disabled=false,on
     <button type="button" disabled={busy||disabled} onClick={request}>{expired?'Request new OTP':'Resend'}</button></div></>}
   {message&&<p className="logbook-message error" role="alert">{message}</p>}
  </div>;
-}
-
-export function VlbUnlockOtpDialog({session,batch,onChanged,onDismiss}){
- const dialog=useRef(null),[reason,setReason]=useState(''),[error,setError]=useState('');
- useEffect(()=>{const element=dialog.current,previous=document.activeElement;element.showModal();return()=>{element.close();previous?.focus?.()}},[]);
- const live=liveOtpFor(batch,'unlock_vlb');
- const approved=async data=>{setError('');if(data?.batch)await onChanged?.(data.batch);onDismiss?.()};
- return <dialog className="vlb-reopen-dialog" ref={dialog} aria-modal="true" aria-labelledby="vlb-unlock-title" onCancel={event=>{event.preventDefault();onDismiss?.()}}><div className="mis-popup-close-bar"><button type="button" className="mis-popup-close" onClick={onDismiss}  aria-label="Close window">× Close</button></div>
-  <span className="vlb-permission-status">VLB locked</span>
-  <h2 id="vlb-unlock-title">Unlock VLB with PM approval</h2>
-  <p>VLB is locked for <strong>{batch.name}</strong>. Unlocking clears the machine list built at lock time; machine entries already saved stay in the Equipment Log Book. The site Project Manager must approve.</p>
-  {!live&&<><label htmlFor="vlb-unlock-reason">Reason for unlocking VLB *</label><textarea id="vlb-unlock-reason" autoFocus required maxLength={2000} value={reason} onChange={event=>setReason(event.target.value)} placeholder="Which tipper cards must change and why"/></>}
-  {live&&<p className="vlb-approval-help">Reason sent to the PM: {live.reason}</p>}
-  {error&&<p className="logbook-message error" role="alert">{error}</p>}
-  <ApprovalOtpPanel session={session} batch={batch} purpose="unlock_vlb" reason={live?live.reason:reason.trim()} disabled={!live&&reason.trim().length<5} onApproved={approved} requestLabel="Request unlock OTP"/>
-  <div className="vlb-batch-actions"><button type="button" onClick={onDismiss}>Close</button></div>
- </dialog>;
 }

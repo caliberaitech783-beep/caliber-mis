@@ -14,7 +14,6 @@ import {vlbRecordSource,vlbRecordEntryType} from '../shared/vlb-batch-format.mjs
 import VlbBatchReport from './vlb-batch-report.jsx';
 import VlbBatchGovernance from './vlb-batch-governance.jsx';
 import VlbReopenDialog from './vlb-reopen-dialog.jsx';
-import {VlbUnlockOtpDialog} from './vlb-approval-otp.jsx';
 import VlbBatchHolds,{NewEquipmentRequest} from './vlb-batch-holds.jsx';
 import TableSmartPrint from './table-smart-print.jsx';
 import './log-book-form.css';
@@ -39,7 +38,7 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
 
  const autoOpenedEntryBatch=useRef('');
  // Two-stage (VLB -> ELB) state. Declared after the existing hooks so hook order stays unchanged.
- const [twoStageList,setTwoStageList]=useState(false),[newEquipment,setNewEquipment]=useState(false),[unlockOtp,setUnlockOtp]=useState(false);
+ const [twoStageList,setTwoStageList]=useState(false),[newEquipment,setNewEquipment]=useState(false);
  const [equipmentElbHidden,setEquipmentElbHidden]=useState(false);
  const [entryFilter,setEntryFilter]=useState('');
  useEffect(()=>setEntryFilter(''),[viewed?.id,viewed?.stage]);
@@ -223,7 +222,7 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
   </section>
   {pmApprovalTrial?.active&&<p role="status" className="vlb-batch-notice">VLB trial: PM approval is paused until {new Date(pmApprovalTrial.endsAt).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})} IST. Authorized MIS users can reopen batches directly.</p>}
   {error&&<p className="logbook-message error" role="alert">{error}</p>}
- {openBatch&&<div className="vlb-batch-notice vlb-open-batch-notice" role="status"><strong>Open batch: {openBatch.restricted?'Site access changed':openBatch.name}</strong><p>{openBatch.stageWait||(twoStageList?(openBatch.stage==='elb_open'?'VLB is locked. Save ELBs for equipment with trips, then close and lock ELB. Equipment with zero trips is optional.':openBatch.stage==='lmv_open'?'Enter LMV cards, then lock LMV to open ELB.':'Enter VLB cards, then lock VLB to release the next batch for this site.'):'Continue Manual, Scan or Upload in this batch. Use Save & lock batch when finished.')}</p>{openBatch.restricted?<p>Your site assignment has changed. Contact an administrator to restore access before saving this batch.</p>:<div className="vlb-batch-actions"><button type="button" disabled={busy||detailLoading} onClick={()=>view(openBatch,true)}>Continue open batch</button>{twoStageList?(openBatch.stage==='elb_open'&&<button type="button" disabled={busy||openBatch.canClose===false} onClick={close}>Close &amp; lock ELB</button>):openBatch.canClose!==false&&<button type="button" disabled={busy} onClick={close}>Save &amp; lock batch</button>}</div>}</div>}
+ {openBatch&&<div className="vlb-batch-notice vlb-open-batch-notice" role="status"><strong>Open batch: {openBatch.restricted?'Site access changed':openBatch.name}</strong><p>{openBatch.stageWait||(twoStageList?(openBatch.stage==='elb_open'?'VLB is locked. Save ELBs for equipment with trips, then close and lock ELB. Equipment with zero trips is optional.':openBatch.stage==='lmv_open'?'Enter LMV cards, then lock LMV to open ELB.':'Enter VLB cards, then lock VLB to open LMV.'):'Continue Manual, Scan or Upload in this batch. Use Save & lock batch when finished.')}</p>{openBatch.restricted?<p>Your site assignment has changed. Contact an administrator to restore access before saving this batch.</p>:<div className="vlb-batch-actions"><button type="button" disabled={busy||detailLoading} onClick={()=>view(openBatch,true)}>Continue open batch</button>{twoStageList?(openBatch.stage==='elb_open'&&<button type="button" disabled={busy||openBatch.canClose===false} onClick={close}>Close &amp; lock ELB</button>):openBatch.canClose!==false&&<button type="button" disabled={busy} onClick={close}>Save &amp; lock batch</button>}</div>}</div>}
 
   <button type="button" onClick={()=>setShowDeleted(v=>!v)}>{showDeleted?'Hide deleted batches':'Deleted batches'}</button>
   {showDeleted&&<DeletedVlbBatches read={read} refresh={refresh} canManage={actor?.canCreate} onRestore={batch=>setRecovery({batch,operation:'restore'})} onPurge={batch=>setRecovery({batch,operation:'purge'})} onPurgeAll={()=>setRecovery({batch:{id:'all',name:'All deleted batches'},operation:'purge-all'})}/>}
@@ -269,9 +268,8 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
      <button type="button" className="vlb-approval-primary" disabled={busy||detailLoading||!viewed.canLockLmv} onClick={()=>lockStage('lmv')}>Lock LMV</button>
      <button type="button" disabled>ELB entry · Lock LMV first</button>
      {viewed.canUnlockVlb&&<button type="button" disabled={busy} onClick={unlockVlb}>Unlock VLB</button>}
-     {viewed.canRequestUnlockOtp&&<button type="button" disabled={busy} onClick={()=>setUnlockOtp(true)}>Unlock VLB (PM OTP)</button>}
     </div>}
-    {stage==='elb_open'&&<><div className="vlb-batch-actions">{onEquipmentElb&&!equipmentElbHidden&&<button type="button" className="vlb-approval-primary vlb-open-elb-button" disabled={busy||viewed.canEnterFleet===false} onClick={()=>onEquipmentElb(viewed)}>Process Equipment ELB</button>}<button type="button" aria-expanded={!equipmentElbHidden} aria-controls="vlb-equipment-elb-details" onClick={()=>setEquipmentElbHidden(v=>!v)}>{equipmentElbHidden?'Show Equipment ELB':'Hide Equipment ELB'}</button>{viewed.canUnlockVlb&&<button type="button" disabled={busy} onClick={unlockVlb}>Unlock VLB</button>}{viewed.canRequestUnlockOtp&&<button type="button" disabled={busy} onClick={()=>setUnlockOtp(true)}>Unlock VLB (PM OTP)</button>}<button type="button" disabled={busy||detailLoading||!viewed.canClose} onClick={()=>close(viewed)}>Close &amp; lock ELB</button>{canDeleteManualElb&&<button type="button" disabled={busy||detailLoading} aria-expanded={deleteBatchId===viewed.id} onClick={()=>setDeleteBatchId(id=>id===viewed.id?null:viewed.id)}>Delete manual ELBs</button>}</div>
+    {stage==='elb_open'&&<><div className="vlb-batch-actions">{onEquipmentElb&&!equipmentElbHidden&&<button type="button" className="vlb-approval-primary vlb-open-elb-button" disabled={busy||viewed.canEnterFleet===false} onClick={()=>onEquipmentElb(viewed)}>Process Equipment ELB</button>}<button type="button" aria-expanded={!equipmentElbHidden} aria-controls="vlb-equipment-elb-details" onClick={()=>setEquipmentElbHidden(v=>!v)}>{equipmentElbHidden?'Show Equipment ELB':'Hide Equipment ELB'}</button>{viewed.canUnlockVlb&&<button type="button" disabled={busy} onClick={unlockVlb}>Unlock VLB</button>}<button type="button" disabled={busy||detailLoading||!viewed.canClose} onClick={()=>close(viewed)}>Close &amp; lock ELB</button>{canDeleteManualElb&&<button type="button" disabled={busy||detailLoading} aria-expanded={deleteBatchId===viewed.id} onClick={()=>setDeleteBatchId(id=>id===viewed.id?null:viewed.id)}>Delete manual ELBs</button>}</div>
     {canDeleteManualElb&&deleteBatchId===viewed.id&&<LogBookDeletion key={viewed.id} session={session} context={{manualElbScope:{site:viewed.site,date:viewed.report_date,shift:viewed.shift}}}/>}
      {!viewed.stageWait&&viewed.canClose===false&&<p role="status">The batch owner or an MIS administrator can close and lock this ELB.</p>}
      <div id="vlb-equipment-elb-details" hidden={equipmentElbHidden}>
@@ -307,7 +305,6 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
 
   {viewed&&selectedCard&&<VlbBatchCardDetails key={viewed.id+":"+selectedCard.viewKey} kind={selectedCard.kind} onClose={()=>{setSelectedCard(null);document.querySelector(".vlb-active-batch-panel")?.scrollIntoView({block:"start"})}} session={session} batch={viewed} record={selectedCard} ReportSection={ReportSection}/> }
   <VlbBatchGovernance session={session} batch={viewed} actor={actor} refresh={refresh} onChanged={changed} onManual={twoStage&&stage!=='vlb_open'?undefined:onManual} onScan={twoStage&&stage!=='vlb_open'?undefined:onScan} onRequestReopen={()=>setShowApproval(true)} onApprovals={onApprovals}/>
-  {unlockOtp&&viewed&&['lmv_open','elb_open'].includes(stage)&&<VlbUnlockOtpDialog key={viewed.id} session={session} batch={viewed} onChanged={async batch=>{++detailRequest.current;setDetailLoading(false);setViewed(batch);setOpenBatch(batch.closed_at?null:batch);setRefresh(n=>n+1)}} onDismiss={()=>setUnlockOtp(false)}/>}
   {showApproval&&viewed?.closed_at&&<VlbReopenDialog key={viewed.id+':'+viewed.closure_revision} session={session} batch={viewed} actor={actor} onChanged={changed} onDismiss={()=>setShowApproval(false)}/>}
  </section>;
 }

@@ -8,7 +8,6 @@ import {generateOtp,hashOtp,otpExpiresAt,checkOtpAttempt,resendTooSoon,otpFail,O
 // only, ten minutes, five attempts, one request per minute, single use.
 export const APPROVAL_PURPOSES={
  reopen:{label:'Reopen closed batch',verb:'reopen'},
- unlock_vlb:{label:'Unlock VLB',verb:'unlock VLB for'},
 };
 export const VLB_APPROVAL_OTP_SCHEMA=`
  CREATE TABLE IF NOT EXISTS mis_vlb_approval_otps(
@@ -55,7 +54,7 @@ export async function issueApprovalOtp(client,{batch,purpose,reason,requestId=nu
 // asked for the code can enter it, and only against the batch it was issued for.
 export async function consumeApprovalOtp(client,{otpId,batchId,login,otp}){
  const row=/^[0-9a-f-]{36}$/i.test(otpId||'')?(await client.query('SELECT * FROM mis_vlb_approval_otps WHERE id=$1 FOR UPDATE',[otpId])).rows[0]:null;
- if(!row||row.batch_id!==batchId||row.requested_by!==login)otpFail('This approval request is no longer available. Request a new OTP.',404);
+ if(!row||row.purpose!=='reopen'||row.batch_id!==batchId||row.requested_by!==login)otpFail('This approval request is no longer available. Request a new OTP.',404);
  const check=checkOtpAttempt(row,otp);
  if(!check.ok){
   if(check.status!=='missing'&&(check.status!==row.status||check.attempts!==undefined&&check.attempts!==row.attempts))await client.query('UPDATE mis_vlb_approval_otps SET status=$2,attempts=$3 WHERE id=$1',[row.id,check.status,check.attempts??row.attempts]);
@@ -65,6 +64,6 @@ export async function consumeApprovalOtp(client,{otpId,batchId,login,otp}){
 }
 
 export async function liveApprovalOtps(client,batchId,login){
- const {rows}=await client.query("SELECT * FROM mis_vlb_approval_otps WHERE batch_id=$1 AND requested_by=$2 AND status='sent' AND expires_at>clock_timestamp() ORDER BY requested_at DESC",[batchId,login]);
+ const {rows}=await client.query("SELECT * FROM mis_vlb_approval_otps WHERE batch_id=$1 AND requested_by=$2 AND purpose='reopen' AND status='sent' AND expires_at>clock_timestamp() ORDER BY requested_at DESC",[batchId,login]);
  return rows;
 }

@@ -16,7 +16,7 @@ import {withoutRowSecurityRequest} from '../services/row-security.mjs';
 import {vlbBatchActor,batchPmAtSite} from '../rules/vlb-batch-access.mjs';
 import {readFleetBreakdowns,stageDetails,lockVlb,lockLmv,unlockVlb,assertCloseAllowed,saveFleetDraft,saveFleetEntry,equipmentAssets} from '../rules/vlb-batch-stages.mjs';
 import {twoStageEnabled,batchStage,FLEET_STATUSES} from '../rules/vlb-two-stage.mjs';
-import {APPROVAL_PURPOSES,issueApprovalOtp,consumeApprovalOtp,liveApprovalOtps,publicApprovalOtp} from '../services/vlb-approval-otp.mjs';
+import {issueApprovalOtp,consumeApprovalOtp,liveApprovalOtps,publicApprovalOtp} from '../services/vlb-approval-otp.mjs';
 import {batchStageWaits} from '../rules/vlb-batch-queue.mjs';
 import {previousBatchScope,batchOrderBlock} from '../../shared/vlb-batch-order.mjs';
 export {VLB_BATCH_SCHEMA} from '../rules/vlb-batch-policy.mjs';
@@ -25,6 +25,7 @@ const fail=batchFail;
 const creator=batch=>batch.creator_login||batch.created_by;
 const isOwner=(batch,actor)=>batchLogin(batch.amendment_by||creator(batch))===actor.login;
 const mayClose=(batch,actor,twoStage=twoStageEnabled())=>isOwner(batch,actor)||(twoStage&&actor.admin);
+const mayUnlockVlb=(batch,actor)=>isOwner(batch,actor)||actor.mis||actor.admin||batchPmAtSite(actor,batch.site);
 const canClose=(batch,actor,twoStage)=>!batch.closed_at&&(!twoStage||batchStage(batch)==='elb_open')&&mayClose(batch,actor,twoStage);
 async function eligible(client,selection){
  const {rows}=await client.query(`SELECT l.id,l.book_no,l.book_type,l.site,l.book_date::text,l.data,l.revision,l.created_by,l.created_at
@@ -73,7 +74,7 @@ async function details(client,batch,req){
  const lmvRecords=stageInfo.stage==='lmv_open'?(await client.query(
   "SELECT id,book_no,book_type,data,revision FROM mis_log_books WHERE book_type='lmv' AND book_date=$1 AND deleted_at IS NULL ORDER BY id",
   [batch.report_date])).rows.filter(record=>canonicalSiteName(record.data.location)===canonicalSiteName(batch.site)&&vlbRecordScope(record.data).shift===batch.shift):[];
- return {...batch,canEditSavedFleet:req.batchActor.admin,created_by:creator(batch),pmApprovalTrial,trialExpired,records,lmvRecords,canLockLmv:!stageInfo.stageWait&&stageInfo.stage==='lmv_open'&&(owner||req.batchActor.admin)&&!trialExpired&&!stageInfo.lmvLockBlockers?.length,entry_count:records.length,requests,audit,approvalOtps,...stageInfo,canLockVlb:stageInfo.twoStage&&stageInfo.stage==='vlb_open'&&(owner||req.batchActor.admin)&&!trialExpired&&!stageInfo.lockBlockers.length,canUnlockVlb:stageInfo.twoStage&&['lmv_open','elb_open'].includes(stageInfo.stage)&&(batchPmAtSite(req.batchActor,batch.site)||req.batchActor.admin),canRequestUnlockOtp:stageInfo.twoStage&&['lmv_open','elb_open'].includes(stageInfo.stage)&&!(batchPmAtSite(req.batchActor,batch.site)||req.batchActor.admin)&&(owner||req.batchActor.mis),canEnterFleet:!stageInfo.stageWait&&stageInfo.twoStage&&stageInfo.stage==='elb_open'&&!trialExpired&&(owner||req.batchActor.admin),canContinue:!trialExpired&&!batch.closed_at&&(!batch.amendment_by||owner)&&(!stageInfo.twoStage||stageInfo.stage==='vlb_open'),canClose:!stageInfo.stageWait&&canClose(batch,req.batchActor,stageInfo.twoStage),canRequestReopen:Boolean(batch.closed_at&&req.batchActor.mis),canReopen:Boolean(batch.closed_at&&req.batchActor.mis&&(grantValid||pmApprovalTrial.active)),approvalExpired:Boolean(grant&&!grantValid&&!pmApprovalTrial.active)};
+ return {...batch,canEditSavedFleet:req.batchActor.admin,created_by:creator(batch),pmApprovalTrial,trialExpired,records,lmvRecords,canLockLmv:!stageInfo.stageWait&&stageInfo.stage==='lmv_open'&&(owner||req.batchActor.admin)&&!trialExpired&&!stageInfo.lmvLockBlockers?.length,entry_count:records.length,requests,audit,approvalOtps,...stageInfo,canLockVlb:stageInfo.twoStage&&stageInfo.stage==='vlb_open'&&(owner||req.batchActor.admin)&&!trialExpired&&!stageInfo.lockBlockers.length,canUnlockVlb:stageInfo.twoStage&&['lmv_open','elb_open'].includes(stageInfo.stage)&&mayUnlockVlb(batch,req.batchActor),canEnterFleet:!stageInfo.stageWait&&stageInfo.twoStage&&stageInfo.stage==='elb_open'&&!trialExpired&&(owner||req.batchActor.admin),canContinue:!trialExpired&&!batch.closed_at&&(!batch.amendment_by||owner)&&(!stageInfo.twoStage||stageInfo.stage==='vlb_open'),canClose:!stageInfo.stageWait&&canClose(batch,req.batchActor,stageInfo.twoStage),canRequestReopen:Boolean(batch.closed_at&&req.batchActor.mis),canReopen:Boolean(batch.closed_at&&req.batchActor.mis&&(grantValid||pmApprovalTrial.active)),approvalExpired:Boolean(grant&&!grantValid&&!pmApprovalTrial.active)};
 }
 // One read shared by callers that arrive together and reused for ttlMs. clear() drops the
 // copy, and a read already running when clear() is called is not handed to later callers.
@@ -269,7 +270,7 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
   return details(client,await lockLmv(client,batch,req.batchActor.login),req);
  }))));
  app.post('/api/vlb-batches/:id/unlock-vlb',...protect,handle(async(req,res)=>res.json(await batchTransaction(req,async(client,batch)=>{
-  if(!batchPmAtSite(req.batchActor,batch.site)&&!req.batchActor.admin)fail('Only the site Project Manager or an MIS administrator can unlock VLB.',403);
+  if(!mayUnlockVlb(batch,req.batchActor))fail('Only the batch owner, an MIS user, an MIS administrator or the site Project Manager can unlock VLB.',403);
   const reason=String(req.body?.reason||'').trim();if(reason.length<5||reason.length>2000)fail('Enter an unlock reason of 5 to 2000 characters.',400);
   return details(client,await unlockVlb(client,batch,req.batchActor.login,{reason}),req);
  },{exclusive:true}))));
@@ -355,40 +356,27 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
  }));
  app.get('/api/vlb-batches/:id/approval-otp',...protect,handle(async(req,res)=>{const batch=await visible(pool,req.params.id,req);res.json({otps:(await liveApprovalOtps(pool,batch.id,req.batchActor.login)).map(publicApprovalOtp)})}));
  app.post('/api/vlb-batches/:id/approval-otp',...protect,handle(async(req,res)=>{
-  const purpose=String(req.body?.purpose||'').trim();if(!APPROVAL_PURPOSES[purpose])fail('Select what the Project Manager should approve.',400);
-  const reason=String(req.body?.reason||'').trim();if(reason.length<5||reason.length>2000)fail('Enter '+(purpose==='reopen'?'a reopening':'an unlock')+' reason of 5 to 2000 characters.',400);
+  const purpose=String(req.body?.purpose||'').trim();if(purpose!=='reopen')fail('PM OTP is only available for reopening a closed batch.',400);
+  const reason=String(req.body?.reason||'').trim();if(reason.length<5||reason.length>2000)fail('Enter a reopening reason of 5 to 2000 characters.',400);
   res.json(await batchTransaction(req,async(client,batch)=>{
-   let requestId=null;
-   if(purpose==='reopen'){
-    if(!req.batchActor.mis)fail('Only an MIS user can request batch reopening.',403);
-    if((await vlbPmTrial(client)).active)fail('PM approval is paused during the VLB trial. Reopen the batch directly.',409);
-    requestId=(await ensureReopenRequest(client,batch,req,reason)).id;
-   }else{
-    if(!twoStageEnabled()||!['lmv_open','elb_open'].includes(batchStage(batch)))fail(batch.closed_at?'Reopen the batch before unlocking VLB.':'VLB is not locked for this batch.',409);
-    if(!isOwner(batch,req.batchActor)&&!req.batchActor.mis&&!req.batchActor.admin)fail('Only the batch owner or an MIS user can ask the site PM to unlock VLB.',403);
-   }
+   if(!req.batchActor.mis)fail('Only an MIS user can request batch reopening.',403);
+   if((await vlbPmTrial(client)).active)fail('PM approval is paused during the VLB trial. Reopen the batch directly.',409);
+   const requestId=(await ensureReopenRequest(client,batch,req,reason)).id;
    const row=await issueApprovalOtp(client,{batch,purpose,reason,requestId,requestedBy:req.batchActor.login,requesterName:req.session?.name||req.batchActor.login,pmLogins,deliver});
    await auditVlbBatch(client,batch,req.batchActor.login,'approval_otp_sent',{purpose,otpId:row.id,requestId,sentTo:row.sent_to,channels:row.channels,reason});
    return {otp:publicApprovalOtp(row),requestId};
   }));
  }));
  app.post('/api/vlb-batches/:id/approval-otp/:otpId/verify',...protect,handle(async(req,res)=>{
-  const outcome=await batchTransaction(req,async(client,batch)=>{
+  await batchTransaction(req,async(client,batch)=>{
    const row=await consumeApprovalOtp(client,{otpId:req.params.otpId,batchId:batch.id,login:req.batchActor.login,otp:req.body?.otp});
    const note='Approved by OTP sent to '+row.sent_to.join(', ');
-   if(row.purpose==='reopen'){
-    const request=(await client.query('SELECT * FROM mis_vlb_reopen_requests WHERE id=$1 AND batch_id=$2 FOR UPDATE',[row.request_id,batch.id])).rows[0];
-    if(!request||!batch.closed_at||request.closure_revision!==batch.closure_revision)fail('This reopening request is no longer pending for the current closure. Request a new OTP.',409);
-    if(request.status==='pending')await client.query("UPDATE mis_vlb_reopen_requests SET status='approved',decided_by=$2,decision_note=$3,decided_at=NOW() WHERE id=$1",[request.id,row.sent_to[0],note]);
-    else if(request.status!=='approved')fail('This reopening request was already decided. Request a new OTP.',409);
-    await auditVlbBatch(client,batch,req.batchActor.login,'reopen_approved',{requestId:request.id,requestedBy:request.requested_by,via:'otp',otpId:row.id,sentTo:row.sent_to,note});
-    return {purpose:'reopen'};
-   }
-   if(!['lmv_open','elb_open'].includes(batchStage(batch)))fail(batch.closed_at?'Reopen the batch before unlocking VLB.':'VLB is not locked for this batch.',409);
-   const opened=await unlockVlb(client,batch,req.batchActor.login,{reason:row.reason,approvedBy:row.sent_to,via:'otp'});
-   return {purpose:'unlock_vlb',batch:await details(client,opened,req)};
+   const request=(await client.query('SELECT * FROM mis_vlb_reopen_requests WHERE id=$1 AND batch_id=$2 FOR UPDATE',[row.request_id,batch.id])).rows[0];
+   if(!request||!batch.closed_at||request.closure_revision!==batch.closure_revision)fail('This reopening request is no longer pending for the current closure. Request a new OTP.',409);
+   if(request.status==='pending')await client.query("UPDATE mis_vlb_reopen_requests SET status='approved',decided_by=$2,decision_note=$3,decided_at=NOW() WHERE id=$1",[request.id,row.sent_to[0],note]);
+   else if(request.status!=='approved')fail('This reopening request was already decided. Request a new OTP.',409);
+   await auditVlbBatch(client,batch,req.batchActor.login,'reopen_approved',{requestId:request.id,requestedBy:request.requested_by,via:'otp',otpId:row.id,sentTo:row.sent_to,note});
   },{exclusive:true});
-  if(outcome.purpose!=='reopen')return res.json({approved:true,unlocked:true,batch:outcome.batch});
   try{const batch=await batchTransaction(req,(client,current)=>performReopen(client,current,req));return res.json({approved:true,reopened:true,batch});}
   catch(error){if(!error.status)throw error;const batch=await details(pool,await visible(pool,req.params.id,req),req);return res.json({approved:true,reopened:false,error:error.message,batch});}
  }));
