@@ -2,7 +2,7 @@ import {extendOperationalScanFixture} from './operational-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PGlite} from '@electric-sql/pglite';
-import {SCAN_QUEUE_SCHEMA,SCAN_LEASE_SCHEMA,claimNextScanCard,requestScanBatch,queuedScanBatches,renewReadLeases,requeueExpiredReads,releaseReadLeases,beatScanEngine,liveScanEngines,removeScanEngine,scanDatabaseUnavailable,requeueAfterDatabaseFailure,DATABASE_REQUEUE_LIMIT,DATABASE_FAILURE_TEXT} from '../server/services/scan-extraction-queue.mjs';
+import {SCAN_QUEUE_SCHEMA,SCAN_LEASE_SCHEMA,claimNextScanCard,requestScanBatch,queuedScanBatches,renewReadLeases,requeueExpiredReads,releaseReadLeases,beatScanEngine,liveScanEngines,removeScanEngine,scanDatabaseUnavailable,scanReadTiming,requeueAfterDatabaseFailure,DATABASE_REQUEUE_LIMIT,DATABASE_FAILURE_TEXT} from '../server/services/scan-extraction-queue.mjs';
 import {groupBatchesByLane,engineCovers} from '../server/rules/scan-lanes.mjs';
 async function setup(t){
  const db=new PGlite();t.after(()=>db.close());
@@ -118,4 +118,28 @@ test('a card whose save hit a busy database goes back to the queue, then fails w
  assert.equal((await requeueAfterDatabaseFailure(db,{...last,raw_fields:{...last.raw_fields,scanReadToken:'stale'}})).rows.length,0,'another read of the card is left alone');
  assert.equal((await requeueAfterDatabaseFailure(db,last)).rows[0].status,'error');
  assert.equal((await db.query("SELECT error FROM mis_scan_cards WHERE id='busy'")).rows[0].error,DATABASE_FAILURE_TEXT);
+});
+
+test('repeated progress polls cannot keep other batches behind an open batch or promote repairs',async t=>{
+ const {db,add,claim}=await setup(t);
+ await add('open-1','fresh',1);
+ await add('open-2','fresh',2);
+ await add('other-1','other',1);
+ await add('repair','old',1,{scanQueueOrigin:'repair'});
+ await requestScanBatch(db,'old');
+ await requestScanBatch(db,'fresh');
+ assert.equal((await claim()).id,'open-1','an open batch gets the first slot when foreground batches are tied');
+ assert.equal((await claim()).id,'other-1','a batch with no reader gets the next slot');
+ assert.equal((await claim()).id,'open-2','visible repair work stays behind foreground uploads');
+ assert.equal((await claim()).id,'repair');
+});
+
+test('a recovered lease measures the new queue wait from requeue time',async t=>{
+ const {db,add,claim}=await setup(t);
+ await add('recovered','old',1,{},'reading');
+ await requeueExpiredReads(db);
+ const card=await claim();
+ const queuedAt=Date.parse(card.raw_fields.scanQueuedAt);
+ assert.ok(Number.isFinite(queuedAt));
+ assert.equal(scanReadTiming(card.raw_fields.scanQueuedAt,{claimedAt:queuedAt+800},queuedAt+10_000).queuedMs,800);
 });

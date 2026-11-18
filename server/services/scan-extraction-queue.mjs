@@ -34,13 +34,13 @@ export const SCAN_LEASE_SCHEMA=`
 export const processLeaseOwner=`${process.env.WEBSITE_INSTANCE_ID?.slice(0,12)||'local'}:${process.pid}:${randomUUID().slice(0,8)}`;
 // Where a card's time went, kept with the card (raw_fields.scanTiming) so a slow
 // day can be explained afterwards. Milliseconds:
-//   queuedMs   from upload (or the last retry's row) until a reader took the card
+//   queuedMs   from the latest enqueue until a reader took the card
 //   firstReadMs  the first read: preparing the pictures and Gemini's answer
 //   recheckMs  the door and field recheck, which is a second Gemini read
 //   finishMs   matching against the masters, estimates and saving the result
 // workers is how many cards the lane was reading when this one finished.
-export function scanReadTiming(createdAt,{claimedAt,firstReadAt,recheckedAt},finishedAt,{workers=0,engine=false}={}){
- const created=createdAt instanceof Date?createdAt.getTime():Date.parse(createdAt),span=(from,to)=>Number.isFinite(from)&&Number.isFinite(to)?Math.max(0,Math.round(to-from)):null;
+export function scanReadTiming(queuedAt,{claimedAt,firstReadAt,recheckedAt},finishedAt,{workers=0,engine=false}={}){
+ const created=queuedAt instanceof Date?queuedAt.getTime():Date.parse(queuedAt),span=(from,to)=>Number.isFinite(from)&&Number.isFinite(to)?Math.max(0,Math.round(to-from)):null;
  return {queuedMs:span(created,claimedAt),firstReadMs:span(claimedAt,firstReadAt),recheckMs:span(firstReadAt,recheckedAt),finishMs:span(recheckedAt,finishedAt),totalMs:span(claimedAt,finishedAt),finishedAt:new Date(finishedAt).toISOString(),workers,engine};
 }
 export const scanQueueBackground=alias=>`(${alias}.raw_fields->>'scanQueueOrigin'='repair' OR (COALESCE(${alias}.raw_fields->>'scanQueueOrigin','')='' AND ${alias}.raw_fields->>'equipmentNumberRecoveryVersion'='1'))`;
@@ -58,9 +58,10 @@ export async function claimNextScanCard(pool,{batchIds=null,owner=processLeaseOw
   LEFT JOIN active_counts active ON active.batch_id=c.batch_id
   WHERE c.status='queued' AND ${operationalScanSql('c')}
   AND ($1::text[] IS NULL OR c.batch_id::text=ANY($1::text[]))
-  ORDER BY CASE WHEN b.extraction_requested_at>NOW()-INTERVAL '30 seconds' THEN 0 ELSE 1 END,
-   CASE WHEN ${scanQueueBackground('c')} THEN 1 ELSE 0 END,
+  -- Foreground work and even sharing of readers come before a progress poll's preference.
+  ORDER BY CASE WHEN ${scanQueueBackground('c')} THEN 1 ELSE 0 END,
    COALESCE(active.n,0),
+   CASE WHEN b.extraction_requested_at>NOW()-INTERVAL '30 seconds' THEN 0 ELSE 1 END,
    b.extraction_last_started_at ASC NULLS FIRST,b.created_at DESC,c.created_at,c.ordinal,c.id
   LIMIT 1 FOR UPDATE OF c SKIP LOCKED
  ), touched AS (
@@ -87,7 +88,8 @@ export async function renewReadLeases(pool,owner=processLeaseOwner,ids=null){
 // Put back cards whose reader stopped renewing. Cards claimed before leases
 // existed carry no lease and are treated as abandoned.
 export async function requeueExpiredReads(pool){
- return pool.query(`UPDATE mis_scan_cards SET status='queued',read_lease_owner=NULL,read_lease_until=NULL
+ return pool.query(`UPDATE mis_scan_cards SET status='queued',read_lease_owner=NULL,read_lease_until=NULL,
+  raw_fields=COALESCE(raw_fields,'{}'::jsonb)||jsonb_build_object('scanQueuedAt',clock_timestamp())
  WHERE status='reading' AND (read_lease_until IS NULL OR read_lease_until<clock_timestamp())`);
 }
 // A database that is busy or restarting is not a failed scan. On 14 Nov 2026 a
@@ -107,14 +109,15 @@ export async function requeueAfterDatabaseFailure(pool,card){
  return pool.query(`UPDATE mis_scan_cards SET
   status=CASE WHEN COALESCE((raw_fields->>'databaseRequeues')::int,0)>=${DATABASE_REQUEUE_LIMIT} THEN 'error' ELSE 'queued' END,
   error=CASE WHEN COALESCE((raw_fields->>'databaseRequeues')::int,0)>=${DATABASE_REQUEUE_LIMIT} THEN $3 ELSE '' END,
-  raw_fields=raw_fields||jsonb_build_object('databaseRequeues',COALESCE((raw_fields->>'databaseRequeues')::int,0)+1),
+  raw_fields=raw_fields||jsonb_build_object('databaseRequeues',COALESCE((raw_fields->>'databaseRequeues')::int,0)+1,'scanQueuedAt',clock_timestamp()),
   read_lease_owner=NULL,read_lease_until=NULL,revision=revision+1
   WHERE id=$1 AND status='reading' AND raw_fields->>'scanReadToken'=$2 RETURNING status`,[card.id,card.raw_fields?.scanReadToken,DATABASE_FAILURE_TEXT]);
 }
 // On a clean stop, hand this process's unfinished cards straight back so the
 // next reader starts them at once instead of waiting for the hold to run out.
 export async function releaseReadLeases(pool,owner=processLeaseOwner){
- return pool.query(`UPDATE mis_scan_cards SET status='queued',read_lease_owner=NULL,read_lease_until=NULL WHERE status='reading' AND read_lease_owner=$1`,[owner]);
+ return pool.query(`UPDATE mis_scan_cards SET status='queued',read_lease_owner=NULL,read_lease_until=NULL,
+  raw_fields=COALESCE(raw_fields,'{}'::jsonb)||jsonb_build_object('scanQueuedAt',clock_timestamp()) WHERE status='reading' AND read_lease_owner=$1`,[owner]);
 }
 export async function beatScanEngine(pool,{owner=processLeaseOwner,siteLane=null,excludedLanes=[],version='',keySource='',reading=0,readTotal=0}={}){
  return pool.query(`INSERT INTO mis_scan_engines(owner,site_lane,excluded_lanes,version,key_source,reading,read_total) VALUES($1,$2,$3::text[],$4,$5,$6,$7)

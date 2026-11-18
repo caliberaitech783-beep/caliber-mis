@@ -89,6 +89,6 @@ test('the reader stores the timing with the card it finished',async()=>{
  assert.match(worker,/decodeScanRow\(current\);const timing=\{claimedAt:Date\.now\(\)\};/);
  assert.match(worker,/timing\.firstReadAt=Date\.now\(\);await readerAnswered\(lane\);/);
  assert.match(worker,/timing\.recheckedAt=Date\.now\(\);extracted\.raw\.scanReadToken=/);
- assert.match(worker,/extracted\.raw\.scanTiming=scanReadTiming\(current\.created_at,timing,Date\.now\(\),\{workers:lane\.workers,engine:role==='engine'\}\);/);
+ assert.match(worker,/extracted\.raw\.scanTiming=scanReadTiming\(current\.raw_fields\?\.scanQueuedAt\?\?current\.created_at,timing,Date\.now\(\),\{workers:lane\.workers,engine:role==='engine'\}\);/);
  assert.ok(worker.indexOf('extracted.raw.scanTiming=')<worker.lastIndexOf("UPDATE mis_scan_cards SET status='review'"),'set before the card is saved');
 });

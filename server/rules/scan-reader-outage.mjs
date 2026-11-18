@@ -80,7 +80,7 @@ export async function claimOutageAlerts(pool){
 // account is still refused; recent cards only, never a deleted entry.
 export async function requeueOutageFailures(pool){
  return pool.query(`UPDATE mis_scan_cards c SET status='queued',error='',revision=c.revision+1,
-  raw_fields=COALESCE(c.raw_fields,'{}'::jsonb)||jsonb_build_object('scanQueueOrigin','reader-outage')
+  raw_fields=COALESCE(c.raw_fields,'{}'::jsonb)||jsonb_build_object('scanQueueOrigin','reader-outage','scanQueuedAt',clock_timestamp())
  FROM mis_scan_batches b
  WHERE b.id=c.batch_id AND c.status='error' AND c.checked_by IS NULL AND c.error ~ $1
  AND c.created_at>NOW()-INTERVAL '7 days' AND ${operationalScanSql('c')}

@@ -110,7 +110,7 @@ export async function listDuplicateCards(client,batchId){
 // The operator overrules the system: the card is read like any other upload.
 export async function restoreDuplicateCard(client,card,actor){
  if(!card.duplicate_of)throw Object.assign(new Error('This card was not skipped as a duplicate.'),{status:409});
- const result=await client.query("UPDATE mis_scan_cards SET status='queued',duplicate_of=NULL,review_note='',error='',checked_by=NULL,checked_at=NULL,raw_fields=(raw_fields-'duplicate')||jsonb_build_object('duplicateRestored',jsonb_build_object('by',$2::text,'at',NOW(),'original',raw_fields->'duplicate'->'original'),'scanQueueOrigin','user'),revision=revision+1 WHERE id=$1 AND duplicate_of IS NOT NULL RETURNING revision",[card.id,actor]);
+ const result=await client.query("UPDATE mis_scan_cards SET status='queued',duplicate_of=NULL,review_note='',error='',checked_by=NULL,checked_at=NULL,raw_fields=(raw_fields-'duplicate')||jsonb_build_object('duplicateRestored',jsonb_build_object('by',$2::text,'at',NOW(),'original',raw_fields->'duplicate'->'original'),'scanQueueOrigin','user','scanQueuedAt',clock_timestamp()),revision=revision+1 WHERE id=$1 AND duplicate_of IS NOT NULL RETURNING revision",[card.id,actor]);
  if(!result.rows.length)throw Object.assign(new Error('The card changed. Reload the entry.'),{status:409});
  return result.rows[0].revision;
 }
