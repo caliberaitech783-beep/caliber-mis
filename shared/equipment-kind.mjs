@@ -4,7 +4,7 @@ import {isSurfaceMiner} from './surface-miner-hmr.mjs';
 const text=value=>String(value??'').trim().slice(0,200);
 export const isLmv=asset=>text(asset.category||asset.equipmentCategory).toLowerCase()==='lmv';
 export const isKmrOnlyVlbVehicle=asset=>/\b(?:diesel\s+tanker|water\s+tanker|service\s+van)\b/i.test([
- asset.equipmentGroup,asset.group,asset.vehicleType,asset.type,asset.equipmentName,asset.equipment,asset.name
+ asset?.equipmentGroup,asset?.group,asset?.vehicleType,asset?.type,asset?.equipmentName,asset?.equipment,asset?.name
 ].map(text).filter(Boolean).join(' '));
 export const allowsLogBookKind=(asset,kind)=>{
  const lmv=isLmv(asset)||asset.lmv===true;

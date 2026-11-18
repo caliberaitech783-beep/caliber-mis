@@ -39,6 +39,7 @@ test('diesel tanker, water tanker and service van VLB entries require KMR but no
   assert.equal(row.openingHmr,null);assert.equal(row.closingHmr,null);assert.equal(row.totalWorkingHmr,null);
  }
  assert.equal(isKmrOnlyVlbVehicle({equipmentGroup:'Tipper'}),false);
+ assert.equal(isKmrOnlyVlbVehicle(undefined),false);
  assert.throws(()=>normalizeLogBook('vehicle',{...input(),openingHmr:'',closingHmr:''}),/Opening HMR is required/);
  assert.throws(()=>normalizeLogBook('vehicle',{...input(),openingKmr:'',closingKmr:''},{kmrOnly:true}),/Opening KMR is required/);
 });
