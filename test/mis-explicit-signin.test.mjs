@@ -6,21 +6,21 @@ import {transformWithOxc} from 'vite';
 
 const hookSource=readFileSync(new URL('../src/mis-shared-signin.jsx',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export function','function');
 const {code:hookCode}=await transformWithOxc(hookSource,'shared-signin.jsx',{jsx:{runtime:'classic'}});
-async function runHook(search,session=null){
+async function runHook(search,session=null,autoStart=false){
   const requests=[],redirects=[],events=[],effects=[];
   const scope={React,useState:initial=>[initial,()=>{}],useEffect:effect=>effects.push(effect),
     fetch:async url=>{requests.push(url);return {ok:true,json:async()=>url.endsWith('/config')?{mode:'client'}:{token:'synthetic-mis-session'}};},
     window:{location:{search,replace:url=>redirects.push(url)},history:{replaceState:()=>{}},dispatchEvent:event=>events.push(event)},
     CustomEvent:class{constructor(type,options){this.type=type;this.detail=options.detail;}}};
   const hook=new Function(...Object.keys(scope),`${hookCode};return useMisSharedSignIn;`)(...Object.values(scope));
-  hook(session,{autoStart:true});effects[0]();await new Promise(resolve=>setImmediate(resolve));
+  hook(session,{autoStart});effects[0]();await new Promise(resolve=>setImmediate(resolve));
   return {requests,redirects,events};
 }
 
-test('opening MIS with an existing Pulse session automatically starts the shared Pulse session handoff',async()=>{
+test('the Pulse-II landing page waits for the user to choose MIS or HR',async()=>{
   const result=await runHook('');
   assert.deepEqual(result.requests,['/api/mis-sso/config']);
-  assert.deepEqual(result.redirects,['/api/mis-credentials/start']);assert.deepEqual(result.events,[]);
+  assert.deepEqual(result.redirects,[]);assert.deepEqual(result.events,[]);
 });
 
 test('only a completed shared-sign-in callback exchanges the server-held handoff',async()=>{
@@ -42,7 +42,7 @@ test('refreshing MIS restores the saved session instead of signing the user out'
     useSignInLocationGate:()=>gate,SignInLocationScreen:LocationScreen,
     sessionStorage:{getItem:()=>JSON.stringify(saved),setItem:()=>{},removeItem:()=>{}},localStorage:{getItem:()=>null,removeItem:()=>{}}};
   const App=new Function(...Object.keys(scope),`${code};return MisApp;`)(...Object.values(scope));
-  assert.equal(App().type,Workspace);assert.deepEqual(receivedSession,saved);assert.equal(options.autoStart,true);
+  assert.equal(App().type,Workspace);assert.deepEqual(receivedSession,saved);assert.equal(options.autoStart,false);
   gate={phase:'asking'};assert.equal(App().type,LocationScreen,'a restored sign-in without its location waits on the location screen');
 });
 
@@ -114,4 +114,15 @@ test('a real refusal from MIS is not repeated and is shown to the user',async()=
 test('waiting for a restart stops within the 60-second life of the hand-over cookie',()=>{
   const delays=hookSource.match(/delays=\[([0-9,]+)\]/)[1].split(',').map(Number);
   assert.ok(delays.reduce((a,b)=>a+b,0)<=50000);
+});
+
+test('the production sign-in screen links to HR on Pulse-II and retains the explicit MIS handoff',()=>{
+  const render=new Function('React','SIGN_IN_LOCATION_NOTICE',hookCode+';return MisSharedLogin;')(React,'Location notice');
+  const screen=render({});
+  const navigation=screen.props.children.props.children.find(child=>child?.type==='nav');
+  const links=React.Children.toArray(navigation.props.children);
+  assert.deepEqual(links.map(link=>[link.props.href,link.props.children,link.props.target]),[
+    ['/api/mis-credentials/start','MIS sign in',undefined],
+    ['/hr/','HR sign in',undefined]
+  ]);
 });

@@ -11575,7 +11575,7 @@ function App() {
   const sidebarClosed=sidebarAuto?!sidebarPeek:sidebarHidden;
   const changeSidebarAuto=on=>{setSidebarAuto(on);setSidebarPeek(true);if(!on)changeSidebarHidden(false);try{localStorage.setItem("caliberSidebarAutoHide",String(on));}catch{}};
   const [sharedSignedOut,setSharedSignedOut]=useState(false);
-  const sharedSignIn=useMisSharedSignIn(session,{autoStart:true,paused:sharedSignedOut});
+  const sharedSignIn=useMisSharedSignIn(session,{autoStart:false,paused:sharedSignedOut});
   const accountSecurity=useAccountSecurity(session,{enabled:sharedSignIn.mode==='client'||Boolean(session?.browserSession||session?.permissions?.separateMisCredentials)});
   const locationGate=useSignInLocationGate(session?.token);
   useEffect(()=>{
@@ -12125,7 +12125,7 @@ function App() {
   if (session?.token&&(accountSecurity.loading||accountSecurity.required&&!accountSecurity.verified)) return <AccountSecurityGate state={accountSecurity} token={session.token}/>;
   if (session?.token&&locationGate.phase!=='open') return <SignInLocationScreen gate={locationGate} onSignOut={logout}/>;
   // 'checking' = the server has not yet said which sign-in applies; never show the old password form on a guess.
-  if (!session && (sharedSignIn.mode==='client'||sharedSignIn.mode==='checking')) return <MisSharedLogin error={sharedSignIn.error} message={sharedSignIn.mode==='checking'?'Opening MIS sign-in…':undefined}/>;
+  if (!session && (sharedSignIn.mode==='client'||sharedSignIn.mode==='checking')) return <MisSharedLogin error={sharedSignIn.error}/>;
   if (!session) return <Login onLogin={completeLogin} theme={theme} toggleTheme={toggleTheme} />;
   if (session.userType === "Account User") return <div className="accounts-user-workspace">
     <header><CaliberBrand subtitle="Accounts" /><nav><button type="button" className={accountWorkspace==="accounts"?"active":""} onClick={()=>setAccountWorkspace("accounts")}>Accounts</button><button type="button" className={accountWorkspace==="directory"?"active":""} onClick={()=>setAccountWorkspace("directory")}><BookUser/> Directory</button><button type="button" onClick={()=>setEmployeeLocationOpen(true)}>Employee Current Location</button><AnnouncementHistoryButton token={session.token} /><button type="button" onClick={logout}><LogOut /> Sign out</button></nav></header>
