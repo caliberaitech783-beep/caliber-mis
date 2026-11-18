@@ -8135,6 +8135,11 @@ const healthReporter=createHealthReporter({pool,telegram:telegramOutboxSender(po
  performance:performanceMonitor.snapshot(),pool:{idle:pool.idleCount,waiting:pool.waitingCount},
  scanning:(()=>{try{return bulkScanning.status();}catch{return null;}})(),
  pulseCopy:pulseBreakdownMirror?pulseBreakdownMirror.status():{enabled:false}})});
+app.get('/api/diagnostics/speed-test',requireSession,requireMisAdministrator,async(req,res,next)=>{
+ try{
+  res.set('Cache-Control','no-store').json(await healthReporter.preview());
+ }catch(error){next(error);}
+});
 registerAutomationCentre(app,{pool,requireSession,requireAdministrator:requireMisAdministrator,centre:automationCentre,mismatchWorker:equipmentMismatch,scanBatchReporter,healthReporter,misTelegram});
 scheduleBackgroundStart(()=>automationCentre.start(),180000);
 // Equipment alias OTP rule (EQUIPMENT_ALIAS_OTP): aliases saved on a reviewer's choice alone go back to pending once the rule is on; weekly mapping summary to the approver and the MIS managers.

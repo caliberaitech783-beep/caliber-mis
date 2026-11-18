@@ -1,0 +1,13 @@
+.mis-speed-test .speed-test-banner {
+  padding: 1rem 1.25rem;
+  border-radius: .75rem;
+  color: #fff;
+}
+
+.mis-speed-test .speed-test-banner.good { background: #166534; }
+.mis-speed-test .speed-test-banner.slow { background: #b91c1c; }
+.mis-speed-test .speed-test-banner strong { font-size: clamp(1.5rem, 5vw, 2.75rem); }
+.mis-speed-test .speed-test-banner ul { margin: .4rem 0 0; padding-inline-start: 1.25rem; }
+.mis-speed-test .speed-test-report { display: grid; gap: 1rem; }
+.mis-speed-test .speed-test-report h3 { margin: 0 0 .25rem; }
+.mis-speed-test .speed-test-report p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }

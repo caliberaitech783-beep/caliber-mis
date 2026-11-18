@@ -254,3 +254,22 @@ test('the report names the page loading during the longest freeze and the slowes
  assert.doesNotMatch(calmText,/↳|🐢/,'short freezes and quick pages add no lines');
  assert.equal(verdict({...calm,server:{...quiet.server,slowPages:figures.server.slowPages}}).good,true,'slow pages are shown, they do not decide SPEED GOOD / SLOW');
 });
+
+test('the Speed Test previews the same report without sending messages or claiming a window',async()=>{
+ const queries=[];
+ const reporter=createHealthReporter({
+  pool:{query:async sql=>{queries.push(sql);return {rows:[]};}},
+  telegram:{send:async()=>assert.fail('Preview must not send Telegram messages')},
+  recipients:async()=>assert.fail('Preview must not load recipients'),
+  now:()=>ist('2026-11-16T18:00:00'),
+ });
+ const [report,concurrent]=await Promise.all([reporter.preview(),reporter.preview()]);
+ assert.deepEqual(report,concurrent);
+ assert.equal(report.title,'PULSE-II SPEED REPORT');
+ assert.match(report.period,/16 Nov 16:00 → 16 Nov 18:00 IST/);
+ assert.equal(report.verdict.label,'SPEED GOOD');
+ assert.match(report.body,/Batches closed: 0[\s\S]*Card reading \(scan\)[\s\S]*Card saving/);
+ assert.doesNotMatch(report.body,/<\/?b>/);
+ assert.equal(queries.length,2);
+ assert.ok(queries.every(sql=>/^SELECT/.test(sql.trim())));
+});

@@ -93,7 +93,7 @@ export function verdict(f){
 const shortBatchName=name=>{const parts=String(name||'').split('/');return parts.length>=4&&parts[0]==='CMLL'?parts.slice(2).join('/'):String(name||'-');};
 const login=v=>String(v||'').trim().toLowerCase()||'-';
 
-export function healthReportMessage({window,figures:f,sample=false}){
+export function healthReportMessage({window,figures:f,sample=false,bodyOnly=false}){
  const v=verdict(f),b=f.batches,r=f.reading,s=f.saving,srv=f.server;
  const lines=[
   // The punch line first, bold (owner, 16 Nov 2026); the green / red picture above it carries the colour.
@@ -103,8 +103,9 @@ export function healthReportMessage({window,figures:f,sample=false}){
   `<b>${REPORT_TITLE}${sample?' (SAMPLE)':''}</b>`,
   `🕙 ${escapeHtml(reportPeriod(window))}`,
   '',
-  `<b>📦 Batches closed: ${b.closed}</b>`,
  ];
+ const bodyStart=lines.length;
+ lines.push(`<b>📦 Batches closed: ${b.closed}</b>`);
  if(b.longest){
   const l=b.longest;
   lines.push(`⏳ Longest: ${escapeHtml(shortBatchName(l.name))}`,
@@ -136,7 +137,7 @@ export function healthReportMessage({window,figures:f,sample=false}){
  if(f.queue)lines.push(`📥 Card read queue: ${f.queue.slots} slots, ${f.queue.active} busy, ${f.queue.waiting} waiting`);
  if(f.engines)lines.push(`🤖 Engines ${f.engines.live} live, ${f.engines.blocked?`${f.engines.blocked} blocked`:'none blocked'}, ${f.engines.reading} reading now`);
  if(f.pulseCopy)lines.push(`🔄 Pulse breakdown copy ${f.pulseCopy.fresh?'fresh':'NOT fresh'} (${duration((f.pulseCopy.ageSeconds||0)*1000)} old)`);
- return lines.join('\n').slice(0,4000);
+ return bodyOnly?lines.slice(bodyStart).join('\n'):lines.join('\n').slice(0,4000);
 }
 
 // Batches closed in the period: start = created_at, close = closed_at (the same as the dashboard's
@@ -265,15 +266,30 @@ export function createHealthReporter({pool,telegram,live=()=>({}),recipients=()=
    return {due:true,claimed:true,...await deliver(window.key,healthReportMessage({window,figures:f}),headline(window,f))};
   }finally{running=false;}
  }
- // "Send sample to Telegram" on the Automation Centre: the report of the period up to now, to the
- // same people. It is not recorded, so the real report of the window is still sent.
- async function sendSample(){
+ function currentWindow(){
   const at=now(),window={at,from:reportWindow(at).at,key:`sample:${at}`};
   if(at-window.from<3600000)window.from=reportWindow(window.from-1).at;
+  return window;
+ }
+ let pendingPreview;
+ async function preview(){
+  if(!pendingPreview){
+   const window=currentWindow();
+   pendingPreview=figures(window).then(f=>{
+    const body=healthReportMessage({window,figures:f,bodyOnly:true})
+     .replace(/<\/?b>/g,'').replace(/&(?:amp|lt|gt);/g,entity=>({'&amp;':'&','&lt;':'<','&gt;':'>'})[entity]);
+    return {title:REPORT_TITLE,period:reportPeriod(window),verdict:verdict(f),body};
+   }).finally(()=>{pendingPreview=null;});
+  }
+  return pendingPreview;
+ }
+ // The Automation Centre sample sends the report without claiming the scheduled window.
+ async function sendSample(){
+  const window=currentWindow();
   const f=await figures(window);
   return {verdict:verdict(f).label,...await deliver(window.key,healthReportMessage({window,figures:f,sample:true}),headline(window,f))};
  }
- return {tick,sendSample,
+ return {tick,sendSample,preview,
   start({intervalMs=60000}={}){
    const run=()=>tick().catch(error=>log.error?.('Speed report failed:',error?.message||error));
    void run();const timer=setInterval(run,intervalMs);timer.unref?.();return ()=>clearInterval(timer);

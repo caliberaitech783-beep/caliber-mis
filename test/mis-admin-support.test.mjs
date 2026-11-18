@@ -62,5 +62,5 @@ test('MIS ticket creation enforces the assigned site and uses MIS notifications 
 
 test('the Diagnostics page can read its detailed timing for MIS administrators only',()=>{
  const allowed=(session,path,method='GET')=>misRequestAllowed(session,{path,method});
- for(const path of ['/api/diagnostics','/api/diagnostics/performance']){assert.equal(allowed(user,path),false,path);assert.equal(allowed(admin,path),true,path);assert.equal(allowed(admin,path,'POST'),false,path);}
+ for(const path of ['/api/diagnostics','/api/diagnostics/performance','/api/diagnostics/speed-test']){assert.equal(allowed(user,path),false,path);assert.equal(allowed(admin,path),true,path);assert.equal(allowed(admin,path,'POST'),false,path);}
 });

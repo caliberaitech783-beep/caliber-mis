@@ -90,6 +90,7 @@ import { closedTimeAfterStartedColumns, ensureJobReferenceVisibleKeys } from "./
 import UserProfile from "./user-profile.jsx";
 import TelegramGate from "./telegram-gate.jsx";
 import DiagnosticsPage from "./diagnostics-page.jsx";
+import SpeedTestPage from "./speed-test-page.jsx";
 import { PurgeDataPage, RetentionRulesPage } from "./data-housekeeping-page.jsx";
 import StorageManagementPage from "./storage-management-page.jsx";
 import TicketResolutionNotices from "./ticket-resolution-notices.jsx";
@@ -525,6 +526,7 @@ const nav = [
 const adminNav = [
   ["User Sessions", UserRound],
   ["Access structure", Users],
+  ["Speed Test", Gauge],
   ["Reporting structure", Building2],
   ["OEM Email Delivery Status", MessageCircle],
   ["Print helper", Printer],
@@ -550,6 +552,7 @@ const adminMenuKeys = {
   "Print helper": "print", "Request corrections": "corrections", "Recovery guide": "recovery",
   "Backup": "backup", "Export Backup": "export", "Import Backup": "import", "Backup Schedule": "schedule",
   "Audit Trail": "history", "Admin locks": "locks",
+  "Speed Test": "diagnostics",
   "Diagnostics": "diagnostics", "Storage management": "storage", "Retention rules": "retention", "Purge data": "purge",
 };
 // [page name, icon, badge key]: the key picks the badge colour and hover animation (topbar.css).
@@ -12078,6 +12081,8 @@ function App() {
     <OemEmailDeliveryStatus session={session} />
   ) : renderedActive === "Recovery guide" ? (
     <RecoveryGuide onNavigate={selectMenu} />
+  ) : renderedActive === "Speed Test" ? (
+    <SpeedTestPage token={authToken} />
   ) : renderedActive === "Diagnostics" ? (
     <DiagnosticsPage token={authToken} />
   ) : renderedActive === "Storage management" ? (

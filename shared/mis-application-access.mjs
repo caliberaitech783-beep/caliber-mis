@@ -46,7 +46,7 @@ export function misRequestAllowed(session,req){
  if(route==='/api/print-helper/certificate')return read;
  if(route==='/api/print-helper/sign')return req.method==='POST';
  if(['/api/print-helper/setup','/api/print-helper/setup/override.crt'].includes(route))return isMisAdministrator(session)&&(read||req.method==='POST'&&route==='/api/print-helper/setup');
- if(route==='/api/user-sessions'||route==='/api/user-login-history'||route==='/api/audit-events'||route==='/api/log-retention'||route==='/api/storage-overview'||route==='/api/diagnostics'||route==='/api/diagnostics/performance')return read&&isMisAdministrator(session);
+ if(route==='/api/user-sessions'||route==='/api/user-login-history'||route==='/api/audit-events'||route==='/api/log-retention'||route==='/api/storage-overview'||route==='/api/diagnostics'||route==='/api/diagnostics/performance'||route==='/api/diagnostics/speed-test')return read&&isMisAdministrator(session);
  if(route==='/api/backups'||/^\/api\/backups\/[a-f0-9-]{36}\/download$/.test(route))return read&&isMisAdministrator(session);
  // ELB BD hours repair after the Pulse machine match fix (PR 414): dry run (GET) and apply (POST), MIS administrators only.
  // 17 Nov 2026: the owner's MIS login got "This MIS menu is not assigned to your login" because PR 414 left it off this list.
