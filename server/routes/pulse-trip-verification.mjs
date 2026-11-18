@@ -2,7 +2,7 @@ import {canonicalSiteName} from '../../shared/site-location.mjs';
 import {parseRequestTimelineTimestamp} from '../../shared/request-timeline.mjs';
 import {validTripCardImageDataUrl} from '../../shared/request-workflow.mjs';
 import {scanImageMime} from '../rules/scan-image-format.mjs';
-import {filterLogBookSites,requireLogBookSite} from '../../shared/log-book-access.mjs';
+import {createLogBookSiteCache,requireLogBookSite,siteAllowed} from '../../shared/log-book-access.mjs';
 
 export const TRIP_VERIFICATION_SCHEMA=`CREATE TABLE IF NOT EXISTS mis_pulse_trip_verifications(
  logbook_id BIGINT PRIMARY KEY REFERENCES mis_log_books(id),status TEXT NOT NULL DEFAULT 'pending'
@@ -130,13 +130,22 @@ export function createTripVerification({pool,pulse,enabled=true}){
 
 export function registerTripVerification(app,{pool,pulse,requireSession,requireAdministrator,getSiteScope,enabled=true}){
  const service=createTripVerification({pool,pulse,enabled});
+ const readScopedSites=createLogBookSiteCache({pool});
  app.get('/api/pulse-trip-verification',requireSession,requireAdministrator,async(req,res,next)=>{try{
   const id=String(req.query.logbookId||'');
   if(id&&!/^\d+$/.test(id))return res.status(400).json({error:'Invalid saved card.'});
-  const sites=await filterLogBookSites(pool,await getSiteScope(req.session));
-  const jobs=(await pool.query(`SELECT j.*,l.book_no,l.site,l.data->>'door' AS door,l.data->>'scanCardNumber' AS card_number
-   FROM mis_pulse_trip_verifications j JOIN mis_log_books l ON l.id=j.logbook_id WHERE l.deleted_at IS NULL AND l.book_date>=$$2026-11-01$$ AND ($1::text[] IS NULL OR l.site=ANY($1::text[])) AND ($2::bigint IS NULL OR l.id=$2)
-   ORDER BY j.updated_at DESC,j.logbook_id DESC LIMIT 100`,[sites,id||null])).rows;
+  const scope=await getSiteScope(req.session);
+  const fields=`SELECT j.*,l.book_no,l.site,l.data->>'door' AS door,l.data->>'scanCardNumber' AS card_number
+   FROM mis_pulse_trip_verifications j JOIN mis_log_books l ON l.id=j.logbook_id
+   WHERE l.deleted_at IS NULL AND l.book_date>=$$2026-11-01$$`;
+  if(id){
+   const {rows}=await pool.query(fields+' AND j.logbook_id=$1',[id]);
+   const jobs=rows.filter(row=>siteAllowed(scope,row.site));
+   return res.set('Cache-Control','no-store').json({...service.status(),jobs,counts:{}});
+  }
+  const sites=await readScopedSites(pool,scope);
+  const jobs=(await pool.query(fields+` AND ($1::text[] IS NULL OR l.site=ANY($1::text[]))
+   ORDER BY j.updated_at DESC,j.logbook_id DESC LIMIT 100`,[sites])).rows;
   const counts=(await pool.query(`SELECT j.status,COUNT(*)::int AS count FROM mis_pulse_trip_verifications j JOIN mis_log_books l ON l.id=j.logbook_id
    WHERE l.deleted_at IS NULL AND l.book_date>=$$2026-11-01$$ AND ($1::text[] IS NULL OR l.site=ANY($1::text[])) GROUP BY j.status`,[sites])).rows;
   res.set('Cache-Control','no-store').json({...service.status(),jobs,counts:Object.fromEntries(counts.map(r=>[r.status,r.count]))});

@@ -7,8 +7,26 @@ export default function PulseTripVerification({session,logbookId}){
  const [data,setData]=useState(null),[error,setError]=useState(''),[working,setWorking]=useState('');
  useEffect(()=>{
   const controller=new AbortController();
-  const load=async()=>{try{const response=await fetch('/api/pulse-trip-verification'+(logbookId?'?logbookId='+encodeURIComponent(logbookId):''),{signal:controller.signal,cache:'no-store',headers:{Authorization:'Bearer '+session.token}});const result=await response.json();if(!response.ok)throw Error(result.error||'Verification status unavailable.');if(!controller.signal.aborted){setData(result);setError('');}}catch(e){if(!controller.signal.aborted)setError(e.message)}};
-  setData(null);void load();const timer=setInterval(()=>void load(),15000);return()=>{controller.abort();clearInterval(timer)};
+  let timer;
+  const load=async()=>{
+   try{
+    if(document.hidden)return;
+    const query=logbookId?'?logbookId='+encodeURIComponent(logbookId):'';
+    const response=await fetch('/api/pulse-trip-verification'+query,{
+     signal:controller.signal,cache:'no-store',headers:{Authorization:'Bearer '+session.token}
+    });
+    const result=await response.json();
+    if(!response.ok)throw Error(result.error||'Verification status unavailable.');
+    if(!controller.signal.aborted){setData(result);setError('');}
+   }catch(e){
+    if(!controller.signal.aborted)setError(e.message);
+   }finally{
+    if(!controller.signal.aborted)timer=setTimeout(load,15000);
+   }
+  };
+  setData(null);
+  void load();
+  return()=>{controller.abort();clearTimeout(timer);};
  },[session.token,logbookId,working]);
  const retry=async id=>{setWorking(String(id));try{const response=await fetch('/api/pulse-trip-verification/'+id+'/retry',{method:'POST',headers:{Authorization:'Bearer '+session.token}});const result=await response.json();if(!response.ok)throw Error(result.error||'Could not retry this card.');}catch(e){setError(e.message)}finally{setWorking('')}};
  return <section className="pulse-trip-verification" aria-label="Automatic MIS verification"><h2>Automatic MIS verification</h2>
