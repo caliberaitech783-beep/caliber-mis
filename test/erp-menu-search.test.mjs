@@ -61,3 +61,11 @@ test('sidebar keeps one straight left edge with gold tabs and white pages',()=>{
   assert.match(jsx,/aria-label="Search menu"/,'main.jsx keeps the auto-hide menu open while this box has focus');
   assert.match(jsx,/event\.ctrlKey\|\|event\.metaKey/,'Ctrl+K opens the search');
 });
+
+test('typing chart finds the Loading Equipment-wise Report (Chart)',async()=>{
+  const {operationReports}=await import('../src/operations-report-model.mjs');
+  const entries=operationReports.map(r=>({label:r.title,path:['Reports',r.group]}));
+  const found=searchMenu('chart',entries).map(entry=>entry.label);
+  assert.equal(found[0],'Loading Equipment-wise Report (Chart)');
+  assert.ok(searchMenu('loading chart',entries).some(entry=>entry.label==='Loading Equipment-wise Report (Chart)'));
+});
