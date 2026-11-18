@@ -58,6 +58,7 @@ import {registerEquipmentMasterOtp} from './server/routes/equipment-master-otp.m
 import {registerTripVerification} from './server/routes/pulse-trip-verification.mjs';
 import {registerLogBooks} from './server/routes/log-book.mjs';
 import {attendanceDayStoreEnabled} from './server/services/attendance-day-store.mjs';
+import {operationsDayStoreEnabled} from './server/services/operations-day-store.mjs';
 import {accountLedgerQueries} from './server/rules/iboss-account-ledger.mjs';
 import {bdmsChatAnswer,bdmsChatCanRead,bdmsChatFlow,bdmsChatQueryAllowed,bdmsChatIntent} from './shared/telegram-bdms-chatbot.mjs';
 import {bdmsChatConversation} from './server/rules/telegram-bdms-conversation.mjs';
@@ -8100,6 +8101,10 @@ if(process.env.VLB_BATCH_ALERTS!=='0')scheduleBackgroundStart(()=>vlbBatchAlerts
 // Stored locked days for Attendance Batch-wise / Month-wise and the HR feed: every 10 minutes, locked site-days that are
 // new or changed since they were stored are stored again (one server at a time). ATTENDANCE_DAY_STORE=0 switches it off.
 if(attendanceDayStoreEnabled())logBooks.attendanceDayStore.start();
+// Stored closed days for the Operations step reports (owner, 18 Nov 2026): every 5 minutes the newest locked site-days that
+// are new, changed or locked again are stored again, and after 04:30 IST every locked day of the last 45 days is checked.
+// OPERATIONS_DAY_STORE=0 switches it off (the reports then read every day live).
+if(operationsDayStoreEnabled())logBooks.operationsDayStore.start();
 // Equipment list check: Equipment Deployment (Pulse-II) against the Pulse equipment list every six
 // hours; a difference raises a pop-up notice and a Telegram message until the lists agree.
 const equipmentMismatchWhatsApp={async send(login,message){

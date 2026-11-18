@@ -22,15 +22,24 @@ const nodes=(tree,type)=>{const found=[];const visit=node=>{if(Array.isArray(nod
 const TripTimingReport=()=>null;
 // The Loading Equipment-wise tab does the same with its "All machines list" sub-tab.
 const LoadingMachineReport=()=>null;
-// The reports that were one long table open in steps (owner, 17 Nov 2026); they get the full report and the date range.
+// The reports that were one long table open in steps (owner, 17 Nov 2026). Since 18 Nov 2026 the server works the steps
+// out (test/operations-steps-api.test.mjs); the screen hands the server's answer and what is open to the steps.
 const SavedReportSteps=()=>null;
+const CLOSED_STEPS={site:'',slot:null,category:null};
+// The slot of the step reading's state in SavedOperationReports (after filters, data, error, busy, reload, monthly,
+// the loading clock and what is open), and an answer for one report and its filters.
+const STEP_SLOT=8;
+const stepAnswer=(id,f,levels={sites:{rows:[],total:null},slots:null,categories:null,table:null})=>({result:{totals:{logbooks:1,assets:1,trips:1,reportRows:1},note:'',levels},answered:CLOSED_STEPS,options:null,error:'',busy:false,startedAt:0,loadMs:0,
+ answeredFor:JSON.stringify([id,f.from,f.to,f.site,f.shift,f.asset,f.employee,f.workOrder,false])});
 async function component(file,name,scope={},initial=[]){
   const source=readFileSync(new URL('../src/'+file,import.meta.url),'utf8');
   const {code}=await transformWithOxc(source.replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function'),file,{jsx:{runtime:'classic'}});
   const slots=[...initial];let cursor=0;
-  const environment={...loadClock,...filterOptions,TableSmartPrint,StepBackButton:()=>null,encodeDateRange,parseDateRange,isDeletableScanCard,isAbortableScanCard,compactLogBookLabel,canonicalSiteName,SmartSelect: "select",TripTimingReport,LoadingMachineReport,SavedReportSteps,hasReportSteps,React,useRef:()=>({current:null}),useEffect:()=>{},useMemo:fn=>fn(),useState:init=>{const i=cursor++;if(!(i in slots))slots[i]=typeof init==='function'?init():init;return [slots[i],value=>slots[i]=typeof value==='function'?value(slots[i]):value]},...scope};
+  const environment={...loadClock,...filterOptions,TableSmartPrint,StepBackButton:()=>null,encodeDateRange,parseDateRange,isDeletableScanCard,isAbortableScanCard,compactLogBookLabel,canonicalSiteName,SmartSelect: "select",TripTimingReport,LoadingMachineReport,SavedReportSteps,CLOSED_STEPS,hasReportSteps,React,useRef:()=>({current:null}),useEffect:()=>{},useMemo:fn=>fn(),useState:init=>{const i=cursor++;if(!(i in slots))slots[i]=typeof init==='function'?init():init;return [slots[i],value=>slots[i]=typeof value==='function'?value(slots[i]):value]},...scope};
   const render=new Function(...Object.keys(environment),code+';return '+name)(...Object.values(environment));
-  return props=>{cursor=0;return render({...props,ReportSection})};
+  const draw=props=>{cursor=0;return render({...props,ReportSection})};
+  draw.slots=slots;
+  return draw;
 }
 
 test('all operational reports use shared controls with full filtered data, preserving zero and unavailable values',async()=>{
@@ -38,14 +47,15 @@ test('all operational reports use shared controls with full filtered data, prese
   const filters={from:'2026-12-01',to:'2026-12-31',site:'Site A',shift:'',asset:'',employee:'',workOrder:'',loading:''};
   const data={records},render=await component('operations-reports.jsx','SavedOperationReports',operations,[filters,data,'',false,0,false]);
   for(const {id} of operations.operationReports.filter(r=>!['manpower','employee','ot'].includes(r.id))){
+    render.slots[STEP_SLOT]=stepAnswer(id,filters);
     const tree=render({session:{token:'test'},reportId:id}),selected=operations.filterRecords(operations.normalise(records),filters);
     const expected=operations.buildOperationReport(id,selected,{...data,filters,monthly:false});
     if(hasReportSteps(id)){
       const [steps]=nodes(tree,SavedReportSteps);
       assert.ok(steps,id+' opens in steps');assert.equal(nodes(tree,ReportSection).length,0,id);
-      assert.deepEqual(steps.props.report.rows,expected.rows,id);assert.deepEqual(steps.props.report.columns,expected.columns,id);
-      assert.deepEqual(steps.props.records,selected,id);
-      assert.deepEqual(steps.props.build(selected).rows,expected.rows,id+': built again from every log book it is the same report');
+      assert.equal(steps.props.levels,render.slots[STEP_SLOT].result.levels,id+': the steps draw the server’s answer');
+      assert.deepEqual(steps.props.open,CLOSED_STEPS,id+': a report opens at Step 1');
+      assert.equal(steps.props.dataReady,true,id);
       assert.equal(steps.props.recordDateFilter.value,encodeDateRange('2026-12-01','2026-12-31'));
       assert.equal(steps.props.period,'2026-12-01 to 2026-12-31');
       continue;
@@ -59,15 +69,13 @@ test('all operational reports use shared controls with full filtered data, prese
     assert.equal(sections[0].props.recordDateFilter.value,encodeDateRange('2026-12-01','2026-12-31'));
     assert.ok(sections[0].props.reportKey&&!sections[0].props.reportKey.includes('2026-12'),'saved view identity is independent of the chosen dates');
   }
-  const vehicle=nodes(render({session:{token:'test'},reportId:'vehicle'}),SavedReportSteps)[0];
-  assert.equal(vehicle.props.report.rows.length,135,'all rows beyond the former 100-row page reach print/export');
-  assert.ok(nodes(render({session:{token:'test'},reportId:'breakdown'}),SavedReportSteps)[0].props.report.rows.some(row=>row.includes(null)));
   assert.equal(nodes(render({session:{token:'test'},reportId:'vehicle'}),'button').some(n=>n.props.children==='Print / Save PDF'),false);
 });
 
 test('opening an operational saved date range keeps its table mounted and blocks exports until matching data arrives',async()=>{
  const filters={from:'2026-11-01',to:'2026-11-04',site:'',shift:'',asset:'',employee:'',workOrder:'',loading:''};
  const render=await component('operations-reports.jsx','SavedOperationReports',operations,[filters,{records:[],reportRange:'2026-11-01|2026-11-04'},'',false,0,false]);
+ render.slots[STEP_SLOT]=stepAnswer('daily',filters);
  let section=nodes(render({session:{token:'test'},reportId:'daily'}),SavedReportSteps)[0];assert.equal(section.props.dataReady,true);
  section.props.recordDateFilter.onChange(encodeDateRange('2026-11-02','2026-11-03'));
  section=nodes(render({session:{token:'test'},reportId:'daily'}),SavedReportSteps)[0];assert.ok(section,'restoring dates must not unmount the pending saved Print action');assert.equal(section.props.dataReady,false);assert.equal(section.props.recordDateFilter.value,encodeDateRange('2026-11-02','2026-11-03'));
