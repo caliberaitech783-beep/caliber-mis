@@ -10,7 +10,7 @@ import {mirrorReadAt} from '../services/pulse-breakdown-mirror.mjs';
 
 const DATE=/^\d{4}-\d{2}-\d{2}$/;
 const text=value=>String(value??'').trim();
-const CHUNK=50;
+const CHUNK=50,PAUSE_EVERY=10;
 
 export function registerElbPulseRepair(app,{pool,protect,readBreakdownRows}){
  const guard=(req,res,next)=>isMisAdministrator(req.session)?next():res.status(403).json({error:'Only an MIS administrator can repair ELB BD hours.'});
@@ -29,7 +29,17 @@ export function registerElbPulseRepair(app,{pool,protect,readBreakdownRows}){
   const assets=new Map(masters.filter(r=>r.master_name==='Equipment master').map(r=>[String(r.id),r.record_data]));
   const shifts=new Map(masters.filter(r=>r.master_name==='Shift Master').map(r=>[String(r.id),r.record_data]));
   const by=text(actor),at=new Date().toISOString();
-  return books.map(b=>({book:b,result:recomputePulseElb(b.data,{rows,asset:assets.get(text(b.data?.assetId)),shift:shifts.get(text(b.data?.shiftId)),now,at,by})}));
+  // 18 Nov 2026: the first live dry run checked every site's Pulse requests for every card (about 55 ms a card) and held
+  // the whole server for minutes. Each card now sees only its own site's requests (the same ones the match keeps), and
+  // the work pauses every few cards so other people's requests keep moving.
+  const bySite=new Map();
+  for(const r of rows){const key=canonicalSiteName(r.site);if(!bySite.has(key))bySite.set(key,[]);bySite.get(key).push(r);}
+  const planned=[];
+  for(const [index,b] of books.entries()){
+   if(index&&index%PAUSE_EVERY===0)await new Promise(resolve=>setImmediate(resolve));
+   planned.push({book:b,result:recomputePulseElb(b.data,{rows:bySite.get(canonicalSiteName(b.data?.location))||[],asset:assets.get(text(b.data?.assetId)),shift:shifts.get(text(b.data?.shiftId)),now,at,by})});
+  }
+  return planned;
  }
  const line=({book,result})=>({id:String(book.id),bookNo:book.book_no,date:book.date,site:text(book.data?.location),shift:text(book.data?.shiftName||book.data?.bookShiftCode),door:text(book.data?.door),
   breakdownHours:result.change?.breakdownHours,shiftStatus:result.change?.shiftStatus,idleHours:result.change?.idleHours,references:result.change?.references,skip:result.skip||''});

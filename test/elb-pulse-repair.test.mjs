@@ -49,7 +49,7 @@ test('the status rule is the one the machine entry uses',()=>{
  assert.equal(pulseReasonFor([],0),'');assert.equal(pulseReasonFor([],2),'Breakdown recorded in Pulse');
 });
 
-function harness(books){
+function harness(books,pulseRows=rows){
  const routes={},writes=[];
  const app={get:(path,...h)=>{routes['GET '+path]=h;},post:(path,...h)=>{routes['POST '+path]=h;}};
  const query=async(sql,params)=>{
@@ -58,7 +58,7 @@ function harness(books){
   writes.push([sql.split(' ').slice(0,3).join(' '),params]);return {rows:[]};
  };
  const pool={query,connect:async()=>({query,release(){}})};
- registerElbPulseRepair(app,{pool,protect:[],readBreakdownRows:async()=>rows});
+ registerElbPulseRepair(app,{pool,protect:[],readBreakdownRows:async()=>pulseRows});
  const call=async(key,req)=>{const res={code:200,body:null,status(c){this.code=c;return this;},set(){return this;},json(b){this.body=b;return this;}};
   const chain=routes[key];let i=0;const next=async()=>{const h=chain[i++];if(h)await h(req,res,next);};await next();return res;};
  return {call,writes};
@@ -100,4 +100,17 @@ test('an MIS administrator\'s separate MIS login may run the dry run and the rep
  assert.equal(misRequestAllowed(misAdmin,{path:route,method:'DELETE'}),false);
  assert.equal(misRequestAllowed(siteUser,{path:route,method:'GET'}),false);
  assert.equal(misRequestAllowed(siteUser,{path:route,method:'POST'}),false);
+});
+// 18 Nov 2026: the first live dry run held the server for minutes (every card checked every site's Pulse requests).
+test('requests of other sites neither change the answer nor slow the dry run',async()=>{
+ const others=Array.from({length:30000},(_,i)=>({ref:'X'+i,site:'Sasti OC',door:'TPC100-50251',reg:'-',chassis:'-',start:'2026-11-14 08:00:00',closedAt:'2026-11-14 09:00:00'}));
+ const many=Array.from({length:150},(_,i)=>({id:100+i,book_no:'CAL/ELB/14-11-26/'+(100+i),date:'2026-11-14',revision:1,data:card('TPC100-50251')}));
+ const {call}=harness(many,[...others,...rows]);
+ const started=Date.now();
+ const res=await call('GET /api/admin/elb-pulse-repair',{session:admin,query:{from:'2026-11-14',to:'2026-11-14',site}});
+ const took=Date.now()-started;
+ assert.equal(res.code,200);
+ assert.deepEqual([res.body.cards,res.body.toChange],[150,150]);
+ assert.ok(res.body.changes.every(c=>c.breakdownHours[1]===1.5&&c.references[1].join()==='OWN'),'Sasti requests never land on a Gauri machine');
+ assert.ok(took<4000,'150 cards against 30,000 other-site requests took '+took+' ms');
 });
