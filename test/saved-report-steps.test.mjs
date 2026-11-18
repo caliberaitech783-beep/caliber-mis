@@ -88,6 +88,27 @@ test('scanned cards open by their own date, site, shift and door',()=>{
  assert.deepEqual(items.map(i=>[i.date,i.site,i.shift,i.category]),[['2026-11-01',site,'Shift A','Tipper'],['2026-11-02','Site not recorded','Shift not recorded','Group missing in master']]);
 });
 
+test('a scanned card with no shift name of its own takes the shift marked on its batch, named as the site names it',()=>{
+ const master=[{id:'1',site,name:'SHIFT A',shiftCode:'A'},{id:'2',site,name:'Shift B',shiftCode:'B'},{id:'7',site:'Majri OB',name:'Day',shiftCode:'D'}];
+ const cards=[
+  {id:1,card_shift:'II',draft:{bookDate:'2026-11-16',location:'sasti ob',door:'V103'}},
+  {id:2,card_shift:'I',draft:{bookDate:'2026-11-16',location:site,door:'V104'}},
+  {id:3,card_shift:'II',draft:{bookDate:'2026-11-16',location:'Dhoptala OB 2nd',door:'V104'}},
+  {id:4,card_shift:'Day',draft:{bookDate:'2026-11-16',location:'Majri OB'}},
+  {id:5,card_shift:'',draft:{bookDate:'2026-11-16',location:site,shiftId:'2'}},
+  {id:6,card_shift:'III',draft:{bookDate:'2026-11-16',location:site,shiftName:'shift c'}},
+  {id:7,card_shift:null,draft:{bookDate:'2026-11-16',location:site}}];
+ const items=stepItems('scans',{cards,report:{rows:[]},assets,shifts:master});
+ assert.deepEqual(items.map(i=>i.shift),['Shift B','Shift A','Shift B','Day','Shift B','Shift C','Shift not recorded']);
+});
+
+test('the Operations reading sends each card the shift of its batch and each shift its code',()=>{
+ const server=readFileSync(new URL('../server/routes/log-book.mjs',import.meta.url),'utf8');
+ assert.match(server,/expected_context'->>'cardShift' AS card_shift/);
+ assert.match(server,/OPERATIONS_SCAN_CARD_FIELDS=\[[^\]]*'card_shift'/);
+ assert.match(server,/site:text\(r\.site\|\|r\.siteName\),shiftCode:text\(r\.shiftCode\)\}\)\);/);
+});
+
 test('the Operations screen draws these reports through the steps, each step under the one before',()=>{
  const screen=readFileSync(new URL('../src/operations-reports.jsx',import.meta.url),'utf8');
  assert.match(screen,/hasReportSteps\(id\)\?<SavedReportSteps key=\{id\} /,'another report starts again at Step 1');

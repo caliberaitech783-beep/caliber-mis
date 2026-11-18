@@ -5,6 +5,7 @@ import {canonicalSiteName} from '../shared/site-location.mjs';
 import {equipmentGroupName} from '../shared/equipment-group.mjs';
 import {fleetDoorKey} from '../shared/scan-fleet-door.mjs';
 import {shiftDisplayName} from '../shared/shift-master.mjs';
+import {bookShiftCode} from '../shared/trip-card-rules.mjs';
 
 export const EVERY='*';
 // The reports whose table already has one line per log book or per finding, with its date, site, door and shift:
@@ -35,12 +36,32 @@ export function assetCategoryOf(assets=[]){
 }
 
 // One item per thing the steps count: a line of the report, a log book, or a scanned card.
-export function stepItems(id,{records=[],cards=[],report={rows:[]},assets=[]}){
+// A scanned card's shift, named as the site's log books name it. Most cards read no shift name of their own: the
+// shift (I, II, III, Day, Night) is marked on the card's batch, so it is matched to that site's Shift Master line
+// (live, 18 Nov 2026: every Scan Review card fell under "Shift not recorded" before this).
+const SHIFT_BY_CODE={S1:'Shift A',S2:'Shift B',S3:'Shift C',D:'Day',N:'Night'};
+export function cardShiftOf(shifts=[]){
+ const byId=new Map(shifts.map(s=>[String(s.id),s]));
+ const atSite=new Map();
+ for(const s of shifts){const key=canonicalSiteName(s.site)||text(s.site);if(!atSite.has(key))atSite.set(key,[]);atSite.get(key).push(s);}
+ return card=>{
+  const d=card.draft||{};
+  if(text(d.shiftName))return shiftDisplayName(d.shiftName);
+  const named=d.shiftId!=null&&byId.get(String(d.shiftId));
+  if(named&&text(named.name))return shiftDisplayName(named.name);
+  const code=bookShiftCode(card.card_shift)||bookShiftCode(d.cardShift);
+  if(!code)return '';
+  const master=(atSite.get(canonicalSiteName(d.location)||text(d.location))||[]).find(s=>(bookShiftCode(s.shiftCode)||bookShiftCode(s.name))===code);
+  return master&&text(master.name)?shiftDisplayName(master.name):SHIFT_BY_CODE[code]||'';
+ };
+}
+
+export function stepItems(id,{records=[],cards=[],report={rows:[]},assets=[],shifts=[]}){
  const categoryOf=assetCategoryOf(assets);
  const item=(fields,source)=>{const site=text(fields.site)||'Site not recorded';return {...fields,site,siteKey:canonicalSiteName(site)||site,shift:text(fields.shift)||'Shift not recorded',date:text(fields.date),category:categoryOf(fields),source};};
  const at=LINE_REPORTS[id];
  if(at)return report.rows.map(row=>item({date:row[at.date],site:row[at.site],door:row[at.door],shift:row[at.shift],assetId:null},row));
- if(id==='scans')return cards.map(c=>{const d=c.draft||{};return item({date:d.bookDate||c.scanned_date,site:d.location,door:d.door,shift:d.shiftName?shiftDisplayName(d.shiftName):'',assetId:d.assetId},c);});
+ if(id==='scans'){const shiftOf=cardShiftOf(shifts);return cards.map(c=>{const d=c.draft||{};return item({date:d.bookDate||c.scanned_date,site:d.location,door:d.door,shift:shiftOf(c),assetId:d.assetId},c);});}
  // A built report counts only the log books it is built from: the Vehicle-wise Trip Report leaves equipment out.
  const counted=id==='vehicle-trips'?records.filter(r=>r.kind==='vehicle'):records;
  return counted.map(r=>item({date:r.bookDate,site:r.location,door:r.door,shift:r.shiftName,assetId:r.assetId},r));
