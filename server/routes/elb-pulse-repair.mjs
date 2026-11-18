@@ -1,30 +1,55 @@
-// Owner, 17 Nov 2026: work the ELB BD hours filled from Pulse out again after the machine match fix (PR 413).
-//   GET  /api/admin/elb-pulse-repair?from=&to=&site=   dry run: every card that would change, old and new. Writes nothing.
-//   POST /api/admin/elb-pulse-repair {from,to,site,ids} applies it to the cards listed (by id) that still differ.
-// MIS administrators only. Each card keeps its old figures under data.pulseRepair.previous, gets a new revision, and its
-// batch line (machine status) and ELB batch copy follow; the batch audit names who did it.
+// Owner, 17-18 Nov 2026: work the BD hours filled from Pulse out again after the machine match fix (PR 413), on every
+// card a save filled from Pulse (ELB, VLB, LMV; machine entry, form and scanned cards), every site, every date.
+//   GET  /api/admin/elb-pulse-repair?from=&to=&site=[&kind=]   dry run for one site: every card that would change, old
+//        and new, and every card left alone with its reason. Writes nothing.
+//   GET  /api/admin/elb-pulse-repair/sites?from=&to=           the sites that have such cards in the dates, with counts.
+//   POST /api/admin/elb-pulse-repair {from,to,site,kind,ids}    applies it to the cards listed (by id) that still differ.
+// MIS administrators only. Only the repaired fields are merged into a card (its trips, meters and the rest are not read
+// or rewritten); each card keeps its old figures under data.pulseRepair.previous and gets a new revision; its batch
+// line (machine status) and its two batch copies follow; the batch audit names who did it.
 import {isMisAdministrator} from '../../shared/mis-admin-access.mjs';
 import {canonicalSiteName} from '../../shared/site-location.mjs';
 import {recomputePulseElb} from '../rules/elb-pulse-repair.mjs';
 import {mirrorReadAt} from '../services/pulse-breakdown-mirror.mjs';
 
 const DATE=/^\d{4}-\d{2}-\d{2}$/;
+const KINDS=['equipment','vehicle','lmv'];
 const text=value=>String(value??'').trim();
-const CHUNK=50,PAUSE_EVERY=10;
+const CHUNK=50,PAUSE_EVERY=10,MAX_DAYS=93;
+// The card fields the repair reads: never the trips, attachments or scan text that make VLB cards large.
+const FIELDS=['breakdownHours','breakdownHoursSource','elbEntryMode','hoursSource','pulseBreakdowns','shiftStatus','statusReason','idleHours','bookDate','location','assetId',
+ 'shiftId','shiftHours','scheduledHours','openingHmr','closingHmr','totalWorkingHmr','fleetTrips','door','shiftName','bookShiftCode','batchId'];
+const SLIM=`jsonb_strip_nulls(jsonb_build_object(${FIELDS.map(f=>`'${f}',data->'${f}'`).join(',')}))`;
 
 export function registerElbPulseRepair(app,{pool,protect,readBreakdownRows}){
- const guard=(req,res,next)=>isMisAdministrator(req.session)?next():res.status(403).json({error:'Only an MIS administrator can repair ELB BD hours.'});
- const params=source=>{
-  const from=text(source.from),to=text(source.to),site=text(source.site);
-  if(!DATE.test(from)||!DATE.test(to)||to<from||from<'2026-11-01')throw Object.assign(new Error('Choose dates from 01-11-2026 onwards, From on or before To.'),{status:400});
-  return {from,to,site};
+ const guard=(req,res,next)=>isMisAdministrator(req.session)?next():res.status(403).json({error:'Only an MIS administrator can repair BD hours.'});
+ const dates=source=>{
+  const from=text(source.from),to=text(source.to);
+  const days=(Date.parse(to)-Date.parse(from))/86400000;
+  if(!DATE.test(from)||!DATE.test(to)||!(days>=0)||from<'2025-01-01')throw Object.assign(new Error('Choose real dates, From on or before To.'),{status:400});
+  if(days>MAX_DAYS)throw Object.assign(new Error(`Choose at most ${MAX_DAYS} days at a time.`),{status:400});
+  return {from,to};
  };
- async function plan(db,{from,to,site},actor,{lock=false,ids=null}={}){
+ const params=source=>{
+  const site=text(source.site),kind=text(source.kind);
+  if(!site)throw Object.assign(new Error('Choose one site.'),{status:400});
+  if(kind&&!KINDS.includes(kind))throw Object.assign(new Error('Card type must be equipment, vehicle or lmv.'),{status:400});
+  return {...dates(source),site,kind};
+ };
+ // The site names saved on cards in the dates that are this site (cards keep the name as typed: "Sasti" / "Sasti OC").
+ const siteNames=async(db,{from,to,site})=>(await db.query('SELECT DISTINCT site FROM mis_log_books WHERE deleted_at IS NULL AND book_date BETWEEN $1 AND $2',[from,to])).rows
+  .map(r=>r.site).filter(name=>canonicalSiteName(name)===canonicalSiteName(site));
+ async function plan(db,input,actor,{lock=false,ids=null}={}){
   const rows=await readBreakdownRows(actor);
   if(!Array.isArray(rows))throw Object.assign(new Error('Pulse breakdown list could not be read.'),{status:503});
   const now=Math.min(mirrorReadAt(rows)??Date.now(),Date.now());
-  const books=(await db.query(`SELECT id,book_no,book_date::text AS date,data,revision FROM mis_log_books WHERE deleted_at IS NULL AND book_type='equipment' AND book_date>=$$2026-11-01$$ AND book_date BETWEEN $1 AND $2 AND data->>'breakdownHoursSource'='pulse'${ids?' AND id=ANY($3::bigint[])':''} ORDER BY book_date,id${lock?' FOR UPDATE':''}`,ids?[from,to,ids]:[from,to])).rows
-   .filter(b=>!site||canonicalSiteName(b.data?.location)===canonicalSiteName(site));
+  const names=await siteNames(db,input);
+  if(!names.length)return [];
+  const args=[input.from,input.to,names,input.kind?[input.kind]:KINDS];
+  if(ids)args.push(ids);
+  const books=(await db.query(`SELECT id,book_no,book_type,book_date::text AS date,revision,${SLIM} AS data FROM mis_log_books
+   WHERE deleted_at IS NULL AND book_date BETWEEN $1 AND $2 AND site=ANY($3::text[]) AND book_type=ANY($4::text[]) AND data->>'breakdownHoursSource'='pulse'${ids?' AND id=ANY($5::bigint[])':''}
+   ORDER BY book_date,id${lock?' FOR UPDATE':''}`,args)).rows;
   const masters=(await db.query("SELECT id,master_name,record_data FROM master_records WHERE master_name=ANY($1::text[])",[['Equipment master','Shift Master']])).rows;
   const assets=new Map(masters.filter(r=>r.master_name==='Equipment master').map(r=>[String(r.id),r.record_data]));
   const shifts=new Map(masters.filter(r=>r.master_name==='Shift Master').map(r=>[String(r.id),r.record_data]));
@@ -32,17 +57,26 @@ export function registerElbPulseRepair(app,{pool,protect,readBreakdownRows}){
   // 18 Nov 2026: the first live dry run checked every site's Pulse requests for every card (about 55 ms a card) and held
   // the whole server for minutes. Each card now sees only its own site's requests (the same ones the match keeps), and
   // the work pauses every few cards so other people's requests keep moving.
-  const bySite=new Map();
-  for(const r of rows){const key=canonicalSiteName(r.site);if(!bySite.has(key))bySite.set(key,[]);bySite.get(key).push(r);}
+  const siteRows=rows.filter(r=>canonicalSiteName(r.site)===canonicalSiteName(input.site));
+  const knownReferences=new Set(rows.map(r=>text(r.ref)).filter(Boolean));
   const planned=[];
   for(const [index,b] of books.entries()){
    if(index&&index%PAUSE_EVERY===0)await new Promise(resolve=>setImmediate(resolve));
-   planned.push({book:b,result:recomputePulseElb(b.data,{rows:bySite.get(canonicalSiteName(b.data?.location))||[],asset:assets.get(text(b.data?.assetId)),shift:shifts.get(text(b.data?.shiftId)),now,at,by})});
+   planned.push({book:b,result:recomputePulseElb(b.data,{rows:siteRows,asset:assets.get(text(b.data?.assetId)),shift:shifts.get(text(b.data?.shiftId)),knownReferences,now,at,by})});
   }
   return planned;
  }
- const line=({book,result})=>({id:String(book.id),bookNo:book.book_no,date:book.date,site:text(book.data?.location),shift:text(book.data?.shiftName||book.data?.bookShiftCode),door:text(book.data?.door),
-  breakdownHours:result.change?.breakdownHours,shiftStatus:result.change?.shiftStatus,idleHours:result.change?.idleHours,references:result.change?.references,skip:result.skip||''});
+ const line=({book,result})=>({id:String(book.id),bookNo:book.book_no,kind:book.book_type,date:book.date,site:text(book.data?.location),shift:text(book.data?.shiftName||book.data?.bookShiftCode),door:text(book.data?.door),
+  mode:text(book.data?.elbEntryMode)||'card',breakdownHours:result.change?.breakdownHours,shiftStatus:result.change?.shiftStatus,idleHours:result.change?.idleHours,references:result.change?.references,skip:result.skip||''});
+ app.get('/api/admin/elb-pulse-repair/sites',...protect,guard,async(req,res)=>{
+  try{
+   const input=dates(req.query);
+   const {rows}=await pool.query(`SELECT site,book_type,COUNT(*)::int AS cards FROM mis_log_books WHERE deleted_at IS NULL AND book_date BETWEEN $1 AND $2 AND data->>'breakdownHoursSource'='pulse' GROUP BY site,book_type`,[input.from,input.to]);
+   const sites={};
+   for(const r of rows){const key=canonicalSiteName(r.site)||r.site;const s=sites[key]||={site:key,names:[],cards:0,byKind:{}};if(!s.names.includes(r.site))s.names.push(r.site);s.cards+=r.cards;s.byKind[r.book_type]=(s.byKind[r.book_type]||0)+r.cards;}
+   res.set('Cache-Control','no-store').json({...input,sites:Object.values(sites).sort((a,b)=>b.cards-a.cards)});
+  }catch(error){res.status(error.status||500).json({error:error.message});}
+ });
  app.get('/api/admin/elb-pulse-repair',...protect,guard,async(req,res)=>{
   try{
    const input=params(req.query),actor=req.session.login||req.session.name;
@@ -65,12 +99,13 @@ export function registerElbPulseRepair(app,{pool,protect,readBreakdownRows}){
      await client.query('BEGIN');
      const planned=await plan(client,input,actor,{lock:true,ids:ids.slice(i,i+CHUNK)});
      for(const p of planned){
-      if(!p.result.data)continue;
-      const {book,result}=p;
-      await client.query('UPDATE mis_log_books SET data=$1::jsonb,updated_at=NOW(),revision=revision+1 WHERE id=$2 AND deleted_at IS NULL',[JSON.stringify(result.data),book.id]);
-      await client.query('UPDATE mis_vlb_batch_fleet SET shift_status=$2 WHERE logbook_id=$1',[book.id,result.data.shiftStatus]);
-      await client.query("UPDATE mis_elb_batch_entries SET snapshot=jsonb_set(snapshot,'{data}',$2::jsonb) WHERE logbook_id=$1",[book.id,JSON.stringify(result.data)]);
-      if(result.data.batchId)await client.query('INSERT INTO mis_vlb_batch_audit(batch_id,actor,action,detail) VALUES($1,$2,$3,$4::jsonb)',[result.data.batchId,text(actor),'elb_pulse_bd_repaired',JSON.stringify({logbookId:String(book.id),bookNo:book.book_no,...result.change})]);
+      if(!p.result.patch)continue;
+      const {book,result}=p,patch=JSON.stringify(result.patch);
+      await client.query('UPDATE mis_log_books SET data=data||$1::jsonb,updated_at=NOW(),revision=revision+1 WHERE id=$2 AND deleted_at IS NULL',[patch,book.id]);
+      if(book.book_type==='equipment'&&result.change.shiftStatus[0]!==result.change.shiftStatus[1])await client.query('UPDATE mis_vlb_batch_fleet SET shift_status=$2 WHERE logbook_id=$1',[book.id,result.patch.shiftStatus]);
+      await client.query("UPDATE mis_elb_batch_entries SET snapshot=jsonb_set(snapshot,'{data}',COALESCE(snapshot->'data','{}'::jsonb)||$2::jsonb) WHERE logbook_id=$1 AND snapshot ? 'data'",[book.id,patch]);
+      await client.query("UPDATE mis_vlb_batch_entries SET snapshot=jsonb_set(snapshot,'{data}',COALESCE(snapshot->'data','{}'::jsonb)||$2::jsonb) WHERE logbook_id=$1 AND snapshot ? 'data'",[book.id,patch]);
+      if(book.data?.batchId)await client.query('INSERT INTO mis_vlb_batch_audit(batch_id,actor,action,detail) VALUES($1,$2,$3,$4::jsonb)',[book.data.batchId,text(actor),'elb_pulse_bd_repaired',JSON.stringify({logbookId:String(book.id),bookNo:book.book_no,kind:book.book_type,...result.change})]);
       applied++;done.push(line(p));
      }
      await client.query('COMMIT');
