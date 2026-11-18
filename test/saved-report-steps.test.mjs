@@ -111,7 +111,9 @@ test('the Operations reading sends each card the shift of its batch and each shi
 
 test('the Operations screen draws these reports through the steps, each step under the one before',()=>{
  const screen=readFileSync(new URL('../src/operations-reports.jsx',import.meta.url),'utf8');
- assert.match(screen,/hasReportSteps\(id\)\?<SavedReportSteps key=\{id\} /,'another report starts again at Step 1');
+ assert.match(screen,/const stepped=hasReportSteps\(id\);/);
+ assert.match(screen,/<SavedReportSteps key=\{id\} id=\{id\} [^>]*levels=\{step\.result\.levels\}/,'the steps draw the server’s answer');
+ assert.match(screen,/const open=stepsOpen\.id===id\?stepsOpen\.open:CLOSED_STEPS/,'another report starts again at Step 1');
  const steps=readFileSync(new URL('../src/saved-report-steps.jsx',import.meta.url),'utf8');
  for(const n of [1,2,3,4])assert.match(steps,new RegExp("'Step "+n+" · '"));
  assert.match(steps,/level>=2&&/);assert.match(steps,/level>=3&&/);assert.match(steps,/level>=4&&/);

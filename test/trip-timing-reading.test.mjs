@@ -89,7 +89,8 @@ test('the screens ask for the log books only for Trip Timing and Loading Equipme
  assert.match(source,/const OPERATIONS_LOGBOOKS_ONLY=new Set\(\['timing','loading'\]\);/);
  assert.match(source,/const parts=OPERATIONS_LOGBOOKS_ONLY\.has\(id\)\?'logbooks':'';/);
  assert.match(source,/operationsData\(filters\.from,filters\.to,session\.token,reload>0,parts\)/);
- assert.match(source,/\},\[filters\.from,filters\.to,session\.token,reload,valid,parts\]\);/,'moving from Trip Timing to the Scans report reads the scanned cards');
+ // stepped and requirements: since 18 Nov 2026 the step reports read through the step reading and the commercial ones read nothing.
+ assert.match(source,/\},\[filters\.from,filters\.to,session\.token,reload,valid,parts,stepped,Boolean\(requirements\[id\]\)\]\);/,'moving from Trip Timing to another report reads again');
  assert.match(source,/id==='scans'&&data\.scanConnected===false&&/,'a reading without scanned cards does not say the scan source is down');
  const {code}=await transformWithOxc(source.replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function'),'operations-reports.jsx',{jsx:{runtime:'classic'}});
  const urls=[];

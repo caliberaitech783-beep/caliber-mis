@@ -56,9 +56,9 @@ test('S3 → next day S1 is red with zero scheduled gap',()=>{
 test('a case is placed once, on the date and shift of its first duty',()=>{
  const start=cards=>{const [e]=report(cards).ot;return [e.startDate,e.startShift];};
  assert.deepEqual(start([card(1,1),card(2,2)]),[date,'S1']);assert.deepEqual(start([card(1,2),card(2,3)]),[date,'S2']);
- assert.deepEqual(start([card(1,1),card(2,3)]),[date,'S1'],'Shift 1 and Shift 3 sit under Shift 1');
- assert.deepEqual(start([card(1,3),card(2,2),card(3,1)]),[date,'S1'],'all three shifts sit under Shift 1');
- assert.deepEqual(start([card(1,3),card(2,1,{bookDate:'2026-11-11'})]),[date,'S3'],'an overnight pair sits under Shift 3 of the first day');
+ assert.deepEqual(start([card(1,1),card(2,3)]),[date,'S1'],'Shift A and Shift C sit under Shift A');
+ assert.deepEqual(start([card(1,3),card(2,2),card(3,1)]),[date,'S1'],'all three shifts sit under Shift A');
+ assert.deepEqual(start([card(1,3),card(2,1,{bookDate:'2026-11-11'})]),[date,'S3'],'an overnight pair sits under Shift C of the first day');
  assert.deepEqual(start([card(1,3,{bookDate:'2026-11-09'}),card(2,1)]),['2026-11-09','S3'],'also when the first day is the day before the selected dates');
 });
 test('left boundary includes previous-day S3 for selected-day S1',()=>{
@@ -180,7 +180,7 @@ test('OT & Multiple Duties over a month is read a week at a time and matches one
  // 17 Nov 2026: dashboard Sr 5 OT & Multiple Duties for every site from 1 to 16 Nov passed 50,000 cards in one read and stopped.
  const on=(id,day,shift,patch={})=>card(id,shift,{bookDate:day,...patch});
  const cards=[on(1,'2026-11-02',1),on(2,'2026-11-07',3),on(3,'2026-11-08',1),on(4,'2026-11-10',2),on(5,'2026-11-16',1,{employeeId:22,caliberId:'102'})];
- // 8 Nov Shift 1 is still open: the OT view counts every saved card, as it did before.
+ // 8 Nov Shift A is still open: the OT view counts every saved card, as it did before.
  const range={from:'2026-11-01',to:'2026-11-16'},batches=lockedBatches([site+'|2026-11-08|S1']);
  const one=buildManpowerReport({records:linkVlbTripHandovers(cards),assets,employees,shifts,filters:manpowerFilters(range),batches});
  assert.ok(one.ot.some(e=>e.dutyDates.includes('2026-11-07')&&e.dutyDates.includes('2026-11-08')),'the fixture has an OT case across the week edge, into an open shift');
@@ -243,7 +243,7 @@ test('locked days only (owner, 16 Nov 2026): an open, reopened or missing shift 
  const h=apiHarness({sites:null},[card(1,1),card(2,2)],{batches:()=>lockedBatches(open).filter(b=>b.id!==drop)});
  const read=async()=>(await h.run({from:date,to:date,view:'attendance'},'/api/reports/manpower/attendance')).result;
  let r=await read();
- assert.deepEqual([r.otDuties.length,r.attendanceEquipment.length],[0,0],'Shift 3 open: nothing of the 10th counts, not even the locked Shift 1 and 2');
+ assert.deepEqual([r.otDuties.length,r.attendanceEquipment.length],[0,0],'Shift C open: nothing of the 10th counts, not even the locked Shift A and 2');
  assert.notEqual(r.attendanceShifts.find(s=>s.siteKey==='sasti ob'&&s.shift==='S3').state,'closed');
  const hr=(await h.run({from:date,to:date},'/api/integrations/hr/attendance')).result;
  assert.deepEqual(hr.otDuties,[],'HR gets no figure of an unlocked day');
@@ -251,29 +251,29 @@ test('locked days only (owner, 16 Nov 2026): an open, reopened or missing shift 
  open=[];r=await read();
  assert.equal(r.otDuties.length,2,'every shift locked: both duties count');
  open=['Sasti OC|2026-11-10|S1'];r=await read();
- assert.equal(r.otDuties.length,0,'Shift 1 reopened: the day is out again');
+ assert.equal(r.otDuties.length,0,'Shift A reopened: the day is out again');
  open=[];r=await read();
  assert.equal(r.otDuties.length,2,'locked again: read again from the cards as they are now');
  drop='Sasti OC|2026-11-10|S2';r=await read();
  assert.equal(r.otDuties.length,0,'a shift the Shift Master runs that day but without any batch keeps the day out');
 });
-test('a locked day is a whole day: Shift 1-3 even where the Shift Master also lists Day and Night shift (live, 16 Nov 2026)',()=>{
- // Jayant and Dudhichua East list Day and Night shift beside Shift 1 to 3 but run only Shift 1 to 3; their days never locked.
- const both=[...shifts,{id:'40',site,shiftCode:'D',shiftName:'Day shift',startTime:'06:00',endTime:'18:00',status:'Active'},{id:'41',site,shiftCode:'N',shiftName:'Night shift',startTime:'18:00',endTime:'06:00',status:'Active'}];
+test('a locked day is a whole day: Shift A-3 even where the Shift Master also lists Day and Shift Night (live, 16 Nov 2026)',()=>{
+ // Jayant and Dudhichua East list Day and Shift Night beside Shift A to 3 but run only Shift A to 3; their days never locked.
+ const both=[...shifts,{id:'40',site,shiftCode:'D',shiftName:'Shift Day',startTime:'06:00',endTime:'18:00',status:'Active'},{id:'41',site,shiftCode:'N',shiftName:'Shift Night',startTime:'18:00',endTime:'06:00',status:'Active'}];
  const b=(shift,closed=true)=>({id:shift,site,report_date:date,shift,closed_at:closed?date+'T23:00:00Z':null});
  const locked=list=>lockedSiteDays(both,list).has('sasti ob|'+date);
- assert.equal(locked([b('S1'),b('S2'),b('S3')]),true,'Shift 1, 2 and 3 locked: the whole day, Day and Night shift unused');
- assert.equal(locked([b('D'),b('N')]),true,'Day and Night shift locked: the whole day');
- assert.equal(locked([b('S1'),b('S2')]),false,'Shift 3 never created');
+ assert.equal(locked([b('S1'),b('S2'),b('S3')]),true,'Shift A, 2 and 3 locked: the whole day, Day and Shift Night unused');
+ assert.equal(locked([b('D'),b('N')]),true,'Day and Shift Night locked: the whole day');
+ assert.equal(locked([b('S1'),b('S2')]),false,'Shift C never created');
  assert.equal(locked([b('S1'),b('S2'),b('S3'),b('D',false)]),false,'any batch of the day still open');
  assert.equal(locked([b('S1'),b('S2'),b('S3',false)]),false);
  // A site whose Shift Master runs only two shifts that day: both locked is its whole day.
  const two=[{id:'50',site,shiftCode:'A',shiftName:'Shift A',startTime:'06:00',endTime:'14:00',status:'Active'},{id:'51',site,shiftCode:'B',shiftName:'Shift B',startTime:'14:00',endTime:'22:00',status:'Active'}];
  assert.equal(lockedSiteDays(two,[b('S1'),b('S2')]).has('sasti ob|'+date),true);
- // The report counts the day, and the HR pending list leaves it out although Day and Night shift have no batch.
+ // The report counts the day, and the HR pending list leaves it out although Day and Shift Night have no batch.
  const r=buildManpowerReport({records:[card(1,1),card(2,2)],assets,employees,shifts:both,batches:[b('S1'),b('S2'),b('S3')].map(x=>({...x,name:x.id})),filters:manpowerFilters({from:date,to:date}),parts:'attendance',lockedOnly:true});
  assert.equal(r.otDuties.length,2);
- assert.ok(r.attendanceShifts.some(s=>s.shift==='D'&&s.state!=='closed'),'the unused Day shift still shows as a box without a batch');
+ assert.ok(r.attendanceShifts.some(s=>s.shift==='D'&&s.state!=='closed'),'the unused Shift Day still shows as a box without a batch');
  assert.deepEqual(pendingSiteDays(r.attendanceShifts,lockedSiteDays(both,[b('S1'),b('S2'),b('S3')])),[]);
 });
 test('the attendance API sends the locked site-days of the selected dates',async()=>{
@@ -439,15 +439,15 @@ test('a zero-trip entry beside a saved card adds its reason, not a second machin
 test('each site, date and shift reports its batch: missing once the shift has ended, open, or closed',()=>{
  const at=clock=>Date.parse(clock+'+05:30'),batch=(shift,patch={})=>({id:'b'+shift,name:'BATCH-'+shift,site:'sasti ob',report_date:date,shift,closed_at:null,stage:'vlb_open',...patch});
  const states=(batches,now,filters={from:date,to:date})=>buildManpowerReport({records:[],assets,employees,shifts,batches,filters,now}).attendanceShifts.map(b=>[b.date,b.shift,b.state,b.batch]);
- // 10 Nov, 14:00: Shift 1 (05:00 to 13:00) has ended, Shift 2 is running, Shift 3 has not started.
+ // 10 Nov, 14:00: Shift A (05:00 to 13:00) has ended, Shift B is running, Shift C has not started.
  assert.deepEqual(states([],at('2026-11-10T14:00:00')),[[date,'S1','none',''],[date,'S2','not_due',''],[date,'S3','not_due','']],'the running shift is not reported as missing');
- assert.deepEqual(states([],at('2026-11-11T05:00:00')).map(b=>b[2]),['none','none','none'],'Shift 3 is due when it ends at 05:00 the next morning');
+ assert.deepEqual(states([],at('2026-11-11T05:00:00')).map(b=>b[2]),['none','none','none'],'Shift C is due when it ends at 05:00 the next morning');
  assert.deepEqual(states([batch('S1',{closed_at:'2026-11-10T15:00:00Z',stage:'closed'}),batch('S2',{stage:'elb_open'}),batch('S3')],at('2026-11-11T09:00:00')),
   [[date,'S1','closed','BATCH-S1'],[date,'S2','elb_open','BATCH-S2'],[date,'S3','vlb_open','BATCH-S3']]);
  assert.deepEqual(states([batch('S1',{stage:'lmv_open'})],at('2026-11-10T14:00:00'))[0],[date,'S1','lmv_open','BATCH-S1'],'the LMV stage between VLB and ELB is reported as it is');
  assert.deepEqual(states([batch('S2',{closed_at:'2026-11-10T22:00:00Z'}),batch('S2',{id:'again',name:'BATCH-S2-2'})],at('2026-11-10T14:00:00'))[1],[date,'S2','vlb_open','BATCH-S2-2'],'a reopened or second batch keeps the shift open');
  assert.deepEqual(states([],at('2026-11-12T09:00:00'),{from:date,to:'2026-11-11',shift:'S2'}).map(b=>b.slice(0,3)),[[date,'S2','none'],['2026-11-11','S2','none']],'one row per day; the Shift selection narrows the shifts');
- // A site lists the shifts its Shift Master holds; a site without any is expected to run Shift 1 to 3, due after the day ends.
+ // A site lists the shifts its Shift Master holds; a site without any is expected to run Shift A to 3, due after the day ends.
  const twoShift=shifts.slice(0,2),bare=buildManpowerReport({records:[],assets,employees,shifts:twoShift,batches:[{id:'x',name:'OTHER',site:'Majri OC',report_date:date,shift:'S1',closed_at:null,stage:'vlb_open'}],filters:{from:date,to:date},now:at('2026-11-10T23:00:00')});
  assert.deepEqual(bare.attendanceShifts.map(b=>[b.siteKey,b.shift,b.state]),[['majri ob','S1','vlb_open'],['majri ob','S2','not_due'],['majri ob','S3','not_due'],['sasti ob','S1','none'],['sasti ob','S2','none']]);
 });
@@ -457,7 +457,7 @@ test('a site is shown under one properly written name, never its stored lower-ca
  const r=buildManpowerReport({records:[lower,second,card(3,1,{location:'gauri pauni ob 2nd',assetId:99},{site:'gauri pauni ob 2nd'})],attendance,assets,employees,shifts,batches:[{id:'b',name:'B',site:'sasti ob',report_date:date,shift:'S1',closed_at:null,stage:'vlb_open'}],filters:{from:date,to:date}});
  assert.deepEqual(r.attendanceSites,[{siteKey:'gauri pauni ob 2nd',site:'gauri pauni ob 2nd'},{siteKey:'sasti ob',site:'Sasti OC'}],'the Shift Master spelling wins; a site known only by its key keeps it');
  assert.deepEqual(r.otSites.map(s=>s.site),['gauri pauni ob 2nd','Sasti OC']);
- assert.deepEqual(r.options.sites,['Sasti OC','gauri pauni ob 2nd'],'the Site selector lists each site once');
+ assert.deepEqual(r.options.sites,['Gauri Pauni OC (2nd)','Sasti OC'],'the Site selector lists each site once, by its OC name');
  assert.deepEqual([...new Set(r.details.map(d=>d.site))].sort(),['Sasti OC','gauri pauni ob 2nd']);assert.deepEqual(r.ot.map(e=>[e.severity,e.site]),[['red','Sasti OC']]);
  assert.deepEqual([...new Set(r.exceptions.map(e=>e.site))],['gauri pauni ob 2nd']);
  assert.deepEqual([...new Set(r.attendanceEquipment.map(x=>x.site))].sort(),['Sasti OC','gauri pauni ob 2nd']);

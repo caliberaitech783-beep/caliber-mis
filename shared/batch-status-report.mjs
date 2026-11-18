@@ -13,7 +13,7 @@ export const RATING_LABELS={good:'Good',average:'Average',poor:'Poor'};
 export const ratingOf=percent=>percent===null||percent===undefined?'':percent>=GOOD_PERCENT?'good':percent>=POOR_PERCENT?'average':'poor';
 const indiaDate=time=>new Date(time+19800000).toISOString().slice(0,10);
 export const SHIFT_CODES=['S1','S2','S3','D','N'];
-export const SHIFT_LABELS={S1:'Shift 1',S2:'Shift 2',S3:'Shift 3',D:'Day shift',N:'Night shift'};
+export const SHIFT_LABELS={S1:'Shift A',S2:'Shift B',S3:'Shift C',D:'Shift Day',N:'Shift Night'};
 export const STAGE_LABELS={none:'Batch not created',vlb_open:'VLB open',lmv_open:'LMV open',elb_open:'ELB open',locked:'Locked'};
 export const PENDING_STAGES=['none','vlb_open','lmv_open','elb_open'];
 

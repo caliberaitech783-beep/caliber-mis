@@ -39,14 +39,14 @@ test('a batch opens only after the previous shift batch of the site exists and i
  const close=id=>db.query("UPDATE mis_vlb_batches SET stage='closed',closed_at=NOW() WHERE id=$1",[id]);
  const lockVlb=id=>db.query("UPDATE mis_vlb_batches SET stage='lmv_open' WHERE id=$1",[id]);
 
- // 15th: no batch of the day before at all, so the 16th Shift 1 cannot open.
+ // 15th: no batch of the day before at all, so the 16th Shift A cannot open.
  let blocked=await preview('2026-12-16','S1');
- assert.match(blocked.data.previousShift.message,/Shift 3 of 15-12-2026/);
- let res=await create('2026-12-16','S1');assert.equal(res.status,409);assert.match(res.data.error,/Shift 3 of 15-12-2026/);
+ assert.match(blocked.data.previousShift.message,/Shift C of 15-12-2026/);
+ let res=await create('2026-12-16','S1');assert.equal(res.status,409);assert.match(res.data.error,/Shift C of 15-12-2026/);
 
- // The 15th is before the rule's start, so its Shift 3 opens on its own.
+ // The 15th is before the rule's start, so its Shift C opens on its own.
  const s3=await create('2026-12-15','S3');assert.equal(s3.status,201,JSON.stringify(s3.data));
- res=await create('2026-12-16','S1');assert.equal(res.status,409,'15th Shift 3 is still open');
+ res=await create('2026-12-16','S1');assert.equal(res.status,409,'15th Shift C still has VLB open');
  await lockVlb(s3.data.id);
  assert.match((await preview('2026-12-16','S1')).data.creationBlocker,/Fully close/);
  assert.equal((await create('2026-12-16','S1')).status,409,'locking VLB does not release the next date');
@@ -55,8 +55,8 @@ test('a batch opens only after the previous shift batch of the site exists and i
  const s1=await create('2026-12-16','S1');assert.equal(s1.status,201,JSON.stringify(s1.data));
  await lockVlb(s1.data.id);
 
- // Skipping a shift is refused: Shift 3 needs Shift 2 of the same day.
- res=await create('2026-12-16','S3');assert.equal(res.status,409);assert.match(res.data.error,/Shift 2 of 16-12-2026/);
+ // Skipping a shift is refused: Shift C needs Shift B of the same day.
+ res=await create('2026-12-16','S3');assert.equal(res.status,409);assert.match(res.data.error,/Shift B of 16-12-2026/);
  const s2=await create('2026-12-16','S2');assert.equal(s2.status,201,JSON.stringify(s2.data));
  await lockVlb(s2.data.id);
  const last=await create('2026-12-16','S3');
@@ -72,5 +72,5 @@ test('a batch opens only after the previous shift batch of the site exists and i
  assert.equal((await create('2026-12-17','S1')).status,201);
 
  // Another site keeps its own order.
- res=await create('2026-12-17','S1','Jayant OC');assert.equal(res.status,409);assert.match(res.data.error,/Shift 3 of 16-12-2026/);
+ res=await create('2026-12-17','S1','Jayant OC');assert.equal(res.status,409);assert.match(res.data.error,/Shift C of 16-12-2026/);
 });
