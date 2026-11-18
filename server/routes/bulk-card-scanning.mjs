@@ -445,7 +445,7 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
   if(batch.kind!=='vehicle'||!context||context.logBookKind==='lmv'||context.cancelled||!twoStageEnabled())return;
   let vlbBatch=null;try{vlbBatch=await matchingVlbBatch(pool,context);}catch{return;}
   if(!vlbBatch||vlbBatch.deleted_at||vlbBatch.archived_at||batchStage(vlbBatch)==='vlb_open')return;
-  fail(`VLB is already locked for batch ${vlbBatch.name}, so these trip cards could not be saved. Ask the site PM to unlock VLB before scanning more trip cards for this shift.`,409);
+  fail(`VLB is already locked for batch ${vlbBatch.name}, so these trip cards could not be saved. Unlock VLB before scanning more trip cards for this shift.`,409);
  };
  const liveCards=async(client,batchId)=>(await client.query("SELECT id,ordinal,filename,status,revision,draft,raw_fields FROM mis_scan_cards WHERE batch_id=$1 AND status IN('review','approved','error') AND review_note NOT IN('Removed from batch: wrong date, site or shift','Exact duplicate upload skipped automatically') ORDER BY ordinal",[batchId])).rows.map(row=>{decodeScanRow(row);return row});
  app.get('/api/scan-batches/:id/mismatches',...protect,wrap(async(req,res)=>{

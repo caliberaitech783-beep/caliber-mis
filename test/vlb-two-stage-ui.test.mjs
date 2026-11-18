@@ -171,7 +171,7 @@ test('create batch shows the stage indicator and Close batch only for two-stage 
  assert.match(renderToStaticMarkup(nodes(tree,n=>n.type==='tr')[1]),/<td>OPEN<\/td>/);
  // Two-stage VLB stage: Lock VLB with blockers, ELB disabled hint, list shows VLB open.
  const vlbStage={...base,twoStage:true,stage:'vlb_open',canLockVlb:false,lockBlockers:['Awaiting transfer: VPC-019 from NIGAHI (2 cards, 17 trips).'],holds:[],fleet:[]};
- h.slots[3]=[{...base,stage:'vlb_open'}];h.slots[5]=vlbStage;h.slots[4]={...base,stage:'vlb_open'};h.slots[23]=true;
+ h.slots[3]=[{...base,stage:'vlb_open'}];h.slots[5]=vlbStage;h.slots[4]={...base,stage:'vlb_open'};h.slots[22]=true;
  tree=render();html=renderToStaticMarkup(tree);
  assert.match(html,/<ol class="vlb-stage-steps"[^>]*><li aria-current="step" class="current">1 VLB open<\/li><li>2 LMV open<\/li><li>3 ELB open<\/li><li>4 ELB locked · Batch closed<\/li><\/ol>/);
  assert.equal(button(tree,'Lock VLB').props.disabled,true);assert.match(html,/Lock VLB is blocked: Awaiting transfer: VPC-019 from NIGAHI/);assert.equal(button(tree,'Add LMV manually'),undefined);assert.equal(button(tree,'Scan or upload LMV PDF'),undefined);

@@ -22,7 +22,8 @@ One batch per site, date and shift carries both the tipper cards (Vehicle Log Bo
 | ELB entry style | One small dialog per machine with Next, Previous, Skip and auto-save. Only hours, status and breakdown details are typed. |
 | ELB outside a batch | Not allowed (2 November 2026). ELB Manual and ELB Scan open from the same site batch picker as VLB and show the editor only when the selected batch is at the ELB stage. The server refuses an ELB whose site, date and shift have no batch, or whose batch still has VLB open, with the same 409 as a standalone VLB. Standalone ELB saving is discontinued; with the flag off the old behaviour returns. |
 | Go-live | Test platform first with a feature flag; live on Pulse-II only after team sign-off. |
-| Reopen and Unlock VLB by OTP (added 2 November 2026) | The site PM may approve a batch reopening, or an Unlock VLB, by reading out an OTP to the MIS user by phone instead of signing in. On-screen approval stays available. A PM who is also the MIS requester may approve their own reopening request on screen; the audit records both roles. |
+| No PM approval for Reopen or Unlock VLB (owner, 18 November 2026) | Any MIS user reopens a saved batch directly, and the batch owner, any MIS user, the site PM or an MIS administrator presses Unlock VLB directly. No reopen request, on-screen PM decision or PM OTP is needed; asking for an OTP is refused with "PM approval is no longer needed". The reopen and the unlock are still recorded in the batch audit. This replaces the next row and the 30-day pause of 12 November 2026. |
+| Reopen and Unlock VLB by OTP (added 2 November 2026, withdrawn 18 November 2026) | The site PM may approve a batch reopening, or an Unlock VLB, by reading out an OTP to the MIS user by phone instead of signing in. On-screen approval stays available. A PM who is also the MIS requester may approve their own reopening request on screen; the audit records both roles. |
 
 ## 3. Batch lifecycle
 
@@ -32,7 +33,7 @@ Today a batch has one lifecycle field, `closed_at`. Replace it with an explicit 
 |---|---|---|
 | `vlb_open` | Add, correct, delete VLB cards (manual, scan, PDF upload). ELB entry is disabled for this batch. | **Lock VLB** by the batch owner. Blocked while any VLB card is awaiting a transfer or has unresolved machine labels. |
 | `elb_open` | VLB cards are frozen. The full site fleet list opens, trips pre-filled from VLB. Work through machines one by one in the stepper dialog, or scan/upload ELB cards. | **Close batch** by the batch owner. Blocked by the checks in section 5. |
-| `closed` | Everything frozen. Reports and exports run. `closed_at` set, `closure_revision + 1`. | **Reopen** via the existing reopen request and PM approval, given on screen or by the PM's OTP (section 6, last part). Reopen returns the batch to `elb_open`; a second explicit "Unlock VLB" action, by the PM on screen or by the MIS user with the PM's OTP, returns it to `vlb_open` and clears the machine snapshot. |
+| `closed` | Everything frozen. Reports and exports run. `closed_at` set, `closure_revision + 1`. | **Reopen** directly by any MIS user (no PM approval since 18 November 2026). Reopen returns the batch to `elb_open`; a second explicit "Unlock VLB" action, by the batch owner, any MIS user, the site PM or an MIS administrator, returns it to `vlb_open` and clears the machine snapshot. |
 
 Batch creation sets `stage='vlb_open'`. The "one open batch per site" guard treats `vlb_open` and `elb_open` both as open, which it already does because `closed_at IS NULL` in both.
 
@@ -347,6 +348,8 @@ The feature is on by default. Setting  on the App Service turns it off without a
 Open items before go-live: the two Pulse write endpoints (section 6), a per-site option for a destination-PM OTP, and the team's change list from the trial.
 
 2 November 2026: PM approval by OTP for batch reopening and Unlock VLB added (`server/services/vlb-approval-otp.mjs`, `src/vlb-approval-otp.jsx`), self-approval of a reopening request allowed for a PM who is also the requester. Tests: `test/vlb-approval-otp.test.mjs`, `test/vlb-approval-otp-ui.test.mjs`. No new switch: it is available wherever the OTP delivery is configured, which it is on live.
+
+18 November 2026 (owner): PM approval for reopening a saved batch and for Unlock VLB removed. `src/vlb-approval-otp.jsx` and the 30-day pause (`server/rules/vlb-pm-trial.mjs`) were deleted; a batch reopened during the pause no longer expires (`trial_reopened_until` is cleared at start-up). Tests: `test/vlb-approval-otp.test.mjs`, `test/vlb-batch-governance.test.mjs`, `test/vlb-batches.test.mjs`, `test/vlb-batches-ui.test.mjs`.
 
 ## Locking (8 November 2026)
 
