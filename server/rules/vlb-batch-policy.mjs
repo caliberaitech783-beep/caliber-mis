@@ -45,6 +45,8 @@ export const VLB_BATCH_SCHEMA=`
  requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),decided_by TEXT,decision_note TEXT,decided_at TIMESTAMPTZ,used_at TIMESTAMPTZ);
  ALTER TABLE mis_vlb_reopen_requests ADD COLUMN IF NOT EXISTS withdrawn_at TIMESTAMPTZ;
  ALTER TABLE mis_vlb_batches ADD COLUMN IF NOT EXISTS trial_reopened_until TIMESTAMPTZ;
+ -- PM approval was removed (owner, 18 Nov 2026), so a batch reopened during the old pause no longer expires.
+ UPDATE mis_vlb_batches SET trial_reopened_until=NULL WHERE trial_reopened_until IS NOT NULL;
  CREATE TABLE IF NOT EXISTS mis_vlb_pm_trials(id TEXT PRIMARY KEY,started_at TIMESTAMPTZ NOT NULL,ends_at TIMESTAMPTZ NOT NULL,CHECK(ends_at=started_at+INTERVAL '240 hours'));
  DO $trial_duration$
  BEGIN
@@ -117,10 +119,10 @@ export async function assertVlbBatchWrite(client,data,actor,recordId,{adding=fal
  const batch=linked||matching;if(!batch)batchFail('Create or open the site/date/shift batch before saving a VLB entry. Standalone VLB saving is discontinued.',409);
  if(batch.archived_at||batch.deleted_at)batchFail('This batch is unavailable. Open an active site/date/shift batch before saving.');
  requireOperationalDate(batch.report_date);
- if(!(adding&&batch.closed_at)&&batch.trial_reopened_until&&(await client.query('SELECT $1::timestamptz<=clock_timestamp() AS expired',[batch.trial_reopened_until])).rows[0].expired)batchFail('The VLB reopening trial has expired. Save and lock this batch, then request site PM approval before changing cards.',403);
- if(batch.closed_at&&!adding)batchFail('This site/date/shift batch is closed. Request site PM approval and reopen the existing batch before changing existing cards.');
+ if(!(adding&&batch.closed_at)&&batch.trial_reopened_until&&(await client.query('SELECT $1::timestamptz<=clock_timestamp() AS expired',[batch.trial_reopened_until])).rows[0].expired)batchFail('This reopened batch has expired. Save and lock it, then reopen it before changing cards.',403);
+ if(batch.closed_at&&!adding)batchFail('This site/date/shift batch is closed. Reopen the existing batch before changing existing cards.');
  if(twoStageEnabled()&&(batch.stage==='lmv_open'||batch.lmv_locked_at||batch.stage==='elb_open'&&!adding))batchFail('VLB is locked for batch '+batch.name+'. Unlock VLB from the batch page before changing existing tipper cards.');
- if(batch.amendment_by&&batchLogin(batch.amendment_by)!==batchLogin(actor))batchFail('This batch was reopened for another MIS user. Only the MIS user approved by the site PM can add or change cards.',403);
+ if(batch.amendment_by&&batchLogin(batch.amendment_by)!==batchLogin(actor))batchFail('This batch was reopened for another user. Only the user who reopened it can add or change cards.',403);
  return batch;
 }
 export async function lockSavedVlbBatches(client,actor,recordIds){
