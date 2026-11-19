@@ -11,8 +11,9 @@ export function isDurationColumn(label = "", key = "") {
     || /^(days of (?:breakdown|bd)|bd timing|bd days\s*\/\s*hrs|(?:productive|breakdown|bd|available) (?:hrs|hours)|downtime|tat|turn\s*around time(?:\s*\(tat\))?|time taken|duration|arrival delay|waiting when flagged|time to accept)$/i.test(String(label).trim());
 }
 
+// A column marked duration: false (the ELB fleet's BD hours) never sorts a table when it opens.
 export function defaultDurationSort(columns = []) {
-  const durations = columns.filter((column) => isDurationColumn(column.label, column.key));
+  const durations = columns.filter((column) => column.duration !== false && isDurationColumn(column.label, column.key));
   const column = durations.find((column) => ["breakdowndays", "days"].includes(String(column.key).toLowerCase()) || /^(days of (?:breakdown|bd)|bd days\s*\/\s*hrs|(?:breakdown|bd) (?:hrs|hours))$/i.test(String(column.label).trim())) || durations[0];
   return column ? { key: column.key, direction: "desc" } : { key: "", direction: "asc" };
 }

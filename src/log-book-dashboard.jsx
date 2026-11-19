@@ -3,6 +3,7 @@ import {BookOpen,Building2,ShieldCheck,ArrowUpRight,X,Download,Printer} from 'lu
 import {openSmartPrint} from './smart-print.mjs';
 import {downloadBlob} from './download-history.mjs';
 import TableSmartPrint from './table-smart-print.jsx';
+import SmartSearchReport from './smart-search-report.jsx';
 import {SortableHeader,sortRowsBlanksLast} from './sortable-table.jsx';
 import './log-book-dashboard.css';
 import {scanImageExtensionForType} from '../public/scan-image-type.mjs';
@@ -33,7 +34,8 @@ function recordValue(row={},key){
  if(key==='door')return row.door||'';
  return '';
 }
-function RecordDetails({selection,filters,session,fetcher,close}){
+const recordReportColumns=openScan=>[...recordColumns.map(([key,label])=>({key,label,blanksLast:true,value:row=>recordValue(row,key)})),{key:'original',label:'Original',value:()=>'',render:row=><button onClick={()=>void openScan(row)}>Download scan</button>}];
+function RecordDetails({selection,filters,session,fetcher,close,ReportSection}){
  const [state,setState]=useState({records:[],loading:true,error:'',cursor:null});
  const [recordSort,setRecordSort]=useState({key:'',direction:'asc'});
  const changeRecordSort=key=>setRecordSort(current=>({key,direction:current.key===key&&current.direction==='asc'?'desc':'asc'}));
@@ -42,6 +44,10 @@ function RecordDetails({selection,filters,session,fetcher,close}){
  const openScan=async row=>{try{const response=await fetcher(`/api/log-books/${row.book_type}/${row.id}/source-image`,{headers:{Authorization:'Bearer '+session.token}});if(!response.ok)throw Error('No original scan is available for this entry. Manual entries may have no scan.');const blob=await response.blob();const link=document.createElement('a'),url=URL.createObjectURL(blob);link.href=url;link.download=row.book_no.replaceAll('/','-')+scanImageExtensionForType(blob.type);link.click();setTimeout(()=>URL.revokeObjectURL(url),10000)}catch(e){setState(s=>({...s,error:e.message}))}};
  const title=(selection.kind==='vehicle'?'VLB':'ELB')+' saved cards'+(selection.location?' · '+selection.location:''),period=selection.hours?'Saved in the '+windowLabel(selection.hours).toLowerCase():dateLabel(selection.from||filters.from)+' – '+dateLabel(selection.to||filters.to);
  // The print holds the cards listed in the pop-up; while more can still be loaded, its heading says how many it has.
+ // With the shared report table (the dashboard page) the pop-up has the VLB batch look: Smart Search, a filter and sort menu on
+ // every heading and Smart Print. Without it the plain sortable table below is drawn.
+ const printTitle=title+' · '+period+(state.cursor?' · first '+number(state.records.length)+' cards':'');
+ if(ReportSection)return <Dialog title={title} close={close}>{state.error&&<p role="alert" className="lb-error">{state.error}</p>}<SmartSearchReport ReportSection={ReportSection} title={printTitle} category="log-book-saved-cards" description={period+' · Saved entries only'} searchLabel="Smart Search saved cards" placeholder="Book number, site, date or door" columns={recordReportColumns(openScan)} rows={state.records} rowKey={row=>row.id} dataReady={!state.loading||state.records.length>0} emptyMessage={state.loading?'Loading records…':'No saved cards match these filters.'}/>{state.loading&&<p role="status">Loading records…</p>}{state.cursor&&<button disabled={state.loading} onClick={()=>void load(state.cursor)}>Load more cards</button>}</Dialog>;
  return <Dialog title={title} close={close} actions={state.records.length>0&&<TableSmartPrint title={title+' · '+period+(state.cursor?' · first '+number(state.records.length)+' cards':'')}/>}><p className="lb-muted">{period} · Saved entries only</p>{state.error&&<p role="alert" className="lb-error">{state.error}</p>}<div className="lb-table-wrap"><table><thead><tr>{recordColumns.map(([key,label])=><SortableHeader key={key} label={label} sortKey={key} sort={recordSort} onSort={changeRecordSort} filterIcon={false}/>)}<th data-smart-print-skip="">Original</th></tr></thead><tbody>{sortRowsBlanksLast(state.records,recordSort,recordValue).map(r=><tr key={r.id}><td>{r.book_no}</td><td>{r.site}<small>{r.day}</small></td><td>{r.door||'—'}</td><td><button onClick={()=>void openScan(r)}>Download scan</button></td></tr>)}</tbody></table></div>{!state.records.length&&!state.loading&&<p>No saved cards match these filters.</p>}{state.loading&&<p role="status">Loading records…</p>}{state.cursor&&<button disabled={state.loading} onClick={()=>void load(state.cursor)}>Load more cards</button>}</Dialog>
 }
 // The dashboard on A3 landscape sheets, one report to a sheet: the cards (with the last 24 hours when Sr 1 is shown),
@@ -138,7 +144,7 @@ export default function LogBookDashboard({session,goto,fetcher=fetch,initialFilt
    <button type="button" role="tab" id="lb-sr-tab-all" aria-selected={sr===ALL_PANELS} onClick={()=>chooseSr(ALL_PANELS)} title="Every Sr No on one page, read one after another. Choose it to print the complete dashboard."><b>All</b><span>Every Sr No</span></button>
   </nav>
   {data&&shown(1)&&<div role="tabpanel" id="lb-sr-1-recent" aria-labelledby="lb-sr-tab-1"><RecentActivityPanel recent={live.recent} error={live.error} Dialog={Dialog} customHours={live.customHours} onCustomHours={live.setCustomHours}/></div>}
-  {selection?.kind&&<RecordDetails selection={selection} filters={applied} session={session} fetcher={fetcher} close={()=>setSelection(null)}/>}
+  {selection?.kind&&<RecordDetails selection={selection} filters={applied} session={session} fetcher={fetcher} ReportSection={ReportSection} close={()=>setSelection(null)}/>}
   {selection?.sites&&<Dialog title="Sites with saved entries" close={()=>setSelection(null)} actions={<TableSmartPrint title={'Sites with saved entries · '+displayDay(applied.from)+' to '+displayDay(applied.to)}/>}><p className="lb-muted">Sites with zero entries are included for comparison.</p><div className="lb-table-wrap"><table><thead><tr><th>Site</th><th>VLB</th><th>ELB</th></tr></thead><tbody>{sitesLowToHigh(data?.bySite,['vehicle','equipment'].filter(k=>data?.kinds?.includes(k))).map(r=><tr key={r.site}><td>{r.site}</td>{['vehicle','equipment'].map(k=><td key={k}><button disabled={!r[k]} onClick={()=>choose(k,{location:r.site})}>{number(r[k])}</button></td>)}</tr>)}</tbody></table></div></Dialog>}
   {selection?.drafts&&<Dialog title="My recovery drafts" close={()=>setSelection(null)}><p>{number(data.totals.recoveryDrafts)} active server recovery copies match these filters. Copies saved only on another laptop are not counted here.</p><p>These copies are separate from saved logbook totals. Completed recovery copies are removed after their batch is saved and locked.</p>{goto?<button className="lb-apply" onClick={()=>goto('Drafts')}>Open Draft recovery</button>:<p className="lb-muted">Open MIS → Draft recovery in the live app to resume work.</p>}</Dialog>}
  </section>

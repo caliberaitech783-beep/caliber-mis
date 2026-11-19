@@ -5565,7 +5565,7 @@ function Equipment({
         </ActionsTable>
       </div>
       {aliasRevoke && <EquipmentAliasRevokeDialog session={aliasSession} alias={aliasRevoke} otpEnabled={aliasData.otpEnabled} approver={aliasData.approver} approverTelegramLinked={aliasData.approverTelegramLinked} onDone={aliasData.refresh} onDismiss={() => setAliasRevoke(null)} />}
-      {pageTitle === 'Equipment master' && <EquipmentAliasAdminPanel session={aliasSession} isAdmin={aliasAdmin} />}
+      {pageTitle === 'Equipment master' && <EquipmentAliasAdminPanel session={aliasSession} isAdmin={aliasAdmin} ReportSection={ReportSection} />}
       {detail && (
         <Modal title="Equipment details" close={() => setDetail(null)}>
           <div className="detailhead">
@@ -11977,7 +11977,7 @@ function App() {
   ) : renderedActive==='Fleet reconciliation' ? (<details open className="scan-fleet-reconciliation"><summary>Site fleet · VLB / LMV / ELB, breakdown and idle details</summary><FleetReconciliation session={session}/></details>) : renderedActive==='Employee Current Location' ? (<EmployeeCurrentLocation session={session}/>) : renderedActive==='Employee master' ? (<EmployeeMaster session={session} ExportMenu={ExportMenu} PrintButton={PrintButton} parseCsv={parseCsv}/>) : ['Work Order master','Financial Year master','Company master'].includes(renderedActive) ? (
     <ErpMasters key={renderedActive} name={renderedActive} session={session} ExportMenu={ExportMenu} PrintButton={PrintButton} parseCsv={parseCsv}/>
   ) : renderedActive==='Pulse Master Sync' ? (
-    <><PulseMasterSync session={session}/><PendingInPulse session={session}/></>
+    <><PulseMasterSync session={session} ReportSection={ReportSection}/><PendingInPulse session={session}/></>
   ) : renderedActive==='Deletion' ? (<LogBookDeletion session={session}/>) : renderedActive==='Scan Backup' ? (<ScanCardBackup session={session}/>)
   : renderedActive==='LMV Log Book' ? (<LogBookModeChoice kind="lmv" canScan={canOpenAdminPage('LMV Scan')} onManual={()=>selectMenu('LMV Manual')} onScan={()=>selectMenu('LMV Scan')}/>)
   : renderedActive==='LMV Manual' ? (<VlbEntryWorkspace key="lmv-manual" kind="lmv" mode="manual" session={session} ReportSection={ReportSection} onExit={()=>selectMenu('LMV Log Book')}><LogBookForm kind="lmv" session={session} onExit={()=>selectMenu('LMV Log Book')} onBulkScan={canOpenAdminPage('LMV Scan')?()=>selectMenu('LMV Scan'):undefined}/></VlbEntryWorkspace>)

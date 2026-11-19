@@ -12,6 +12,7 @@ import {withLmvEntrySite} from './vlb-entry-context.mjs';
 import {activeWorkOrders,bookShiftCode,systemBookDate} from '../shared/trip-card-rules.mjs';
 import {vlbRecordSource,vlbRecordEntryType} from '../shared/vlb-batch-format.mjs';
 import VlbBatchReport,{ElbSavedCardsReport} from './vlb-batch-report.jsx';
+import SmartSearchReport from './smart-search-report.jsx';
 import VlbBatchGovernance from './vlb-batch-governance.jsx';
 import VlbReopenDialog from './vlb-reopen-dialog.jsx';
 import VlbBatchHolds,{NewEquipmentRequest} from './vlb-batch-holds.jsx';
@@ -134,11 +135,10 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
  const detailCache=useRef({id:'',etag:'',data:null});
  const [deleteBatchId,setDeleteBatchId]=useState(null);
  const [batchSiteByTab,setBatchSiteByTab]=useState({});
- // Click-a-heading sorting for the site batch list, open batches across sites, the Equipment ELB fleet and the card preview.
+ // Click-a-heading sorting for the site batch list and open batches across sites.
  const [batchSort,setBatchSort]=useState({key:'',direction:'asc'}),[openSort,setOpenSort]=useState({key:'',direction:'asc'});
- const [fleetSort,setFleetSort]=useState({key:'',direction:'asc'}),[previewSort,setPreviewSort]=useState({key:'',direction:'asc'});
  const nextSort=key=>current=>({key,direction:current.key===key&&current.direction==='asc'?'desc':'asc'});
- const changeBatchSort=key=>setBatchSort(nextSort(key)),changeOpenSort=key=>setOpenSort(nextSort(key)),changeFleetSort=key=>setFleetSort(nextSort(key)),changePreviewSort=key=>setPreviewSort(nextSort(key));
+ const changeBatchSort=key=>setBatchSort(nextSort(key)),changeOpenSort=key=>setOpenSort(nextSort(key));
  const readDetail=async(id,signal)=>{
   const cached=detailCache.current.id===id?detailCache.current:null;
   const response=await fetch('/api/vlb-batches/'+id,{signal,cache:'no-store',headers:{Authorization:'Bearer '+session.token,...(cached?.etag?{'If-None-Match':cached.etag}:{})}});
@@ -282,8 +282,7 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
      {!viewed.stageWait&&viewed.canClose===false&&<p role="status">The batch owner or an MIS administrator can close and lock this ELB.</p>}
      <div id="vlb-equipment-elb-details" hidden={equipmentElbHidden}>
      {viewed.fleetProgress&&<p role="status">ELBs saved: {viewed.fleetProgress.saved} · Required remaining: {viewed.fleetProgress.remaining}{viewed.fleetProgress.optionalUnsaved?' · '+viewed.fleetProgress.optionalUnsaved+' optional with no saved ELB':''}{viewed.fleetProgress.skipped?' · '+viewed.fleetProgress.skipped+' skipped':''}{viewed.fleetProgress.drafts?' · '+viewed.fleetProgress.drafts+' draft'+(viewed.fleetProgress.drafts===1?'':'s'):''}{viewed.fleetProgress.loaders?' · '+viewed.fleetProgress.loaders+' loading machine'+(viewed.fleetProgress.loaders===1?'':'s'):''}</p>}
-     {(viewed.fleet||[]).length>0&&<TableSmartPrint row title={'Equipment ELB · '+viewed.name}/>}
-     <div className="logbook-table-wrap"><table className="logbook-table vlb-fleet-table"><thead><tr>{fleetColumns.map(([key,label])=><SortableHeader key={key} label={label} sortKey={key} sort={fleetSort} onSort={changeFleetSort} filterIcon={false}/>)}</tr></thead><tbody>{sortRowsBlanksLast(viewed.fleet||[],fleetSort,(row,key)=>fleetSortValue(row,key,viewed)).map(row=>{const entry=fleetFrontEntry(row,viewed);return <tr key={row.assetId}><td>{row.door}</td><td>{row.equipmentName||'—'}</td><td>{row.trips}</td><td>{entry.status}</td><td>{entry.operator}</td><td>{entry.caliberId}</td><td>{entry.openingHmr}</td><td>{entry.closingHmr}</td><td>{entry.workingHmr}</td><td>{entry.breakdownHours}</td><td>{entry.idleHours}</td><td>{entry.availabilityHours}</td><td>{entry.jobCardNo}</td><td>{entry.remark}</td><td>{entry.bookDate}</td><td>{entry.location}</td><td>{entry.shift}</td><td>{entry.bookNo}</td></tr>})}{!(viewed.fleet||[]).length&&<tr><td colSpan={18}>No machines in the fleet list for this site.</td></tr>}</tbody></table></div>
+     <SmartSearchReport key={viewed.id} ReportSection={ReportSection} title={'Equipment ELB · '+viewed.name} category="elb-fleet" description={(viewed.fleet||[]).length+' machines in the fleet list · '+displaySiteName(viewed.site)+' · '+viewed.report_date+' · '+viewed.shift} searchLabel="Smart Search Equipment ELB" placeholder="Door, equipment, operator or job card" columns={fleetReportColumns(viewed)} rows={viewed.fleet||[]} rowKey={row=>row.assetId} emptyMessage="No machines in the fleet list for this site."/>
      </div>
      </>}
     {stage==='closed'&&viewed.canUnlockVlb&&<div className="vlb-batch-actions"><button type="button" disabled={busy} onClick={unlockVlb}>Unlock VLB</button></div>}
@@ -293,7 +292,7 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
     </section>}
     <VlbBatchHolds session={session} batch={viewed} onChanged={()=>setRefresh(n=>n+1)}/>
    </div>}
-   {loading||detailLoading?<p role="status">Loading entries…</p>:viewed?<VlbBatchReport key={viewed.id} batch={lmvOpen?{...viewed,records:viewed.lmvRecords||[]}:viewed} bookLabel={lmvOpen?'LMV':'VLB'} ReportSection={ReportSection} onView={record=>viewCard(record,lmvOpen?'lmv':'vehicle')} rowAction={record=>action(record,lmvOpen?'lmv':'vehicle')} renderField={(record,field,value)=>fieldCell(record,lmvOpen?'lmv':'vehicle',field,value)} rowEditor={(record,colSpan)=>editor(record,lmvOpen?'lmv':'vehicle',colSpan)} entryType={entryFilter}/>:<><p>{records.length} cards · {manual} Manual + {records.length-manual} Scan · All included automatically. Each scan entry holds up to 40 cards; this final batch includes all matching saved entries and can exceed 40 cards.</p><div className="logbook-table-wrap"><table className="logbook-table"><thead><tr>{previewColumns.map(([key,label])=><SortableHeader key={key} label={label} sortKey={key} sort={previewSort} onSort={changePreviewSort} filterIcon={false}/>)}</tr></thead><tbody>{sortRowsBlanksLast(records,previewSort,previewValue).map(r=><tr key={r.id}><td>{r.book_no}</td><td>{r.data.aFormNo||'—'}</td><td>{r.data.door||'—'}</td><td>{r.data.employeeName||'—'}</td><td>{vlbRecordSource(r)}</td></tr>)}{!records.length&&<tr><td colSpan={5}>{selection.site&&selection.date&&selection.shift?'No saved, unbatched entries match this selection.':'Select site, date and shift to load saved entries.'}</td></tr>}</tbody></table></div></>}
+   {loading||detailLoading?<p role="status">Loading entries…</p>:viewed?<VlbBatchReport key={viewed.id} batch={lmvOpen?{...viewed,records:viewed.lmvRecords||[]}:viewed} bookLabel={lmvOpen?'LMV':'VLB'} ReportSection={ReportSection} onView={record=>viewCard(record,lmvOpen?'lmv':'vehicle')} rowAction={record=>action(record,lmvOpen?'lmv':'vehicle')} renderField={(record,field,value)=>fieldCell(record,lmvOpen?'lmv':'vehicle',field,value)} rowEditor={(record,colSpan)=>editor(record,lmvOpen?'lmv':'vehicle',colSpan)} entryType={entryFilter}/>:<><p>{records.length} cards · {manual} Manual + {records.length-manual} Scan · All included automatically. Each scan entry holds up to 40 cards; this final batch includes all matching saved entries and can exceed 40 cards.</p><SmartSearchReport ReportSection={ReportSection} title="Unbatched entries" category="vlb-unbatched-preview" description={[displaySiteName(selection.site),selection.date,selection.shift].filter(Boolean).join(' · ')||'Choose site, date and shift'} searchLabel="Smart Search unbatched entries" placeholder="Book number, trip card, vehicle or driver" columns={previewReportColumns} rows={records} rowKey={r=>r.id} emptyMessage={selection.site&&selection.date&&selection.shift?'No saved, unbatched entries match this selection.':'Select site, date and shift to load saved entries.'}/></>}
   </section>}
 
   {viewed&&selectedCard&&<VlbBatchCardDetails key={viewed.id+":"+selectedCard.viewKey} kind={selectedCard.kind} onClose={()=>{setSelectedCard(null);document.querySelector(".vlb-active-batch-panel")?.scrollIntoView({block:"start"})}} session={session} batch={viewed} record={selectedCard} ReportSection={ReportSection}/> }
@@ -354,7 +353,13 @@ export function fleetSortValue(row={},key,batch={}){
  const entry=fleetFrontEntry(row,batch);
  return fleetNumberKeys.includes(key)?meterNumber(entry[key]):entry[key]??'';
 }
+// Shared report table columns: sorted by fleetSortValue, "—" kept at the bottom both ways, and BD hours never sorts the
+// list on its own when it opens (the fleet keeps the server's order until a heading is used).
+const fleetReportColumns=batch=>fleetColumns.map(([key,label])=>({key,label,blanksLast:true,duration:false,
+ value:row=>key==='door'?row.door:key==='equipmentName'?row.equipmentName||'—':key==='trips'?row.trips:fleetFrontEntry(row,batch)[key],
+ sortValue:row=>fleetSortValue(row,key,batch)}));
 const previewColumns=[['bookNo','Book number'],['tripCard','Trip card'],['vehicle','Vehicle'],['driver','Driver'],['source','Source']];
+const previewReportColumns=previewColumns.map(([key,label])=>({key,label,blanksLast:true,value:record=>previewValue(record,key)}));
 export function previewValue(record={},key){
  const data=record.data||{};
  if(key==='bookNo')return record.book_no||'';
