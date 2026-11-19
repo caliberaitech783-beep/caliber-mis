@@ -7,13 +7,14 @@ import {readFileSync} from 'node:fs';
 import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {transformWithOxc} from 'vite';
+import {SortableHeader,sortRowsBlanksLast} from './helpers/sortable-table-stub.mjs';
 
 const source=readFileSync(new URL('../src/saved-log-books.jsx',import.meta.url),'utf8');
 const {code}=await transformWithOxc(source.replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function'),'saved-log-books.jsx',{jsx:{runtime:'classic'}});
 function harness(){
   const slots=[];let cursor=0;
   const useState=initial=>{const index=cursor++;if(!(index in slots))slots[index]=typeof initial==='function'?initial():initial;return [slots[index],value=>{slots[index]=typeof value==='function'?value(slots[index]):value}]};
-  const scope={compactLogBookLabel,tripSerialNumber,meterCorrectionReport,machineSummary,SmartSelect: "select",React,useState,useRef:value=>useState(()=>({current:value}))[0],useEffect:()=>{},LogBookSectionTabs:()=>null,PulseTripVerification:()=>null};
+  const scope={compactLogBookLabel,tripSerialNumber,meterCorrectionReport,machineSummary,SmartSelect: "select",React,useState,useRef:value=>useState(()=>({current:value}))[0],useEffect:()=>{},LogBookSectionTabs:()=>null,PulseTripVerification:()=>null,SortableHeader,sortRowsBlanksLast};
   const components=new Function(...Object.keys(scope),code+';return {SavedLogBooks,SavedLogBookDetails,savedLogBookQuery}')(...Object.values(scope));
   return {...components,slots,render(kind='vehicle'){cursor=0;return components.SavedLogBooks({kind,session:{token:'test'}})}};
 }
@@ -55,6 +56,20 @@ test('saved screen preserves filters in pagination queries, selects the clicked 
   const next=nodes(app.render(),node=>node.type===app.SavedLogBookDetails)[0];assert.equal(next.props.record.id,2);assert.equal(next.props.imageUrl,'','previous image is never shown for the new record');
   const query=app.savedLogBookQuery({search:'EMP100',location:'Sasti OC',from:'2026-10-01',to:'2026-10-28'},'100');
   const parsed=new URLSearchParams(query);assert.equal(parsed.get('before'),'100');assert.equal(parsed.get('location'),'Sasti OC');assert.equal(parsed.get('search'),'EMP100');assert.equal(parsed.get('from'),'2026-10-01');
+});
+
+test('saved list sorts the loaded books by a clicked heading, blanks last, served order until then',()=>{
+  const app=harness();app.render();
+  app.slots[2]=[{id:1,book_no:'VLB-10',data:{bookDate:'2026-11-12',door:'V-10',caliberId:'C20'}},{id:2,book_no:'VLB-9',data:{bookDate:'2026-11-03',door:'',caliberId:'C3'}},{id:3,book_no:'VLB-100',data:{bookDate:'2026-11-07',door:'V-9'}}];
+  const order=()=>nodes(app.render(),node=>node.type==='tr'&&node.props['aria-selected']!==undefined).map(node=>node.key);
+  const heading=key=>nodes(app.render(),node=>node.type===SortableHeader&&node.props.sortKey===key)[0];
+  assert.deepEqual(order(),['1','2','3'],'opens in the order served');
+  assert.deepEqual(nodes(app.render('equipment'),node=>node.type===SortableHeader).map(node=>node.props.label),['Book NO','Date','Location','Equipment','Employee ID','Operator']);
+  heading('bookNo').props.onSort('bookNo');assert.deepEqual(order(),['2','1','3'],'VLB-9 < VLB-10 < VLB-100');
+  heading('bookDate').props.onSort('bookDate');assert.deepEqual(order(),['2','3','1']);
+  heading('bookDate').props.onSort('bookDate');assert.deepEqual(order(),['1','3','2'],'second click: high to low');
+  heading('door').props.onSort('door');assert.deepEqual(order(),['3','1','2'],'V-9 < V-10, blank door last');
+  heading('caliberId').props.onSort('caliberId');assert.deepEqual(order(),['2','1','3'],'C3 < C20, missing ID last');
 });
 
 

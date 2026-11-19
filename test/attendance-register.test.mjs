@@ -9,6 +9,7 @@ import {buildAttendanceRegister,batchPeople,batchCategories,registerCategories,p
 import {operationReports} from '../src/operations-report-model.mjs';
 import {defaultDurationSort} from '../src/duration-sort.mjs';
 import {shiftChoiceLabel} from '../shared/report-filter-options.mjs';
+import {SortableHeader,sortRowsBlanksLast} from './helpers/sortable-table-stub.mjs';
 
 const JAYANT='jayant oc',DUDHI='dudhichua oc';
 const duty=(who,date,shift,extra={})=>({id:[who,date,shift,extra.siteKey||JAYANT].join('|'),date,shift,site:extra.siteKey===DUDHI?'Dudhichua OC':'Jayant OC',siteKey:JAYANT,employeeKey:'CMLL'+who,employeeId:'CMLL'+who,caliberCode:'CMLL'+who,employeeName:'Driver '+who,category:'Tipper Driver',equipment:'Tipper',doors:'T-'+who,logBook:'VLB',flag:'normal',flagLabel:'Normal duty',hours:7,trips:10,km:50,books:'B-'+who+'-'+date+shift,...extra});
@@ -112,7 +113,7 @@ async function screen(state,extra=[]){
  const parts=new Function('React',grid+';return {DateShiftGrid,dateShiftGrid,dateShiftExport};')(React);
  const ReportSection=({title,rows,columns,children})=>(seenTables.push({title,columns}),React.createElement('section',{'data-title':title},React.createElement('h2',null,title),children||React.createElement('table',null,React.createElement('tbody',null,rows.map((r,i)=>React.createElement('tr',{key:i},columns.map(c=>React.createElement('td',{key:c.key},c.render?c.render(r):String(c.value(r))))))))));
  let slot=0;const useState=initial=>{const value=state[slot++]??(typeof initial==='function'?initial():initial);return [value,()=>{}];};
- const env={React,useMemo:fn=>fn(),useState,...parts,StepBackButton:()=>null,shiftChoiceLabel,buildAttendanceRegister,batchPeople,batchCategories,registerCategories,personCategories};
+ const env={React,useMemo:fn=>fn(),useState,...parts,StepBackButton:()=>null,SortableHeader,sortRowsBlanksLast,shiftChoiceLabel,buildAttendanceRegister,batchPeople,batchCategories,registerCategories,personCategories};
  const Register=new Function(...Object.keys(env),register+';return AttendanceRegister;')(...Object.values(env));
  const report={otDuties:[...duties,...extra],attendanceEquipment:presence,attendanceShifts:shifts};
  return mode=>{slot=0;return renderToStaticMarkup(React.createElement(Register,{report,filters:{from:days[0],to:'2026-11-13'},mode,ReportSection,sites,query:'q'}));};
@@ -142,6 +143,21 @@ test('Batch-wise Step 4 lists red first, then orange, then the rest; a name open
  const opened=(await screen([JAYANT,{date:days[0],shift:'S1'},'CMLL101','Tipper']))('attendance-batch');
  assert.ok(opened.includes('data-title="Step 5 · CMLL101 · Driver 101 · duties at Jayant OC"'));
  assert.match(opened,/<tr class="report-row-picked"><td class="ar-sticky ar-id">CMLL101/);
+});
+
+test('Batch-wise Step 4 opens red first and sorts by a clicked heading: Trips as numbers, blanks last, the footer stays',async()=>{
+ const extra=[duty('199',days[0],'S1',{employeeName:'Zubair',flag:'red',flagLabel:'RED — back-to-back',trips:4}),duty('106',days[0],'S1',{employeeName:'Anil',trips:25}),duty('107',days[0],'S1',{employeeName:'Bina',trips:null,km:null})];
+ const names=html=>[...html.matchAll(/aria-label="Duties of ([^"]+)"/g)].map(m=>m[1]);
+ const draw=async sort=>(await screen([JAYANT,{date:days[0],shift:'S1'},'','Tipper',sort],extra))('attendance-batch');
+ const opening=await draw(undefined);
+ assert.equal(names(opening)[0],'Zubair','no heading clicked: red first, as before');
+ assert.match(opening,/<th scope="col" class="ar-total-head" aria-sort="none"><button[^>]*data-sort-key="trips"[^>]*>Trips<\/button><\/th>/);
+ assert.deepEqual(names(await draw({key:'trips',direction:'asc'})),['Driver 104','Zubair','Driver 101','Anil','Bina'],'low to high as numbers; no trips stays last');
+ const desc=await draw({key:'trips',direction:'desc'});
+ assert.deepEqual(names(desc),['Anil','Driver 101','Zubair','Driver 104','Bina'],'high to low; no trips still last');
+ assert.match(desc,/aria-sort="descending"><button[^>]*data-sort-key="trips"/);
+ assert.match(desc,/Present in this batch<\/th><td class="ar-code">5<\/td>/,'the footer stays under the sorted people');
+ assert.deepEqual(names(await draw({key:'employeeName',direction:'asc'})),['Anil','Bina','Driver 101','Driver 104','Zubair']);
 });
 
 test('Month-wise Step 2 (owner, 16 Nov 2026): the site\'s people by equipment category, a person on two categories in both',()=>{

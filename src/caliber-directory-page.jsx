@@ -10,6 +10,7 @@ import './caliber-directory-page.css';
 import {directoryLeadership} from './cdir-overview.mjs';
 import CdirEmployeeEdit from './cdir-employee-edit.jsx';
 import TableSmartPrint from './table-smart-print.jsx';
+import {SortableHeader,sortRowsBlanksLast} from './sortable-table.jsx';
 
 const ALL='ALL';
 const SITE_LEADERSHIP=/\b(project manager|production manager|maintenance manager|manager mechanical|hr manager|site manager|store manager|manager|incharge|supervisor|head)\b/i;
@@ -41,11 +42,21 @@ function exportRows(rows){return runDownloadNotice('Directory CSV',()=>{
   const link=document.createElement('a');link.href=URL.createObjectURL(blob);link.download=`caliber-directory-${new Date().toISOString().slice(0,10)}.csv`;link.click();URL.revokeObjectURL(link.href);
 });}
 
+// The directory's headings sort the list; Sr no stays 1, 2, 3 down the list on screen, Organisation does not sort.
+const directoryColumns=[['name','Name'],['cat','Cat'],['designation','Designation'],['department','Department'],['siteLabel','Site / Office'],['reportingTo','Reports to'],['contact','Contact'],['status','Status']];
+function directoryValue(person={},key){
+  if(key==='name')return activePerson(person)?clean(person.name):'';
+  if(key==='status')return statusOf(person);
+  return clean(person[key]);
+}
+
 function DirectoryTable({rows,printTitle,onSelect,onOrganisation,organisationManagers,empty='No employees match these filters.'}){
+  const [sort,setSort]=useState({key:'',direction:'asc'});
   if(!rows.length)return <div className="cdir-empty">{empty}</div>;
+  const changeSort=key=>setSort(current=>({key,direction:current.key===key&&current.direction==='asc'?'desc':'asc'}));
   return <><TableSmartPrint row title={printTitle}/><div className="cdir-table-scroll"><table className="cdir-table">
-    <thead><tr><th>Sr no</th><th>Name</th><th>Cat</th><th>Designation</th><th>Department</th><th>Site / Office</th><th>Reports to</th><th>Contact</th><th>Status</th>{onOrganisation&&<th data-smart-print-skip="">Organisation</th>}</tr></thead>
-    <tbody>{rows.map((person,index)=><tr key={rowKey(person,index)}>
+    <thead><tr><th>Sr no</th>{directoryColumns.map(([key,label])=><SortableHeader key={key} label={label} sortKey={key} sort={sort} onSort={changeSort} filterIcon={false}/>)}{onOrganisation&&<th data-smart-print-skip="">Organisation</th>}</tr></thead>
+    <tbody>{sortRowsBlanksLast(rows,sort,directoryValue).map((person,index)=><tr key={rowKey(person,index)}>
       <td>{index+1}</td><td>{activePerson(person)?<button className="cdir-person-link" type="button" onClick={()=>onSelect(person)}>{person.name}</button>:<span className="cdir-vacant-name">Vacant position</span>}</td>
       <td><span className="cdir-cat">{person.cat||'—'}</span></td><td>{person.designation||'—'}</td><td>{person.department||'—'}</td><td>{person.siteLabel||'—'}</td><td>{person.reportingTo||'—'}</td>
       <td>{person.contact?(person.contact.includes('*')?person.contact:<a href={`tel:${person.contact}`}>{person.contact}</a>):'—'}</td><td><span className={`cdir-status ${statusOf(person).toLowerCase()}`}>{statusOf(person)}</span></td>

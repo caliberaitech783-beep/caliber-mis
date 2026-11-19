@@ -5,6 +5,7 @@ import {machineSummary} from '../shared/trip-card-rules.mjs';
 import './meter-correction-report.css';
 import SmartSelect from './smart-select.jsx';
 import PulseTripVerification from './pulse-trip-verification.jsx';
+import {SortableHeader,sortRowsBlanksLast} from './sortable-table.jsx';
 import React,{useEffect,useRef,useState} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import './log-book-form.css';
@@ -21,6 +22,18 @@ const bookDate=value=>/^\d{4}-\d{2}-\d{2}$/.test(value||'')?value.split('-').rev
 const reportColumns=[['Date','bookDate'],['Book number','book_no'],['Location','location'],['Door','door'],['Driver','employeeName'],['Running KM','totalRunningKmr'],['Working Hrs','totalWorkingHmr'],['Trips','completedTrips'],['Available Hrs','availabilityHours'],['Running Hrs','runningHours'],['BD Hrs','breakdownHours'],['Idle Hrs','idleHours']];
 export function reportNumber(value){if(value===null||value===undefined||String(value).trim()==='')return null;const n=Number(value);return Number.isFinite(n)?n:null}
 export function reportTotals(records){return Object.fromEntries(reportColumns.slice(5).map(([,key])=>{const numbers=records.map(r=>reportNumber(key==='completedTrips'?r.data?.completedTrips??r.data?.totalTrips:r.data?.[key])).filter(n=>n!==null);return [key,numbers.length?Math.round(numbers.reduce((a,b)=>a+b,0)*100)/100:null]}))}
+// The saved VLB / ELB list: click a heading to sort what is loaded (blanks stay at the bottom); it opens in the order served.
+const savedListColumns=[['bookNo','Book NO'],['bookDate','Date'],['location','Location'],['door','Door'],['caliberId','Employee ID'],['employee','Driver']];
+export function savedListValue(record={},key){
+  const data=record.data||{};
+  if(key==='bookNo')return record.book_no||'';
+  if(key==='bookDate')return data.bookDate||'';
+  if(key==='location')return data.location||'';
+  if(key==='door')return data.door||'';
+  if(key==='caliberId')return data.caliberId??'';
+  if(key==='employee')return data.employeeName||'';
+  return '';
+}
 function Signatures(){return <div className="signatures"><span>Driver / Operator</span><span>Checked by</span><span>Approved by</span></div>}
 export function SavedLogBookReport({records,filters,kind}){
   const vehicle=kind==='vehicle',totals=reportTotals(records),columns=[...reportColumns.filter(([,key])=>vehicle||!['totalRunningKmr','completedTrips'].includes(key)),...(records.some(record=>(record.data?.meterCorrectionHistory?.length||record.data?.meterRuleErrors&&Object.keys(record.data.meterRuleErrors).length))?[['HMR / KMR errors','meterErrors'],['Corrected HMR / KMR readings','meterCorrections']]:[])];
@@ -90,6 +103,8 @@ export default function SavedLogBooks({kind,session,onManual,onScan,onExit,canSc
   useEffect(()=>{if(!selected)return;const node=document.getElementById('saved-logbook-details');node?.scrollIntoView({block:'start'});node?.focus({preventScroll:true});},[selected?.id,selected?.viewKey]);
   const [printPreview,setPrintPreview]=useState(''),[reportBusy,setReportBusy]=useState(false);
   const printFrame=useRef(null);
+  const [listSort,setListSort]=useState({key:'',direction:'asc'});
+  const changeListSort=key=>setListSort(current=>({key,direction:current.key===key&&current.direction==='asc'?'desc':'asc'}));
   const previewBook=()=>setPrintPreview(printDocument(renderToStaticMarkup(<><h1>CALIBER PULSE-II</h1><p>{code} · {selected.book_no}</p><SavedLogBookDetails record={selected} kind={kind}/><Signatures/></>)));
   const previewReport=async()=>{
     setReportBusy(true);setError('');const snapshot={...filters},seen=new Set(),all=[];
@@ -103,7 +118,7 @@ export default function SavedLogBooks({kind,session,onManual,onScan,onExit,canSc
     {printPreview&&<div className="saved-print-overlay" role="dialog" aria-modal="true" aria-label="Log book print preview"><div className="mis-popup-close-bar"><button type="button" className="mis-popup-close" onClick={()=>setPrintPreview('')}  aria-label="Close window">× Close</button></div><div className="saved-print-toolbar"><strong>Print preview — A4</strong><span>Choose Save as PDF in the print window to export.</span><button type="button" onClick={()=>printFrame.current?.contentWindow?.print()}>Print / Save PDF</button><button type="button" onClick={()=>setPrintPreview('')}>Close preview</button></div><iframe ref={printFrame} title="Printable log book report" srcDoc={printPreview}/></div>}
     <section className="logbook-section"><div className="saved-logbook-filters"><label>Search<input type="search" aria-label={'Search saved '+code} value={filters.search} onChange={e=>change('search',e.target.value)} placeholder="Book, door, employee or card number"/></label><label>Location<SmartSelect value={filters.location} onChange={e=>change('location',e.target.value)}><option value="">All assigned locations</option>{sites.map(site=><option key={site}>{site}</option>)}</SmartSelect></label><label>From date<input type="date" min="2026-11-01" value={filters.from} onChange={e=>change('from',e.target.value)}/></label><label>To date<input type="date" min="2026-11-01" value={filters.to} onChange={e=>change('to',e.target.value)}/></label><button type="button" onClick={()=>setRefresh(n=>n+1)} disabled={loading}>Refresh</button></div>
       {error&&<p role="alert" className="logbook-message error">{error}</p>}{loading&&<p role="status">Loading saved {code}…</p>}
-      <div className="logbook-table-wrap"><table className="logbook-table"><thead><tr><th>Book NO</th><th>Date</th><th>Location</th><th>{vehicle?'Door':'Equipment'}</th><th>Employee ID</th><th>{vehicle?'Driver':'Operator'}</th><th/></tr></thead><tbody>{records.map(record=><tr key={record.id} aria-selected={String(selected?.id)===String(record.id)}><td>{record.book_no}</td><td>{bookDate(record.data.bookDate)}</td><td>{display(record.data.location)}</td><td>{display(record.data.door)}</td><td>{display(record.data.caliberId)}</td><td>{display(record.data.employeeName)}</td><td><button type="button" onClick={()=>setSelected({...record,viewKey:crypto.randomUUID()})}>View {code}</button></td></tr>)}{!records.length&&!loading&&<tr><td colSpan={7}>No saved {code} entries match these filters.</td></tr>}</tbody></table></div>{cursor&&<button type="button" disabled={loading} onClick={()=>void load(cursor)}>Load more saved {code}</button>}
+      <div className="logbook-table-wrap"><table className="logbook-table"><thead><tr>{savedListColumns.map(([key,label])=><SortableHeader key={key} label={vehicle?label:key==='door'?'Equipment':key==='employee'?'Operator':label} sortKey={key} sort={listSort} onSort={changeListSort} filterIcon={false}/>)}<th/></tr></thead><tbody>{sortRowsBlanksLast(records,listSort,savedListValue).map(record=><tr key={record.id} aria-selected={String(selected?.id)===String(record.id)}><td>{record.book_no}</td><td>{bookDate(record.data.bookDate)}</td><td>{display(record.data.location)}</td><td>{display(record.data.door)}</td><td>{display(record.data.caliberId)}</td><td>{display(record.data.employeeName)}</td><td><button type="button" onClick={()=>setSelected({...record,viewKey:crypto.randomUUID()})}>View {code}</button></td></tr>)}{!records.length&&!loading&&<tr><td colSpan={7}>No saved {code} entries match these filters.</td></tr>}</tbody></table></div>{cursor&&<button type="button" disabled={loading} onClick={()=>void load(cursor)}>Load more saved {code}</button>}
     </section>{vehicle&&selected&&<PulseTripVerification session={session} logbookId={selected.id}/>}
     {selected&&<SavedLogBookDetails key={selected.id} record={selected} kind={kind} ReportSection={ReportSection} imageUrl={String(imageFor)===String(selected.id)?imageUrl:''} imageError={String(imageFor)===String(selected.id)?imageError:''}/>}
   </section>;

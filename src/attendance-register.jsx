@@ -2,6 +2,7 @@ import {shiftChoiceLabel} from '../shared/report-filter-options.mjs';
 import React,{useMemo,useState} from 'react';
 import {DateShiftGrid,dateShiftGrid,dateShiftExport} from './date-shift-grid.jsx';
 import {StepBackButton} from './step-back.jsx';
+import {SortableHeader,sortRowsBlanksLast} from './sortable-table.jsx';
 import {buildAttendanceRegister,batchPeople,batchCategories,registerCategories,personCategories} from './attendance-register-model.mjs';
 import './attendance-register.css';
 
@@ -25,6 +26,15 @@ const tip=c=>c.kind==='present'?c.lines.map(l=>shiftName(l.shift)+' · '+[l.door
 // Batch-wise Step 4 lists red first, then orange, brown, blue and normal duties, then by name.
 const FLAG_ORDER={red:0,orange:1,review:2,zero:3};
 const flagOrder=f=>FLAG_ORDER[f]??4;
+// Batch-wise Step 4 headings sort its people (opening order stays red first). HMR hours, Trips and KM sort as numbers;
+// Colour / reason sorts by colour (red, orange, brown, blue, normal), then the reason.
+const BATCH_PEOPLE_HEADINGS=[['caliberCode','Caliber ID','ar-sticky ar-id'],['employeeName','Name','ar-sticky ar-name'],['code','Day code','ar-day-code'],['doors','Door / equipment','ar-text'],['equipment','Equipment','ar-text'],['logBook','Log book',''],['hours','HMR hours','ar-total-head'],['trips','Trips','ar-total-head'],['km','KM','ar-total-head'],['flagLabel','Colour / reason','ar-text'],['books','Saved cards','ar-text']];
+const asNumber=v=>typeof v==='number'?v:String(v??'').trim()&&Number.isFinite(Number(v))?Number(v):'';
+function batchPersonValue(p={},key){
+ if(key==='hours'||key==='trips'||key==='km')return asNumber(p[key]);
+ if(key==='flagLabel')return flagOrder(p.flag)+' '+(p.flagLabel||'');
+ return blank(p[key])||p[key]==='—'?'':String(p[key]);
+}
 // HMR hours is keyed 'hmrHours', not 'hours': the shared table sorts any 'hours' column high to low by default
 // (duration-sort.mjs), which put a person's duties out of date order on live (17 Nov 2026).
 const HMR=['hmrHours','HMR hours',r=>shown(r.hours)];
@@ -43,6 +53,9 @@ export default function AttendanceRegister({report,filters,mode='attendance-batc
  const [siteKey,setSiteKey]=useState(''),[pick,setPick]=useState({date:'',shift:''}),[personKey,setPersonKey]=useState('');
  // The equipment category opened ('*' for all of them): batch-wise Step 3, month-wise Step 2; kept after the other state.
  const [equipment,setEquipment]=useState('');
+ // Batch-wise Step 4: the heading clicked to sort its people (none until one is clicked); kept after the other state.
+ const [peopleSort,setPeopleSort]=useState({key:'',direction:'asc'});
+ const changePeopleSort=key=>setPeopleSort(current=>({key,direction:current.key===key&&current.direction==='asc'?'desc':'asc'}));
  const today=todayIst();
  const model=useMemo(()=>buildAttendanceRegister({duties:report.otDuties||[],presence:report.attendanceEquipment||[],shifts:report.attendanceShifts||[],sites,from:filters.from,to:filters.to,today,lockedDays:report.lockedDays}),[report,sites,filters.from,filters.to,today]);
  const month=mode==='attendance-month';
@@ -126,6 +139,7 @@ export default function AttendanceRegister({report,filters,mode='attendance-batc
   // Step 4 (owner, 16 Nov 2026: in line with the month-wise register): Caliber ID, the name to press with the designation under
   // it, and the day code in the register's coloured box; red first, then orange, brown, blue and normal, then by name.
   const listed=level===4?present.filter(p=>equipment==='*'||p.categories.includes(equipment)).sort((a,b)=>flagOrder(a.flag)-flagOrder(b.flag)):[];
+  const sortedPeople=sortRowsBlanksLast(listed,peopleSort,batchPersonValue);
   const dayIndex=model.days.indexOf(pick.date),cellOf=p=>register.find(r=>r.employeeKey===p.employeeKey)?.cells[dayIndex];
   const missing=model.dayPeople(open,pick.date).filter(x=>x.cell.kind!=='present').map(({person,cell})=>{const last=person.lines.filter(l=>l.date<pick.date).map(l=>l.date).sort().at(-1);
    return {id:person.id,caliberCode:person.caliberCode,employeeName:person.employeeName,category:person.category||'—',code:cell.code,kind:cell.kind,meaning:cell.kind==='absent'?'Absent':cell.kind==='pending'?'Pending':'At '+cell.where,last:last?shortDate(last):'—'};});
@@ -136,13 +150,11 @@ export default function AttendanceRegister({report,filters,mode='attendance-batc
   const sumOf=key=>{const values=listed.map(p=>p[key]).filter(v=>typeof v==='number');return values.length?Math.round(values.reduce((a,b)=>a+b,0)*100)/100:'—';};
   const step4=level===4&&<ReportSection key={'ar-people-'+query+'-'+open+'-'+pick.date+'-'+pick.shift+'-'+equipment} title={'Step 4 · '+batchWhere+' · '+equipmentLabel+' · people'} category="attendance-people"
    description={many(listed.length,'person')+' present · '+equipmentLabel+' · Batch '+(batch?.batch||'not created')+' · '+STATUS[batch?.status||'none']+' · Red first, then orange. Press a name for that person’s duties. Day code is the whole day: P1+3 means Shift 1 and Shift 3; hover it for each shift.'}
-   rows={listed} columns={peopleColumns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
+   rows={sortedPeople} columns={peopleColumns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
    {listed.length?<div className="ar-grid-wrap" role="group" aria-label="People of this batch">
     <table className="ar-grid ar-batch-people">
-     <thead><tr><th scope="col" className="ar-sticky ar-id">Caliber ID</th><th scope="col" className="ar-sticky ar-name">Name</th><th scope="col" className="ar-day-code">Day code</th>
-      <th scope="col" className="ar-text">Door / equipment</th><th scope="col" className="ar-text">Equipment</th><th scope="col">Log book</th>
-      {figures.map(([key,label])=><th key={key} scope="col" className="ar-total-head">{label}</th>)}<th scope="col" className="ar-text">Colour / reason</th><th scope="col" className="ar-text">Saved cards</th></tr></thead>
-     <tbody>{listed.map(p=>{const c=cellOf(p),on=personKey===p.employeeKey;return <tr key={p.id} className={on?'report-row-picked':undefined}>
+     <thead><tr>{BATCH_PEOPLE_HEADINGS.map(([key,label,className])=><SortableHeader key={key} scope="col" className={className||undefined} label={label} sortKey={key} sort={peopleSort} onSort={changePeopleSort} filterIcon={false}/>)}</tr></thead>
+     <tbody>{sortedPeople.map(p=>{const c=cellOf(p),on=personKey===p.employeeKey;return <tr key={p.id} className={on?'report-row-picked':undefined}>
       <td className="ar-sticky ar-id">{p.caliberCode}</td>
       <th scope="row" className="ar-sticky ar-name"><button type="button" className="mp-cat-open" aria-pressed={on} aria-label={'Duties of '+p.employeeName} onClick={()=>setPersonKey(on?'':p.employeeKey)}>{p.employeeName}</button>{p.category&&p.category!=='—'&&<small>{p.category}</small>}</th>
       <td className={'ar-code ar-present'+(p.flag?' ar-flag-'+p.flag:'')} title={(c&&tip(c))||undefined}>{p.code}</td>

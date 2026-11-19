@@ -1,8 +1,29 @@
 import React,{useEffect,useState} from 'react';
 import TableSmartPrint from './table-smart-print.jsx';
+import {SortableHeader,sortRowsBlanksLast} from './sortable-table.jsx';
+
+// Every heading sorts the list: BD cases as a number, the scheduled, attempt and accepted times by date and time.
+const deliveryColumns=[['scheduled','Scheduled (IST)'],['oem','OEM / Level'],['email','Recipient'],['cases','BD cases'],['status','Status'],['files','PDF / Excel'],['attempt','Last attempt (IST)'],['accepted','Accepted (IST)'],['messageId','Message ID'],['acknowledgement','Acknowledgement'],['error','Error / Retry']];
+const scheduledSlot=row=>{const key=String(row.recipient_key||'');return key.includes(':test-1100')?'11:00':key.includes(':test-1300')?'13:00':key.includes(':extra-1900')?'19:00':'17:00';};
+const timeValue=value=>{const time=Date.parse(value||'');return Number.isNaN(time)?'':time;};
+function deliveryValue(row={},key){
+  if(key==='scheduled')return row.day?row.day+' '+scheduledSlot(row):'';
+  if(key==='oem')return [row.oem,row.level].filter(Boolean).join(' / ');
+  if(key==='email')return row.email||'';
+  if(key==='cases'){const count=Number(row.case_count);return row.case_count===null||row.case_count===undefined||row.case_count===''||!Number.isFinite(count)?'':count;}
+  if(key==='status')return row.status||'';
+  if(key==='files')return (row.attachments||[]).map(file=>file.filename).join(', ');
+  if(key==='attempt')return timeValue(row.last_attempt_at);
+  if(key==='accepted')return timeValue(row.sent_at);
+  if(key==='messageId')return row.message_id||'';
+  if(key==='acknowledgement')return row.acknowledgement_status||'';
+  if(key==='error')return row.error||'';
+  return '';
+}
 
 export default function OemEmailDeliveryStatus({session}) {
   const [data,setData]=useState(null),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false),[query,setQuery]=useState('');
+  const [sort,setSort]=useState({key:'',direction:'asc'});const changeSort=key=>setSort(current=>({key,direction:current.key===key&&current.direction==='asc'?'desc':'asc'}));
   const headers={Authorization:`Bearer ${session.token}`,'Content-Type':'application/json'};
   const load=async()=>{
     try{const response=await fetch('/api/oem-email-deliveries',{headers,cache:'no-store'});const result=await response.json();if(!response.ok)throw new Error(result.error||'Could not load delivery status.');setData(result);setError('');}
@@ -28,8 +49,8 @@ export default function OemEmailDeliveryStatus({session}) {
     {error&&<p role="alert">{error}</p>}{notice&&<p role="status">{notice}</p>}
     <input type="search" aria-label="Search OEM email deliveries" placeholder="Search OEM, recipient, date or status" value={query} onChange={event=>setQuery(event.target.value)}/>
     {rows.length>0&&<TableSmartPrint row title={'OEM Email Delivery Status'+(query.trim()?' · '+query.trim():'')}/>}
-    <div style={{overflowX:'auto',marginTop:16}}><table><thead><tr>{['Scheduled (IST)','OEM / Level','Recipient','BD cases','Status','PDF / Excel','Last attempt (IST)','Accepted (IST)','Message ID','Acknowledgement','Error / Retry'].map(label=><th key={label}>{label}</th>)}</tr></thead>
-      <tbody>{rows.map(row=><tr key={`${row.day}:${row.recipient_key}`}>
+    <div style={{overflowX:'auto',marginTop:16}}><table><thead><tr>{deliveryColumns.map(([key,label])=><SortableHeader key={key} label={label} sortKey={key} sort={sort} onSort={changeSort} filterIcon={false}/>)}</tr></thead>
+      <tbody>{sortRowsBlanksLast(rows,sort,deliveryValue).map(row=><tr key={`${row.day}:${row.recipient_key}`}>
         <td>{row.day} {row.recipient_key.includes(':test-1300')?'1:00 PM':row.recipient_key.includes(':test-1100')?'11:00 AM':row.recipient_key.includes(':extra-1900')?'7:00 PM':'5:00 PM'}</td>
         <td>{row.oem} / {row.level}</td><td>{row.email}</td><td>{row.case_count}</td><td>{row.status}</td>
         <td>{row.attachments?.length?row.attachments.map(file=><div key={file.filename}>{file.filename} ({file.bytes} bytes)</div>):'Not recorded for this attempt'}</td>
