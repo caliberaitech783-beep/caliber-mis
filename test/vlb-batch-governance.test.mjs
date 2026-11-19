@@ -9,7 +9,7 @@ import {VLB_BATCH_SCHEMA,matchingVlbBatch,lockSavedVlbBatches} from '../server/r
 process.env.VLB_BATCH_ORDER_FROM='off'; // these tests open batches out of shift order; vlb-batch-order.test.mjs covers the order
 
 process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
-test('live saves auto-attach, closure blocks existing-card edits, and only the site-PM-approved MIS user can amend once',async t=>{
+test('live saves auto-attach, closure blocks existing-card edits, and an MIS user reopens without PM approval and only that user can amend once',async t=>{
  const db=new PGlite();t.after(()=>db.close());
  await db.exec('CREATE TABLE master_records(id BIGINT PRIMARY KEY,master_name TEXT,record_data JSONB)');
  const masters=[
@@ -53,32 +53,16 @@ test('live saves auto-attach, closure blocks existing-card edits, and only the s
  assert.equal((await call('/api/log-books/vehicle/'+manual.data.id,'PUT',{...input,revision:1},'bob')).status,409);
  assert.equal((await call('/api/vlb-batches','POST',{...createBody,requestKey:randomUUID()})).status,409,'closed scopes cannot get B02');
  const s2=await save({shiftId:4,cardShift:'II'});assert.equal(s2.status,409);assert.equal((await call(path)).data.entry_count,3,'next shift requires its own batch');
- const req=await call(path+'/reopen-request','POST',{reason:'Additional cards received after closure'});assert.equal(req.status,200);assert.equal((await call(path+'/reopen-request','POST',{reason:'Retry reason'})).data.id,req.data.id);
- assert.equal((await call(path+'/reopen','POST',{})).status,403);
- assert.equal((await call(path+'/reopen-decision','POST',{requestId:req.data.id,decision:'approve'},'production')).status,403,'Production Manager is not PM');
- assert.equal((await call(path+'/reopen-decision','POST',{requestId:req.data.id,decision:'approve'},'wrongpm')).status,404,'another site PM cannot even view this batch');
- const dualReq=await call(path+'/reopen-request','POST',{reason:'Dual-role correction needed'},'dual');assert.equal(dualReq.status,200);const dualDecision=await call(path+'/reopen-decision','POST',{requestId:dualReq.data.id,decision:'approve'},'dual');assert.equal(dualDecision.status,200,'a PM who is also the MIS requester may approve their own request');assert.equal(dualDecision.data.decided_by,'dual');
- assert.equal((await call(path+'/reopen-decision','POST',{requestId:req.data.id,decision:'reject'},'pm')).status,400,'rejection requires a reason');
- assert.equal((await call(path+'/reopen-decision','POST',{requestId:req.data.id,decision:'reject',note:'Please check the additional cards'},'pm')).status,200);
- assert.equal((await call(path+'/reopen','POST',{})).status,403);
- assert.equal((await call(path)).data.requests.find(r=>r.id===req.data.id).decision_note,'Please check the additional cards');
- const req2=await call(path+'/reopen-request','POST',{reason:'Additional card details checked'});assert.notEqual(req2.data.id,req.data.id);
- assert.equal((await call(path+'/reopen-decision','POST',{requestId:req2.data.id,decision:'approve'},'pm')).status,200);
- await db.query("UPDATE master_records SET record_data=jsonb_set(record_data,'{managerSites}','\"Jayant OC\"') WHERE id=12");
- assert.equal((await call(path+'/reopen','POST',{})).status,403,'approval cannot be used after PM loses that site');assert.equal((await call(path)).data.approvalExpired,true);
- const replacement=await call(path+'/reopen-request','POST',{reason:'Current site PM approval required'});assert.equal(replacement.status,200);assert.notEqual(replacement.data.id,req2.data.id);
- await db.query("UPDATE master_records SET record_data=jsonb_set(record_data,'{managerSites}','\"Sasti OC\"') WHERE id=12");
- assert.equal((await call(path+'/reopen-decision','POST',{requestId:replacement.data.id,decision:'approve'},'pm')).status,200);
- assert.equal((await call(path+'/reopen','POST',{},'bob')).status,403,'another MIS user cannot consume approval');
+ assert.equal((await call(path,'GET',undefined,'pm')).data.canReopen,true,'a site PM who is not an MIS user may reopen too (owner, 19 Nov 2026)');
  const reopened=await call(path+'/reopen','POST',{});assert.equal(reopened.status,200,JSON.stringify(reopened.data));assert.equal(reopened.data.name,created.data.name);assert.equal(reopened.data.amendment_by,'alice');
- assert.equal((await save({},'bob')).status,403);await assert.rejects(()=>scan('bob',32),/another MIS user/);
+ assert.equal((await save({},'bob')).status,403);await assert.rejects(()=>scan('bob',32),/another (MIS )?user/);
  assert.equal((await call('/api/log-books/vehicle/'+manual.data.id,'PUT',{...input,revision:1},'bob')).status,403);
  const failed=await save({closingHmr:'bad'});assert.equal(failed.status,400);assert.equal((await call(path)).data.closed_at,null,'failed saves do not relock');
  const retryKey=randomUUID();const added=await call('/api/log-books/vehicle','POST',{...input,requestKey:retryKey});assert.equal(added.status,201,JSON.stringify(added.data));
  let batch=(await call(path)).data;assert.ok(batch.closed_at);assert.equal(batch.amendment_by,null);assert.equal(batch.entry_count,4);assert.equal(batch.closure_revision,2);
  assert.equal((await call('/api/log-books/vehicle','POST',{...input,requestKey:retryKey})).status,200,'retry returns the already saved record without a second write');
- assert.equal((await call(path+'/reopen','POST',{})).status,403,'used grant cannot reopen after a save');assert.equal((await call('/api/log-books/vehicle/'+manual.data.id,'PUT',{...input,revision:1})).status,409);
- const grant=async()=>{const r=await call(path+'/reopen-request','POST',{reason:'Another checked amendment'});assert.equal(r.status,200,JSON.stringify(r.data));assert.equal((await call(path+'/reopen-decision','POST',{requestId:r.data.id,decision:'approve'},'pm')).status,200);const opened=await call(path+'/reopen','POST',{});assert.equal(opened.status,200,JSON.stringify(opened.data));return opened.data;};
+ assert.equal((await call('/api/log-books/vehicle/'+manual.data.id,'PUT',{...input,revision:1})).status,409);
+ const grant=async()=>{const opened=await call(path+'/reopen','POST',{});assert.equal(opened.status,200,JSON.stringify(opened.data));return opened.data;};
  await grant();
  assert.equal((await call('/api/log-books/vehicle/'+manual.data.id,'PUT',{...input,bookDate:'2026-12-29',revision:1})).status,409,'batched cards cannot move to another scope');
  const amended=await call('/api/log-books/vehicle/'+manual.data.id,'PUT',{...input,remark:'Approved amendment',revision:1});assert.equal(amended.status,200,JSON.stringify(amended.data));
@@ -89,8 +73,8 @@ test('live saves auto-attach, closure blocks existing-card edits, and only the s
  const multi=async(fail=false)=>{await db.exec('BEGIN');try{const records=[];for(let i=0;i<2;i++){const data={...await resolveLogBookData(pool,'vehicle',{...input,assetId:33+i}),scanCardId:randomUUID()};records.push(await insertLogBook(pool,'vehicle',data,randomUUID(),'alice',{relock:false}));}await lockSavedVlbBatches(pool,'alice',records.map(r=>r.id));if(fail)throw Error('Simulated save failure');await db.exec('COMMIT');return records;}catch(e){await db.exec('ROLLBACK');throw e}};
  await assert.rejects(()=>multi(true),/Simulated save failure/);batch=(await call(path)).data;assert.equal(batch.closed_at,null);assert.equal(batch.entry_count,5);
  await multi();batch=(await call(path)).data;assert.ok(batch.closed_at);assert.equal(batch.entry_count,7);assert.equal(batch.closure_revision,5);
- assert.ok(batch.audit.some(e=>e.action==='card_updated'&&e.detail.before&&e.detail.after));assert.ok(batch.audit.some(e=>e.action==='reopened'));assert.ok(batch.audit.some(e=>e.action==='reopen_rejected'));assert.equal(batch.audit.filter(e=>e.action==='saved_and_locked').length,5);
- assert.equal((await call(path+'/reopen','POST',{})).status,403);
+ assert.ok(batch.audit.some(e=>e.action==='card_updated'&&e.detail.before&&e.detail.after));assert.ok(batch.audit.some(e=>e.action==='reopened'));assert.ok(batch.audit.find(e=>e.action==='reopened').detail.pmApproval==='not required');assert.equal(batch.audit.filter(e=>e.action==='saved_and_locked').length,5);
+ assert.equal((await call(path+'/reopen','POST',{})).status,200,'a saved batch reopens again without PM approval');
 
  await assert.rejects(()=>db.query("INSERT INTO mis_vlb_batches(id,name,site,book_date,shift,sequence,created_by,request_key,closed_at) VALUES($1,'duplicate','sasti ob','2026-12-30','S1',2,'other',$2,NOW())",[randomUUID(),randomUUID()]),/already exists/,'database guard rejects duplicate batches');
  const pm=await vlbBatchActor(pool,{login:'pm'});assert.ok(batchPmAtSite(pm,'Sasti OC'));assert.equal(batchPmAtSite(pm,'Jayant OC'),false);

@@ -128,24 +128,20 @@ test('Create and Close Batch controls follow saved membership and open batch sta
  nodes(tree,n=>n.props.role==='tab'&&n.props.children==='Open')[0].props.onClick();tree=render();
  const rows=nodes(tree,n=>n.type==='tr');const ownerRow=rows.find(n=>renderToStaticMarkup(n).includes('CMLL/SASTI'));const otherRow=rows.find(n=>renderToStaticMarkup(n).includes('Other open batch'));assert.equal(button(ownerRow,'Save &amp; lock batch').props.disabled,false);assert.equal(button(otherRow,'Save &amp; lock batch').props.disabled,true);
  await button(ownerRow,'Save &amp; lock batch').props.onClick();assert.ok(calls.at(-1).url.endsWith('/batch1/close'));
- tree=render();nodes(tree,n=>n.props.role==='tab'&&n.props.children==='Edit')[0].props.onClick();tree=render();assert.ok(button(tree,'Edit batch'));const approval=button(tree,'Request PM approval');assert.ok(approval);await approval.props.onClick();assert.equal(slots[15],true,'locked edit opens the existing approval dialog');assert.equal(calls.at(-1).request.method,'GET','editing a locked batch does not bypass approval');
- slots[18]={active:true,endsAt:'2026-11-10T13:00:00Z'};tree=render();assert.ok(button(tree,'Reopen batch'));assert.equal(button(tree,'Request PM approval'),undefined);assert.match(renderToStaticMarkup(tree),/VLB trial: PM approval is paused until/);
+ tree=render();nodes(tree,n=>n.props.role==='tab'&&n.props.children==='Edit')[0].props.onClick();tree=render();assert.ok(button(tree,'Edit batch'));assert.equal(button(tree,'Request PM approval'),undefined);const reopen=button(tree,'Reopen batch');assert.ok(reopen);await reopen.props.onClick();assert.equal(slots[15],true,'a locked batch opens the reopen dialog');assert.equal(calls.at(-1).request.method,'GET','the row button only opens the dialog');assert.doesNotMatch(renderToStaticMarkup(render()),/VLB trial|PM approval/);
 
 });
 
-test('approval popup requests a reason, shows pending state, and consumes only an approved grant',async()=>{
+test('reopen popup reopens a saved batch directly without PM approval',async()=>{
  const slots=[];let cursor=0;const calls=[];let changes=0,dismissed=0;
  const useState=initial=>{const i=cursor++;if(!(i in slots))slots[i]=typeof initial==='function'?initial():initial;return [slots[i],value=>slots[i]=typeof value==='function'?value(slots[i]):value]};
- const fetch=async(url,request)=>{calls.push({url,body:JSON.parse(request.body)});return {ok:true,json:async()=>url.endsWith('/reopen-request')?{id:'request',requested_by:'alice',status:'pending',closure_revision:1}:{id:'batch',records:[]}}};
- const {VlbReopenDialog}=await compile('vlb-reopen-dialog.jsx',{React,SmartSelect:"select",useState,useRef:value=>useState(()=>({current:value}))[0],useEffect:()=>{},fetch,displaySiteName,formatDisplayDateTime,ApprovalOtpPanel:()=>null},['VlbReopenDialog']);
- let batch={id:'batch',name:'B01',site:'Sasti OC',closed_at:'2026-10-30',closure_revision:1,canRequestReopen:true,requests:[]};const actor={login:'alice',mis:true};
- const render=()=>{cursor=0;return VlbReopenDialog({session:{token:'test'},batch,actor,onChanged:async()=>{changes++},onDismiss:()=>dismissed++})};
+ const fetch=async(url,request)=>{calls.push({url,body:JSON.parse(request.body)});return {ok:true,json:async()=>({id:'batch',records:[]})}};
+ const {VlbReopenDialog}=await compile('vlb-reopen-dialog.jsx',{React,SmartSelect:"select",useState,useRef:value=>useState(()=>({current:value}))[0],useEffect:()=>{},fetch,displaySiteName,formatDisplayDateTime},['VlbReopenDialog']);
+ const batch={id:'batch',name:'B01',site:'Sasti OC',closed_at:'2026-10-30',closure_revision:1,canRequestReopen:true,canReopen:true,requests:[]};
+ const render=()=>{cursor=0;return VlbReopenDialog({session:{token:'test'},batch,onChanged:async()=>{changes++},onDismiss:()=>dismissed++})};
  const button=(tree,label)=>nodes(tree,n=>n.type==='button'&&renderToStaticMarkup(n).includes(label))[0];
- let tree=render();assert.equal(button(tree,'Request PM approval').props.disabled,true);assert.match(renderToStaticMarkup(tree),/PM approval required/);
- nodes(tree,n=>n.type==='textarea')[0].props.onChange({target:{value:'Additional cards received'}});tree=render();await button(tree,'Request PM approval').props.onClick();
- assert.equal(calls[0].url,'/api/vlb-batches/batch/reopen-request');assert.equal(calls[0].body.reason,'Additional cards received');assert.equal(changes,1);tree=render();assert.match(renderToStaticMarkup(tree),/Awaiting PM approval/);assert.equal(button(tree,'Request PM approval'),undefined);
- batch={...batch,canReopen:true,requests:[{id:'request',requested_by:'alice',status:'approved',closure_revision:1,decided_by:'pm'}]};tree=render();assert.match(renderToStaticMarkup(tree),/PM approval granted/);await button(tree,'Reopen approved batch').props.onClick();assert.equal(calls[1].url,'/api/vlb-batches/batch/reopen');assert.equal(dismissed,1);
- batch={...batch,pmApprovalTrial:{active:true,endsAt:'2026-11-10T13:00:00Z'},requests:[]};tree=render();assert.match(renderToStaticMarkup(tree),/Reopen during VLB trial/);assert.equal(nodes(tree,n=>n.type==='textarea').length,0);await button(tree,'Reopen batch').props.onClick();assert.equal(calls.at(-1).url,'/api/vlb-batches/batch/reopen');
+ const tree=render(),html=renderToStaticMarkup(tree);assert.match(html,/Reopen saved batch/);assert.doesNotMatch(html,/PM approval|Project Manager|otp/i);assert.equal(nodes(tree,n=>n.type==='textarea').length,0,'no reason or request needed');
+ await button(tree,'Reopen batch').props.onClick();assert.equal(calls.length,1);assert.equal(calls[0].url,'/api/vlb-batches/batch/reopen');assert.equal(changes,1);assert.equal(dismissed,1);
 });
 
 test('PM approval screen requires a rejection reason and sends the selected request and review remark',async()=>{
