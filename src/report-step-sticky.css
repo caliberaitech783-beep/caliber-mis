@@ -29,8 +29,30 @@
   /* A dashboard Sr No tab scrolled sideways on its own, which held every heading inside it instead of under the top bar.
      Its reports now keep to its width (above), so it no longer needs to. */
   .lb-reports > .lb-sr:not([hidden]) > section { overflow-x: visible; }
+  /* A step opened from the one above lands with its heading below the top bar, not under it. */
+  .generated-report-section[data-step-look] { scroll-margin-top: var(--mis-top-stick, 0px); }
+
+  /* Owner, 19 Nov 2026: the column headings of every step table stay in view too, right under the step heading, and every
+     line stays on the page (measured by step-table-heads.js). A table that fits the width: the boxes around it stop
+     scrolling sideways, so its heading row stays in view with the page itself. */
+  .generated-report-section[data-step-look] :is(.reports-detail-table, .ar-grid-wrap, .report-totals-scroll)[data-head-fits] { max-height: none; overflow: visible; }
+  .generated-report-section[data-step-look] table[data-head="page"] > thead th {
+    position: sticky;
+    top: calc(var(--mis-top-stick, 0px) + var(--step-head, 0px));
+    z-index: 6;
+  }
+  /* A wider table keeps its sideways scroll; its heading row is moved down as the page scrolls (--head-shift). */
+  .generated-report-section[data-step-look] table[data-head="shift"] > thead th {
+    transform: translateY(var(--head-shift, 0px));
+    z-index: 6;
+  }
 }
+
+/* The dashboard A3 PDF draws a copy of the page (data-printing): every heading where it was written. */
+[data-printing] .generated-report-section[data-step-look] > .reports-section-heading { position: static; box-shadow: none; }
+[data-printing] .generated-report-section[data-step-look] table[data-head] > thead th { top: 0; transform: none; }
 
 @media print {
   .generated-report-section[data-step-look] > .reports-section-heading { position: static; box-shadow: none; }
+  .generated-report-section[data-step-look] table[data-head] > thead th { position: static; transform: none; }
 }
