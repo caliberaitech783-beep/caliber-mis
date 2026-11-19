@@ -1,3 +1,4 @@
+import {SortableHeader,sortRowsBlanksLast} from './helpers/sortable-table-stub.mjs';
 import {TableSmartPrint} from './helpers/smart-print-stub.mjs';
 import {isJayantSite} from '../shared/site-shift-hours.mjs';
 import test from 'node:test';
@@ -16,7 +17,7 @@ import {matchesSmartSearch} from '../shared/smart-search.mjs';
 import {splitEquipmentOperatorHmr} from '../shared/surface-miner-hmr.mjs';
 
 async function compile(file,scope,names){
- scope={StepBackButton:()=>null,TableSmartPrint,WaitingScans:()=>null,...scope};
+ scope={StepBackButton:()=>null,TableSmartPrint,SortableHeader,sortRowsBlanksLast,WaitingScans:()=>null,...scope};
  scope={activeWorkOrders,WorkOrderJobSelect:()=>null,...scope};
  scope={isJayantSite,employeeAtLocation,matchesSmartSearch,splitEquipmentOperatorHmr,...scope};
  const source=readFileSync(new URL('../src/'+file,import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function').replaceAll('export const','const');

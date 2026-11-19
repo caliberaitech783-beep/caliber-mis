@@ -16,6 +16,7 @@ import VlbBatchGovernance from './vlb-batch-governance.jsx';
 import VlbReopenDialog from './vlb-reopen-dialog.jsx';
 import VlbBatchHolds,{NewEquipmentRequest} from './vlb-batch-holds.jsx';
 import TableSmartPrint from './table-smart-print.jsx';
+import {SortableHeader,sortRowsBlanksLast} from './sortable-table.jsx';
 import './log-book-form.css';
 import './vlb-create-batch.css';
 
@@ -130,6 +131,9 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
  const detailCache=useRef({id:'',etag:'',data:null});
  const [deleteBatchId,setDeleteBatchId]=useState(null);
  const [batchSiteByTab,setBatchSiteByTab]=useState({});
+ // Kept after the other hooks so earlier state slots keep their order.
+ const [elbSort,setElbSort]=useState({key:'',direction:'asc'});
+ const changeElbSort=key=>setElbSort(current=>({key,direction:current.key===key&&current.direction==='asc'?'desc':'asc'}));
  const readDetail=async(id,signal)=>{
   const cached=detailCache.current.id===id?detailCache.current:null;
   const response=await fetch('/api/vlb-batches/'+id,{signal,cache:'no-store',headers:{Authorization:'Bearer '+session.token,...(cached?.etag?{'If-None-Match':cached.etag}:{})}});
@@ -284,8 +288,8 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
      <h3>Saved ELB cards</h3>
      <TableSmartPrint row title={'Saved ELB cards · '+viewed.name}/>
      <div className="logbook-table-wrap"><table className="logbook-table">
-      <thead><tr><th className="batch-edit-action" scope="col" data-smart-print-skip="">Action</th><th>Book number</th><th>Equipment / Door</th><th>Operator</th><th>Opening HMR</th><th>Closing HMR</th><th>Job card</th><th data-smart-print-skip="">Details</th></tr></thead>
-      <tbody>{viewed.elbRecords.map(record=><React.Fragment key={record.id}>
+      <thead><tr><th className="batch-edit-action" scope="col" data-smart-print-skip="">Action</th>{savedElbColumns.map(([key,label])=><SortableHeader key={key} label={label} sortKey={key} sort={elbSort} onSort={changeElbSort} filterIcon={false}/>)}<th data-smart-print-skip="">Details</th></tr></thead>
+      <tbody>{sortRowsBlanksLast(viewed.elbRecords,elbSort,savedElbValue).map(record=><React.Fragment key={record.id}>
        <tr><td className="batch-edit-action">{action(record,'equipment')}</td><td>{record.book_no}</td>
         <td>{fieldCell(record,'equipment','Equipment',record.data?.door||record.data?.assetName)}</td>
         <td>{fieldCell(record,'equipment','Operator name',record.data?.employeeName)}</td>
@@ -332,6 +336,19 @@ export function StageSteps({stage,waiting}){
  return <ol className="vlb-stage-steps" aria-label="Batch stage">{[['vlb_open','1 VLB open'],['lmv_open','2 LMV open'],['elb_open','3 ELB open'],['closed','4 ELB locked · Batch closed']].map(([key,label])=><li key={key} aria-current={stage===key?'step':undefined} className={stage===key?'current':undefined}>{waiting&&stage===key?label.replace('open','waiting'):label}</li>)}</ol>;
 }
 const shown=value=>value===0||String(value??'').trim()?String(value):'—';
+// Saved ELB cards: every heading except Action and Details sorts the list.
+const savedElbColumns=[['bookNo','Book number'],['door','Equipment / Door'],['operator','Operator'],['openingHmr','Opening HMR'],['closingHmr','Closing HMR'],['jobCard','Job card']];
+const meterNumber=value=>{const text=String(value??'').trim();const number=Number(text);return text&&Number.isFinite(number)?number:'';};
+export function savedElbValue(record={},key){
+ const data=record.data||{};
+ if(key==='bookNo')return record.book_no||'';
+ if(key==='door')return data.door||data.assetName||'';
+ if(key==='operator')return data.employeeName||'';
+ if(key==='openingHmr')return meterNumber(data.openingHmr);
+ if(key==='closingHmr')return meterNumber(data.closingHmr);
+ if(key==='jobCard')return data.jobCardNo||'';
+ return '';
+}
 export function fleetFrontEntry(row={},batch={}){
  const data=row.logbook||{},opening=Number(data.openingHmr),closing=Number(data.closingHmr);
  const calculated=Number.isFinite(opening)&&Number.isFinite(closing)?Math.round((closing-opening)*1000)/1000:null;
