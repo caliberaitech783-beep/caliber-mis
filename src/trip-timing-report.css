@@ -56,12 +56,18 @@
 /* Step 2 stays in view while its dates scroll (owner, 16 Nov 2026): the heading under the app's top bar, then the line with
    the shifts and the minutes of each colour under the heading, as long as the table fits the width (data-tt-fits). Both
    heights are measured by the report (--tt-stick, --tt-head). */
-.tt-report .generated-report-section[data-category="operations-timing-shifts"]{overflow:visible}
+.tt-report:not(.lm-report) .generated-report-section{overflow:visible}
+/* Owner, 19 Nov 2026: every step heading, Step 1 too, stays in view under the top bar while its own lines scroll, and is
+   written bold: the title already has the font's heaviest weight, so the description line under it turns dark and bold.
+   Each heading stays only inside its own step. Not in Loading machines, which shares these styles but does not measure
+   the top bar (--tt-stick), so its headings would slide under it. */
+.tt-report:not(.lm-report) .generated-report-section>.reports-section-heading p{color:#2d3b52;font-size:11px;font-weight:700}
+:root[data-theme="dark"] .tt-report:not(.lm-report) .generated-report-section>.reports-section-heading p{color:#d5deeb}
 /* On a phone the two would cover most of the screen, so there the page scrolls as before. */
 @media (min-width:761px){
-.tt-report [data-category="operations-timing-shifts"]>.reports-section-heading{position:sticky;top:var(--tt-stick,0px);z-index:7;box-shadow:0 6px 12px -8px rgba(23,35,60,.25)}
+.tt-report:not(.lm-report) .generated-report-section>.reports-section-heading{position:sticky;top:var(--tt-stick,0px);z-index:7;box-shadow:0 6px 12px -8px rgba(23,35,60,.25)}
 .tt-report [data-category="operations-timing-shifts"] .dsg[data-tt-fits]{overflow:visible}
 .tt-report [data-category="operations-timing-shifts"] .dsg[data-tt-fits] thead th{position:sticky;top:calc(var(--tt-stick,0px) + var(--tt-head,0px));z-index:6;box-shadow:inset 0 -1px 0 #e6dff0}
 }
-@media print{.tt-report [data-category="operations-timing-shifts"]>.reports-section-heading,.tt-report [data-category="operations-timing-shifts"] .dsg thead th{position:static;box-shadow:none}}
+@media print{.tt-report:not(.lm-report) .generated-report-section>.reports-section-heading,.tt-report [data-category="operations-timing-shifts"] .dsg thead th{position:static;box-shadow:none}}
 @media print{.tt-report .tt-crumbs,.tt-report .tt-subtabs,.tt-report .tt-chips,.tt-report .tt-notes,.tt-report .tt-exception{display:none}}

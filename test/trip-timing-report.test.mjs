@@ -223,7 +223,8 @@ test('Step 2 writes the minutes of each colour above it and keeps every colour i
  assert.match(view,/range:b\.key===EXCEPTION_KEY\?'Exception':bandRange\(b\)/);
  assert.match(view,/<div className="tt-report" ref=\{step2InView\}>/);
  const css=fs.readFileSync(new URL('../src/trip-timing-report.css',import.meta.url),'utf8');
- assert.match(css,/\[data-category="operations-timing-shifts"\]>\.reports-section-heading\{position:sticky;top:var\(--tt-stick,0px\)/);
+ assert.match(css,/\.tt-report:not\(\.lm-report\) \.generated-report-section>\.reports-section-heading\{position:sticky;top:var\(--tt-stick,0px\)/,'every step heading, Step 1 too, stays in view');
+ assert.match(css,/\.tt-report:not\(\.lm-report\) \.generated-report-section>\.reports-section-heading p\{color:#2d3b52;font-size:11px;font-weight:700\}/,'the line under each step heading is bold');
  assert.match(css,/\.dsg\[data-tt-fits\] thead th\{position:sticky;top:calc\(var\(--tt-stick,0px\) \+ var\(--tt-head,0px\)\)/);
 });
 
