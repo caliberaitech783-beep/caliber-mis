@@ -3421,6 +3421,8 @@ function FilterableHeader({
   width = 0,
   onResize = null,
   className = "",
+  // quickSort: one click on the heading sorts it (again reverses it), with no ↑ / ↓ / filter menu.
+  quickSort = false,
 }) {
   const [valueSearch, setValueSearch] = useState("");
   const [resizing, setResizing] = useState(false);
@@ -3499,16 +3501,15 @@ function FilterableHeader({
       <button
         ref={triggerRef}
         className={`sort-header ${active ? "active" : ""} ${filterValue ? "filtered" : ""}`}
-        onClick={(event) => { event.stopPropagation(); onToggle(sortKey); }}
+        onClick={(event) => { event.stopPropagation(); if (quickSort) onSort(sortKey); else onToggle(sortKey); }}
         type="button"
-        aria-expanded={open}
-        aria-haspopup="dialog"
+        {...(quickSort ? { title: `Sort by ${typeof label === "string" ? label : sortKey}` } : { "aria-expanded": open, "aria-haspopup": "dialog" })}
       >
         <span>{headingLines ? <>{headingLines[0]}<br />{headingLines[1]}</> : label}</span><Icon aria-hidden="true" />
         {filterValue && <i className="column-filter-dot" aria-label="Filtered" />}
       </button>
       {onResize && <span className={`column-resize-handle ${resizing ? "dragging" : ""}`} role="separator" aria-orientation="vertical" aria-label={`Change the width of ${typeof label === "string" ? label : "this column"}`} title="Drag to make this column wider or narrower. Double-click to fit it again." tabIndex={0} onPointerDown={startResize} onDoubleClick={(event) => { event.stopPropagation(); onResize(null); }} onClick={(event) => event.stopPropagation()} onKeyDown={nudgeWidth} />}
-      {open && createPortal(
+      {open && !quickSort && createPortal(
         <div className="column-filter-popover column-filter-popover-portal" style={popoverPosition} role="dialog" aria-label={`${label} filter`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}><div className="mis-popup-close-bar"><button type="button" className="mis-popup-close" onClick={() => onToggle(sortKey)}  aria-label="Close window">× Close</button></div>
           <div className="column-filter-popover-head">
             <strong>{label}</strong>
@@ -4325,7 +4326,7 @@ function figureColumnKeys(columns, rows, valueOf) {
     return found;
   }).map((column) => column.key));
 }
-function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], onVisibleColumnsChange, rows = [], query = "", emptyMessage, rowKey, rowClassName, isTotalRow, isSubtotalRow, toolbarTarget = null, toolbarPortal = false, title = "", layoutKey = "", onExportViewChange = null, onResetSearch = null, smartPrintAction = false, recordDateFilter = null, dataReady = true, rowAction, rowEditor, serialColumn = true, stepLook = false, figuresRight = false }) {
+function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], onVisibleColumnsChange, rows = [], query = "", emptyMessage, rowKey, rowClassName, isTotalRow, isSubtotalRow, toolbarTarget = null, toolbarPortal = false, title = "", layoutKey = "", onExportViewChange = null, onResetSearch = null, smartPrintAction = false, recordDateFilter = null, dataReady = true, rowAction, rowEditor, serialColumn = true, stepLook = false, figuresRight = false, quickSort = false }) {
   const {shifts}=useRequestShiftData();
   columns=requestShiftColumns(columns,rows,shifts);
   const [appliedColumns, applyColumns] = useColumnPreferences(layoutKey || "report-table", columns, visibleColumnKeys);
@@ -4471,6 +4472,7 @@ function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], 
             sortKey={column.key}
             sort={sort}
             onSort={changeSort}
+            quickSort={quickSort}
             open={openFilter === column.key}
             onToggle={(key) => setOpenFilter((current) => current === key ? null : key)}
             values={columnValues[column.key] || []}
@@ -7403,7 +7405,7 @@ function showOpenedStep(node) {
   setTimeout(() => { stepOpenedInThisPress = false; }, 0);
   if (node.getBoundingClientRect().top > window.innerHeight * 0.6) node.scrollIntoView({ block: "start" });
 }
-function ReportSection({ title, description, category = "general", icon: ReportIcon = FileBarChart, rows = [], columns = [], query = "", showSearch = true, emptyMessage = "No records available", rowKey, rowClassName, isTotalRow, isSubtotalRow, headingControl = null, controls = null, exportLabel = "Smart Print", smartPrintAction = false, onResetSearch = null, recordDateFilter = null, reportKey = "", dataReady = true, rowAction, rowEditor, onRowClick = null, onBack = null, backLabel = "Back", children }) {
+function ReportSection({ title, description, category = "general", icon: ReportIcon = FileBarChart, rows = [], columns = [], query = "", showSearch = true, emptyMessage = "No records available", rowKey, rowClassName, isTotalRow, isSubtotalRow, headingControl = null, controls = null, exportLabel = "Smart Print", smartPrintAction = false, onResetSearch = null, recordDateFilter = null, reportKey = "", dataReady = true, rowAction, rowEditor, onRowClick = null, onBack = null, backLabel = "Back", quickSort = false, children }) {
   const recordCount = rows.filter((row) => !isTotalRow?.(row) && !isSubtotalRow?.(row)).length;
   const [exportView, setExportView] = useState(null);
   const TableViewport = category === "vehicle-history" ? VehicleHistoryScroll : "div";
@@ -7447,7 +7449,7 @@ function ReportSection({ title, description, category = "general", icon: ReportI
             rowKey={rowKey}
             rowClassName={rowClassName}
             isTotalRow={isTotalRow} isSubtotalRow={isSubtotalRow}
-            rowAction={rowAction} rowEditor={rowEditor} onRowClick={onRowClick} figuresRight stepLook={stepLook}
+            rowAction={rowAction} rowEditor={rowEditor} onRowClick={onRowClick} figuresRight stepLook={stepLook} quickSort={quickSort}
             emptyMessage={emptyMessage}
             columns={columns}
             visibleColumnKeys={visibleColumnKeys}
