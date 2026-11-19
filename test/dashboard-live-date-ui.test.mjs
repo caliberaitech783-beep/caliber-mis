@@ -33,11 +33,12 @@ import {isDurationColumn, compareDurationValues} from "../src/duration-sort.mjs"
 import * as sectionExport from "../src/dashboard-section-export.mjs";
 import {requestsVisibleToDashboard} from "../shared/mis-request-visibility.mjs";
 import * as meterColumns from "../shared/breakdown-meter-columns.mjs";
+import {sortingSource as sortingSourceText} from "./helpers/sorting-source.mjs";
 
 const source = readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
 const componentSource = source.slice(source.indexOf("function Dashboard("), source.indexOf("const PRODUCTION_REQUEST_COLUMNS"));
 const dateSource = source.slice(source.indexOf("function dashboardRecordDate("), source.indexOf("function useDashboardEquipment("));
-const sortingSource = source.slice(source.indexOf('const sortCollator ='), source.indexOf('function SortableHeader('));
+const sortingSource = sortingSourceText();
 const {code} = await transformWithOxc(`${dateSource}\n${sortingSource}\n${componentSource}`, "Dashboard.jsx", {jsx: {runtime: "classic"}});
 const oemChartSource = readFileSync(new URL("../src/oem-breakdown-chart.jsx", import.meta.url), "utf8")
   .replace(/^import .*;\r?\n/gm, "").replace("export default function", "function");

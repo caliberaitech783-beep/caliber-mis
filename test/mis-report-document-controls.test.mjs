@@ -14,6 +14,7 @@ import {sameReportView} from '../src/report-portal-target.mjs';
 import {matchesSmartSearch} from '../shared/smart-search.mjs';
 import {reportTime12} from '../shared/report-time-format.mjs';
 import {SERIAL_COLUMN_KEY,SERIAL_COLUMN_LABEL,serialTone} from '../shared/serial-column.mjs';
+import {sortingSource} from './helpers/sorting-source.mjs';
 
 const main=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');
 const nodes=(tree,type)=>{
@@ -61,7 +62,7 @@ test('generated reports keep full filtered sorted exports and all print columns 
   useRequestShiftData:()=>({shifts:[]}),requestShiftColumns:columns=>columns,useColumnPreferences:(_table,_columns,visible)=>[visible,()=>{}],useColumnWidths:()=>[{},()=>{},()=>{}],columnWidthStyle:()=>undefined,StepBackButton:()=>null,mobileTablePageSize:()=>0,
   useTableLayouts:()=>({layouts:[]}),openSmartPrint:model=>printed.push(model),printTableReport:()=>{},exportCellText:String,FilterableHeader,RecordDateRange,SavedReportsPanel,
   TableLayoutSelect:()=>null,ReportActionsMenu:()=>null,SmartSelect:'select',ListFilter:'i',TableParameterFilter:()=>null,ReportColumnSelector:()=>null,ReportSortDialog:()=>null,ChevronLeft:'i',ChevronRight:'i',createPortal:tree=>tree};
- const sort=main.slice(main.indexOf('const sortCollator ='),main.indexOf('const WORKFLOW_INITIAL_RENDER_ROWS'));
+ const sort=sortingSource();
  const filtering=main.slice(main.indexOf('const EMPTY_TABLE_FILTER_VALUE ='),main.indexOf('function TableParameterFilter('));
  const table=main.slice(main.indexOf('function ReportTable('),main.indexOf('function parseCsv('));
  const Table=await compile(sort+filtering+table,'ReportTable',scope);

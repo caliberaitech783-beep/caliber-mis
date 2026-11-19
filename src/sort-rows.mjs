@@ -31,13 +31,13 @@ export function sortRows(rows, sort, valueForKey = (row, key) => row[key], durat
   }).map(({ row }) => row);
 }
 
-const blank = (value) => value === null || value === undefined || (typeof value === "string" && (!value.trim() || value.trim() === "—"));
+const emptySortValue = (value) => value === null || value === undefined || (typeof value === "string" && (!value.trim() || value.trim() === "—"));
 
 // Rows with no value (blank or "—") stay at the bottom in both directions,
 // so a column like "Job card" does not open with a page of dashes.
 export function sortRowsBlanksLast(rows, sort, valueForKey) {
   if (!sort?.key) return rows;
   const filled = [], empty = [];
-  for (const row of rows) (blank(valueForKey(row, sort.key)) ? empty : filled).push(row);
+  for (const row of rows) (emptySortValue(valueForKey(row, sort.key)) ? empty : filled).push(row);
   return [...sortRows(filled, sort, valueForKey, false), ...empty];
 }
