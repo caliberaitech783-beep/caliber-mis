@@ -383,6 +383,8 @@ import "./vehicle-history-density.css";
 import "./ticket-status-tabs.css";
 import "./linked-request-picker.css";
 import "./report-step-style.css";
+import "./report-step-sticky.css";
+import { useTopBarStick } from "./top-bar-stick.js";
 import "./workspace-readability.css";
 import DailyBdBalanceChart from "./daily-bd-balance-chart.jsx";
 import EmployeeTenureReport from "./employee-tenure-report.jsx";
@@ -11521,6 +11523,7 @@ function App() {
     [accountWorkspace,setAccountWorkspace]=useState("accounts"),
     [employeeLocationOpen,setEmployeeLocationOpen]=useState(false),
     [accountDirectoryView,setAccountDirectoryView]=useState("directory");
+  const topBarRef=useTopBarStick();
   const changeSidebarHidden=hidden=>{setSidebarHidden(hidden);setMenu(false);try{localStorage.setItem("caliberSidebarHidden",String(hidden));}catch{}};
   // Rule (15 Nov 2026): while a VLB, LMV or ELB scan card is open for review the sidebar runs in auto-hide.
   const sidebarAuto=sidebarAutoHide(sidebarAutoSaved,scanCardOpen);
@@ -12157,7 +12160,7 @@ function App() {
         activeReportCategory={activeReportCategory}
       />
       <main className="content">
-        <div className="top">
+        <div className="top" ref={topBarRef}>
           <button id="erp-sidebar-toggle" type="button" className="erp-sidebar-toggle" aria-label={sidebarClosed?"Show sidebar":"Hide sidebar"} aria-expanded={!sidebarClosed} aria-controls="admin-primary-navigation" title={sidebarClosed?"Show menu":"Hide menu"} onClick={()=>sidebarAuto?setSidebarPeek(!sidebarPeek):changeSidebarHidden(!sidebarHidden)}><Menu/><span>{sidebarClosed?"Show menu":"Hide menu"}</span></button>
           <button type="button" className="menubtn" aria-label={menu ? "Close navigation menu" : "Open navigation menu"} aria-expanded={menu} aria-controls="admin-primary-navigation" onClick={() => {if(sidebarAuto)setSidebarPeek(true);else if(sidebarHidden){setSidebarHidden(false);try{localStorage.setItem("caliberSidebarHidden","false");}catch{}}setMenu(!menu);}}>
             <Menu />
