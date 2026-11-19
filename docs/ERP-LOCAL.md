@@ -94,7 +94,7 @@ The visible Users & employees menu and page title are now Login Details; the exi
 
 
 ## Per-master synchronization
-Sync all masters lists Login Details, Equipment, Shift, Work Contract, Financial Year and Company with source, local record count, last successful sync and status. Pulse supplies Login Details, Equipment and Shift. Oracle supplies Work Contract, Financial Year and Company. Employee Master is maintained locally through imports and edits. Manual sync history lives in mis_master_sync_state. Direct link is /?page=master-sync.
+Sync all masters lists Login Details, Equipment, Shift, Work Contract, Financial Year and Company with source, local record count, last successful sync and status. Pulse supplies Login Details, Equipment and Shift. Oracle supplies Work Contract, Financial Year, Company and, since 19 November 2026, Employee Master. Manual sync history lives in mis_master_sync_state. Direct link is /?page=master-sync.
 
 
 ## Trip Card rules — 20 October 2026
@@ -110,3 +110,11 @@ New Vehicle Log Book numbers now include the selected card/master shift: CAL/VLB
 ## Workbook field mapping revision — 21 October 2026
 Vehicle_Log_Book finel_witf details.xlsx was read without modifying it. Its Vehicle and Equipment tabs now define the current rules, superseding earlier formulas: work order defaults to the newest eligible order date for the location; I/II/III map to A/B/C Shift Master identities; missing master/time differences stay visible for review; scan mode is without-time when detail rows have no loading/unloading times. M + No columns combine to labels such as V65 or T88.
 Trip GAP is the current loading time minus the previous row’s unloading time (first row null), with midnight rollover. Loading-to-unloading duration is retained separately as durationMinutes. Availability = closing HMR − opening HMR. Idle = shift hours − working HMR; BD is an independent Pulse value and is not subtracted again. These meter calculations remain available if Pulse is unavailable. Normal and batch saves retain these formulas; batch posting fetches Pulse BD when available. Manual/scan views display the updated calculations and machine totals. Existing saved records are not renumbered or rewritten automatically.
+
+## Employee Master from the ERP (19 November 2026)
+Employee Master is copied one way from the ERP table CMPL.EMPLOYEE every hour with the other ERP masters, and from Masters → Sync all masters (server/services/erp-employee-sync.mjs). This replaces the stop of 6 November 2026 (commit 202b052f) at the user's request.
+- Records match on Employee ID (ERP EMPLOYEEID); an ERP employee whose ID changed is matched on its ERP employee code, so existing local records and their links are kept.
+- The ERP owns the fields listed in shared/erp-employee-fields.mjs. Pulse-II keeps Current Location, site, Caliber ID, status, resignation, cost centre and current CTC; the sync never overwrites them. The Employee Master page shows ERP fields read-only on ERP employees and refuses a change to them.
+- An employee missing from the ERP is marked "Not in ERP" (erpMissing), never deleted. A list that is empty, has duplicate IDs or codes, or would mark more than 5% (at least 50) of employees missing is refused and nothing changes.
+- Only changed employees are written; an unchanged ERP list writes nothing. The read is SET TRANSACTION READ ONLY.
+- Excel / CSV import still works; the next ERP copy restores ERP fields on ERP employees.
