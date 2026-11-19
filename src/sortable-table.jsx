@@ -16,12 +16,13 @@ export function useSortableRows(rows, defaultSort = "", valueForKey = (row, key)
   return [sortedRows, sort, changeSort];
 }
 
-export function SortableHeader({ label, sortKey, sort, onSort, filterIcon = true, ...thProps }) {
+// `labelText` names the column in the button's tooltip when `label` holds markup (e.g. a heading with a <small> line).
+export function SortableHeader({ label, labelText, sortKey, sort, onSort, filterIcon = true, ...thProps }) {
   const active = sort.key === sortKey,
     Icon = active ? (sort.direction === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
   return (
     <th {...thProps} aria-sort={active ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}>
-      <button className={`sort-header ${active ? "active" : ""}`} onClick={() => onSort(sortKey)} type="button" title={`Sort by ${label}`}>
+      <button className={`sort-header ${active ? "active" : ""}`} onClick={() => onSort(sortKey)} type="button" title={`Sort by ${labelText ?? (typeof label === "string" ? label : sortKey)}`}>
         <span>{label}</span><Icon aria-hidden="true" />{filterIcon && <ListFilter className="header-filter-icon" aria-hidden="true" />}
       </button>
     </th>

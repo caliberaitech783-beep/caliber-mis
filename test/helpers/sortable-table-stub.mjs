@@ -3,7 +3,7 @@
 import React from 'react';
 export {sortRows,sortRowsBlanksLast} from '../../src/sort-rows.mjs';
 
-export const SortableHeader=({label,sortKey,sort,onSort,filterIcon,...thProps})=>{
+export const SortableHeader=({label,labelText,sortKey,sort,onSort,filterIcon,...thProps})=>{
  const active=sort.key===sortKey;
  return React.createElement('th',{...thProps,'aria-sort':active?(sort.direction==='asc'?'ascending':'descending'):'none'},
   React.createElement('button',{type:'button',className:'sort-header'+(active?' active':''),'data-sort-key':sortKey,onClick:()=>onSort(sortKey)},label));

@@ -65,3 +65,5 @@
 /* Shift Attendance Step 1: the site names read like the dates of Step 2, not like a column heading. */
 .mp-att-sites tbody th[scope=row]{font-size:14px;font-weight:700;color:#4d5b74;text-transform:none;letter-spacing:0;white-space:normal}.mp-att-sites tbody th .mp-cat-open{text-align:left}
 :root[data-theme="dark"] .mp-att-sites tbody th[scope=row]{color:#eef3fb}:root[data-theme="dark"] .mp-att-sites tbody tr.mp-on th[scope=row]{background:#3a2d5c}
+/* Step 1 / Step 3 sort headings: the button wraps like the heading it replaced, so the Step table still fits the screen. */
+.mp-category thead th .sort-header{min-width:0;width:auto;display:inline-flex;align-items:flex-start;white-space:normal;text-align:inherit}.mp-category thead th .sort-header>span{display:block}.mp-category thead th .sort-header svg{margin-top:2px}
