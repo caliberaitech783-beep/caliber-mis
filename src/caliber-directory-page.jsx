@@ -9,6 +9,7 @@ import {buildCdirOrganisation,cdirPersonId} from '../shared/cdir-organisation.mj
 import './caliber-directory-page.css';
 import {directoryLeadership} from './cdir-overview.mjs';
 import CdirEmployeeEdit from './cdir-employee-edit.jsx';
+import EmployeeTransferTrail from './employee-transfer-trail.jsx';
 import TableSmartPrint from './table-smart-print.jsx';
 import {SortableHeader,sortRowsBlanksLast} from './sortable-table.jsx';
 
@@ -65,13 +66,13 @@ function DirectoryTable({rows,printTitle,onSelect,onOrganisation,organisationMan
   </table></div></>;
 }
 
-function ProfileDrawer({person,onClose,onEdit}){
+function ProfileDrawer({person,onClose,onEdit,token}){
   if(!person)return null;
   const details=[['Employee ID',person.empId],['Category',person.cat],['Designation',person.designation],['Department',person.department],['Site / Office',person.siteLabel],['Reports to',person.reportingTo],['Contact',person.contact],['WhatsApp',person.whatsapp],['Email',person.email],['Date of joining',person.doj],['Status',statusOf(person)]];
   return <div className="cdir-drawer-backdrop" role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget)onClose();}}><aside className="cdir-profile-drawer" role="dialog" aria-modal="true" aria-label={`${person.name} profile`}>
     <header className="mis-popup-close-header"><div className="cdir-avatar">{clean(person.name).split(/\s+/).slice(0,2).map(part=>part[0]).join('')}</div><div><small>Employee profile</small><h2>{person.name}</h2><p>{person.designation||'Designation not recorded'}</p></div><div className="cdir-profile-actions">{onEdit&&person.recordId&&<button className="cdir-profile-edit" type="button" onClick={()=>onEdit(person)} aria-label="Edit employee details" title="Edit employee details"><Pencil/></button>}<button type="button" onClick={onClose} aria-label="Close employee profile" className="mis-popup-close">× Close</button></div></header>
 
-    <dl>{details.map(([label,value])=><div key={label}><dt>{label}</dt><dd>{value||'—'}</dd></div>)}</dl>
+    <dl>{details.map(([label,value])=><div key={label}><dt>{label}</dt><dd>{value||'—'}</dd></div>)}</dl>{person.empId&&<EmployeeTransferTrail token={token} empId={person.empId}/>}
   </aside></div>;
 }
 
@@ -237,7 +238,7 @@ export default function CaliberDirectoryPage({token}){
     {view==='dashboard'&&<><SummaryHero meta={directory.meta||{}} rows={filteredRows} leadershipCount={leadership.length} scopeLabel={scopeLabel} mode={overviewMode}/><section className="cdir-section"><div className="cdir-section-head"><div><h2>{overviewMode==='corporate'?'Leadership roster':'Site leadership roster'}</h2><p>{leadership.length} {overviewMode==='corporate'?'leadership':'senior site'} profile{leadership.length===1?'':'s'} in the selected scope.</p></div></div><DirectoryTable rows={leadership} printTitle={(overviewMode==='corporate'?'Leadership roster':'Site leadership roster')+printScope} onSelect={setSelected} empty="No active employee profiles match these filters."/></section><div className="cdir-show-all"><button type="button" onClick={showAllPeople}>Show all people <span aria-hidden="true">→</span></button></div>{(viewer.allAccess||viewer.profile==='project-manager')&&<ProjectManagerLeaderboard rows={filteredRows} printScope={printScope}/>}</>}
     {view==='people'&&<section className="cdir-section"><div className="cdir-section-head"><div><h2>{filters.site===ALL?'Employee directory':siteOptions.find(site=>site.id===filters.site)?.label||'Employee directory'}</h2><p>{employeeRows.length} available employee{employeeRows.length===1?'':'s'} match the selected filters.</p></div><button type="button" onClick={()=>exportRows(employeeRows)}><Download/>Export current view</button></div><DirectoryTable rows={employeeRows} printTitle={'Employee directory'+printScope} onSelect={setSelected} onOrganisation={openOrganisation} organisationManagers={organisation.managerIds} empty="No employees match these filters."/></section>}
     {view==='vacancies'&&<section className="cdir-section"><div className="cdir-section-head"><div><h2>Vacancies</h2><p>{vacancies.length} vacant sanctioned position{vacancies.length===1?'':'s'} in the selected scope.</p></div><button type="button" onClick={()=>exportRows(vacancies)}><Download/>Export vacancies</button></div><DirectoryTable rows={vacancies} printTitle={'Vacancies'+printScope} onSelect={setSelected} empty="No vacancies match these filters."/></section>}
-    {view==='matrix'&&<MatrixView directory={{...directory,sites:scopedSites}} rows={filteredRows} printScope={printScope} onSite={site=>openFiltered({site})} onCategory={category=>openFiltered({category})}/>} {view==='organisation'&&<OrganisationView model={organisationRoot?organisation:organisationScope} rootPerson={organisationRoot} rootIds={organisationRoot?undefined:organisationFilterRoots} filtered={!organisationRoot&&(organisationFilterActive||organisationGeographyFiltered)} onSelect={setSelected} onShowAll={()=>setOrganisationRoot(null)} printScope={printScope}/>}<ProfileDrawer person={editing?null:selected} onClose={()=>setSelected(null)} onEdit={viewer.canEditEmployees?setEditing:undefined}/>
+    {view==='matrix'&&<MatrixView directory={{...directory,sites:scopedSites}} rows={filteredRows} printScope={printScope} onSite={site=>openFiltered({site})} onCategory={category=>openFiltered({category})}/>} {view==='organisation'&&<OrganisationView model={organisationRoot?organisation:organisationScope} rootPerson={organisationRoot} rootIds={organisationRoot?undefined:organisationFilterRoots} filtered={!organisationRoot&&(organisationFilterActive||organisationGeographyFiltered)} onSelect={setSelected} onShowAll={()=>setOrganisationRoot(null)} printScope={printScope}/>}<ProfileDrawer token={token} person={editing?null:selected} onClose={()=>setSelected(null)} onEdit={viewer.canEditEmployees?setEditing:undefined}/>
     {editing&&viewer.canEditEmployees&&<CdirEmployeeEdit person={editing} token={token} onClose={()=>setEditing(null)} onSaved={()=>{setEditing(null);setSelected(null);setOrganisationRoot(null);setAttempt(value=>value+1);}}/>}
   </section>;
 }

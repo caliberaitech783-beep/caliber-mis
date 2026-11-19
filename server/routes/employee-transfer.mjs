@@ -154,6 +154,13 @@ export function registerEmployeeTransfers(app,{pool,requireSession,loadViewer,lo
     if(!allowedFile)fail(404,'File not found.');
     res.set('Content-Type','application/octet-stream').set('X-Content-Type-Options','nosniff').set('Cache-Control','no-store').attachment(file.filename).send(file.content);
   }catch(error){next(error);}});
+  // One employee's transfers for their C-Directory profile, only those this user may see.
+  app.get('/api/cdir/employee-transfers/employee/:empId',requireSession,route(async(req,ctx,client)=>{
+    const empId=clean(req.params.empId);if(!empId||empId.length>80)fail(400,'Invalid employee ID.');
+    const {rows}=await client.query("SELECT id,record_data FROM employee_transfers WHERE lower(trim(record_data->>'empId'))=lower($1) ORDER BY created_at DESC,id DESC LIMIT 50",[empId]);
+    const keys=['transferNo','empId','name','source','destination','status','effectiveDate','relievingDate','transferType','reason','submittedBy','submittedAt','approvedBy','approvedAt','acceptedBy','acceptedAt','rejectedBy','rejectionReason','sourceApproverRole','destinationApproverRole'];
+    return {body:{records:rows.map(row=>({id:row.id,...row.record_data})).filter(row=>employeeTransferVisible(row,ctx)).map(row=>Object.fromEntries([['id',row.id],...keys.map(key=>[key,row[key]??''])]))}};
+  }));
   app.patch('/api/cdir/employee-transfers/:id/:action',requireSession,route(async(req,ctx,client)=>{
     if(!/^\d+$/.test(req.params.id))fail(400,'Invalid transfer ID.');
     const {rows}=await client.query('SELECT record_data FROM employee_transfers WHERE id=$1 FOR UPDATE',[req.params.id]);const record=rows[0]?.record_data;if(!record)fail(404,'Transfer not found.');

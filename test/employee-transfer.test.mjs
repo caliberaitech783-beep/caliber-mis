@@ -41,6 +41,8 @@ test('HTTP employee transfer flow enforces site scope, preserves history, sends 
  assert.equal((await call('hr','','POST',{...request,record:{...request.record,adminLevel:'Admin'}})).status,400);
  notificationFailure=true;assert.equal((await call('hr','','POST',request)).status,500);assert.equal((await db.query('SELECT * FROM employee_transfers')).rows.length,0);notificationFailure=false;
  const created=await call('hr','','POST',request);assert.equal(created.status,201);const transferId=created.body.id;
+ const trail=await call('hr','/employee/e001');assert.equal(trail.status,200);assert.deepEqual(trail.body.records.map(row=>[row.transferNo,row.status]),[[created.body.transferNo,'Awaiting source approval']]);assert.equal(trail.body.records[0].before,undefined);
+ assert.equal((await call('other','/employee/E001')).body.records.length,0);assert.equal((await call('general','/employee/E001')).status,403);
  assert.equal((await call('hr','','POST',request)).status,409);
  const employee=async()=> (await db.query('SELECT record_data FROM master_records WHERE id=$1',[id])).rows[0].record_data;
  assert.equal((await employee()).site,'Majri OC');assert.equal((await employee()).name,'EMPLOYEE ONE');
