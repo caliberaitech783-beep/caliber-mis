@@ -86,6 +86,7 @@ import { filterRecordsByDate } from "./record-date-range.mjs";
 import { primaryRecordDateColumn } from "./record-date-range.mjs";
 import RecordDateRange from "./record-date-range.jsx";
 import { isDurationColumn, compareDurationValues, defaultDurationSort } from "./duration-sort.mjs";
+import { sortCollator, useSortableRows, SortableHeader } from "./sortable-table.jsx";
 import { closedTimeAfterStartedColumns, ensureJobReferenceVisibleKeys } from "./table-actions-model.mjs";
 import UserProfile from "./user-profile.jsx";
 import TelegramGate from "./telegram-gate.jsx";
@@ -3383,54 +3384,8 @@ function normalizeEquipmentRecord(record = {}) {
     acquisitionDate,
   };
 }
-const sortCollator = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
-function comparableValue(value) {
-  if (typeof value === "boolean") return value ? 1 : 0;
-  if (typeof value === "number") return value;
-  const text = String(value ?? "").trim();
-  const indianDate = text.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})(?:\s+(.*))?$/);
-  if (indianDate) {
-    const [, day, month, year, time = "00:00:00"] = indianDate;
-    const timestamp = Date.parse(`${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}T${time}`);
-    if (!Number.isNaN(timestamp)) return timestamp;
-  }
-  return text;
-}
-function useSortableRows(rows, defaultSort = "", valueForKey = (row, key) => row[key], durationSorting = true) {
-  const [sort, setSort] = useState(() => typeof defaultSort === "string" ? { key: defaultSort, direction: "asc" } : defaultSort);
-  const sortedRows = useMemo(() => {
-    if (!sort.key) return rows;
-    const durationColumn = typeof durationSorting === "function" ? durationSorting(sort.key) : durationSorting && isDurationColumn("", sort.key);
-    return rows.map((row, index) => ({ row, index })).sort((left, right) => {
-      const a = comparableValue(valueForKey(left.row, sort.key));
-      const b = comparableValue(valueForKey(right.row, sort.key));
-      if (durationColumn) return compareDurationValues(a, b, sort.direction) || left.index - right.index;
-      let result;
-      if (typeof a === "number" && typeof b === "number") result = a - b;
-      else result = sortCollator.compare(String(a), String(b));
-      if (!result) result = left.index - right.index;
-      return sort.direction === "asc" ? result : -result;
-    }).map(({ row }) => row);
-  }, [rows, sort, valueForKey, durationSorting]);
-  const changeSort = (key, direction) => setSort((current) => ({
-    key,
-    direction: direction || (current.key === key && current.direction === "asc" ? "desc" : "asc"),
-  }));
-  return [sortedRows, sort, changeSort];
-}
 const WORKFLOW_INITIAL_RENDER_ROWS = 100;
 const WORKFLOW_RENDER_BATCH = 100;
-function SortableHeader({ label, sortKey, sort, onSort }) {
-  const active = sort.key === sortKey,
-    Icon = active ? (sort.direction === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
-  return (
-    <th aria-sort={active ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}>
-      <button className={`sort-header ${active ? "active" : ""}`} onClick={() => onSort(sortKey)} type="button">
-        <span>{label}</span><Icon aria-hidden="true" /><ListFilter className="header-filter-icon" aria-hidden="true" />
-      </button>
-    </th>
-  );
-}
 function visibleViewportBounds() {
   const viewport = window.visualViewport;
   const left = viewport?.offsetLeft || 0;

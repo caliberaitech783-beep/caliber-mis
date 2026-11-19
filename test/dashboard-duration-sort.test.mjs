@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
+import { sortRows } from "../src/sort-rows.mjs";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { transformWithOxc } from "vite";
@@ -103,9 +104,10 @@ test("all duration tables default to descending, preferring breakdown days over 
 });
 
 test("request and report sorting keeps manual ascending through live data updates and supports clear sort", () => {
-  const source = main.slice(main.indexOf("function comparableValue("), main.indexOf("function SortableHeader("));
+  const sortable = readFileSync(new URL("../src/sortable-table.jsx", import.meta.url), "utf8");
+  const source = sortable.slice(sortable.indexOf("export function useSortableRows("), sortable.indexOf("export function SortableHeader(")).replaceAll("export function", "function");
   let state;
-  const bindings = {SmartSelect: "select", isDurationColumn, compareDurationValues, sortCollator: new Intl.Collator(undefined, { numeric: true }), useMemo: (fn) => fn(),
+  const bindings = {SmartSelect: "select", sortRows, useMemo: (fn) => fn(),
     useState(initial) { state ??= typeof initial === "function" ? initial() : initial; return [state, (next) => { state = typeof next === "function" ? next(state) : next; }]; } };
   const useRows = new Function(...Object.keys(bindings), `${source}; return useSortableRows;`)(...Object.values(bindings));
   for (const key of ["breakdownDays", "hours", "tat", "prodToMis"]) {
