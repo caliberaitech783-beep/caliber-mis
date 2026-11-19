@@ -1,5 +1,7 @@
 import {SortableHeader,sortRowsBlanksLast} from './helpers/sortable-table-stub.mjs';
 import {TableSmartPrint} from './helpers/smart-print-stub.mjs';
+import {sortRows} from '../src/sort-rows.mjs';
+import {matchesSmartSearch} from '../shared/smart-search.mjs';
 import {meterCorrectionReport} from '../shared/scan-meter-history.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -192,12 +194,12 @@ test('Create Batch edits VLB and ELB from the selected row and respects their lo
   if(!(index in slots))slots[index]=typeof initial==='function'?initial():initial;
   return [slots[index],value=>slots[index]=typeof value==='function'?value(slots[index]):value];
  };
- const stub=()=>null,Report=()=>null,Editor=()=>null;
+ const stub=()=>null,Report=()=>null,ElbReport=()=>null,Editor=()=>null;
  const deletions=[];let approve=false;
  const {VlbCreateBatch}=await compile('vlb-create-batch.jsx',{
   React,useState,useRef:value=>useState(()=>({current:value}))[0],useEffect:stub,SmartSelect:'select',
   canonicalSiteName,displaySiteName,bookShiftCode,systemBookDate,vlbRecordSource,vlbRecordEntryType,
-  VlbBatchCardDetails:stub,VlbBatchReport:Report,VlbBatchGovernance:stub,VlbBatchHolds:stub,LogBookForm:Editor,window:{confirm:()=>approve},
+  VlbBatchCardDetails:stub,VlbBatchReport:Report,ElbSavedCardsReport:ElbReport,VlbBatchGovernance:stub,VlbBatchHolds:stub,LogBookForm:Editor,window:{confirm:()=>approve},
   fetch:async(url,request)=>{deletions.push([url,request.method,JSON.parse(request.body)]);return {ok:true,json:async()=>({deleted:true})}}
  },['VlbCreateBatch']);
  const vehicle={id:1,book_no:'VLB-1',revision:2,data:{openingKmr:10}};
@@ -205,6 +207,7 @@ test('Create Batch edits VLB and ELB from the selected row and respects their lo
  const batch={id:'b1',name:'Batch 1',twoStage:true,stage:'vlb_open',canEditSavedFleet:true,records:[vehicle],elbRecords:[equipment]};
  const render=()=>{cursor=0;return VlbCreateBatch({session:{token:'test'}})};
  const report=tree=>nodes(tree,node=>node.type===Report)[0].props;
+ const elbReport=tree=>nodes(tree,node=>node.type===ElbReport)[0]?.props;
  const button=(tree,label)=>nodes(tree,node=>node.type==='button'&&node.props['aria-label']===label)[0];
  render();
  slots[5]=batch;slots[8]=false;slots[14]={login:'admin',admin:true};
@@ -225,15 +228,16 @@ test('Create Batch edits VLB and ELB from the selected row and respects their lo
 
  slots[5]={...batch,stage:'elb_open'};
  assert.match(renderToStaticMarkup(report(render()).rowAction(vehicle)),/Locked/);
- button(render(),'Edit Opening HMR for ELB-1').props.onClick();
- editor=nodes(render(),node=>node.type===Editor)[0];
+ assert.equal(elbReport(render()).batch.elbRecords[0],equipment,'saved ELB cards use the shared report table');
+ elbReport(render()).renderField(equipment,'Opening HMR',20).props.onClick();
+ editor=nodes(elbReport(render()).rowEditor(equipment,8),node=>node.type===Editor)[0];
  assert.equal(editor.props.kind,'equipment');
  assert.equal(editor.props.initialRecord,equipment);
  assert.equal(editor.props.focusField,'Opening HMR');
  editor.props.onSaved();
- assert.equal(nodes(render(),node=>node.type===Editor).length,0);
+ assert.equal(elbReport(render()).rowEditor(equipment,8),false);
  assert.equal(slots[9],2,'saving refreshes batch details');
- await button(render(),'Delete ELB-1').props.onClick();
+ await button(elbReport(render()).rowAction(equipment),'Delete ELB-1').props.onClick();
  assert.deepEqual(deletions[1],['/api/log-books/equipment/1','DELETE',{revision:3}]);
 
  // An open batch never stops a user (owner, 19 Nov 2026): another user edits a
@@ -255,43 +259,52 @@ test('Create Batch edits VLB and ELB from the selected row and respects their lo
  slots[14]={login:'admin',admin:true};
 
  slots[5]={...batch,stage:'closed',closed_at:'closed'};
- assert.equal(button(render(),'Edit ELB-1'),undefined);
- assert.equal(button(render(),'Delete ELB-1'),undefined);
+ assert.equal(button(elbReport(render()).rowAction(equipment),'Edit ELB-1'),undefined);
+ assert.equal(button(elbReport(render()).rowAction(equipment),'Delete ELB-1'),undefined);
+ assert.match(renderToStaticMarkup(elbReport(render()).rowAction(equipment)),/Locked/);
  assert.match(renderToStaticMarkup(report(render()).rowAction(vehicle)),/Locked/);
 });
 
-test('Saved ELB cards sort by any heading, numbers by value and empty job cards last',async()=>{
+test('Saved ELB cards get the VLB Smart Search, and sort by any heading with numbers by value and empty job cards last',async()=>{
  const slots=[];let cursor=0;
  const useState=initial=>{const index=cursor++;if(!(index in slots))slots[index]=typeof initial==='function'?initial():initial;return [slots[index],value=>slots[index]=typeof value==='function'?value(slots[index]):value]};
- const stub=()=>null;
- const {VlbCreateBatch}=await compile('vlb-create-batch.jsx',{
-  React,useState,useRef:value=>useState(()=>({current:value}))[0],useEffect:stub,SmartSelect:'select',
-  canonicalSiteName,displaySiteName,bookShiftCode,systemBookDate,vlbRecordSource,vlbRecordEntryType,
-  VlbBatchCardDetails:stub,VlbBatchReport:stub,VlbBatchGovernance:stub,VlbBatchHolds:stub,LogBookForm:stub,window:{},fetch:async()=>({ok:true,json:async()=>({})})
- },['VlbCreateBatch']);
+ const ReportSection=()=>null;
+ const {ElbSavedCardsReport,elbSavedCardColumns}=await compile('vlb-batch-report.jsx',{React,useState,vlbRecordEntryType,vlbRecordSource,vlbRecordTrips,displaySiteName,meterCorrectionReport},['ElbSavedCardsReport','elbSavedCardColumns']);
  const card=(id,book,door,operator,opening,closing,jobCardNo)=>({id,book_no:book,data:{door,employeeName:operator,openingHmr:opening,closingHmr:closing,jobCardNo}});
  const elbRecords=[
   card(1,'CAL/ELB/18-11-26/103','LPC5 - 21031','RAJ KUMAR RAM','17222.8','17227.8',''),
   card(2,'CAL/ELB/18-11-26/104','TPC11 - 00653','NIRAJ SINGH','29794.9','29802.2','JC-9'),
   card(3,'CAL/ELB/18-11-26/105','TPC93-50219','RAJIV LOCHAN PATEL','7255.3','7261.9','JC-10'),
  ];
- const render=()=>{cursor=0;return VlbCreateBatch({session:{token:'test'}})};
- render();slots[5]={id:'b1',name:'Batch 1',twoStage:true,stage:'closed',records:[],elbRecords};slots[8]=false;slots[14]={login:'admin',admin:true};
- const section=tree=>nodes(tree,node=>node.type==='section'&&node.props['aria-label']==='Saved ELB cards')[0];
- const books=tree=>nodes(section(tree),node=>node.type==='tr').slice(1).map(row=>renderToStaticMarkup(row).match(/CAL\/ELB\/[^<]+/)[0].slice(-3));
- const heading=(tree,key)=>nodes(section(tree),node=>node.props?.sortKey===key)[0];
- let tree=render();
- assert.deepEqual(books(tree),['103','104','105'],'saved order until a heading is pressed');
- assert.deepEqual(nodes(section(tree),node=>node.props?.sortKey).map(node=>node.props.label),['Book number','Equipment / Door','Operator','Opening HMR','Closing HMR','Job card']);
- heading(tree,'openingHmr').props.onSort('openingHmr');tree=render();
- assert.deepEqual(books(tree),['105','103','104'],'HMR sorts as numbers, not text');
- assert.equal(heading(tree,'openingHmr').props.sort.direction,'asc');
- heading(tree,'openingHmr').props.onSort('openingHmr');tree=render();
- assert.deepEqual(books(tree),['104','103','105']);
- heading(tree,'jobCard').props.onSort('jobCard');tree=render();
- assert.deepEqual(books(tree),['104','105','103'],'JC-9 before JC-10, empty job card last');
- heading(tree,'jobCard').props.onSort('jobCard');tree=render();
- assert.deepEqual(books(tree),['105','104','103'],'empty job card stays last in descending order too');
- heading(tree,'operator').props.onSort('operator');tree=render();
- assert.deepEqual(books(tree),['104','103','105']);
+ const batch={id:'b1',name:'Batch 1',site:'Sasti OC',report_date:'2026-11-18',shift:'A',elbRecords};
+ const viewed=[];
+ const render=()=>{cursor=0;return ElbSavedCardsReport({batch,ReportSection,onView:record=>viewed.push(record.id),rowAction:record=>'action '+record.id,renderField:(record,field,value)=>field+'='+value})};
+ let report=render();
+ assert.equal(report.type,ReportSection);
+ assert.equal(report.props.rows,elbRecords);
+ assert.equal(report.props.smartPrintAction,true);
+ assert.equal(report.props.showSearch,false,'one search box, as on VLB');
+ assert.equal(report.props.rowAction(elbRecords[0]),'action 1');
+ assert.deepEqual(report.props.columns.map(column=>column.label),['Book number','Equipment / Door','Operator','Opening HMR','Closing HMR','Job card','Details']);
+ assert.equal(report.props.columns[3].render(elbRecords[1]),'Opening HMR=29794.9','HMR cells still open the inline editor');
+ assert.equal(report.props.columns[5].render(elbRecords[1]),'Job Card no.=JC-9');
+ report.props.columns[6].render(elbRecords[2]).props.onClick();assert.deepEqual(viewed,[3]);
+ const search=nodes(report.props.headingControl,node=>node.type==='input')[0];
+ assert.equal(search.props['aria-label'],'Smart Search saved ELB cards');
+ search.props.onChange({target:{value:'tpc11'}});report=render();
+ assert.equal(report.props.query,'tpc11');
+ assert.deepEqual(elbRecords.filter(row=>matchesSmartSearch(report.props.query,row)).map(row=>row.id),[2],'the report table keeps only matching cards');
+ assert.deepEqual(elbRecords.filter(row=>matchesSmartSearch('rajiv',row)).map(row=>row.id),[3]);
+ report.props.onResetSearch();assert.equal(render().props.query,'');
+
+ // Sorted the way the shared report table sorts: sortValue first, blanksLast columns keep empty lines at the bottom.
+ const main=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');
+ assert.ok(main.includes('?.blanksLast ? sortRowsBlanksLast(filteredRows, sort, sortValueOf) : sortedByValue'),'the report table keeps blank job cards last');
+ const books=(key,direction)=>{const column=elbSavedCardColumns.find(item=>item.key===key),value=row=>column.sortValue?.(row)??column.value(row),sort={key,direction};
+  return (column.blanksLast?sortRowsBlanksLast(elbRecords,sort,value):sortRows(elbRecords,sort,value)).map(row=>row.book_no.slice(-3))};
+ assert.deepEqual(books('openingHmr','asc'),['105','103','104'],'HMR sorts as numbers, not text');
+ assert.deepEqual(books('openingHmr','desc'),['104','103','105']);
+ assert.deepEqual(books('jobCard','asc'),['104','105','103'],'JC-9 before JC-10, empty job card last');
+ assert.deepEqual(books('jobCard','desc'),['105','104','103'],'empty job card stays last in descending order too');
+ assert.deepEqual(books('operator','asc'),['104','103','105']);
 });

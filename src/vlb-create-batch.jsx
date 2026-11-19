@@ -11,7 +11,7 @@ import {displaySiteName} from '../shared/region-scope.mjs';
 import {withLmvEntrySite} from './vlb-entry-context.mjs';
 import {activeWorkOrders,bookShiftCode,systemBookDate} from '../shared/trip-card-rules.mjs';
 import {vlbRecordSource,vlbRecordEntryType} from '../shared/vlb-batch-format.mjs';
-import VlbBatchReport from './vlb-batch-report.jsx';
+import VlbBatchReport,{ElbSavedCardsReport} from './vlb-batch-report.jsx';
 import VlbBatchGovernance from './vlb-batch-governance.jsx';
 import VlbReopenDialog from './vlb-reopen-dialog.jsx';
 import VlbBatchHolds,{NewEquipmentRequest} from './vlb-batch-holds.jsx';
@@ -134,9 +134,6 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
  const detailCache=useRef({id:'',etag:'',data:null});
  const [deleteBatchId,setDeleteBatchId]=useState(null);
  const [batchSiteByTab,setBatchSiteByTab]=useState({});
- // Kept after the other hooks so earlier state slots keep their order.
- const [elbSort,setElbSort]=useState({key:'',direction:'asc'});
- const changeElbSort=key=>setElbSort(current=>({key,direction:current.key===key&&current.direction==='asc'?'desc':'asc'}));
  // Click-a-heading sorting for the site batch list, open batches across sites, the Equipment ELB fleet and the card preview.
  const [batchSort,setBatchSort]=useState({key:'',direction:'asc'}),[openSort,setOpenSort]=useState({key:'',direction:'asc'});
  const [fleetSort,setFleetSort]=useState({key:'',direction:'asc'}),[previewSort,setPreviewSort]=useState({key:'',direction:'asc'});
@@ -292,22 +289,7 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
     {stage==='closed'&&viewed.canUnlockVlb&&<div className="vlb-batch-actions"><button type="button" disabled={busy} onClick={unlockVlb}>Unlock VLB</button></div>}
     {newEquipment&&stage==='vlb_open'&&<NewEquipmentRequest key={viewed.id} session={session} batch={viewed} onDismiss={()=>setNewEquipment(false)} onCreated={()=>setRefresh(n=>n+1)}/>}
     {viewed.elbRecords?.length>0&&<section aria-label="Saved ELB cards">
-     <h3>Saved ELB cards</h3>
-     <TableSmartPrint row title={'Saved ELB cards · '+viewed.name}/>
-     <div className="logbook-table-wrap"><table className="logbook-table">
-      <thead><tr><th className="batch-edit-action" scope="col" data-smart-print-skip="">Action</th>{savedElbColumns.map(([key,label])=><SortableHeader key={key} label={label} sortKey={key} sort={elbSort} onSort={changeElbSort} filterIcon={false}/>)}<th data-smart-print-skip="">Details</th></tr></thead>
-      <tbody>{sortRowsBlanksLast(viewed.elbRecords,elbSort,savedElbValue).map(record=><React.Fragment key={record.id}>
-       <tr><td className="batch-edit-action">{action(record,'equipment')}</td><td>{record.book_no}</td>
-        <td>{fieldCell(record,'equipment','Equipment',record.data?.door||record.data?.assetName)}</td>
-        <td>{fieldCell(record,'equipment','Operator name',record.data?.employeeName)}</td>
-        <td>{fieldCell(record,'equipment','Opening HMR',record.data?.openingHmr)}</td>
-        <td>{fieldCell(record,'equipment','Closing HMR',record.data?.closingHmr)}</td>
-        <td>{fieldCell(record,'equipment','Job Card no.',record.data?.jobCardNo)}</td>
-        <td><button type="button" onClick={()=>viewCard(record,'equipment')}>View ELB</button></td>
-       </tr>
-       {editor(record,'equipment',8)}
-      </React.Fragment>)}</tbody>
-     </table></div>
+     <ElbSavedCardsReport key={viewed.id} batch={viewed} ReportSection={ReportSection} onView={record=>viewCard(record,'equipment')} rowAction={record=>action(record,'equipment')} renderField={(record,field,value)=>fieldCell(record,'equipment',field,value)} rowEditor={(record,colSpan)=>editor(record,'equipment',colSpan)}/>
     </section>}
     <VlbBatchHolds session={session} batch={viewed} onChanged={()=>setRefresh(n=>n+1)}/>
    </div>}
@@ -343,19 +325,7 @@ export function StageSteps({stage,waiting}){
  return <ol className="vlb-stage-steps" aria-label="Batch stage">{[['vlb_open','1 VLB open'],['lmv_open','2 LMV open'],['elb_open','3 ELB open'],['closed','4 ELB locked · Batch closed']].map(([key,label])=><li key={key} aria-current={stage===key?'step':undefined} className={stage===key?'current':undefined}>{waiting&&stage===key?label.replace('open','waiting'):label}</li>)}</ol>;
 }
 const shown=value=>value===0||String(value??'').trim()?String(value):'—';
-// Saved ELB cards: every heading except Action and Details sorts the list.
-const savedElbColumns=[['bookNo','Book number'],['door','Equipment / Door'],['operator','Operator'],['openingHmr','Opening HMR'],['closingHmr','Closing HMR'],['jobCard','Job card']];
 const meterNumber=value=>{const text=String(value??'').trim();const number=Number(text);return text&&Number.isFinite(number)?number:'';};
-export function savedElbValue(record={},key){
- const data=record.data||{};
- if(key==='bookNo')return record.book_no||'';
- if(key==='door')return data.door||data.assetName||'';
- if(key==='operator')return data.employeeName||'';
- if(key==='openingHmr')return meterNumber(data.openingHmr);
- if(key==='closingHmr')return meterNumber(data.closingHmr);
- if(key==='jobCard')return data.jobCardNo||'';
- return '';
-}
 // Site batches: Batch ID, Cards, the three stage columns (two-stage lists only) and Status sort; the action column does not.
 const siteBatchColumns=[['name','Batch ID'],['cards','Cards'],['vlb','VLB'],['lmv','LMV'],['elb','ELB'],['status','Status']];
 const batchStageKeys=['vlb','lmv','elb'];

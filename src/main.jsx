@@ -86,7 +86,7 @@ import { filterRecordsByDate } from "./record-date-range.mjs";
 import { primaryRecordDateColumn } from "./record-date-range.mjs";
 import RecordDateRange from "./record-date-range.jsx";
 import { isDurationColumn, compareDurationValues, defaultDurationSort } from "./duration-sort.mjs";
-import { sortCollator, useSortableRows, SortableHeader } from "./sortable-table.jsx";
+import { sortCollator, useSortableRows, SortableHeader, sortRowsBlanksLast } from "./sortable-table.jsx";
 import { closedTimeAfterStartedColumns, ensureJobReferenceVisibleKeys } from "./table-actions-model.mjs";
 import UserProfile from "./user-profile.jsx";
 import TelegramGate from "./telegram-gate.jsx";
@@ -4359,15 +4359,9 @@ function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], 
     matchesSmartSearch(deferredQuery, row) &&
     tableRowMatchesFilters(row, columns, columnFilters),
   );
-  const [sortedRows, sort, changeSort] = useSortableRows(
-    filteredRows,
-    defaultDurationSort(columns),
-    (row, key) => {
-      const column = columns.find((item) => item.key === key);
-      return column?.sortValue?.(row) ?? column?.value?.(row);
-    },
-    (key) => isDurationColumn(columns.find((column) => column.key === key)?.label, key),
-  );
+  const sortValueOf = (row, key) => { const column = columns.find((item) => item.key === key); return column?.sortValue?.(row) ?? column?.value?.(row); };
+  const [sortedByValue, sort, changeSort] = useSortableRows(filteredRows, defaultDurationSort(columns), sortValueOf, (key) => isDurationColumn(columns.find((column) => column.key === key)?.label, key));
+  const sortedRows = columns.find((column) => column.key === sort.key)?.blanksLast ? sortRowsBlanksLast(filteredRows, sort, sortValueOf) : sortedByValue;
   const updateColumnFilter = (key, value) => {
     setColumnFilters((current) => {
       const next = { ...current };
