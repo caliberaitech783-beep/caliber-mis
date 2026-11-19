@@ -11,11 +11,12 @@ export const ERP_EMPLOYEE_COLUMNS={
  skillsCode:'SKILLSCODE',skills:'SKILLSNAME',workCentre:'WORKCENTRENAME',paymentMode:'PAYMENTMODENAME',bankCode:'BANKCODE',bankName:'BANKNAME',ifscCode:'IFSCCODE',bankAccountNo:'BANKACCOUNTNO',
  presentAddress:'PRESENTADDRESS',presentCity:'PRESENTCITY',presentState:'PRESENTSTATE',presentPhoneNo:'PRESENTPHONENO',
  permanentAddress:'PERMANENTADDRESS',permanentCity:'PERMANENTCITY',permanentState:'PERMANENTSTATE',
- officeMobileNo:'OFFICEMOBILENO',officeEmailId:'OFFICEEMAILID',personalMobileNo:'PERSONALMOBILENO',personalEmailId:'PERSONALEMAILID',monthlyCtc:'MONTHLYCTC',salaryAccount:'SALARYACCOUNTCODE',
+ officeMobileNo:'OFFICEMOBILENO',officeEmailId:'OFFICEEMAILID',personalMobileNo:'PERSONALMOBILENO',personalEmailId:'PERSONALEMAILID',monthlyCtc:'MONTHLYCTC',
  pfDeduction:'PFDEDUCTIONON',isEsicApplicable:'ISESICAPPLICABLE',offday:'OFFDAY',ishod:'ISHOD',canAllowVisitor:'CANALLOWVISITOR',isSignatory:'ISSIGNATORY',isGroupSignatory:'ISGROUPSIGNATORY',
  coffAllowed:'COFFALLOWED',isSinglePunchAllowed:'ISSINGLEPUNCHALLOWED',
  adharNo:'ADHARNO',pfAccountNo:'PFACCOUNTNO',esicAccountNo:'ESICACCOUNTNO',esicEstablishmentCodeNo:'ESICESTABLISHMENTCODENO',panNo:'PANNO',uan:'UAN',
  drivingLicenseNo:'DRIVINGLICENSENO',drivingLicenseExpiryDate:'DRIVINGLICENSEEXPIRYDATE'
 };
+// Salary Account is not taken from the ERP: SALARYACCOUNTCODE is a ledger code (two values), not the employee's account.
 export const ERP_EMPLOYEE_FIELDS=Object.keys(ERP_EMPLOYEE_COLUMNS);
 export const isErpEmployee=record=>Boolean(record?.erpSyncedAt)&&record?.erpMissing!==true;

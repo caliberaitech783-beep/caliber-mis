@@ -117,4 +117,5 @@ Employee Master is copied one way from the ERP table CMPL.EMPLOYEE every hour wi
 - The ERP owns the fields listed in shared/erp-employee-fields.mjs. Pulse-II keeps Current Location, site, Caliber ID, status, resignation, cost centre and current CTC; the sync never overwrites them. The Employee Master page shows ERP fields read-only on ERP employees and refuses a change to them.
 - An employee missing from the ERP is marked "Not in ERP" (erpMissing), never deleted. A list that is empty, has duplicate IDs or codes, or would mark more than 5% (at least 50) of employees missing is refused and nothing changes.
 - Only changed employees are written; an unchanged ERP list writes nothing. The read is SET TRANSACTION READ ONLY.
+- Dry run on production, 19 November 2026 (read-only): 20,812 ERP employees against 20,333 in Employee Master; the first copy adds 482, updates 20,328 (mostly filling the blank Payment Mode) and marks 3 Not in ERP. 26 locally typed IDs such as 1234 become the ERP ID CMPL1234 through the ERP employee code.
 - Excel / CSV import still works; the next ERP copy restores ERP fields on ERP employees.
