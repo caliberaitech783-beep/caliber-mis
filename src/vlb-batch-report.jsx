@@ -46,6 +46,24 @@ export default function VlbBatchReport({batch,bookLabel='VLB',ReportSection,onVi
  if(!batch.machineReport)return section;
  return <>{section}<MachineReport report={batch.machineReport} statuses={batch.statuses}/></>;
 }
+const elbMeter=value=>{const text=String(value??'').trim();const number=Number(text);return text&&Number.isFinite(number)?number:'';};
+// Saved ELB cards on the opened batch: the same report table as VLB (Smart Search, column filters, sort, Smart Print).
+// `field` is the name the inline editor focuses when the cell is pressed; `blanksLast` makes the report table
+// keep cards with no job card at the bottom in both sort directions.
+export const elbSavedCardColumns=[
+ {key:'bookNo',label:'Book number',value:r=>r.book_no},
+ {key:'door',label:'Equipment / Door',field:'Equipment',value:r=>r.data?.door||r.data?.assetName},
+ {key:'operator',label:'Operator',field:'Operator name',value:r=>r.data?.employeeName},
+ {key:'openingHmr',label:'Opening HMR',field:'Opening HMR',value:r=>r.data?.openingHmr,sortValue:r=>elbMeter(r.data?.openingHmr)},
+ {key:'closingHmr',label:'Closing HMR',field:'Closing HMR',value:r=>r.data?.closingHmr,sortValue:r=>elbMeter(r.data?.closingHmr)},
+ {key:'jobCard',label:'Job card',field:'Job Card no.',blanksLast:true,value:r=>r.data?.jobCardNo},
+];
+export function ElbSavedCardsReport({batch,ReportSection,onView,rowAction,rowEditor,renderField}){
+ const [search,setSearch]=useState('');
+ const records=batch.elbRecords||[];
+ const columns=elbSavedCardColumns.map(column=>renderField&&column.field?{...column,render:record=>renderField(record,column.field,column.value(record))}:column);
+ return <ReportSection title={'Saved ELB cards · '+batch.name} category="elb-saved-batch" recordDateFilter={false} description={`${records.length} saved ELB card${records.length===1?'':'s'} · ${displaySiteName(batch.site)} · ${batch.report_date} · ${batch.shift}`} rowAction={rowAction} rowEditor={rowEditor} columns={onView?[...columns,{key:'details',label:'Details',render:record=><button type="button" onClick={()=>onView(record)}>View ELB</button>}]:columns} rows={records} rowKey={r=>r.id} showSearch={false} query={search} onResetSearch={()=>setSearch('')} smartPrintAction emptyMessage="No ELB cards match this search in the opened batch." headingControl={<div className="generated-report-search"><label>Smart Search<input type="search" data-smart-search aria-label="Smart Search saved ELB cards" placeholder="Book number, equipment, operator or job card" value={search} onChange={e=>setSearch(e.target.value)}/></label></div>}/>;
+}
 const cell=value=>value===null||value===undefined||value===''?'—':value;
 // Machine-wise shift report: loaders with trips and HMR first, then every other machine by status.
 export function MachineReport({report,statuses}){

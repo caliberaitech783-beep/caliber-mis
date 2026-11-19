@@ -83,7 +83,7 @@ const OTHER_PAGES={
   // Masters
   'equipment-alias-admin.jsx':2,'pulse-master-sync.jsx':1,'pulse-pending.jsx':1,'vehicle-transfer-workflow.jsx':1,'organisation-chart.jsx':5,
   // MIS: batches, log books, scanning, ELB
-  'vlb-batch-approvals.jsx':1,'vlb-create-batch.jsx':3,'vlb-batch-holds.jsx':1,'vlb-batch-deletion.jsx':1,'vlb-batch-governance.jsx':1,
+  'vlb-batch-approvals.jsx':1,'vlb-create-batch.jsx':1,'vlb-batch-holds.jsx':1,'vlb-batch-deletion.jsx':1,'vlb-batch-governance.jsx':1,
   'pulse-trip-verification.jsx':1,'log-book-form.jsx':3,'fleet-reconciliation.jsx':1,'scan-batch-report.jsx':2,'bulk-card-scanning.jsx':1,
   'scan-duplicate-list.jsx':1,'vlb-fleet-stepper.jsx':1,'previous-elb-entries.jsx':1,
   // Deletion and backup

@@ -86,7 +86,7 @@ import { filterRecordsByDate } from "./record-date-range.mjs";
 import { primaryRecordDateColumn } from "./record-date-range.mjs";
 import RecordDateRange from "./record-date-range.jsx";
 import { isDurationColumn, compareDurationValues, defaultDurationSort } from "./duration-sort.mjs";
-import { sortCollator, useSortableRows, SortableHeader } from "./sortable-table.jsx";
+import { sortCollator, useSortableRows, SortableHeader, sortRowsBlanksLast } from "./sortable-table.jsx";
 import { closedTimeAfterStartedColumns, ensureJobReferenceVisibleKeys } from "./table-actions-model.mjs";
 import UserProfile from "./user-profile.jsx";
 import TelegramGate from "./telegram-gate.jsx";
@@ -4360,15 +4360,9 @@ function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], 
     matchesSmartSearch(deferredQuery, row) &&
     tableRowMatchesFilters(row, columns, columnFilters),
   );
-  const [sortedRows, sort, changeSort] = useSortableRows(
-    filteredRows,
-    defaultDurationSort(columns),
-    (row, key) => {
-      const column = columns.find((item) => item.key === key);
-      return column?.sortValue?.(row) ?? column?.value?.(row);
-    },
-    (key) => isDurationColumn(columns.find((column) => column.key === key)?.label, key),
-  );
+  const sortValueOf = (row, key) => { const column = columns.find((item) => item.key === key); return column?.sortValue?.(row) ?? column?.value?.(row); };
+  const [sortedByValue, sort, changeSort] = useSortableRows(filteredRows, defaultDurationSort(columns), sortValueOf, (key) => isDurationColumn(columns.find((column) => column.key === key)?.label, key));
+  const sortedRows = columns.find((column) => column.key === sort.key)?.blanksLast ? sortRowsBlanksLast(filteredRows, sort, sortValueOf) : sortedByValue;
   const updateColumnFilter = (key, value) => {
     setColumnFilters((current) => {
       const next = { ...current };
@@ -5573,7 +5567,7 @@ function Equipment({
         </ActionsTable>
       </div>
       {aliasRevoke && <EquipmentAliasRevokeDialog session={aliasSession} alias={aliasRevoke} otpEnabled={aliasData.otpEnabled} approver={aliasData.approver} approverTelegramLinked={aliasData.approverTelegramLinked} onDone={aliasData.refresh} onDismiss={() => setAliasRevoke(null)} />}
-      {pageTitle === 'Equipment master' && <EquipmentAliasAdminPanel session={aliasSession} isAdmin={aliasAdmin} />}
+      {pageTitle === 'Equipment master' && <EquipmentAliasAdminPanel session={aliasSession} isAdmin={aliasAdmin} ReportSection={ReportSection} />}
       {detail && (
         <Modal title="Equipment details" close={() => setDetail(null)}>
           <div className="detailhead">
@@ -11985,7 +11979,7 @@ function App() {
   ) : renderedActive==='Fleet reconciliation' ? (<details open className="scan-fleet-reconciliation"><summary>Site fleet · VLB / LMV / ELB, breakdown and idle details</summary><FleetReconciliation session={session}/></details>) : renderedActive==='Employee Current Location' ? (<EmployeeCurrentLocation session={session}/>) : renderedActive==='Employee master' ? (<EmployeeMaster session={session} ExportMenu={ExportMenu} PrintButton={PrintButton} parseCsv={parseCsv}/>) : ['Work Order master','Financial Year master','Company master'].includes(renderedActive) ? (
     <ErpMasters key={renderedActive} name={renderedActive} session={session} ExportMenu={ExportMenu} PrintButton={PrintButton} parseCsv={parseCsv}/>
   ) : renderedActive==='Pulse Master Sync' ? (
-    <><PulseMasterSync session={session}/><PendingInPulse session={session}/></>
+    <><PulseMasterSync session={session} ReportSection={ReportSection}/><PendingInPulse session={session}/></>
   ) : renderedActive==='Deletion' ? (<LogBookDeletion session={session}/>) : renderedActive==='Scan Backup' ? (<ScanCardBackup session={session}/>)
   : renderedActive==='LMV Log Book' ? (<LogBookModeChoice kind="lmv" canScan={canOpenAdminPage('LMV Scan')} onManual={()=>selectMenu('LMV Manual')} onScan={()=>selectMenu('LMV Scan')}/>)
   : renderedActive==='LMV Manual' ? (<VlbEntryWorkspace key="lmv-manual" kind="lmv" mode="manual" session={session} ReportSection={ReportSection} onExit={()=>selectMenu('LMV Log Book')}><LogBookForm kind="lmv" session={session} onExit={()=>selectMenu('LMV Log Book')} onBulkScan={canOpenAdminPage('LMV Scan')?()=>selectMenu('LMV Scan'):undefined}/></VlbEntryWorkspace>)
