@@ -6,6 +6,7 @@ import {managerReportScope,reportScopeIncludesSite} from '../../shared/region-sc
 import {canonicalSiteName} from '../../shared/site-location.mjs';
 import {assignedUserRoles} from '../../shared/account-role-access.mjs';
 import {approvalRoleForSite,officeApprovalKey,hrManagerAssignedToOffice} from '../rules/cdir-approval-routing.mjs';
+import {employeeTransferTerms} from '../../shared/employee-transfer-terms.mjs';
 
 export const EMPLOYEE_TRANSFER_SCHEMA=`CREATE TABLE IF NOT EXISTS employee_transfers(id BIGSERIAL PRIMARY KEY,record_data JSONB NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()); CREATE INDEX IF NOT EXISTS employee_transfers_employee_idx ON employee_transfers ((record_data->>'employeeRecordId')); CREATE UNIQUE INDEX IF NOT EXISTS employee_transfers_reference_idx ON employee_transfers ((record_data->>'transferNo')); CREATE UNIQUE INDEX IF NOT EXISTS employee_transfers_pending_idx ON employee_transfers ((record_data->>'employeeRecordId')) WHERE record_data->>'status' IN ('Awaiting source approval','Awaiting destination acceptance');`;
 export const ET_STATUS={OUT:'Awaiting source approval',IN:'Awaiting destination acceptance',DONE:'Completed',REJECTED:'Rejected'};
@@ -62,7 +63,8 @@ export function registerEmployeeTransfers(app,{pool,requireSession,loadViewer,lo
     if(!ctx.privileged&&!employeeTransferSiteAllowed(ctx,employee.site))fail(403,'You can request transfers only from your assigned sites.');
     if(clean(employee.status||'ACTIVE').toUpperCase()!=='ACTIVE')fail(400,'Only active employees can be transferred.');
     const values=await masters(client);
-    return {body:{employeeRecordId:rows[0].id,empId:employee.empId,source:employee.site,revision:hash(employee,contact),fields:options(values),record:Object.fromEntries(fields.map(([key])=>[key,contacts.includes(key)?contact?.record_data[key]||'':employee[key]||'']))}};
+    const people=(await client.query(`SELECT record_data->>'name' AS name,record_data->>'empId' AS "empId",record_data->>'designation' AS designation FROM master_records WHERE master_name=$1 AND upper(coalesce(record_data->>'status','ACTIVE'))='ACTIVE' AND coalesce(trim(record_data->>'name'),'')<>'' ORDER BY record_data->>'name' LIMIT 5000`,[CDIR_MASTERS.employee])).rows.filter(row=>row.empId!==employee.empId);
+    return {body:{people,employeeRecordId:rows[0].id,empId:employee.empId,source:employee.site,revision:hash(employee,contact),fields:options(values),record:Object.fromEntries(fields.map(([key])=>[key,contacts.includes(key)?contact?.record_data[key]||'':employee[key]||'']))}};
   }));
   app.post('/api/cdir/employee-transfers',requireSession,route(async(req,ctx,client)=>{
     const input=req.body||{};validateDetails(input.record);if(!/^\d+$/.test(String(input.employeeRecordId)))fail(400,'Look up an employee before submitting.');
@@ -72,7 +74,8 @@ export function registerEmployeeTransfers(app,{pool,requireSession,loadViewer,lo
     if(clean(employee.status||'ACTIVE').toUpperCase()!=='ACTIVE')fail(400,'Only active employees can be transferred.');
     const values=await masters(client),destination=(values[CDIR_MASTERS.site]||[]).find(site=>canonicalSiteName(site.name)===canonicalSiteName(input.destination))?.name;
     if(!destination||canonicalSiteName(destination)===canonicalSiteName(employee.site))fail(400,'Select a different destination from the Site & Office master.');
-    const effectiveDate=clean(input.effectiveDate);if(!/^\d{4}-\d{2}-\d{2}$/.test(effectiveDate)||!Number.isFinite(Date.parse(effectiveDate))||new Date(effectiveDate).toISOString().slice(0,10)!==effectiveDate)fail(400,'Enter a valid transfer date.');
+    const effectiveDate=clean(input.effectiveDate);if(!/^\d{4}-\d{2}-\d{2}$/.test(effectiveDate)||!Number.isFinite(Date.parse(effectiveDate))||new Date(effectiveDate).toISOString().slice(0,10)!==effectiveDate)fail(400,'Enter a valid joining date.');
+    const {terms,error:termsError}=employeeTransferTerms(input.transfer,effectiveDate);if(termsError)fail(400,termsError);
     const proposed=cdirNormalizeRecord(CDIR_MASTERS.employee,{...employee,...Object.fromEntries(Object.entries(input.record).filter(([key])=>!contacts.includes(key))),site:destination});
     const error=cdirEmployeeError(proposed,values);if(error)fail(400,error);
     const pending=await client.query(`SELECT id FROM employee_transfers WHERE record_data->>'employeeRecordId'=$1 AND record_data->>'status'=ANY($2::text[])`,[String(input.employeeRecordId),[ET_STATUS.OUT,ET_STATUS.IN]]);if(pending.rows.length)fail(409,'This employee already has a pending transfer.');
@@ -80,7 +83,7 @@ export function registerEmployeeTransfers(app,{pool,requireSession,loadViewer,lo
     const sourceManagers=await pmLogins(client,employee.site),destinationManagers=await pmLogins(client,destination);
     if(!sourceManagers.length||!destinationManagers.length)fail(400,`Assign a ${approvalRoleForSite(employee.site)} at ${employee.site} and a ${approvalRoleForSite(destination)} at ${destination} before creating this request.`);
     const at=new Date().toISOString(),by=req.session.name||req.session.login;
-    const record={transferNo:`ET-${Date.now()}-${randomUUID().slice(0,4).toUpperCase()}`,employeeRecordId:String(input.employeeRecordId),empId:employee.empId,name:proposed.name,source:employee.site,destination,effectiveDate,remarks:clean(input.remarks).slice(0,2000),status:ET_STATUS.OUT,submittedBy:by,submittedLogin:req.session.login,submittedAt:at,sourceManagers,destinationManagers,sourceApproverRole:approvalRoleForSite(employee.site),destinationApproverRole:approvalRoleForSite(destination),before:employee,beforeContact:contact,revision:hash(employee,contact),proposed,proposedContact:{...(contact?.record_data||{}),name:proposed.name,empId:employee.empId,...Object.fromEntries(contacts.map(key=>[key,clean(input.record[key]??contact?.record_data[key])]))},history:[{action:'Requested',by,login:req.session.login,at,note:clean(input.remarks).slice(0,2000)}]};
+    const record={transferNo:`ET-${Date.now()}-${randomUUID().slice(0,4).toUpperCase()}`,employeeRecordId:String(input.employeeRecordId),empId:employee.empId,name:proposed.name,source:employee.site,destination,effectiveDate,...terms,remarks:clean(input.remarks).slice(0,2000),status:ET_STATUS.OUT,submittedBy:by,submittedLogin:req.session.login,submittedAt:at,sourceManagers,destinationManagers,sourceApproverRole:approvalRoleForSite(employee.site),destinationApproverRole:approvalRoleForSite(destination),before:employee,beforeContact:contact,revision:hash(employee,contact),proposed,proposedContact:{...(contact?.record_data||{}),name:proposed.name,empId:employee.empId,...Object.fromEntries(contacts.map(key=>[key,clean(input.record[key]??contact?.record_data[key])]))},history:[{action:'Requested',by,login:req.session.login,at,note:clean(input.remarks).slice(0,2000)}]};
     const saved=await client.query('INSERT INTO employee_transfers(record_data) VALUES($1::jsonb) RETURNING id',[JSON.stringify(record)]);
     await notify(client,sourceManagers,record.transferNo,`Employee transfer OUT: ${record.empId} ${record.name}, ${record.source} → ${destination}. Source approval required.`);
     await notify(client,destinationManagers,record.transferNo,`Employee transfer IN: ${record.empId} ${record.name}, ${record.source} → ${destination}. Awaiting source approval.`);
