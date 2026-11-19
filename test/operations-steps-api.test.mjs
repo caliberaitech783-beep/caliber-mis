@@ -33,14 +33,14 @@ async function setup(t,{scope={sites:null}}={}){
  let masterReads=0;
  const query=(sql,params)=>db.query(sql,params);
  const app=express();
- registerOperationsSteps(app,{pool:{query},protect:[(req,res,next)=>{req.logBookScope=scope;next();}],
+ const runner=registerOperationsSteps(app,{pool:{query},protect:[(req,res,next)=>{req.logBookScope=scope;next();}],
   readMasters:async s=>{masterReads++;return {assets:assets.filter(a=>s.sites===null||s.sites.includes(a.site.toLowerCase())),shifts};},
   readScanCards:async()=>({cards:[{id:9,status:'pending',scanned_date:D10,card_shift:'I',draft:{bookDate:D10,location:SITE,door:'V101'}}],scanConnected:true})});
  app.use((err,req,res,next)=>res.status(500).json({error:err.message}));
  const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));t.after(()=>server.close());
  const base=`http://127.0.0.1:${server.address().port}/api/reports/operations/steps?`;
  const get=async params=>{const r=await fetch(base+new URLSearchParams({from:D10,to:D11,...params}));return {status:r.status,body:await r.json(),bytes:Number(r.headers.get('content-length'))};};
- return {db,get,rows,masterReads:()=>masterReads,pool:{connect:async()=>({query,release(){}}),query}};
+ return {db,get,rows,runner,masterReads:()=>masterReads,pool:{connect:async()=>({query,release(){}}),query}};
 }
 // The lines the screen used to work out itself from every card of the full reading.
 function before(id,rows,open,filters={}){
@@ -78,6 +78,18 @@ test('each press gets the same step lines the screen worked out from every card,
  assert.deepEqual(filtered.body.levels.sites.rows.map(r=>r.site),[OTHER]);
  // Refresh reads again.
  await get({id:'daily',fresh:'1'});assert.equal(masterReads(),2);
+});
+
+test('the reading is built in a worker thread; when the worker stops, the same answer is built on this thread',async t=>{
+ const {get,rows,runner,masterReads}=await setup(t);
+ let r=await get({id:'meters',openSite:'sasti ob'});
+ assert.equal(r.body.stats.worker,true,'built off the main thread');
+ assert.deepEqual(r.body.levels,before('meters',rows,{site:'sasti ob'}));
+ await runner.close();
+ r=await get({id:'meters',openSite:'sasti ob'});
+ assert.equal(r.status,200);assert.equal(r.body.stats.worker,false,'no worker: built here, as before');
+ assert.deepEqual(r.body.levels,before('meters',rows,{site:'sasti ob'}),'the same lines');
+ assert.equal(masterReads(),2,'the reading the stopped worker held is read again once');
 });
 
 test('the step reading uses stored closed days and gives the same answer; Scan Review gets the cards with their batch shift',async t=>{

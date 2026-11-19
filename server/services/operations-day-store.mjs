@@ -71,12 +71,13 @@ export async function operationsDaySignatures(client,{from,to},batches,sites=nul
  for(const r of rows)out.set(dayKey(r.site,r.date),{site:r.site,date:r.date,signature:`${FORM}|${r.n}:${r.ids}:${r.revs}|${ofBatches.get(siteDay(r.site,r.date))||''}`});
  return out;
 }
-// The cards of the listed site-days, read live with only the fields the step records are made from.
-async function readDayRows(client,days){
+// The cards of the listed site-days, read live with only the fields the step records are made from. `asText` leaves
+// each card's data as the database's text, unparsed, for a worker thread to parse (operations-steps-engine.mjs).
+async function readDayRows(client,days,{asText=false}={}){
  if(!days.length)return [];
  const dates=days.map(d=>d.date).sort();
  const {rows}=await client.query(`SELECT l.id,l.book_no,l.book_type,
-  (SELECT COALESCE(jsonb_object_agg(field.key,field.value),'{}'::jsonb) FROM jsonb_each(l.data) AS field WHERE field.key=ANY($5::text[])) AS data
+  (SELECT COALESCE(jsonb_object_agg(field.key,field.value),'{}'::jsonb) FROM jsonb_each(l.data) AS field WHERE field.key=ANY($5::text[]))${asText?'::text':''} AS data
   FROM mis_log_books l WHERE l.book_type IN ('vehicle','equipment') AND l.deleted_at IS NULL AND l.book_date>=$$2026-11-01$$
   AND l.book_date BETWEEN $3 AND $4 AND (l.site,l.book_date) IN (SELECT want.site,want.book_date FROM unnest($1::text[],$2::date[]) AS want(site,book_date))
   ORDER BY l.book_date,l.id`,[days.map(d=>d.site),days.map(d=>d.date),dates[0],dates.at(-1),READ_FIELDS]);
@@ -86,18 +87,29 @@ async function readDayRows(client,days){
 export const OPERATIONS_BATCHES_SQL=`SELECT id,site,book_date::text AS report_date,shift,closed_at,closure_revision FROM mis_vlb_batches
  WHERE deleted_at IS NULL AND archived_at IS NULL AND book_date BETWEEN $1 AND $2`;
 
-// The step records of every saved VLB/ELB card in the dates: stored days that still match, the rest read live.
-export async function operationsDayRecords(client,{from,to},{useStore=true}={}){
+// Every saved VLB/ELB card in the dates as the database's text, not parsed (19 Nov 2026: parsing and building 70,000
+// cards held the server's main thread for 2.3 s, so a worker thread does it): the stored days that still match, each
+// a JSON array of step records, and the cards of the other days read live, each with its data as JSON text.
+export async function operationsDayTexts(client,{from,to},{useStore=true}={}){
  const batches=(await client.query(OPERATIONS_BATCHES_SQL,[from,to])).rows;
  const signatures=await operationsDaySignatures(client,{from,to},batches);
  const fresh=new Map();
  if(useStore&&signatures.size){
-  const {rows}=await client.query('SELECT site,book_date::text AS date,signature,records FROM mis_operations_day_records WHERE book_date BETWEEN $1 AND $2',[from,to]);
+  const {rows}=await client.query('SELECT site,book_date::text AS date,signature,records::text AS records FROM mis_operations_day_records WHERE book_date BETWEEN $1 AND $2',[from,to]);
   for(const r of rows){const k=dayKey(r.site,r.date);if(signatures.get(k)?.signature===r.signature)fresh.set(k,r.records);}
  }
  const missing=[...signatures.entries()].filter(([k])=>!fresh.has(k)).map(([,d])=>d);
- const live=operationsStepRecords(await readDayRows(client,missing));
- return {records:sortStepRecords([...[...fresh.values()].flat(),...live]),stored:fresh.size,live:missing.length};
+ return {storedTexts:[...fresh.values()],liveRows:await readDayRows(client,missing,{asText:true}),stored:fresh.size,live:missing.length};
+}
+// The texts above made into sorted step records (in a worker thread, or here when there is none).
+export function operationsRecordsFromTexts({storedTexts=[],liveRows=[]}){
+ const live=operationsStepRecords(liveRows.map(r=>({...r,data:typeof r.data==='string'?JSON.parse(r.data):r.data})));
+ return sortStepRecords([...storedTexts.flatMap(text=>typeof text==='string'?JSON.parse(text):text),...live]);
+}
+// The step records of every saved VLB/ELB card in the dates: stored days that still match, the rest read live.
+export async function operationsDayRecords(client,range,options={}){
+ const texts=await operationsDayTexts(client,range,options);
+ return {records:operationsRecordsFromTexts(texts),stored:texts.stored,live:texts.live};
 }
 
 const istNow=now=>{const parts=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date(now)).map(p=>[p.type,p.value]));return {date:`${parts.year}-${parts.month}-${parts.day}`,minutes:Number(parts.hour)*60+Number(parts.minute)};};
