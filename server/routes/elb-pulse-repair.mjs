@@ -101,10 +101,10 @@ export function registerElbPulseRepair(app,{pool,protect,readBreakdownRows}){
      for(const p of planned){
       if(!p.result.patch)continue;
       const {book,result}=p,patch=JSON.stringify(result.patch);
-      await client.query('UPDATE mis_log_books SET data=data||$1::jsonb,updated_at=NOW(),revision=revision+1 WHERE id=$2 AND deleted_at IS NULL',[patch,book.id]);
+      const revision=(await client.query('UPDATE mis_log_books SET data=data||$1::jsonb,updated_at=NOW(),revision=revision+1 WHERE id=$2 AND deleted_at IS NULL RETURNING revision',[patch,book.id])).rows[0]?.revision??null;
       if(book.book_type==='equipment'&&result.change.shiftStatus[0]!==result.change.shiftStatus[1])await client.query('UPDATE mis_vlb_batch_fleet SET shift_status=$2 WHERE logbook_id=$1',[book.id,result.patch.shiftStatus]);
-      await client.query("UPDATE mis_elb_batch_entries SET snapshot=jsonb_set(snapshot,'{data}',COALESCE(snapshot->'data','{}'::jsonb)||$2::jsonb) WHERE logbook_id=$1 AND snapshot ? 'data'",[book.id,patch]);
-      await client.query("UPDATE mis_vlb_batch_entries SET snapshot=jsonb_set(snapshot,'{data}',COALESCE(snapshot->'data','{}'::jsonb)||$2::jsonb) WHERE logbook_id=$1 AND snapshot ? 'data'",[book.id,patch]);
+      // The snapshot carries the card's new revision too, so it never trails the card it copies.
+      for(const table of ['mis_elb_batch_entries','mis_vlb_batch_entries'])await client.query(`UPDATE ${table} SET snapshot=jsonb_set(snapshot,'{data}',COALESCE(snapshot->'data','{}'::jsonb)||$2::jsonb)||CASE WHEN $3::int IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('revision',$3::int) END WHERE logbook_id=$1 AND snapshot ? 'data'`,[book.id,patch,revision]);
       if(book.data?.batchId)await client.query('INSERT INTO mis_vlb_batch_audit(batch_id,actor,action,detail) VALUES($1,$2,$3,$4::jsonb)',[book.data.batchId,text(actor),'elb_pulse_bd_repaired',JSON.stringify({logbookId:String(book.id),bookNo:book.book_no,kind:book.book_type,...result.change})]);
       applied++;done.push(line(p));
      }
