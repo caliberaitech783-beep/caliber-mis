@@ -1,10 +1,22 @@
 import React,{useEffect,useState} from 'react';
 import './master-sync.css';
 import TableSmartPrint from './table-smart-print.jsx';
+import {SortableHeader,sortRowsBlanksLast} from './sortable-table.jsx';
 
 const labels={pending:'Waiting / retrying',review:'Needs MIS review',verified:'MIS verified in Pulse'};
+// The job list's headings sort it; the Recheck column does not.
+const jobColumns=[['card','Trip card / VLB'],['vehicle','Vehicle / site'],['status','Status'],['request','Pulse request'],['details','Details']];
+function jobValue(job={},key){
+ if(key==='card')return job.card_number||'';
+ if(key==='vehicle')return job.door||'';
+ if(key==='status')return labels[job.status]||job.status||'';
+ if(key==='request')return job.request_ref||'';
+ if(key==='details')return job.reason||'';
+ return '';
+}
 export default function PulseTripVerification({session,logbookId}){
  const [data,setData]=useState(null),[error,setError]=useState(''),[working,setWorking]=useState('');
+ const [jobSort,setJobSort]=useState({key:'',direction:'asc'});const changeJobSort=key=>setJobSort(current=>({key,direction:current.key===key&&current.direction==='asc'?'desc':'asc'}));
  useEffect(()=>{
   const controller=new AbortController();
   let timer;
@@ -36,7 +48,7 @@ export default function PulseTripVerification({session,logbookId}){
    {data.error&&<p role="alert">Last check failed: {data.error}</p>}
    {!logbookId&&<p>Verified: {data.counts.verified||0} · Waiting: {data.counts.pending||0} · Needs MIS review: {data.counts.review||0}</p>}
    {data.jobs.length>0&&<TableSmartPrint row title="Automatic MIS verification"/>}
-   <div className="master-sync-table"><table><thead><tr><th>Trip card / VLB</th><th>Vehicle / site</th><th>Status</th><th>Pulse request</th><th>Details</th><th/></tr></thead><tbody>{data.jobs.map(job=><tr key={job.logbook_id}><td>{job.card_number||'—'}<small>{job.book_no}</small></td><td>{job.door}<small>{job.site}</small></td><td>{labels[job.status]}</td><td>{job.request_ref||'—'}</td><td>{job.reason}{job.first_trip_at&&<small>First trip: {new Date(job.first_trip_at).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})}</small>}{job.verified_at&&<small>Verified: {new Date(job.verified_at).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})}</small>}</td><td>{job.status!=='verified'&&<button type="button" disabled={Boolean(working)||!data.connected||!data.enabled} onClick={()=>void retry(job.logbook_id)}>Recheck</button>}</td></tr>)}{!data.jobs.length&&<tr><td colSpan={6}>{logbookId?'This entry has no automatic verification job. Newly saved scanned vehicle trip cards are included.':'No trip cards queued yet. Newly saved scanned vehicle trip cards will appear here.'}</td></tr>}</tbody></table></div></>}
+   <div className="master-sync-table"><table><thead><tr>{jobColumns.map(([key,label])=><SortableHeader key={key} label={label} sortKey={key} sort={jobSort} onSort={changeJobSort} filterIcon={false}/>)}<th/></tr></thead><tbody>{sortRowsBlanksLast(data.jobs,jobSort,jobValue).map(job=><tr key={job.logbook_id}><td>{job.card_number||'—'}<small>{job.book_no}</small></td><td>{job.door}<small>{job.site}</small></td><td>{labels[job.status]}</td><td>{job.request_ref||'—'}</td><td>{job.reason}{job.first_trip_at&&<small>First trip: {new Date(job.first_trip_at).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})}</small>}{job.verified_at&&<small>Verified: {new Date(job.verified_at).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})}</small>}</td><td>{job.status!=='verified'&&<button type="button" disabled={Boolean(working)||!data.connected||!data.enabled} onClick={()=>void retry(job.logbook_id)}>Recheck</button>}</td></tr>)}{!data.jobs.length&&<tr><td colSpan={6}>{logbookId?'This entry has no automatic verification job. Newly saved scanned vehicle trip cards are included.':'No trip cards queued yet. Newly saved scanned vehicle trip cards will appear here.'}</td></tr>}</tbody></table></div></>}
   {!data&&!error&&<p role="status">Loading verification status…</p>}
  </section>;
 }

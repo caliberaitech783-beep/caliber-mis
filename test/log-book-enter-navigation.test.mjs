@@ -1,4 +1,5 @@
 import {TableSmartPrint} from './helpers/smart-print-stub.mjs';
+import {SortableHeader,sortRowsBlanksLast} from './helpers/sortable-table-stub.mjs';
 import {idleShiftHours} from '../shared/breakdown-hours-source.mjs';
 import {MANUAL_SHIFTS,manualShiftWindow} from '../shared/manual-shift.mjs';
 import {transferPeriodLabel} from '../shared/log-book-transfers.mjs';
@@ -103,7 +104,7 @@ function harness(){
   const slots=[],effects=[];let cursor=0;
   const state=initial=>{const index=cursor++;if(!(index in slots))slots[index]=typeof initial==='function'?initial():initial;return[slots[index],value=>{slots[index]=typeof value==='function'?value(slots[index]):value}]};
   const Null=()=>null;
- const scope={transferPeriodLabel,assetForSiteOnDate,TableSmartPrint,idleShiftHours,MANUAL_SHIFTS,manualShiftWindow,compactLogBookLabel,tripSerialNumber,validateTripEquipment,resolveTripEquipment,blankJob,blankBreakdown,padManualRows,continueManualRemark,employeeAtLocation,manualTimeValue,resolveShiftTime,shiftTimeInputValue,timeWithinShift,React,useEffect:(run,deps)=>effects.push({run,deps}),useRef:value=>state(()=>({current:value}))[0],useState:state,blankTrip,nextTripEntry,TRIP_CARD_ROWS,tripCardForRow,vlbCountedTrips,...rules,canonicalSiteName,missingAssetMessage,advanceLogBookField,focusNextLogBookField,isEmptyTripPlaceholder,advanceEquipmentLogBookField};
+ const scope={transferPeriodLabel,assetForSiteOnDate,TableSmartPrint,SortableHeader,sortRowsBlanksLast,idleShiftHours,MANUAL_SHIFTS,manualShiftWindow,compactLogBookLabel,tripSerialNumber,validateTripEquipment,resolveTripEquipment,blankJob,blankBreakdown,padManualRows,continueManualRemark,employeeAtLocation,manualTimeValue,resolveShiftTime,shiftTimeInputValue,timeWithinShift,React,useEffect:(run,deps)=>effects.push({run,deps}),useRef:value=>state(()=>({current:value}))[0],useState:state,blankTrip,nextTripEntry,TRIP_CARD_ROWS,tripCardForRow,vlbCountedTrips,...rules,canonicalSiteName,missingAssetMessage,advanceLogBookField,focusNextLogBookField,isEmptyTripPlaceholder,advanceEquipmentLogBookField};
   for(const name of ['WorkOrderJobSelect','ManualLogBookDetails','BreakdownHoursField','SmartSelect','DoorCombobox','EmployeeIdLookup','ManualBookDate','Plus','Save','Trash2','RotateCcw','BookOpen','Search','ChevronsLeft','ChevronsRight','Pencil','Printer','X','LogOut','Info','ListFilter'])scope[name]=Null;
   const Component=new Function(...Object.keys(scope),code+';return LogBookForm')(...Object.values(scope));
   const render=(kind='vehicle',props={})=>{cursor=0;effects.length=0;return Component({kind,session:{token:'test'},...props})};
@@ -325,4 +326,19 @@ test('VLB trip selector displays a saved equipment label that differs from the m
  assert.equal(equipment.props.value,'Tpc 29');
  const choices=React.Children.toArray(equipment.props.children).filter(node=>node?.props?.value);
  assert.deepEqual(choices.map(node=>node.props.value),['Tpc 29','TPC-29']);
+});
+
+test('Saved log books sort by a clicked heading: numbers by value, blanks last, saved order until then',()=>{
+ const app=harness();app.render();
+ const book=(id,no,door,hmr)=>({id:'saved-'+id,book_no:no,data:{door,totalWorkingHmr:hmr,bookDate:'2026-11-0'+id,location:'Sasti OC',employeeName:'Driver '+id}});
+ app.slots[3]=[book(1,'VLB-9','V-10',12),book(2,'VLB-10','V-9',null),book(3,'VLB-2','V-100',9.5)];
+ const order=()=>all(app.render(),node=>node.type==='tr'&&String(node.key).startsWith('saved-')).map(node=>node.key);
+ const heading=key=>all(app.render(),node=>node.type===SortableHeader&&node.props.sortKey===key)[0];
+ assert.deepEqual(order(),['saved-1','saved-2','saved-3'],'opens in the saved order');
+ assert.deepEqual(all(app.render(),node=>node.type===SortableHeader).map(node=>node.props.label),['Book NO','Date','Location','Door NO','Shift','Driver','Work HMR','Opening trips','Ending trips','Counted trips']);
+ heading('workHmr').props.onSort('workHmr');assert.deepEqual(order(),['saved-3','saved-1','saved-2'],'9.5 before 12, blank last');
+ heading('workHmr').props.onSort('workHmr');assert.deepEqual(order(),['saved-1','saved-3','saved-2'],'high to low, blank still last');
+ heading('door').props.onSort('door');assert.deepEqual(order(),['saved-2','saved-1','saved-3'],'V-9 < V-10 < V-100');
+ heading('bookNo').props.onSort('bookNo');assert.deepEqual(order(),['saved-3','saved-1','saved-2'],'VLB-2 < VLB-9 < VLB-10');
+ assert.equal(all(app.render('equipment'),node=>node.type===SortableHeader&&node.props.sortKey==='employee')[0].props.label,'Operator');
 });

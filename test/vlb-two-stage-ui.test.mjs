@@ -205,7 +205,7 @@ test('create batch shows the stage indicator and Close batch only for two-stage 
  assert.match(html,/ELBs saved: 1 · Required remaining: 1 · 1 optional with no saved ELB · 1 loading machine/);assert.doesNotMatch(html,/1 draft/);
  assert.match(html,/<td>VPC-019<\/td><td>Excavator<\/td><td>42<\/td><td>Not saved<\/td><td>—<\/td><td>—<\/td>/);
  assert.match(html,/<td>D-07<\/td><td>Dozer<\/td><td>0<\/td><td>Maintenance<\/td>/);
- assert.match(html,/<th>Operator<\/th><th>Caliber ID<\/th><th>Opening HMR<\/th><th>Closing HMR<\/th><th>Working HMR<\/th><th>BD hours<\/th><th>Idle hours<\/th><th>Availability hours<\/th><th>Job card<\/th><th>Remarks<\/th>/);
+ assert.deepEqual(nodes(nodes(tree,n=>n.type==='table'&&n.props.className==='logbook-table vlb-fleet-table')[0],n=>n.props?.sortKey).map(n=>n.props.label).slice(4,14),['Operator','Caliber ID','Opening HMR','Closing HMR','Working HMR','BD hours','Idle hours','Availability hours','Job card','Remarks']);
  assert.doesNotMatch(html,/Close &amp; lock ELB is blocked: Machines without a saved ELB/);
  const closeButtons=nodes(tree,n=>n.type==='button'&&React.Children.toArray(n.props.children).join('')==='Close & lock ELB');assert.ok(closeButtons.length>=2,'detail panel and open batch notice both show Close & lock ELB');assert.ok(closeButtons.every(n=>n.props.disabled));assert.match(html,/The batch owner or an MIS administrator can close and lock this ELB/);
  assert.equal(button(tree,'Save &amp; lock batch'),undefined);assert.equal(button(tree,'Lock VLB'),undefined);
@@ -224,6 +224,41 @@ test('create batch shows the stage indicator and Close batch only for two-stage 
  h.slots[14]={login:'admin',admin:true};h.slots[3]=[{...base,stage:'elb_open',created_by:'bob',canClose:true}];
  h.slots[5]={...elbStage,canClose:true,closeBlockers:[],fleetProgress:{...elbStage.fleetProgress,saved:2,remaining:0}};tree=render();assert.equal(button(tree,'Close batch').props.disabled,false);assert.match(renderToStaticMarkup(tree),/ELBs saved: 2 · Required remaining: 0 · 1 optional with no saved ELB/);await nodes(tree,n=>n.type==='button'&&React.Children.toArray(n.props.children).join('')==='Close & lock ELB'&&!n.props.disabled)[0].props.onClick();assert.equal(calls.at(-1).url,'/api/vlb-batches/batch1/close');
  const source=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');assert.ok(source.includes("onElbEntry={batch=>{rememberVlbEntryBatch(session,batch);selectMenu('Equipment Log Book Options')}}"),'main.jsx routes ELB entry choices from the batch');assert.ok(source.includes("onEquipmentElb={batch=>{rememberVlbEntryBatch(session,batch);selectMenu('Equipment Log Book')}}"),'main.jsx routes equipment processing directly to the contextual ELB report');
+});
+
+test('site batches and the Equipment ELB fleet sort by a heading, numbers by value and "—" last',async()=>{
+ const h=hooks();
+ const {VlbCreateBatch}=await compile('vlb-create-batch.jsx',{React,SmartSelect:'select',useState:h.useState,useRef:h.useRef,useEffect:()=>{},fetch:async()=>({ok:true,json:async()=>({})}),canonicalSiteName,displaySiteName,bookShiftCode,systemBookDate,vlbRecordSource,vlbRecordEntryType,VlbBatchCardDetails:()=>null,VlbBatchReport:()=>null,VlbBatchGovernance:()=>null,VlbReopenDialog:()=>null,VlbBatchHolds:()=>null,NewEquipmentRequest:()=>null,window:{}},['VlbCreateBatch']);
+ const base={site:'Jayant OC',report_date:'2026-11-01',shift:'S1',records:[],created_by:'alice',twoStage:true,stage:'elb_open'};
+ const machine=(assetId,door,trips,openingHmr,saved=true)=>({assetId,door,equipmentName:'Excavator',trips,saved_at:saved?'2026-11-01T03:00:00Z':null,shift_status:'working',book_no:'ELB-'+assetId,logbook:saved?{openingHmr,closingHmr:openingHmr+5}:{}});
+ const viewed={...base,id:'b1',name:'B01',holds:[],statuses,fleet:[machine('1','V-9',42,120),machine('2','V-10',7,99),machine('3','V-11',100,1005),machine('4','V-12',3,null,false)]};
+ const render=()=>{h.reset();return VlbCreateBatch({session:{token:'t'},onExit(){},onManual(){},onScan(){}})};
+ render();h.slots[0]={sites:['Jayant OC'],shifts:[{site:'Jayant OC',name:'Shift A',shiftCode:'I'}]};h.slots[1]={site:'Jayant OC',date:'2026-11-01',shift:'S1'};h.slots[8]=false;h.slots[13]=true;h.slots[14]={login:'alice',mis:true};h.slots[23]=true;
+ h.slots[3]=[{...base,id:'a',name:'B01',entry_count:'9'},{...base,id:'b',name:'B02',entry_count:'120'},{...base,id:'c',name:'B03',entry_count:'40'}];h.slots[5]=viewed;
+ const table=(tree,className)=>nodes(tree,n=>n.type==='table'&&n.props.className===className)[0];
+ const firstCells=(tree,className)=>nodes(table(tree,className),n=>n.type==='tbody')[0].props.children.flat().filter(Boolean).map(row=>renderToStaticMarkup(row).match(/<td>([^<]*)<\/td>/)[1]);
+ const heading=(tree,className,key)=>nodes(table(tree,className),n=>n.props?.sortKey===key)[0];
+ const fleet='logbook-table vlb-fleet-table';
+ let tree=render();
+ assert.deepEqual(firstCells(tree,fleet),['V-9','V-10','V-11','V-12'],'fleet keeps its order until a heading is pressed');
+ heading(tree,fleet,'trips').props.onSort('trips');tree=render();
+ assert.deepEqual(firstCells(tree,fleet),['V-12','V-10','V-9','V-11'],'trips sort as numbers');
+ heading(tree,fleet,'openingHmr').props.onSort('openingHmr');tree=render();
+ assert.deepEqual(firstCells(tree,fleet),['V-10','V-9','V-11','V-12'],'opening HMR as numbers, unsaved "—" last');
+ heading(tree,fleet,'openingHmr').props.onSort('openingHmr');tree=render();
+ assert.deepEqual(firstCells(tree,fleet),['V-11','V-9','V-10','V-12'],'high to low keeps "—" last');
+ assert.equal(heading(tree,fleet,'openingHmr').props.sort.direction,'desc');
+ heading(tree,fleet,'door').props.onSort('door');tree=render();
+ assert.deepEqual(firstCells(tree,fleet),['V-9','V-10','V-11','V-12'],'door numbers compare naturally');
+ // Site batches: Cards sorts by value; the action column has no sort button.
+ const siteTable=tree=>nodes(tree,n=>n.type==='div'&&n.props.id==='vlb-batch-site-panel')[0];
+ const batchNames=tree=>nodes(siteTable(tree),n=>n.type==='tr').slice(1).map(row=>renderToStaticMarkup(row).match(/<td>(B0\d)<\/td>/)[1]);
+ assert.deepEqual(nodes(siteTable(tree),n=>n.props?.sortKey).map(n=>n.props.label),['Batch ID','Cards','VLB','LMV','ELB','Status']);
+ assert.deepEqual(batchNames(tree),['B01','B02','B03']);
+ nodes(siteTable(tree),n=>n.props?.sortKey==='cards')[0].props.onSort('cards');tree=render();
+ assert.deepEqual(batchNames(tree),['B01','B03','B02'],'9, 40, 120 by value');
+ nodes(siteTable(tree),n=>n.props?.sortKey==='cards')[0].props.onSort('cards');tree=render();
+ assert.deepEqual(batchNames(tree),['B02','B03','B01']);
 });
 
 test('ELB fleet table shows a serial number column before Door',()=>{
