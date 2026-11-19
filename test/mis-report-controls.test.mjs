@@ -1,4 +1,5 @@
 import {TableSmartPrint} from './helpers/smart-print-stub.mjs';
+import {SortableHeader,sortRowsBlanksLast} from './helpers/sortable-table-stub.mjs';
 import {isDeletableScanCard,isAbortableScanCard} from '../src/scan-card-deletion-selection.mjs';
 import {encodeDateRange,parseDateRange} from '../src/date-range-filter.mjs';
 import {compactLogBookLabel} from '../shared/log-book-labels.mjs';
@@ -35,7 +36,7 @@ async function component(file,name,scope={},initial=[]){
   const source=readFileSync(new URL('../src/'+file,import.meta.url),'utf8');
   const {code}=await transformWithOxc(source.replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function'),file,{jsx:{runtime:'classic'}});
   const slots=[...initial];let cursor=0;
-  const environment={...loadClock,...filterOptions,TableSmartPrint,StepBackButton:()=>null,encodeDateRange,parseDateRange,isDeletableScanCard,isAbortableScanCard,compactLogBookLabel,canonicalSiteName,SmartSelect: "select",TripTimingReport,LoadingMachineReport,SavedReportSteps,CLOSED_STEPS,hasReportSteps,React,useRef:()=>({current:null}),useEffect:()=>{},useMemo:fn=>fn(),useState:init=>{const i=cursor++;if(!(i in slots))slots[i]=typeof init==='function'?init():init;return [slots[i],value=>slots[i]=typeof value==='function'?value(slots[i]):value]},...scope};
+  const environment={...loadClock,...filterOptions,TableSmartPrint,SortableHeader,sortRowsBlanksLast,StepBackButton:()=>null,encodeDateRange,parseDateRange,isDeletableScanCard,isAbortableScanCard,compactLogBookLabel,canonicalSiteName,SmartSelect: "select",TripTimingReport,LoadingMachineReport,SavedReportSteps,CLOSED_STEPS,hasReportSteps,React,useRef:()=>({current:null}),useEffect:()=>{},useMemo:fn=>fn(),useState:init=>{const i=cursor++;if(!(i in slots))slots[i]=typeof init==='function'?init():init;return [slots[i],value=>slots[i]=typeof value==='function'?value(slots[i]):value]},...scope};
   const render=new Function(...Object.keys(environment),code+';return '+name)(...Object.values(environment));
   const draw=props=>{cursor=0;return render({...props,ReportSection})};
   draw.slots=slots;
@@ -225,7 +226,7 @@ test('manpower reports export complete selected data, separate shift hours, and 
  {const view=await ot(),overview=view();
   assert.deepEqual(categories(overview),['manpower-ot-sites'],'only the site lines before a number is pressed');
   assert.deepEqual(nodes(box(overview,'Cases by site'),'th').filter(n=>n.props.scope==='row').map(n=>n.props.children),['Sasti OC','Jayant OC','All sites']);
-  assert.deepEqual(nodes(box(overview,'Cases by site'),'th').filter(n=>n.props.scope==='col').map(n=>[].concat(n.props.children)[0]),['Site','Total duties','Red','Orange','Brown','Red OT %','Orange OT %','Drivers']);
+  assert.deepEqual(nodes(box(overview,'Cases by site'),SortableHeader).filter(n=>n.props.scope==='col').map(n=>n.props.labelText),['Site','Total duties','Red','Orange','Brown','Red OT %','Orange OT %','Drivers']);
   assert.deepEqual(counts(overview),['284 duties · Sasti OC','137 Red · Sasti OC','137 drivers · Sasti OC','284 duties · All sites','137 Red · All sites','137 drivers · All sites'],'a site with nothing shows zeros, not buttons');
   assert.deepEqual(section(overview,'manpower-ot-sites').rows.map(r=>[r.site,r.duties,r.red,r.redPct,r.orangePct,r.drivers]),[['Sasti OC',284,137,'96.5%','0%',137],['Jayant OC',0,0,'—','—',0],['All sites',284,137,'96.5%','0%',137]],'the export holds what the table shows; red OT % is red duties out of all duties');
   assert.deepEqual(nodes(nodes(overview,'div').find(n=>n.props.className==='mp-book-pick'),'button').map(n=>n.props.children),['All log books','VLB','ELB','LMV'],'log book is one selector');
@@ -534,4 +535,28 @@ test('manpower by category reconciliation compares the fleet with saved cards, s
  assert.equal(section('manpower-rc-machines').rows.length,8);assert.deepEqual(section('manpower-rc-machines').columns.slice(0,2).map(c=>c.key),['shift','door'],'one date: only Shift returns as a column');
  const trail=()=>nodes(nodes(tree(),'p').find(n=>n.props.className==='mp-trail'),'button');
  trail()[0].props.onClick();assert.deepEqual(categories(),['manpower-rc-sites']);
+});
+
+test('Manpower Step 1 and Step 3 headings sort lines, percentages as numbers, with the All line pinned last',async()=>{
+  // The component helper hands its function one props object, so wrap the module's stepSorter to take one.
+  const sorter=await component('manpower-reports.jsx','(({sorts,setSorts,id})=>stepSorter(sorts,setSorts,id))');
+  let sorts={};const setSorts=change=>{sorts=change(sorts);};
+  const rows=[{id:'a',siteKey:'a',site:'Sasti OC',duties:40,redPct:'12.5%'},{id:'b',siteKey:'b',site:'Bina',duties:9,redPct:'7.3%'},{id:'c',siteKey:'c',site:'Amlohri',duties:120,redPct:'—'},{id:'all',siteKey:'all',site:'All sites',duties:169,redPct:'9.5%'}];
+  const total=row=>row.siteKey==='all';
+  const step=id=>sorter({sorts,setSorts,id});
+  const order=(id='ot-sites')=>step(id).rows(rows,total).map(row=>row.id);
+  assert.deepEqual(order(),['a','b','c','all'],'opens in the report order');
+  const head=step('ot-sites').head('duties','Total duties','One driver, one shift');
+  assert.equal(head.type,SortableHeader);assert.equal(head.props.labelText,'Total duties');assert.equal(head.props.scope,'col');
+  head.props.onSort('duties');
+  assert.deepEqual(order(),['b','a','c','all'],'duties low to high, All sites last');
+  step('ot-sites').head('duties','Total duties').props.onSort('duties');
+  assert.deepEqual(order(),['c','a','b','all'],'second press high to low, All sites still last');
+  step('ot-sites').head('redPct','Red OT %').props.onSort('redPct');
+  assert.deepEqual(order(),['b','a','c','all'],'7.3% before 12.5%, a dash last');
+  step('ot-sites').head('redPct','Red OT %').props.onSort('redPct');
+  assert.deepEqual(order(),['a','b','c','all'],'a dash stays last high to low');
+  step('ot-sites').head('site','Site').props.onSort('site');
+  assert.deepEqual(order(),['c','b','a','all']);
+  assert.deepEqual(order('ot-categories'),['a','b','c','all'],'each Step table keeps its own sort');
 });
