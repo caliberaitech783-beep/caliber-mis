@@ -164,3 +164,22 @@ test("generated duration reports all receive a descending default, including dif
   const report = reports.find(report => report.title === "Total Fleet");
   assert.deepEqual(defaultDurationSort(report.columns), { key: "", direction: "asc" });
 });
+
+test("quickSort headings sort on one click with no menu, and both Attendance tabs use them", () => {
+  const { tree, events, html } = menu({ quickSort: true, durationSortOnly: false, label: "Duties", sortKey: "duties" });
+  for (const unwanted of ["Filter...", "All values", "Close window"]) assert.ok(!html.includes(unwanted), unwanted);
+  assert.ok(!html.includes("aria-haspopup"));
+  assert.ok(html.includes('title="Sort by Duties"'));
+  const heading = descendants(tree, (node) => node.type === "button" && String(node.props.className || "").includes("sort-header"))[0];
+  heading.props.onClick({ stopPropagation() {} });
+  assert.deepEqual(events, [["sort", "duties"]]);
+  const plain = menu({ durationSortOnly: false, label: "Duties", sortKey: "duties" });
+  descendants(plain.tree, (node) => node.type === "button" && String(node.props.className || "").includes("sort-header"))[0].props.onClick({ stopPropagation() {} });
+  assert.deepEqual(plain.events, [["toggle", "duties"]], "other reports keep the heading menu");
+  const report = main.slice(main.indexOf("function ReportTable("), main.indexOf("function MasterField(", main.indexOf("function ReportTable(")));
+  assert.match(report, /quickSort=\{quickSort\}/);
+  assert.match(main, /stepLook=\{stepLook\} quickSort=\{quickSort\}/);
+  const attendance = readFileSync(new URL("../src/attendance-register.jsx", import.meta.url), "utf8");
+  const sections = attendance.match(/<ReportSection\b/g).length;
+  assert.equal(attendance.match(/<ReportSection quickSort\b/g).length, sections, "every Attendance step sorts on one click");
+});
