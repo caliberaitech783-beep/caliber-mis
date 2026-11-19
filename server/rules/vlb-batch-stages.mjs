@@ -190,7 +190,7 @@ export async function saveFleetEntry(client,batch,assetId,input,actor,ops){
  const additional=input.additionalCard===true;
  if(additional&&!row.logbook_id)fail('Save the first ELB card before adding a relief operator.',409);
  if(row.logbook_id&&!additional){
-  if(!ops.allowEditSaved)fail('Only an MIS administrator can edit a saved ELB.',403);
+  if(!ops.allowEditSaved)fail('Only an MIS user or MIS administrator can edit a saved ELB.',403);
   const prior=(await client.query('SELECT revision FROM mis_log_books WHERE id=$1 AND deleted_at IS NULL FOR UPDATE',[row.logbook_id])).rows[0];
   if(!prior)fail('This ELB is unavailable. Reload the batch.',409);
   if(Number(input.revision)!==Number(prior.revision))fail('This ELB changed. Reload the batch before editing.',409);
@@ -277,7 +277,6 @@ export async function assertLmvBatchWrite(client,data){
  await lockVlbBatchScope(client,vlbRecordScope(data));
  const batch=await matchingVlbBatch(client,data);
  if(!batch||batch.deleted_at||batch.archived_at||batchStage(batch)!=='lmv_open')fail('Select an existing Vehicle Log Book batch open for LMV entry before saving or changing LMV cards.',409);
- if(batch.trial_reopened_until&&(await client.query('SELECT $1::timestamptz<=clock_timestamp() AS expired',[batch.trial_reopened_until])).rows[0].expired)fail('The batch reopening trial has expired.',409);
  await requireStageTurn(client,batch);
  return batch;
 }

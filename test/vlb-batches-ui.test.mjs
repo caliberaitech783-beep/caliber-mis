@@ -240,6 +240,24 @@ test('Create Batch edits VLB and ELB from the selected row and respects their lo
  await button(render(),'Delete ELB-1').props.onClick();
  assert.deepEqual(deletions[1],['/api/log-books/equipment/1','DELETE',{revision:3}]);
 
+ // An open batch never asks for PM approval (owner, 19 Nov 2026): another MIS user edits a
+ // batch reopened for someone else, and LMV cards get Edit while the LMV stage is open.
+ slots[5]={...batch,amendment_by:'alice'};slots[14]={login:'bob',mis:true};
+ assert.ok(button(report(render()).rowAction(vehicle),'Edit VLB-1'),'another MIS user edits a reopened batch');
+ assert.ok(button(report(render()).rowAction(vehicle),'Delete VLB-1'));
+ const lmv={id:7,book_no:'LMV-7',revision:1,data:{openingKmr:5}};
+ slots[5]={...batch,stage:'lmv_open',lmvRecords:[lmv]};
+ assert.ok(button(report(render()).rowAction(lmv),'Edit LMV-7'));
+ assert.equal(button(report(render()).rowAction(lmv),'Delete LMV-7'),undefined,'LMV cards are deleted from the LMV Log Book');
+ report(render()).renderField(lmv,'Opening KMR',5).props.onClick();
+ editor=nodes(report(render()).rowEditor(lmv,8),node=>node.type===Editor)[0];
+ assert.equal(editor.props.kind,'lmv');
+ assert.equal(editor.props.initialRecord,lmv);
+ editor.props.onExit();
+ slots[14]={login:'pm',pm:true};
+ assert.match(renderToStaticMarkup(report(render()).rowAction(lmv)),/View only/,'a login with no MIS rights still only views');
+ slots[14]={login:'admin',admin:true};
+
  slots[5]={...batch,stage:'closed',closed_at:'closed'};
  assert.equal(button(render(),'Edit ELB-1'),undefined);
  assert.equal(button(render(),'Delete ELB-1'),undefined);

@@ -8,7 +8,7 @@ import {VLB_BATCH_SCHEMA,assertVlbBatchWrite} from '../server/rules/vlb-batch-po
 import {activateVlbPmTrial,vlbPmTrial,VLB_PM_TRIAL_ID} from '../server/rules/vlb-pm-trial.mjs';
 
 process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
-test('30-day pause upgrades the old trial schema, preserves pending requests and expires on server writes',async t=>{
+test('30-day pause upgrades the old trial schema, preserves pending requests and asks the PM again only to reopen a closed batch',async t=>{
  const db=new PGlite();t.after(()=>db.close());
  await db.exec('CREATE TABLE mis_log_books(id BIGSERIAL PRIMARY KEY,book_no TEXT,book_type TEXT,site TEXT,book_date DATE,data JSONB,revision INTEGER,created_by TEXT,created_at TIMESTAMPTZ,deleted_at TIMESTAMPTZ)');
  const query=(sql,args)=>sql.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):!args&&sql.includes(';')?db.exec(sql):db.query(sql,args);
@@ -45,13 +45,14 @@ test('30-day pause upgrades the old trial schema, preserves pending requests and
  assert.equal((await call('/'+id+'/reopen','POST','restricted')).status,404);
  assert.equal((await call('/'+id+'/reopen','POST','pm')).status,403);
  const opened=await call('/'+id+'/reopen','POST');assert.equal(opened.status,200,JSON.stringify(opened.data));assert.ok(opened.data.trial_reopened_until);
- await assert.rejects(()=>assertVlbBatchWrite(pool,{location:'Jayant OC',bookDate:'2026-12-30',bookShiftCode:'S3'},'bob'),/another MIS user/);
+ // An open batch never asks for PM approval (owner, 19 Nov 2026): not for another MIS user, not after the trial ends.
+ await assertVlbBatchWrite(pool,{location:'Jayant OC',bookDate:'2026-12-30',bookShiftCode:'S3'},'bob');
  await assertVlbBatchWrite(pool,{location:'Jayant OC',bookDate:'2026-12-30',bookShiftCode:'S3'},'alice');
  await db.query("UPDATE mis_vlb_pm_trials SET started_at=NOW()-INTERVAL '721 hours',ends_at=NOW()-INTERVAL '1 hour' WHERE id=$1",[VLB_PM_TRIAL_ID]);
  await db.query("UPDATE mis_vlb_batches SET trial_reopened_until=NOW()-INTERVAL '1 hour' WHERE id=$1",[id]);
  assert.equal((await vlbPmTrial(db)).active,false);
- assert.equal((await call('/'+id)).data.canContinue,false);
- await assert.rejects(()=>assertVlbBatchWrite(pool,{location:'Jayant OC',bookDate:'2026-12-30',bookShiftCode:'S3'},'alice'),/trial has expired/);
+ assert.equal((await call('/'+id)).data.canContinue,true,'a batch already open stays open after the trial ends');
+ await assertVlbBatchWrite(pool,{location:'Jayant OC',bookDate:'2026-12-30',bookShiftCode:'S3'},'bob');
  assert.equal((await call('/'+id+'/close','POST')).status,200);
  assert.equal((await call('/'+id+'/reopen','POST')).status,403,'PM approval automatically resumes');
  assert.equal((await db.query('SELECT count(*)::int AS n FROM mis_vlb_batch_audit WHERE action=$1',['reopen_request_withdrawn'])).rows[0].n,0);

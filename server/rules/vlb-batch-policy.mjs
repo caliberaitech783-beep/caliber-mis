@@ -104,8 +104,7 @@ export async function isOpenBatchForDeletion(client,batch,kind,actor){
  if(twoStageEnabled()&&batch.stage==='lmv_open')return false;
  if(twoStageEnabled()&&(batch.stage==='elb_open')!==(kind==='equipment'))return false;
  if(twoStageEnabled()&&await readBatchStageWait(client,batch))return false;
- if(batch.amendment_by&&batchLogin(batch.amendment_by)!==batchLogin(actor))return false;
- return !batch.trial_reopened_until||!(await client.query('SELECT $1::timestamptz<=clock_timestamp() AS expired',[batch.trial_reopened_until])).rows[0].expired;
+ return true;
 }
 export async function assertVlbBatchWrite(client,data,actor,recordId,{adding=false}={}){
  requireOperationalDate(data.bookDate);
@@ -117,25 +116,19 @@ export async function assertVlbBatchWrite(client,data,actor,recordId,{adding=fal
  const batch=linked||matching;if(!batch)batchFail('Create or open the site/date/shift batch before saving a VLB entry. Standalone VLB saving is discontinued.',409);
  if(batch.archived_at||batch.deleted_at)batchFail('This batch is unavailable. Open an active site/date/shift batch before saving.');
  requireOperationalDate(batch.report_date);
- if(!(adding&&batch.closed_at)&&batch.trial_reopened_until&&(await client.query('SELECT $1::timestamptz<=clock_timestamp() AS expired',[batch.trial_reopened_until])).rows[0].expired)batchFail('The VLB reopening trial has expired. Save and lock this batch, then request site PM approval before changing cards.',403);
+ // An open batch never asks for PM approval (owner, 19 Nov 2026): any authorized user of the
+ // site may add or change its cards, whoever reopened it and whether or not the reopening
+ // trial has ended. PM approval applies only to reopening a closed batch.
  if(batch.closed_at&&!adding)batchFail('This site/date/shift batch is closed. Request site PM approval and reopen the existing batch before changing existing cards.');
  if(twoStageEnabled()&&(batch.stage==='lmv_open'||batch.lmv_locked_at||batch.stage==='elb_open'&&!adding))batchFail('VLB is locked for batch '+batch.name+'. Unlock VLB from the batch page before changing existing tipper cards.');
- if(batch.amendment_by&&batchLogin(batch.amendment_by)!==batchLogin(actor))batchFail('This batch was reopened for another MIS user. Only the MIS user approved by the site PM can add or change cards.',403);
  return batch;
 }
-export async function lockSavedVlbBatches(client,actor,recordIds){
- if(!recordIds.length)return [];
- // Site, date and shift never change after creation, so the scopes are read first and locked in one order.
- const scopes=(await client.query('SELECT DISTINCT b.site,b.book_date::text AS book_date,b.shift FROM mis_vlb_batches b JOIN mis_vlb_batch_entries e ON e.batch_id=b.id WHERE e.logbook_id=ANY($1::bigint[])',[recordIds])).rows;
- for(const scope of scopes.map(row=>({site:row.site,bookDate:row.book_date,shift:row.shift})).sort((a,b)=>vlbBatchScope(a).localeCompare(vlbBatchScope(b))))await lockVlbBatchScope(client,scope);
- const batches=(await client.query(`SELECT DISTINCT b.* FROM mis_vlb_batches b JOIN mis_vlb_batch_entries e ON e.batch_id=b.id
-  WHERE e.logbook_id=ANY($1::bigint[]) AND b.closed_at IS NULL AND b.amendment_by IS NOT NULL AND b.continuous_entry=FALSE`,[recordIds])).rows;
- for(const batch of batches){
-  if(batchLogin(batch.amendment_by)!==batchLogin(actor))batchFail('Only the approved MIS user can save this reopened batch.',403);
-  await client.query("UPDATE mis_vlb_batches SET closed_at=NOW(),amendment_by=NULL,closure_revision=closure_revision+1,stage='closed' WHERE id=$1",[batch.id]);
-  await auditVlbBatch(client,batch,actor,'saved_and_locked',{closureRevision:batch.closure_revision+1,logbookIds:recordIds});
- }
- return batches.map(batch=>batch.id);
+// Saving a card never locks its batch (owner, 19 Nov 2026). A reopened batch used to close
+// again on the next save, which sent the user back to the site PM for another approval; it
+// now stays open until Close batch is pressed. Kept as a call so the save paths are unchanged;
+// it answers the ids of the batches it locked, which is now none.
+export async function lockSavedVlbBatches(){
+ return [];
 }
 export async function syncVlbBatchRecord(client,record,actor,{relock=true}={}){
  if(record.book_type!=='vehicle')return;

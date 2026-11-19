@@ -10,7 +10,9 @@ export async function vlbBatchActor(client,session){
  const user=rows[0]?.record_data||{},profile=resolveMobileAccess({user});
  const current=!user.sourceMissing&&!['inactive','disabled','deleted'].includes(String(user.status||'').trim().toLowerCase());
  const pm=current&&profile.sessionRole==='super'&&profile.permissions?.adminLevel==='Manager'&&(profile.permissions.managerRoles||[]).includes('Project Manager');
- const mis=assignedUserRoles(user).includes('MIS User')||profile.assignedRole==='MIS User'||(!pm&&session?.permissions?.separateMisCredentials&&misPageAllowed(session,'Create VLB Batch'));
+ // A Project Manager whose MIS sign-in includes the log-book pages is an MIS user as well
+ // (owner, 19 Nov 2026): the PM role no longer hides Edit on open batches.
+ const mis=assignedUserRoles(user).includes('MIS User')||profile.assignedRole==='MIS User'||(session?.permissions?.separateMisCredentials&&misPageAllowed(session,'Create VLB Batch'));
  return {login,pm,mis,pmScope:pm?managerReportScope(user):{sites:[]}};
 }
 export const batchPmAtSite=(context,site)=>context.pm&&reportScopeIncludesSite(context.pmScope,site);

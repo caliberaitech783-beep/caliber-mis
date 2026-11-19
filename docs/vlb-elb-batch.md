@@ -348,6 +348,17 @@ Open items before go-live: the two Pulse write endpoints (section 6), a per-site
 
 2 November 2026: PM approval by OTP for batch reopening and Unlock VLB added (`server/services/vlb-approval-otp.mjs`, `src/vlb-approval-otp.jsx`), self-approval of a reopening request allowed for a PM who is also the requester. Tests: `test/vlb-approval-otp.test.mjs`, `test/vlb-approval-otp-ui.test.mjs`. No new switch: it is available wherever the OTP delivery is configured, which it is on live.
 
+## An open batch never asks for PM approval (19 November 2026)
+
+Set by the owner. PM approval now applies to one thing only: reopening a closed batch.
+
+- Every MIS user of the site (and every MIS administrator) may add, edit and delete VLB cards while VLB is open, edit LMV cards while LMV is open, and enter or edit ELB cards while ELB is open. It no longer matters who created or reopened the batch (`amendment_by` is kept for the audit and for who may lock or close).
+- A Project Manager whose MIS sign-in includes the Vehicle or Equipment Log Book pages counts as an MIS user (`server/rules/vlb-batch-access.mjs`).
+- Saving a card never locks the batch. A reopened batch used to close again on the next save; it now stays open until Close batch is pressed (`lockSavedVlbBatches` locks nothing).
+- The end of the reopening trial no longer freezes a batch that is already open.
+- The batch page shows Edit on LMV cards as well. LMV cards are still deleted from the LMV Log Book by an MIS administrator.
+- Unchanged: a closed batch still needs the site PM (or the trial) to reopen; Lock VLB, Lock LMV and Close batch stay with the batch owner or an MIS administrator; stage locks still apply (VLB cards are frozen once VLB is locked).
+
 ## Locking (8 November 2026)
 
 Batch writers lock one site, date and shift with `lockVlbBatchScope` (a shared hold on

@@ -51,20 +51,24 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
  useEffect(()=>setInlineCard(null),[viewed?.id]);
  const vlbLocked=viewed?.closed_at||viewed?.trialExpired||(twoStage&&stage!=='vlb_open');
  const elbLocked=viewed?.closed_at||stage!=='elb_open'||viewed?.trialExpired;
+ const lmvLocked=viewed?.closed_at||stage!=='lmv_open'||Boolean(viewed?.stageWait);
+ const cardsLocked=kind=>kind==='equipment'?elbLocked:kind==='lmv'?lmvLocked:vlbLocked;
+ // An open batch never asks for PM approval (owner, 19 Nov 2026): every MIS user of the site
+ // edits VLB, LMV and ELB cards while that stage is open, whoever created or reopened the batch.
  const canEditCard=(record,kind)=>kind==='equipment'
   ? !elbLocked&&viewed.canEditSavedFleet===true&&!record.data?.operatorSplit
-  : !vlbLocked&&(actor?.mis||actor?.admin)&&(!viewed.amendment_by||viewed.amendment_by.toLowerCase()===actor.login?.toLowerCase());
+  : !cardsLocked(kind)&&Boolean(actor?.mis||actor?.admin);
  const editingCard=(record,kind)=>inlineCard?.batchId===viewed.id&&inlineCard?.id===record.id&&inlineCard?.kind===kind;
  const editCard=(record,kind,field)=>{
   if(inlineCard&&!editingCard(record,kind)&&!window.confirm('Discard unsaved changes and edit this card?'))return;
   setInlineCard({batchId:viewed.id,id:record.id,kind,field});
  };
- const canDeleteCard=(record,kind)=>!(kind==='equipment'?elbLocked:vlbLocked)&&
-  (actor?.mis||actor?.admin)&&Number.isInteger(record.revision)&&
-  (!viewed.amendment_by||viewed.amendment_by.toLowerCase()===actor.login?.toLowerCase());
+ // LMV cards are deleted from the LMV Log Book by an MIS administrator, not from this table.
+ const canDeleteCard=(record,kind)=>kind!=='lmv'&&!cardsLocked(kind)&&
+  (actor?.mis||actor?.admin)&&Number.isInteger(record.revision);
  const action=(record,kind)=><div className="vlb-batch-actions">
   {canEditCard(record,kind)? <button type="button" aria-label={'Edit '+record.book_no} aria-expanded={editingCard(record,kind)} onClick={()=>editCard(record,kind)}>Edit</button>
-  : <span>{(kind==='equipment'?elbLocked:vlbLocked)?'Locked':kind==='equipment'&&record.data?.operatorSplit?'ELB Manual':'View only'}</span>}
+  : <span>{cardsLocked(kind)?'Locked':kind==='equipment'&&record.data?.operatorSplit?'ELB Manual':'View only'}</span>}
   {canDeleteCard(record,kind)&&<button type="button" className="danger" aria-label={'Delete '+record.book_no} disabled={busy||Boolean(inlineCard)} onClick={()=>deleteCard(record,kind)}>Delete</button>}
  </div>;
  const fieldCell=(record,kind,field,value)=>canEditCard(record,kind)
@@ -309,7 +313,7 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
     </section>}
     <VlbBatchHolds session={session} batch={viewed} onChanged={()=>setRefresh(n=>n+1)}/>
    </div>}
-   {loading||detailLoading?<p role="status">Loading entries…</p>:viewed?<VlbBatchReport key={viewed.id} batch={lmvOpen?{...viewed,records:viewed.lmvRecords||[]}:viewed} bookLabel={lmvOpen?'LMV':'VLB'} ReportSection={ReportSection} onView={record=>viewCard(record,lmvOpen?'lmv':'vehicle')} rowAction={lmvOpen?undefined:record=>action(record,'vehicle')} renderField={lmvOpen?undefined:(record,field,value)=>fieldCell(record,'vehicle',field,value)} rowEditor={lmvOpen?undefined:(record,colSpan)=>editor(record,'vehicle',colSpan)} entryType={entryFilter}/>:<><p>{records.length} cards · {manual} Manual + {records.length-manual} Scan · All included automatically. Each scan entry holds up to 40 cards; this final batch includes all matching saved entries and can exceed 40 cards.</p><div className="logbook-table-wrap"><table className="logbook-table"><thead><tr>{previewColumns.map(([key,label])=><SortableHeader key={key} label={label} sortKey={key} sort={previewSort} onSort={changePreviewSort} filterIcon={false}/>)}</tr></thead><tbody>{sortRowsBlanksLast(records,previewSort,previewValue).map(r=><tr key={r.id}><td>{r.book_no}</td><td>{r.data.aFormNo||'—'}</td><td>{r.data.door||'—'}</td><td>{r.data.employeeName||'—'}</td><td>{vlbRecordSource(r)}</td></tr>)}{!records.length&&<tr><td colSpan={5}>{selection.site&&selection.date&&selection.shift?'No saved, unbatched entries match this selection.':'Select site, date and shift to load saved entries.'}</td></tr>}</tbody></table></div></>}
+   {loading||detailLoading?<p role="status">Loading entries…</p>:viewed?<VlbBatchReport key={viewed.id} batch={lmvOpen?{...viewed,records:viewed.lmvRecords||[]}:viewed} bookLabel={lmvOpen?'LMV':'VLB'} ReportSection={ReportSection} onView={record=>viewCard(record,lmvOpen?'lmv':'vehicle')} rowAction={record=>action(record,lmvOpen?'lmv':'vehicle')} renderField={(record,field,value)=>fieldCell(record,lmvOpen?'lmv':'vehicle',field,value)} rowEditor={(record,colSpan)=>editor(record,lmvOpen?'lmv':'vehicle',colSpan)} entryType={entryFilter}/>:<><p>{records.length} cards · {manual} Manual + {records.length-manual} Scan · All included automatically. Each scan entry holds up to 40 cards; this final batch includes all matching saved entries and can exceed 40 cards.</p><div className="logbook-table-wrap"><table className="logbook-table"><thead><tr>{previewColumns.map(([key,label])=><SortableHeader key={key} label={label} sortKey={key} sort={previewSort} onSort={changePreviewSort} filterIcon={false}/>)}</tr></thead><tbody>{sortRowsBlanksLast(records,previewSort,previewValue).map(r=><tr key={r.id}><td>{r.book_no}</td><td>{r.data.aFormNo||'—'}</td><td>{r.data.door||'—'}</td><td>{r.data.employeeName||'—'}</td><td>{vlbRecordSource(r)}</td></tr>)}{!records.length&&<tr><td colSpan={5}>{selection.site&&selection.date&&selection.shift?'No saved, unbatched entries match this selection.':'Select site, date and shift to load saved entries.'}</td></tr>}</tbody></table></div></>}
   </section>}
 
   {viewed&&selectedCard&&<VlbBatchCardDetails key={viewed.id+":"+selectedCard.viewKey} kind={selectedCard.kind} onClose={()=>{setSelectedCard(null);document.querySelector(".vlb-active-batch-panel")?.scrollIntoView({block:"start"})}} session={session} batch={viewed} record={selectedCard} ReportSection={ReportSection}/> }
