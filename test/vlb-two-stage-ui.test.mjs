@@ -172,7 +172,7 @@ test('create batch shows the stage indicator and Close batch only for two-stage 
  assert.match(renderToStaticMarkup(nodes(tree,n=>n.type==='tr')[1]),/<td>OPEN<\/td>/);
  // Two-stage VLB stage: Lock VLB with blockers, ELB disabled hint, list shows VLB open.
  const vlbStage={...base,twoStage:true,stage:'vlb_open',canLockVlb:false,lockBlockers:['Awaiting transfer: VPC-019 from NIGAHI (2 cards, 17 trips).'],holds:[],fleet:[]};
- h.slots[3]=[{...base,stage:'vlb_open'}];h.slots[5]=vlbStage;h.slots[4]={...base,stage:'vlb_open'};h.slots[23]=true;
+ h.slots[3]=[{...base,stage:'vlb_open'}];h.slots[5]=vlbStage;h.slots[4]={...base,stage:'vlb_open'};h.slots[22]=true;
  tree=render();html=renderToStaticMarkup(tree);
  assert.match(html,/<ol class="vlb-stage-steps"[^>]*><li aria-current="step" class="current">1 VLB open<\/li><li>2 LMV open<\/li><li>3 ELB open<\/li><li>4 ELB locked · Batch closed<\/li><\/ol>/);
  assert.equal(button(tree,'Lock VLB').props.disabled,true);assert.match(html,/Lock VLB is blocked: Awaiting transfer: VPC-019 from NIGAHI/);assert.equal(button(tree,'Add LMV manually'),undefined);assert.equal(button(tree,'Scan or upload LMV PDF'),undefined);
@@ -233,7 +233,7 @@ test('site batches and the Equipment ELB fleet sort by a heading, numbers by val
  const machine=(assetId,door,trips,openingHmr,saved=true)=>({assetId,door,equipmentName:'Excavator',trips,saved_at:saved?'2026-11-01T03:00:00Z':null,shift_status:'working',book_no:'ELB-'+assetId,logbook:saved?{openingHmr,closingHmr:openingHmr+5}:{}});
  const viewed={...base,id:'b1',name:'B01',holds:[],statuses,fleet:[machine('1','V-9',42,120),machine('2','V-10',7,99),machine('3','V-11',100,1005),machine('4','V-12',3,null,false)]};
  const render=()=>{h.reset();return VlbCreateBatch({session:{token:'t'},onExit(){},onManual(){},onScan(){}})};
- render();h.slots[0]={sites:['Jayant OC'],shifts:[{site:'Jayant OC',name:'Shift A',shiftCode:'I'}]};h.slots[1]={site:'Jayant OC',date:'2026-11-01',shift:'S1'};h.slots[8]=false;h.slots[13]=true;h.slots[14]={login:'alice',mis:true};h.slots[23]=true;
+ render();h.slots[0]={sites:['Jayant OC'],shifts:[{site:'Jayant OC',name:'Shift A',shiftCode:'I'}]};h.slots[1]={site:'Jayant OC',date:'2026-11-01',shift:'S1'};h.slots[8]=false;h.slots[13]=true;h.slots[14]={login:'alice',mis:true};h.slots[22]=true;
  h.slots[3]=[{...base,id:'a',name:'B01',entry_count:'9'},{...base,id:'b',name:'B02',entry_count:'120'},{...base,id:'c',name:'B03',entry_count:'40'}];h.slots[5]=viewed;
  const table=(tree,className)=>nodes(tree,n=>n.type==='table'&&n.props.className===className)[0];
  const firstCells=(tree,className)=>nodes(table(tree,className),n=>n.type==='tbody')[0].props.children.flat().filter(Boolean).map(row=>renderToStaticMarkup(row).match(/<td>([^<]*)<\/td>/)[1]);

@@ -292,7 +292,7 @@ export async function assertElbBatchWrite(client,data,{adding=false}={}){
  const stage=batchStage(batch);
  if(stage==='vlb_open'||stage==='lmv_open')fail('Lock VLB and LMV for batch '+batch.name+' before saving ELB cards.',409);
  if(stage==='closed'&&batch.lmv_locked_at)fail('This batch is locked. Reopen it before saving ELB cards.',409);
- if(stage==='closed'&&!adding)fail('Batch '+batch.name+' is closed. Reopen it with site PM approval before changing existing ELB cards.',409);
+ if(stage==='closed'&&!adding)fail('Batch '+batch.name+' is closed. Reopen it before changing existing ELB cards.',409);
  await requireStageTurn(client,batch);
  return batch;
 }

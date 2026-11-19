@@ -284,7 +284,6 @@
   "vlb-batches.mjs": "server/routes/vlb-batches.mjs",
   "vlb-card-number.mjs": "shared/vlb-card-number.mjs",
   "vlb-duplicate-card.mjs": "server/rules/vlb-duplicate-card.mjs",
-  "vlb-pm-trial.mjs": "server/rules/vlb-pm-trial.mjs",
   "vlb-trip-handover.mjs": "shared/vlb-trip-handover.mjs",
   "vlb-two-stage.mjs": "server/rules/vlb-two-stage.mjs",
   "whatsapp-message-format.mjs": "server/rules/whatsapp-message-format.mjs",

@@ -45,6 +45,8 @@ export const VLB_BATCH_SCHEMA=`
  requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),decided_by TEXT,decision_note TEXT,decided_at TIMESTAMPTZ,used_at TIMESTAMPTZ);
  ALTER TABLE mis_vlb_reopen_requests ADD COLUMN IF NOT EXISTS withdrawn_at TIMESTAMPTZ;
  ALTER TABLE mis_vlb_batches ADD COLUMN IF NOT EXISTS trial_reopened_until TIMESTAMPTZ;
+ -- PM approval was removed (owner, 18 Nov 2026), so a batch reopened during the old pause no longer expires.
+ UPDATE mis_vlb_batches SET trial_reopened_until=NULL WHERE trial_reopened_until IS NOT NULL;
  CREATE TABLE IF NOT EXISTS mis_vlb_pm_trials(id TEXT PRIMARY KEY,started_at TIMESTAMPTZ NOT NULL,ends_at TIMESTAMPTZ NOT NULL,CHECK(ends_at=started_at+INTERVAL '240 hours'));
  DO $trial_duration$
  BEGIN
@@ -116,17 +118,16 @@ export async function assertVlbBatchWrite(client,data,actor,recordId,{adding=fal
  const batch=linked||matching;if(!batch)batchFail('Create or open the site/date/shift batch before saving a VLB entry. Standalone VLB saving is discontinued.',409);
  if(batch.archived_at||batch.deleted_at)batchFail('This batch is unavailable. Open an active site/date/shift batch before saving.');
  requireOperationalDate(batch.report_date);
- // An open batch never asks for PM approval (owner, 19 Nov 2026): any authorized user of the
- // site may add or change its cards, whoever reopened it and whether or not the reopening
- // trial has ended. PM approval applies only to reopening a closed batch.
- if(batch.closed_at&&!adding)batchFail('This site/date/shift batch is closed. Request site PM approval and reopen the existing batch before changing existing cards.');
+ // An open batch never stops a user of the site (owner, 19 Nov 2026): anyone allowed to save
+ // cards may add or change them, whoever created or reopened the batch, and a reopened batch
+ // has no expiry. Only a closed batch has to be reopened first.
+ if(batch.closed_at&&!adding)batchFail('This site/date/shift batch is closed. Reopen the existing batch before changing existing cards.');
  if(twoStageEnabled()&&(batch.stage==='lmv_open'||batch.lmv_locked_at||batch.stage==='elb_open'&&!adding))batchFail('VLB is locked for batch '+batch.name+'. Unlock VLB from the batch page before changing existing tipper cards.');
  return batch;
 }
 // Saving a card never locks its batch (owner, 19 Nov 2026). A reopened batch used to close
-// again on the next save, which sent the user back to the site PM for another approval; it
-// now stays open until Close batch is pressed. Kept as a call so the save paths are unchanged;
-// it answers the ids of the batches it locked, which is now none.
+// again on the next save; it now stays open until Close batch is pressed. Kept as a call so
+// the save paths are unchanged; it answers the ids of the batches it locked, which is now none.
 export async function lockSavedVlbBatches(){
  return [];
 }

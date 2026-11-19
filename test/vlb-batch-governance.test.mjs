@@ -9,7 +9,7 @@ import {VLB_BATCH_SCHEMA,matchingVlbBatch,lockSavedVlbBatches} from '../server/r
 process.env.VLB_BATCH_ORDER_FROM='off'; // these tests open batches out of shift order; vlb-batch-order.test.mjs covers the order
 
 process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
-test('live saves auto-attach, closure blocks existing-card edits, and a reopened batch stays open to every MIS user until it is closed',async t=>{
+test('live saves auto-attach, closure blocks existing-card edits, and an MIS user reopens without PM approval and only that user can amend once',async t=>{
  const db=new PGlite();t.after(()=>db.close());
  await db.exec('CREATE TABLE master_records(id BIGINT PRIMARY KEY,master_name TEXT,record_data JSONB)');
  const masters=[
@@ -53,26 +53,10 @@ test('live saves auto-attach, closure blocks existing-card edits, and a reopened
  assert.equal((await call('/api/log-books/vehicle/'+manual.data.id,'PUT',{...input,revision:1},'bob')).status,409);
  assert.equal((await call('/api/vlb-batches','POST',{...createBody,requestKey:randomUUID()})).status,409,'closed scopes cannot get B02');
  const s2=await save({shiftId:4,cardShift:'II'});assert.equal(s2.status,409);assert.equal((await call(path)).data.entry_count,3,'next shift requires its own batch');
- const req=await call(path+'/reopen-request','POST',{reason:'Additional cards received after closure'});assert.equal(req.status,200);assert.equal((await call(path+'/reopen-request','POST',{reason:'Retry reason'})).data.id,req.data.id);
- assert.equal((await call(path+'/reopen','POST',{})).status,403);
- assert.equal((await call(path+'/reopen-decision','POST',{requestId:req.data.id,decision:'approve'},'production')).status,403,'Production Manager is not PM');
- assert.equal((await call(path+'/reopen-decision','POST',{requestId:req.data.id,decision:'approve'},'wrongpm')).status,404,'another site PM cannot even view this batch');
- const dualReq=await call(path+'/reopen-request','POST',{reason:'Dual-role correction needed'},'dual');assert.equal(dualReq.status,200);const dualDecision=await call(path+'/reopen-decision','POST',{requestId:dualReq.data.id,decision:'approve'},'dual');assert.equal(dualDecision.status,200,'a PM who is also the MIS requester may approve their own request');assert.equal(dualDecision.data.decided_by,'dual');
- assert.equal((await call(path+'/reopen-decision','POST',{requestId:req.data.id,decision:'reject'},'pm')).status,400,'rejection requires a reason');
- assert.equal((await call(path+'/reopen-decision','POST',{requestId:req.data.id,decision:'reject',note:'Please check the additional cards'},'pm')).status,200);
- assert.equal((await call(path+'/reopen','POST',{})).status,403);
- assert.equal((await call(path)).data.requests.find(r=>r.id===req.data.id).decision_note,'Please check the additional cards');
- const req2=await call(path+'/reopen-request','POST',{reason:'Additional card details checked'});assert.notEqual(req2.data.id,req.data.id);
- assert.equal((await call(path+'/reopen-decision','POST',{requestId:req2.data.id,decision:'approve'},'pm')).status,200);
- await db.query("UPDATE master_records SET record_data=jsonb_set(record_data,'{managerSites}','\"Jayant OC\"') WHERE id=12");
- assert.equal((await call(path+'/reopen','POST',{})).status,403,'approval cannot be used after PM loses that site');assert.equal((await call(path)).data.approvalExpired,true);
- const replacement=await call(path+'/reopen-request','POST',{reason:'Current site PM approval required'});assert.equal(replacement.status,200);assert.notEqual(replacement.data.id,req2.data.id);
- await db.query("UPDATE master_records SET record_data=jsonb_set(record_data,'{managerSites}','\"Sasti OC\"') WHERE id=12");
- assert.equal((await call(path+'/reopen-decision','POST',{requestId:replacement.data.id,decision:'approve'},'pm')).status,200);
- assert.equal((await call(path+'/reopen','POST',{},'bob')).status,403,'another MIS user cannot consume approval');
+ assert.equal((await call(path,'GET',undefined,'pm')).data.canReopen,true,'a site PM who is not an MIS user may reopen too (owner, 19 Nov 2026)');
  const reopened=await call(path+'/reopen','POST',{});assert.equal(reopened.status,200,JSON.stringify(reopened.data));assert.equal(reopened.data.name,created.data.name);assert.equal(reopened.data.amendment_by,'alice');
- // An open batch never asks for PM approval (owner, 19 Nov 2026): another MIS user of the site
- // adds and edits cards in a batch reopened for alice, and no save locks the batch again.
+ // An open batch never stops a user of the site (owner, 19 Nov 2026): another MIS user adds and
+ // edits cards in a batch reopened by alice, and no save locks the batch again.
  const bobAdded=await save({},'bob');assert.equal(bobAdded.status,201,JSON.stringify(bobAdded.data));await scan('bob',32);
  const bobEdit=await call('/api/log-books/vehicle/'+manual.data.id,'PUT',{...input,remark:'Edited by another MIS user',revision:1},'bob');assert.equal(bobEdit.status,200,JSON.stringify(bobEdit.data));
  const failed=await save({closingHmr:'bad'});assert.equal(failed.status,400);assert.equal((await call(path)).data.closed_at,null,'failed saves do not lock');
@@ -89,15 +73,16 @@ test('live saves auto-attach, closure blocks existing-card edits, and a reopened
  await multi();batch=(await call(path)).data;assert.equal(batch.closed_at,null,'Save all keeps the batch open');assert.equal(batch.entry_count,8);assert.equal(batch.closure_revision,1);
  assert.equal((await call(path+'/close','POST',{})).status,200,'the batch closes only when Close is pressed');
  batch=(await call(path)).data;assert.ok(batch.closed_at);assert.equal(batch.amendment_by,null);assert.equal(batch.closure_revision,2);
- assert.ok(batch.audit.some(e=>e.action==='card_updated'&&e.detail.before&&e.detail.after));assert.ok(batch.audit.some(e=>e.action==='reopened'));assert.ok(batch.audit.some(e=>e.action==='reopen_rejected'));assert.equal(batch.audit.filter(e=>e.action==='saved_and_locked').length,2);
- assert.equal((await call(path+'/reopen','POST',{})).status,403,'a closed batch still needs site PM approval to reopen');assert.equal((await call('/api/log-books/vehicle/'+manual.data.id,'PUT',{...input,revision:3})).status,409,'a closed batch still blocks edits');
+ assert.ok(batch.audit.some(e=>e.action==='card_updated'&&e.detail.before&&e.detail.after));assert.ok(batch.audit.some(e=>e.action==='reopened'));assert.ok(batch.audit.find(e=>e.action==='reopened').detail.pmApproval==='not required');assert.equal(batch.audit.filter(e=>e.action==='saved_and_locked').length,2);
+ assert.equal((await call('/api/log-books/vehicle/'+manual.data.id,'PUT',{...input,revision:3})).status,409,'a closed batch still blocks edits');
+ assert.equal((await call(path+'/reopen','POST',{})).status,200,'a saved batch reopens again without PM approval');
 
  await assert.rejects(()=>db.query("INSERT INTO mis_vlb_batches(id,name,site,book_date,shift,sequence,created_by,request_key,closed_at) VALUES($1,'duplicate','sasti ob','2026-12-30','S1',2,'other',$2,NOW())",[randomUUID(),randomUUID()]),/already exists/,'database guard rejects duplicate batches');
  const pm=await vlbBatchActor(pool,{login:'pm'});assert.ok(batchPmAtSite(pm,'Sasti OC'));assert.equal(batchPmAtSite(pm,'Jayant OC'),false);
  // A Project Manager is an MIS user as well once the MIS sign-in includes the log-book pages.
- assert.ok(!pm.mis,'a PM with no MIS pages only reviews');
+ assert.ok(!pm.mis,'a PM with no MIS pages is not an MIS user');
  const pmWithMisPages=await vlbBatchActor(pool,{login:'pm',permissions:{separateMisCredentials:true,misDesktopAccess:['Vehicle Log Book']}});
- assert.ok(pmWithMisPages.pm&&pmWithMisPages.mis,'a PM whose MIS sign-in has the log-book pages edits open batches');
+ assert.ok(pmWithMisPages.pm&&pmWithMisPages.mis,'a PM whose MIS sign-in has the log-book pages is an MIS user');
  const production=await vlbBatchActor(pool,{login:'production'});assert.equal(production.pm,false);
  await db.query("UPDATE master_records SET record_data=record_data||'{\"sourceMissing\":true}'::jsonb WHERE id=12");assert.equal((await vlbBatchActor(pool,{login:'pm'})).pm,false,'missing source users cannot act as PM');
  // Reapplying the migration leaves all saved card IDs and audit rows intact.
