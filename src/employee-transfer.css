@@ -11,3 +11,9 @@
 .et-more{margin-top:16px;border:1px solid var(--line,#dfd4e8);border-radius:10px;padding:10px 12px}.et-more summary{cursor:pointer;font-weight:600;font-size:13px}.et-more .et-grid{margin-top:12px}
 .et-form footer{gap:8px;border-top:1px solid var(--line,#ece4f2);padding-top:14px}
 @media(max-width:700px){.et-pair{grid-template-columns:1fr}.et-wide{grid-column:auto}}
+/* Attachments and drafts (19 Nov 2026). */
+.et-files{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;align-items:center}.et-file{display:inline-flex;align-items:center;gap:6px;padding:4px 6px 4px 10px;border:1px solid var(--line,#dfd4e8);border-radius:9px;background:#faf8fc;font-size:13px}.employee-transfer .et-file button{padding:2px 8px;border-radius:6px}.employee-transfer .et-file .et-file-name{border:0;background:none;padding:0;color:#693690;text-decoration:underline;font-weight:600}.et-file small{color:#6b6078}
+.et-attach{display:inline-flex!important;align-items:center;gap:6px;padding:8px 12px;border:1px dashed #693690;border-radius:9px;color:#542d81;cursor:pointer;font-weight:600}.et-attach input{position:absolute;width:1px;height:1px;opacity:0;margin:0}.et-attach:focus-within{outline:2px solid #693690}.et-hint{display:block;margin-top:4px;color:#6b6078;font-size:12px}
+.et-drafts{margin-bottom:8px}.et-draft{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line,#ece4f2)}.employee-transfer .et-draft button:first-child{flex:1;justify-content:flex-start;text-align:left}.et-draft small{color:#6b6078;white-space:nowrap}
+.et-saved{margin-right:auto;align-self:center;color:#17663f;font-size:13px;font-weight:600}
+.employee-transfer textarea{font:inherit}

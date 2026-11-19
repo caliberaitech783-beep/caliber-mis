@@ -25,3 +25,15 @@ export function employeeTransferTerms(input={},effectiveDate=''){
   if(assets.some(asset=>!ET_ASSETS.includes(asset)))return {error:'Select returned assets from the list.'};
   return {terms:{transferType,reason,relievingDate,endDate:etTypeNeedsEndDate(transferType)?endDate:'',handoverTo,assets:ET_ASSETS.filter(asset=>assets.includes(asset))}};
 }
+
+// A draft may be incomplete: keep only known answers, each short text, and list values from the lists.
+export const ET_DRAFT_KEYS=['destination','effectiveDate','transferType','reason','relievingDate','endDate','handoverTo','remarks'];
+export function employeeTransferDraftTerms(input={}){
+  const source=input&&typeof input==='object'&&!Array.isArray(input)?input:{};
+  const terms={};
+  for(const key of ET_DRAFT_KEYS){const value=source[key]??'';if(typeof value!=='string'||value.length>2000)return {error:'Draft answers must be text of at most 2000 characters.'};terms[key]=value.trim();}
+  if(terms.transferType&&!ET_TRANSFER_TYPES.includes(terms.transferType))return {error:'Select the transfer type.'};
+  if(terms.reason&&!ET_REASONS.includes(terms.reason))return {error:'Select the reason for the transfer.'};
+  terms.assets=Array.isArray(source.assets)?ET_ASSETS.filter(asset=>source.assets.includes(asset)):[];
+  return {terms};
+}
