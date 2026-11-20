@@ -386,6 +386,7 @@ import "./linked-request-picker.css";
 import "./report-step-style.css";
 import "./report-step-sticky.css";
 import { useTopBarStick } from "./top-bar-stick.js";
+import { useStepTableHeads } from "./step-table-heads.js";
 import "./workspace-readability.css";
 import DailyBdBalanceChart from "./daily-bd-balance-chart.jsx";
 import EmployeeTenureReport from "./employee-tenure-report.jsx";
@@ -7417,8 +7418,10 @@ function ReportSection({ title, description, category = "general", icon: ReportI
   // above it: no search box, record count, Rows or Actions, and every line on screen.
   const stepLook = /^Step \d/.test(String(title));
   const searchShown = showSearch && !stepLook;
+  // Owner, 19 Nov 2026: the column headings of a step stay in view under its heading (step-table-heads.js).
+  const stepRef = useStepTableHeads(stepLook, laterStep ? showOpenedStep : null);
   return (
-    <div ref={laterStep ? showOpenedStep : undefined} className="reports-section generated-report-section" data-category={category} data-step-look={stepLook ? "true" : undefined}>
+    <div ref={stepLook ? stepRef : undefined} className="reports-section generated-report-section" data-category={category} data-step-look={stepLook ? "true" : undefined}>
       <div className="reports-section-heading">
         <div className="generated-report-title">
           <span className="generated-report-icon"><ReportIcon aria-hidden="true" /></span>

@@ -69,7 +69,8 @@ test('tenure header puts the controlled search before Refresh and removes explan
   const {code: sectionCode}=await transformWithOxc(section,'report-section.jsx',{jsx:{runtime:'classic'}});
   let tableProps;
   const Null=()=>null;
-  const scope={SmartSelect: "select",React,useState:initial=>[typeof initial==='function'?initial():initial,()=>{}],FileBarChart:Null,ExportMenu:Null,Search:Null,ReportTable:props=>{tableProps=props;return null;}};
+  // useStepTableHeads (column headings of a step, 19 Nov 2026) only measures the drawn page: a ref that does nothing here.
+  const scope={SmartSelect: "select",React,useStepTableHeads:()=>undefined,useState:initial=>[typeof initial==='function'?initial():initial,()=>{}],FileBarChart:Null,ExportMenu:Null,Search:Null,ReportTable:props=>{tableProps=props;return null;}};
   const Section=new Function(...Object.keys(scope),sectionCode+'; return ReportSection;')(...Object.values(scope));
   const html=renderToStaticMarkup(React.createElement(Section,{title:'Employee tenure',query:'Example',showSearch:false}));
   assert.equal(tableProps.query,'Example');

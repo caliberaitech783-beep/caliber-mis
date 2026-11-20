@@ -179,7 +179,8 @@ test('opened batch search and shared export controls use only its saved snapshot
  const source=main.slice(main.indexOf('function ReportSection('),main.indexOf('// The step a request waited'));
  const {code}=await transformWithOxc(source,'report-section.jsx',{jsx:{runtime:'classic'}});
  const ExportMenu=()=>null,ReportTable=()=>null,FileBarChart=()=>null;
- const shared=new Function('React','useState','ExportMenu','ReportTable','FileBarChart','VehicleHistoryScroll',code+';return ReportSection')(React,useState,ExportMenu,ReportTable,FileBarChart,()=>null);
+ // useStepTableHeads (column headings of a step, 19 Nov 2026) only measures the drawn page: a ref that does nothing here.
+ const shared=new Function('React','useState','ExportMenu','ReportTable','FileBarChart','VehicleHistoryScroll','useStepTableHeads',code+';return ReportSection')(React,useState,ExportMenu,ReportTable,FileBarChart,()=>null,()=>undefined);
  slots.length=0;cursor=0;let tree=shared(report.props);
  const table=nodes(tree,n=>n.type===ReportTable)[0];assert.equal(table.props.smartPrintAction,true);assert.equal(table.props.query,'V12');
  table.props.onExportViewChange({sourceRows:records,columns:[vlbBatchColumns[0]],rows:[records[1]]});
