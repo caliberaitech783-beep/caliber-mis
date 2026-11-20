@@ -15,4 +15,6 @@ export function deletionPhone(sites=[]){
  if(recipients.size>1)throw Object.assign(Error('Delete records from sites with different OTP recipients separately.'),{status:400,statusCode:400});
  return recipients.values().next().value||DELETION_PHONE;
 }
-export const deletionRecipient=phone=>'+91 '+phone.slice(2);
+// Additional Jayant approver: Abhishek dwived, MIS login Abhishekdwivedi.
+export const deletionPhonesForRecipient=phone=>phone==='919936297751'?[phone,'917024738178']:[phone];
+export const deletionRecipient=phone=>deletionPhonesForRecipient(phone).map(value=>'+91 '+value.slice(2)).join(' and ');

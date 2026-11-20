@@ -57,4 +57,21 @@ test('single-card deletion requires exact approval, delivered OTP, owner and unc
  assert.equal((await call(second+'/delete',openRequest)).status,200);
  const audit=(await db.query('SELECT raw_fields FROM mis_scan_cards WHERE id=$1',[other])).rows[0].raw_fields.manualDeletion;
  assert.equal(audit.otpVerifiedAt,undefined);
+
+ // Whole-entry deletion is independently approved and must work for closed VLB
+ // batches and LMV entries, which have no VLB open-stage eligibility.
+ for(const logBookKind of ['vehicle','lmv']){
+  const entryId=randomUUID(),cardId=randomUUID(),actor='entry-'+logBookKind;
+  await db.query("INSERT INTO mis_scan_batches(id,kind,name,created_by,expected_context) VALUES($1,'vehicle','Closed entry fixture',$2,$3::jsonb)",[entryId,actor,JSON.stringify({bookDate:'2026-12-30',location:'Sasti OC',cardShift:'I',confirmed:true,logBookKind})]);
+  await db.query("INSERT INTO mis_scan_cards(id,batch_id,ordinal,filename,image,image_hash,draft,status) VALUES($1,$2,1,'wrong.png',$3,$4,$5::jsonb,'review')",[cardId,entryId,Buffer.from('test image'),randomUUID(),JSON.stringify({bookDate:'2026-12-30',location:'Sasti OC',door:'V-200'})]);
+  const cards=[{id:cardId,revision:1}];
+  const {scanDeletionApproval}=await import('../src/scan-card-deletion-selection.mjs');
+  const entryRequest={cards,reason:'Wrong uploaded entry',approval:scanDeletionApproval(cards)+' · entire scan entry',permanent:true,entry:true};
+  const entryPath='/api/scan-batches/'+entryId+'/card-deletions/';
+  const issuedEntry=await call(entryPath+'otp',entryRequest,'POST',actor);assert.equal(issuedEntry.status,200,JSON.stringify(issuedEntry));
+  const removedEntry=await call(entryPath+'confirm',{...entryRequest,requestId:issuedEntry.data.requestId,otp:deliveredOtp},'POST',actor);assert.equal(removedEntry.status,200,JSON.stringify(removedEntry));
+  assert.equal((await db.query('SELECT id FROM mis_scan_cards WHERE id=$1',[cardId])).rows.length,0);
+  assert.equal((await db.query('SELECT expected_context FROM mis_scan_batches WHERE id=$1',[entryId])).rows[0].expected_context.deletedScanEntry,true);
+  assert.ok((await db.query('SELECT id FROM mis_vlb_batches WHERE closed_at IS NOT NULL')).rows.length,'parent stays closed');
+ }
 });

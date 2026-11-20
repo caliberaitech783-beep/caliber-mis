@@ -325,7 +325,7 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
  };
  const checkEntryDeletion=async(client,batchId,items,req)=>{
   const entry=await getBatch(client,batchId);
-  if(entry.kind!=='vehicle'||!await openDeletion(client,entry,req))fail('Open or unlock the VLB batch before deleting this scan entry.',409);
+  if(entry.kind!=='vehicle')fail('Scan entry deletion is available only for VLB and LMV entries.',409);
   const {rows}=await client.query(`SELECT c.id FROM mis_scan_cards c WHERE ${operationalScanSql('c')} AND c.batch_id=$1 AND c.duplicate_of IS NULL AND c.review_note NOT IN($2,$3) AND c.review_note NOT LIKE 'Card deleted manually by user%' AND NOT(c.raw_fields ? 'manualDeletion')`,[batchId,REMOVED_FROM_BATCH_NOTE,EXACT_DUPLICATE_NOTE]);
   const ids=new Set(items.map(item=>item.id));
   if(rows.length!==ids.size||rows.some(card=>!ids.has(card.id)))fail('The scan entry changed. Refresh it and approve the current card list.',409);
