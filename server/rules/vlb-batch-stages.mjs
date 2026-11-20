@@ -111,10 +111,15 @@ function duplicateElb(records){
 export async function refreshLateVlbTrips(client,batch){
  const assets=await equipmentAssets(client),records=await batchVlbRecords(client,batch);
  const {machines}=buildMachineSnapshot(records,assets,batch.site);
- for(const m of machines){
-  await client.query('INSERT INTO mis_vlb_batch_machines(batch_id,asset_id,machine_label,door,trips,source_cards) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(batch_id,asset_id) DO UPDATE SET trips=EXCLUDED.trips,source_cards=EXCLUDED.source_cards',[batch.id,m.assetId,m.label,m.door,m.trips,m.sourceCards]);
- }
- for(const row of buildFleetList(assets,batch.site,machines))await client.query('INSERT INTO mis_vlb_batch_fleet(batch_id,asset_id,door,equipment_name,equipment_group,trips,source_cards) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(batch_id,asset_id) DO UPDATE SET trips=EXCLUDED.trips,source_cards=EXCLUDED.source_cards',[batch.id,row.assetId,row.door,row.equipmentName,row.equipmentGroup,row.trips,row.sourceCards]);
+ if(machines.length)await client.query(`INSERT INTO mis_vlb_batch_machines(batch_id,asset_id,machine_label,door,trips,source_cards)
+  SELECT $1,(r->>'assetId')::bigint,r->>'label',r->>'door',(r->>'trips')::integer,(r->>'sourceCards')::integer
+  FROM jsonb_array_elements($2::jsonb) r
+  ON CONFLICT(batch_id,asset_id) DO UPDATE SET trips=EXCLUDED.trips,source_cards=EXCLUDED.source_cards`,[batch.id,JSON.stringify(machines)]);
+ const fleet=buildFleetList(assets,batch.site,machines);
+ if(fleet.length)await client.query(`INSERT INTO mis_vlb_batch_fleet(batch_id,asset_id,door,equipment_name,equipment_group,trips,source_cards)
+  SELECT $1,(r->>'assetId')::bigint,r->>'door',r->>'equipmentName',r->>'equipmentGroup',(r->>'trips')::integer,(r->>'sourceCards')::integer
+  FROM jsonb_array_elements($2::jsonb) r
+  ON CONFLICT(batch_id,asset_id) DO UPDATE SET trips=EXCLUDED.trips,source_cards=EXCLUDED.source_cards`,[batch.id,JSON.stringify(fleet)]);
 }
 
 export async function lockVlb(client,batch,actor,{assets}={}){

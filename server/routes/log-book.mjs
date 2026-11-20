@@ -457,20 +457,31 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
  });
  async function save(req,res,next){
    let client;
+   const started=performance.now(),timings={};let last=started;
+   const mark=name=>{const now=performance.now();timings[name]=Math.round((now-last)*10)/10;last=now;};
+   const finish=()=>{
+    res.set('Server-Timing',Object.entries(timings).map(([name,ms])=>`${name};dur=${ms}`).join(', '));
+    const durationMs=Math.round(performance.now()-started);
+    if(durationMs>=1000)console.info(JSON.stringify({event:'log_book_save_timing',kind:req.params.kind,updating:Boolean(req.params.id),durationMs,stages:timings}));
+   };
    try{
      requireOperationalDate(req.body?.bookDate||systemBookDate());await ensure();const kind=req.params.kind,updating=Boolean(req.params.id);
      requireLogBookSite(req.logBookScope,text(req.body?.location));
      const requestKey=text(req.body.requestKey||randomUUID());if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestKey))fail('Invalid save reference.');
      if(updating&&!/^\d+$/.test(req.params.id))fail('Invalid log book ID.');
      // Pulse is read before any lock, so the remote call never runs while other users queue.
-     const actor=req.session.login||req.session.name,prefetched=await prefetchBreakdownRows(readBreakdownRows,actor);
-     client=await pool.connect();await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock_shared(709224102)');
+     mark('prepare');
+     const actor=req.session.login||req.session.name,prefetched=await prefetchBreakdownRows(readBreakdownRows,actor);mark('breakdown_feed');
+     client=await pool.connect();mark('connection');await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock_shared(709224102)');mark('transaction_lock');
      const data=await resolveLogBookData(client,kind,req.body,{enforceEmployeeSite:true,manualEntry:true});
+     mark('validation');
      // The site, date and shift scope is locked before the record row, the same order the
      // batch routes use, so a batch action and a card edit never wait on each other.
      await lockVlbBatchScope(client,vlbRecordScope(data));
      if(updating){const prior=await client.query('SELECT site FROM mis_log_books WHERE id=$1 AND book_type=$2 AND book_date>=$$2026-11-01$$ FOR UPDATE',[req.params.id,kind]);if(prior.rows[0])requireLogBookSite(req.logBookScope,prior.rows[0].site);}
+     mark('batch_lock');
      await applyBreakdownHours(data,{readHours:lockedReadHours(input=>readHours({...input,client}),prefetched),actor});
+     mark('breakdown_hours');
 
      if(!updating)await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[requestKey]);
      let result;
@@ -505,8 +516,9 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
        result={rows:[await insertLogBook(client,kind,data,requestKey,req.session.login||req.session.name)]};
      }
      if(updating){await enqueueTripVerification(client,result.rows[0]);await syncVlbBatchRecord(client,result.rows[0],req.session.login||req.session.name);await syncElbBatchRecord(client,result.rows[0],req.session.login||req.session.name);}
-     const response=kind==='vehicle'?(await withVlbTripHandovers(client,result.rows,await filterLogBookSites(client,req.logBookScope)))[0]:result.rows[0];await client.query('COMMIT');res.status(updating?200:201).json(response);
-   }catch(error){if(client)await client.query('ROLLBACK').catch(()=>{});if(error.status)return res.status(error.status).json({error:error.message,...(error.details||{})});next(error)}finally{client?.release();}
+     mark('persist_and_batch');
+     const response=kind==='vehicle'?(await withVlbTripHandovers(client,result.rows,await filterLogBookSites(client,req.logBookScope)))[0]:result.rows[0];mark('handovers');await client.query('COMMIT');mark('commit');finish();res.status(updating?200:201).json(response);
+   }catch(error){mark('failed');finish();if(client)await client.query('ROLLBACK').catch(()=>{});if(error.status)return res.status(error.status).json({error:error.message,...(error.details||{})});next(error)}finally{client?.release();}
  }
  app.post('/api/log-books/:kind',...protect,save);
  app.put('/api/log-books/:kind/:id',...protect,save);

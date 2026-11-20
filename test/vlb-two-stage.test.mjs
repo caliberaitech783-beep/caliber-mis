@@ -302,7 +302,12 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
  assert.equal((await call('/api/log-books/vehicle','POST',lateInput)).status,409,'the final lock prevents late VLB additions');
  // Batches closed before the LMV stage still accept legacy late entries.
  await db.query('UPDATE mis_vlb_batches SET lmv_locked_at=NULL WHERE id=$1',[created.data.id]);
+ const lateStart=statements.length,lateTime=performance.now();
  const late=await call('/api/log-books/vehicle','POST',lateInput);assert.equal(late.status,201,JSON.stringify(late.data));
+ t.diagnostic('Late manual VLB save in locked batch: '+Math.round(performance.now()-lateTime)+' ms');
+ const lateWrites=statements.slice(lateStart).filter(sql=>/^INSERT INTO mis_vlb_batch_(machines|fleet)\(/.test(sql));
+ assert.equal(lateWrites.length,2,'late VLB refresh uses two bulk writes regardless of fleet size');
+ assert.ok(lateWrites.every(sql=>sql.includes('jsonb_array_elements')));
  assert.equal((await call('/api/log-books/vehicle','POST',lateInput)).status,200,'retry remains idempotent');
  assert.equal((await call('/api/log-books/vehicle/'+late.data.id,'PUT',{...lateInput,revision:late.data.revision,remark:'changed'})).status,409,'late VLB is immediately locked');
  const {insertLogBook,resolveLogBookData}=await import('../server/routes/log-book.mjs');

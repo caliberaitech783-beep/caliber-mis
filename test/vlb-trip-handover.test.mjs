@@ -1,9 +1,26 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {linkVlbTripHandovers,validTripTimes} from '../shared/vlb-trip-handover.mjs';
+import {linkVlbTripHandovers,validTripTimes,withVlbTripHandovers} from '../shared/vlb-trip-handover.mjs';
 const card=(id,date,driver,trips,patch={})=>({id,book_no:'VLB/'+id,data:{location:'Sasti OC',door:'V189',bookDate:date,employeeId:id,employeeName:driver,shiftId:id,masterShiftStart:'21:00:00',timeMode:'with',trips,...patch}});
 const loading=(time='23:50')=>({equipmentName:'V25',loadingTime:time,unloadingTime:'',tripCount:1});
 const unloading=(time='00:10')=>({equipmentName:'V99',loadingTime:'',unloadingTime:time,tripCount:1});
+
+test('complete manual cards avoid all historical reads and retain their exact linked result',async()=>{
+ const records=[card(1,'2026-12-28','First',[{...loading(),unloadingTime:'23:59'}]),card(2,'2026-12-28','Second',[{tripCount:3}],{timeMode:'without'})];
+ const client={query(){throw Error('a complete manual save must not read history')}};
+ assert.deepEqual(await withVlbTripHandovers(client,records),linkVlbTripHandovers(records));
+});
+
+test('partial cards fetch full history only for matching canonical site/door, with no date cutoff',async()=>{
+ const records=[card(1,'2026-11-02','First',[loading()],{door:'Volvo 00189',location:'Sasti II'}),card(2,'2026-12-28','Second',[unloading()],{door:'V-189',location:'Sasti OC'})];
+ const unrelated=Array.from({length:1000},(_,i)=>card(10+i,'2026-12-28','Other',[loading()],{door:'V'+(1000+i)}));
+ const calls=[],scope=['Sasti OC'];
+ const client={async query(sql,args){calls.push({sql,args});if(calls.length===1)return {rows:[...records,...unrelated].map(r=>({id:r.id,location:r.data.location,door:r.data.door}))};return {rows:records.filter(r=>args[0].includes(r.id))};}};
+ const result=await withVlbTripHandovers(client,[records[1]],scope);
+ assert.deepEqual(result,linkVlbTripHandovers(records).filter(r=>r.id===2));
+ assert.equal(calls.length,2);assert.deepEqual(calls[1].args,[[1,2],scope]);
+ assert.equal(result[0].data.trips[0].handoverLinks[0].counterpart.logBookId,'1');
+});
 test('cross-shift cards close once, preserve driver credits and literal missing times',()=>{
  const a=card(1,'2026-12-28','First', [loading()]);
  const b=card(2,'2026-12-29','Next',[unloading()],{masterShiftStart:'00:00:00'});
