@@ -87,7 +87,7 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
   const data=await response.json();if(!response.ok)throw Error(data.error||'Could not read VLB batches.');return data;
  };
  useEffect(()=>{const controller=new AbortController();
-  read(entryMode&&entryKind==='lmv'?'/api/log-books/options':'/api/log-books/options?view=batch-picker',{signal:controller.signal}).then(async masters=>{
+  read(entryMode&&entryKind==='lmv'?'/api/log-books/options':'/api/log-books/options?view=batch-picker&siteBatchEdit=1',{signal:controller.signal}).then(async masters=>{
    const data=entryMode&&entryKind==='lmv'
     ?await withLmvEntrySite(masters,session,path=>read(path,{signal:controller.signal}))
     :masters;

@@ -298,6 +298,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
  registerLogBookDashboard(app,{pool,protect,ensureBooks:ensure});
  registerFleetReconciliation(app,{pool,protect,ensureBooks:ensure,pulseMasterSync,breakdownMirror});
  const batchScope=protect[2];
+ const batchEditAccess=(req,res,next)=>req.query?.siteBatchEdit==='1'?next():requireAdministrator(req,res,next);
  registerManpowerReports(app,{pool,protect,ensureBooks:ensure,withHandovers:withVlbTripHandovers,lane});
  registerBiometricAttendance(app,{pool,protect,ensureBooks:ensure});
  const attendanceAccess=(req,res,next)=>{
@@ -372,7 +373,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
      const cards=scanCardsForOperations(scanRows.map(decodeScanRow).filter(c=>{const date=c.draft?.bookDate||c.scanned_date;return date>=from&&date<=to&&siteAllowed(scope,c.draft?.location);}));
      return {cards,scanConnected:Boolean(exists?.cards&&exists?.batches)};
  }
- app.get(['/api/log-books/options','/api/shift-attendance'],requireSession,(req,res,next)=>req.path==='/api/shift-attendance'?attendanceAccess(req,res,next):requireAdministrator(req,res,next),batchScope,async(req,res,next)=>{
+ app.get(['/api/log-books/options','/api/shift-attendance'],requireSession,(req,res,next)=>req.path==='/api/shift-attendance'?attendanceAccess(req,res,next):batchEditAccess(req,res,next),batchScope,async(req,res,next)=>{
    try{await ensure();
      const batchPicker=req.path==='/api/log-books/options'&&req.query.view==='batch-picker';
      const {rows}=await pool.query("SELECT id,master_name,record_data FROM master_records WHERE master_name=ANY($1::text[]) ORDER BY id",[batchPicker?['Shift Master','Users & employees','Region master',...woNames]:['Equipment master','Vehicle transfers','Shift Master','Users & employees','Employee master','ERP Employee master','Region master','C-Dir Employee master',...woNames]]);
@@ -418,7 +419,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
  const readHours=async(input)=>{requireOperationalDate(input.bookDate);if(!pulseMasterSync)throw new Error('Pulse breakdown connection unavailable.');const db=input.client||pool;const assetId=number(input.assetId,'Door number',{integer:true}),shiftId=number(input.shiftId,'Shift',{integer:true});const rows=(await db.query('SELECT id,master_name,record_data FROM master_records WHERE id=ANY($1::bigint[])',[[assetId,shiftId]])).rows;const asset=rows.find(r=>String(r.id)===String(assetId)&&r.master_name==='Equipment master')?.record_data,lmv=Boolean(asset&&isLmv(asset)),baseShift=rows.find(r=>String(r.id)===String(shiftId)&&r.master_name==='Shift Master')?.record_data,shift=input.manualEntry||input.manualShiftOverride||isManualShift(input.manualShift)?manualShiftWindow(input,baseShift,['day','night'].includes(input.manualShift)?(await db.query("SELECT id,record_data FROM master_records WHERE master_name='Shift Master'")).rows.map(row=>({...row.record_data,id:String(row.id)})):[],{flexible:lmv}):baseShift;if(!asset||!baseShift||!shift)fail('Select valid vehicle and shift masters.');let assetMatches=canonicalSiteName(asset.currentLocation||asset.site||asset.location)===canonicalSiteName(input.location);let portion=null;{const all=(await db.query("SELECT id,master_name,record_data FROM master_records WHERE master_name=ANY($1::text[])",[['Equipment master','Vehicle transfers']])).rows;const historical=attachTransferHistory(all.filter(r=>r.master_name==='Equipment master').map(r=>({...r.record_data,id:String(r.id)})),all.filter(r=>r.master_name==='Vehicle transfers').map(r=>r.record_data)).find(r=>r.id===String(assetId));assetMatches ||= Boolean(historical&&assetAtSiteOnDate(historical,historical.transferHistory,input.location,input.bookDate));const windows=historical?assignmentWindows(historical,historical.transferHistory):[];portion=lmv?null:logBookAssignment(windows,input.location,input.bookDate,shift.startTime||shift.start,input.shiftHours);if(portion)assetMatches=true;}if(!assetMatches||!lmv&&canonicalSiteName(shift.site||shift.siteName)!==canonicalSiteName(input.location))fail('Vehicle and shift must belong to this location.');const breakdownRows=input.breakdownRows??await readBreakdownRows(input.actor),copyAt=mirrorReadAt(breakdownRows);const summary=summarizePulseHours({rows:breakdownRows,date:input.bookDate,site:input.location,asset,shift,shiftHours:Number(input.shiftHours),runningHours:input.runningHours==null?null:Number(input.runningHours),portion,...(copyAt?{now:Math.min(copyAt,Date.now())}:{})});return copyAt?withPulseCopyTime(summary,copyAt):summary;};
   // Owner, 17 Nov 2026: ELB BD hours filled from Pulse worked out again after the machine match fix (dry run first).
   registerElbPulseRepair(app,{pool,protect,readBreakdownRows});
-  app.post('/api/log-books/hours',...protect,async(req,res)=>{try{requireLogBookSite(req.logBookScope,req.body.location);res.set('Cache-Control','no-store').json(await readHours({...req.body,client:undefined,breakdownRows:undefined,actor:req.session.login||req.session.name}));}catch(e){res.status(e.status||400).json({error:e.message});}});
+  app.post('/api/log-books/hours',requireSession,batchEditAccess,batchScope,async(req,res)=>{try{requireLogBookSite(req.logBookScope,req.body.location);res.set('Cache-Control','no-store').json(await readHours({...req.body,client:undefined,breakdownRows:undefined,actor:req.session.login||req.session.name}));}catch(e){res.status(e.status||400).json({error:e.message});}});
  app.get('/api/log-books/:kind',...protect,async(req,res,next)=>{
    try{await ensure();if(!['vehicle','equipment','lmv'].includes(req.params.kind))return res.status(400).json({error:'Invalid log book type.'});
      const before=String(req.query.before||'');if(before&&!/^\d+$/.test(before))return res.status(400).json({error:'Invalid page cursor.'});
@@ -487,7 +488,17 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
      let result;
      let meterBatch=null;
      if(updating){
-       const prior=(await client.query('SELECT data FROM mis_log_books WHERE id=$1 AND book_type=$2 AND deleted_at IS NULL AND book_date>=$$2026-11-01$$',[req.params.id,kind])).rows[0]?.data;if(kind==='equipment'&&prior?.entrySource==='batch-fleet'&&!isMisAdministrator(req.session)&&!(await vlbBatchActor(client,req.session)).mis)fail('Only an MIS user or MIS administrator can edit a saved manual ELB.',403);if(kind==='equipment'&&prior?.operatorSplit)fail('Open ELB Manual for this batch to edit the Surface Miner operator split.',409);if(prior?.scanCardId){for(const key of ['scanCardId','scanBatchId','scanEntrySource','reviewedBy','reviewedAt','meterCorrectionHistory'])data[key]=prior[key];data.scanCardNumber=String(kind==='equipment'?data.jobCardNo:data.aFormNo).toUpperCase().replace(/[^A-Z0-9]/g,'')||null;}if(prior)for(const key of ['tripCardSheet','joinedSheets'])if(prior[key]!==undefined)data[key]=prior[key];if(prior)data.meterCorrectionHistory=recordMeterCorrection(prior.meterCorrectionHistory,prior,data,kind==='lmv'?'vehicle':kind,req.session.login||req.session.name);
+       const prior=(await client.query('SELECT data FROM mis_log_books WHERE id=$1 AND book_type=$2 AND deleted_at IS NULL AND book_date>=$$2026-11-01$$',[req.params.id,kind])).rows[0]?.data;if(req.query?.siteBatchEdit==='1'){
+         const batch=(await client.query('SELECT id,site,book_date::text AS day,shift FROM mis_vlb_batches WHERE id::text=$1 AND archived_at IS NULL AND closed_at IS NULL AND deleted_at IS NULL',[req.query.batchId||''])).rows[0];
+         if(!batch||!prior||!siteAllowed(req.logBookScope,batch.site))fail('Open site batch unavailable.',403);
+         const scope=vlbBatchScope({site:batch.site,bookDate:batch.day,shift:batch.shift});
+         if([prior,data].some(card=>vlbBatchScope(vlbRecordScope(card))!==scope))fail('Card belongs to another batch.',403);
+         if(kind==='vehicle'||kind==='equipment'){
+           const table=kind==='vehicle'?'mis_vlb_batch_entries':'mis_elb_batch_entries';
+           if(!(await client.query('SELECT 1 FROM '+table+' WHERE batch_id=$1 AND logbook_id=$2',[batch.id,req.params.id])).rows.length)fail('Card belongs to another batch.',403);
+         }
+       }
+       if(kind==='equipment'&&prior?.entrySource==='batch-fleet'&&req.query?.siteBatchEdit!=='1'&&!isMisAdministrator(req.session)&&!(await vlbBatchActor(client,req.session)).mis)fail('Only an MIS user or MIS administrator can edit a saved manual ELB.',403);if(kind==='equipment'&&prior?.operatorSplit)fail('Open ELB Manual for this batch to edit the Surface Miner operator split.',409);if(prior?.scanCardId){for(const key of ['scanCardId','scanBatchId','scanEntrySource','reviewedBy','reviewedAt','meterCorrectionHistory'])data[key]=prior[key];data.scanCardNumber=String(kind==='equipment'?data.jobCardNo:data.aFormNo).toUpperCase().replace(/[^A-Z0-9]/g,'')||null;}if(prior)for(const key of ['tripCardSheet','joinedSheets'])if(prior[key]!==undefined)data[key]=prior[key];if(prior)data.meterCorrectionHistory=recordMeterCorrection(prior.meterCorrectionHistory,prior,data,kind==='lmv'?'vehicle':kind,req.session.login||req.session.name);
        if(kind==='vehicle'&&!data.scanCardId)data.duplicateReason=text(req.body.duplicateReason)||text(prior?.duplicateReason);
        if(kind==='vehicle'){const batch=await assertVlbBatchWrite(client,data,req.session.login||req.session.name,req.params.id);await assertSingleVlbCardPerShift(client,data,{recordId:req.params.id,batch,actor:req.session.login||req.session.name});}
        else if(kind==='lmv'){
@@ -521,7 +532,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
    }catch(error){mark('failed');finish();if(client)await client.query('ROLLBACK').catch(()=>{});if(error.status)return res.status(error.status).json({error:error.message,...(error.details||{})});next(error)}finally{client?.release();}
  }
  app.post('/api/log-books/:kind',...protect,save);
- app.put('/api/log-books/:kind/:id',...protect,save);
+ app.put('/api/log-books/:kind/:id',requireSession,batchEditAccess,batchScope,save);
  const authorizeBatchDeletion=async(req,res,next)=>{
    try{
      if(isMisAdministrator(req.session)||(await vlbBatchActor(pool,req.session)).mis)return next();
