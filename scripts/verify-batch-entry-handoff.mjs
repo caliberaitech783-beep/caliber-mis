@@ -39,10 +39,12 @@ window.fetch=async(input,init={})=>{
  else if(url.pathname==='/api/scan-settings')data={};
  return new Response(JSON.stringify(data),{headers:{'Content-Type':'application/json'}});
 };
+// Site batches sit on the shared report table (MIS page); draw its rows and Action buttons here. Other lists stay empty.
+const ReportSection=({category,columns,rows,rowKey})=>category==='vlb-site-batches'?<table><tbody>{rows.map(row=><tr key={rowKey(row)}>{columns.map(column=><td key={column.key}>{column.render?column.render(row):column.value(row)}</td>)}</tr>)}</tbody></table>:null;
 function App(){
  const [page,setPage]=useState('report');
  const go=(name,batch)=>{rememberVlbEntryBatch(session,batch);history.replaceState(null,'','?page='+name);setPage(name)};
- return page==='report'?<VlbCreateBatch session={session} ReportSection={()=>null} onExit={()=>{}} onManual={batch=>go('vlb-manual',batch)} onScan={batch=>go('trip-scan',batch)}/>:<VlbEntryWorkspace kind="vehicle" session={session} mode={page==='vlb-manual'?'manual':'scan'} onExit={()=>setPage('report')}>{page==='vlb-manual'?<LogBookForm kind="vehicle" session={session}/>:<BulkCardScanning kind="vehicle" session={session}/>}</VlbEntryWorkspace>;
+ return page==='report'?<VlbCreateBatch session={session} ReportSection={ReportSection} onExit={()=>{}} onManual={batch=>go('vlb-manual',batch)} onScan={batch=>go('trip-scan',batch)}/>:<VlbEntryWorkspace kind="vehicle" session={session} mode={page==='vlb-manual'?'manual':'scan'} onExit={()=>setPage('report')}>{page==='vlb-manual'?<LogBookForm kind="vehicle" session={session}/>:<BulkCardScanning kind="vehicle" session={session}/>}</VlbEntryWorkspace>;
 }
 createRoot(document.getElementById('fixture')).render(<App/>);
 `;
