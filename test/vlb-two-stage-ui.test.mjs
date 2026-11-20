@@ -1,3 +1,4 @@
+import {SortableHeader,sortRowsBlanksLast} from './helpers/sortable-table-stub.mjs';
 import {TableSmartPrint} from './helpers/smart-print-stub.mjs';
 import {isJayantSite} from '../shared/site-shift-hours.mjs';
 import test from 'node:test';
@@ -14,9 +15,13 @@ import {employeeAtLocation} from '../shared/log-book-access.mjs';
 import {vlbRecordSource,vlbRecordEntryType,vlbRecordTrips} from '../shared/vlb-batch-format.mjs';
 import {matchesSmartSearch} from '../shared/smart-search.mjs';
 import {splitEquipmentOperatorHmr} from '../shared/surface-miner-hmr.mjs';
+import {defaultDurationSort} from '../src/duration-sort.mjs';
+const SmartSearchReport=()=>null;
+const fleetReport=tree=>nodes(tree,n=>n.type===SmartSearchReport&&String(n.props.title).startsWith('Equipment ELB'))[0].props;
+const cells=(report,row)=>report.columns.map(column=>String(column.value(row)??''));
 
 async function compile(file,scope,names){
- scope={StepBackButton:()=>null,TableSmartPrint,WaitingScans:()=>null,...scope};
+ scope={StepBackButton:()=>null,TableSmartPrint,SortableHeader,sortRowsBlanksLast,WaitingScans:()=>null,SmartSearchReport,...scope};
  scope={activeWorkOrders,WorkOrderJobSelect:()=>null,...scope};
  scope={isJayantSite,employeeAtLocation,matchesSmartSearch,splitEquipmentOperatorHmr,...scope};
  const source=readFileSync(new URL('../src/'+file,import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function').replaceAll('export const','const');
@@ -171,7 +176,7 @@ test('create batch shows the stage indicator and Close batch only for two-stage 
  assert.match(renderToStaticMarkup(nodes(tree,n=>n.type==='tr')[1]),/<td>OPEN<\/td>/);
  // Two-stage VLB stage: Lock VLB with blockers, ELB disabled hint, list shows VLB open.
  const vlbStage={...base,twoStage:true,stage:'vlb_open',canLockVlb:false,lockBlockers:['Awaiting transfer: VPC-019 from NIGAHI (2 cards, 17 trips).'],holds:[],fleet:[]};
- h.slots[3]=[{...base,stage:'vlb_open'}];h.slots[5]=vlbStage;h.slots[4]={...base,stage:'vlb_open'};h.slots[23]=true;
+ h.slots[3]=[{...base,stage:'vlb_open'}];h.slots[5]=vlbStage;h.slots[4]={...base,stage:'vlb_open'};h.slots[22]=true;
  tree=render();html=renderToStaticMarkup(tree);
  assert.match(html,/<ol class="vlb-stage-steps"[^>]*><li aria-current="step" class="current">1 VLB open<\/li><li>2 LMV open<\/li><li>3 ELB open<\/li><li>4 ELB locked · Batch closed<\/li><\/ol>/);
  assert.equal(button(tree,'Lock VLB').props.disabled,true);assert.match(html,/Lock VLB is blocked: Awaiting transfer: VPC-019 from NIGAHI/);assert.equal(button(tree,'Add LMV manually'),undefined);assert.equal(button(tree,'Scan or upload LMV PDF'),undefined);
@@ -202,9 +207,12 @@ test('create batch shows the stage indicator and Close batch only for two-stage 
  assert.match(html,/<li>1 VLB open<\/li><li>2 LMV open<\/li><li aria-current="step" class="current">3 ELB open<\/li>/);
  assert.equal(button(tree,'Continue ELB entries'),undefined);assert.equal(button(tree,'Start ELB entries'),undefined);
  assert.match(html,/ELBs saved: 1 · Required remaining: 1 · 1 optional with no saved ELB · 1 loading machine/);assert.doesNotMatch(html,/1 draft/);
- assert.match(html,/<td>VPC-019<\/td><td>Excavator<\/td><td>42<\/td><td>Not saved<\/td><td>—<\/td><td>—<\/td>/);
- assert.match(html,/<td>D-07<\/td><td>Dozer<\/td><td>0<\/td><td>Maintenance<\/td>/);
- assert.match(html,/<th>Operator<\/th><th>Caliber ID<\/th><th>Opening HMR<\/th><th>Closing HMR<\/th><th>Working HMR<\/th><th>BD hours<\/th><th>Idle hours<\/th><th>Availability hours<\/th><th>Job card<\/th><th>Remarks<\/th>/);
+ // The fleet list is the shared report table (Smart Search, a filter and sort menu on every heading), as on VLB.
+ const fleetList=fleetReport(tree);
+ assert.equal(fleetList.searchLabel,'Smart Search Equipment ELB');
+ assert.deepEqual(cells(fleetList,fleetList.rows[0]).slice(0,6),['VPC-019','Excavator','42','Not saved','—','—']);
+ assert.deepEqual(cells(fleetList,fleetList.rows[1]).slice(0,4),['D-07','Dozer','0','Maintenance']);
+ assert.deepEqual(fleetList.columns.map(column=>column.label).slice(4,14),['Operator','Caliber ID','Opening HMR','Closing HMR','Working HMR','BD hours','Idle hours','Availability hours','Job card','Remarks']);
  assert.doesNotMatch(html,/Close &amp; lock ELB is blocked: Machines without a saved ELB/);
  const closeButtons=nodes(tree,n=>n.type==='button'&&React.Children.toArray(n.props.children).join('')==='Close & lock ELB');assert.ok(closeButtons.length>=2,'detail panel and open batch notice both show Close & lock ELB');assert.ok(closeButtons.every(n=>n.props.disabled));assert.match(html,/The batch owner or an MIS administrator can close and lock this ELB/);
  assert.equal(button(tree,'Save &amp; lock batch'),undefined);assert.equal(button(tree,'Lock VLB'),undefined);
@@ -225,10 +233,44 @@ test('create batch shows the stage indicator and Close batch only for two-stage 
  const source=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');assert.ok(source.includes("onElbEntry={batch=>{rememberVlbEntryBatch(session,batch);selectMenu('Equipment Log Book Options')}}"),'main.jsx routes ELB entry choices from the batch');assert.ok(source.includes("onEquipmentElb={batch=>{rememberVlbEntryBatch(session,batch);selectMenu('Equipment Log Book')}}"),'main.jsx routes equipment processing directly to the contextual ELB report');
 });
 
+test('site batches and the Equipment ELB fleet sort by a heading, numbers by value and "—" last',async()=>{
+ const h=hooks();
+ const {VlbCreateBatch}=await compile('vlb-create-batch.jsx',{React,SmartSelect:'select',useState:h.useState,useRef:h.useRef,useEffect:()=>{},fetch:async()=>({ok:true,json:async()=>({})}),canonicalSiteName,displaySiteName,bookShiftCode,systemBookDate,vlbRecordSource,vlbRecordEntryType,VlbBatchCardDetails:()=>null,VlbBatchReport:()=>null,VlbBatchGovernance:()=>null,VlbReopenDialog:()=>null,VlbBatchHolds:()=>null,NewEquipmentRequest:()=>null,window:{}},['VlbCreateBatch']);
+ const base={site:'Jayant OC',report_date:'2026-11-01',shift:'S1',records:[],created_by:'alice',twoStage:true,stage:'elb_open'};
+ const machine=(assetId,door,trips,openingHmr,saved=true)=>({assetId,door,equipmentName:'Excavator',trips,saved_at:saved?'2026-11-01T03:00:00Z':null,shift_status:'working',book_no:'ELB-'+assetId,logbook:saved?{openingHmr,closingHmr:openingHmr+5}:{}});
+ const viewed={...base,id:'b1',name:'B01',holds:[],statuses,fleet:[machine('1','V-9',42,120),machine('2','V-10',7,99),machine('3','V-11',100,1005),machine('4','V-12',3,null,false)]};
+ const render=()=>{h.reset();return VlbCreateBatch({session:{token:'t'},onExit(){},onManual(){},onScan(){}})};
+ render();h.slots[0]={sites:['Jayant OC'],shifts:[{site:'Jayant OC',name:'Shift A',shiftCode:'I'}]};h.slots[1]={site:'Jayant OC',date:'2026-11-01',shift:'S1'};h.slots[8]=false;h.slots[13]=true;h.slots[14]={login:'alice',mis:true};h.slots[22]=true;
+ h.slots[3]=[{...base,id:'a',name:'B01',entry_count:'9'},{...base,id:'b',name:'B02',entry_count:'120'},{...base,id:'c',name:'B03',entry_count:'40'}];h.slots[5]=viewed;
+ let tree=render();
+ // Sorted the way the shared report table sorts a blanksLast column: by sortValue, "—" at the bottom both ways.
+ const fleetList=fleetReport(tree),doors=rows=>rows.map(row=>row.door);
+ const order=(key,direction)=>{const column=fleetList.columns.find(item=>item.key===key);return doors(sortRowsBlanksLast(fleetList.rows,{key,direction},row=>column.sortValue(row)));};
+ assert.deepEqual(doors(fleetList.rows),['V-9','V-10','V-11','V-12'],'fleet keeps its order until a heading is used');
+ assert.deepEqual(defaultDurationSort(fleetList.columns),{key:'',direction:'asc'},'BD hours does not sort the fleet when it opens');
+ assert.ok(fleetList.columns.every(column=>column.blanksLast),'"—" stays at the bottom in every column');
+ assert.deepEqual(order('trips','asc'),['V-12','V-10','V-9','V-11'],'trips sort as numbers');
+ assert.deepEqual(order('openingHmr','asc'),['V-10','V-9','V-11','V-12'],'opening HMR as numbers, unsaved "—" last');
+ assert.deepEqual(order('openingHmr','desc'),['V-11','V-9','V-10','V-12'],'high to low keeps "—" last');
+ assert.deepEqual(order('door','asc'),['V-9','V-10','V-11','V-12'],'door numbers compare naturally');
+ // Site batches: Cards sorts by value; the action column has no sort button.
+ const siteTable=tree=>nodes(tree,n=>n.type==='div'&&n.props.id==='vlb-batch-site-panel')[0];
+ const batchNames=tree=>nodes(siteTable(tree),n=>n.type==='tr').slice(1).map(row=>renderToStaticMarkup(row).match(/<td>(B0\d)<\/td>/)[1]);
+ assert.deepEqual(nodes(siteTable(tree),n=>n.props?.sortKey).map(n=>n.props.label),['Batch ID','Cards','VLB','LMV','ELB','Status']);
+ assert.deepEqual(batchNames(tree),['B01','B02','B03']);
+ nodes(siteTable(tree),n=>n.props?.sortKey==='cards')[0].props.onSort('cards');tree=render();
+ assert.deepEqual(batchNames(tree),['B01','B03','B02'],'9, 40, 120 by value');
+ nodes(siteTable(tree),n=>n.props?.sortKey==='cards')[0].props.onSort('cards');tree=render();
+ assert.deepEqual(batchNames(tree),['B02','B03','B01']);
+});
+
 test('ELB fleet table shows a serial number column before Door',()=>{
- const css=readFileSync(new URL('../src/log-book-readability.css',import.meta.url),'utf8');
- assert.match(css,/\.vlb-fleet-table thead tr::before\{content:"Sr\. No\."\}/);
- assert.match(css,/\.vlb-fleet-table tbody tr::before\{content:counter\(vlb-fleet-row\)\}/);
+ // The shared report table numbers its rows itself (Sr. No. before the first column), so the old CSS counter is gone.
+ const main=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');
+ assert.ok(main.includes('rowAction, rowEditor, serialColumn = true, stepLook = false'),'report tables number their rows');
+ const section=main.slice(main.indexOf('function ReportSection('),main.indexOf('function ReportSection(')+6000);
+ assert.ok(!section.includes('serialColumn'),'ReportSection keeps the Sr. No. column');
+ assert.ok(!readFileSync(new URL('../src/log-book-readability.css',import.meta.url),'utf8').includes('vlb-fleet-table'));
 });
 
 test('batch report adds the machine-wise shift report with totals only when the server supplies it',async()=>{
@@ -385,4 +427,22 @@ test('Jayant OC displays its server-provided Shift Master duration without an ed
   assert.equal(select.props.value,expected[0]);
   assert.equal(select.props.disabled,disabled);
  }
+});
+
+test('Site batches use the shared report table when the page has it: filters on every heading, actions kept',async()=>{
+ const h=hooks(),ReportSection=()=>null;let viewed=null;
+ const {VlbCreateBatch}=await compile('vlb-create-batch.jsx',{React,SmartSelect:'select',useState:h.useState,useRef:h.useRef,useEffect:()=>{},fetch:async()=>({ok:true,json:async()=>({})}),canonicalSiteName,displaySiteName,bookShiftCode,systemBookDate,vlbRecordSource,vlbRecordEntryType,VlbBatchCardDetails:()=>null,VlbBatchReport:()=>null,VlbBatchGovernance:()=>null,VlbReopenDialog:()=>null,VlbBatchHolds:()=>null,NewEquipmentRequest:()=>null,window:{}},['VlbCreateBatch']);
+ const base={site:'Jayant OC',report_date:'2026-11-01',shift:'S1',records:[],created_by:'alice',twoStage:true,stage:'vlb_open'};
+ const render=()=>{h.reset();return VlbCreateBatch({session:{token:'t'},ReportSection,onExit(){},onManual(){},onScan(){}})};
+ render();h.slots[0]={sites:['Jayant OC'],shifts:[{site:'Jayant OC',name:'Shift A',shiftCode:'I'}]};h.slots[8]=false;h.slots[13]=true;h.slots[14]={login:'alice',mis:true};h.slots[22]=true;
+ h.slots[3]=[{...base,id:'a',name:'B01',entry_count:'9'},{...base,id:'b',name:'B02',entry_count:'120'},{...base,id:'c',name:'B03',entry_count:'40'}];
+ const list=nodes(render(),n=>n.type===ReportSection&&n.props.category==='vlb-site-batches')[0].props;
+ assert.equal(list.showSearch,false,'the Search batches box stays the one search');
+ assert.deepEqual(list.columns.map(column=>column.label),['Batch ID','Cards','VLB','LMV','ELB','Status','Action']);
+ assert.deepEqual(list.rows.map(b=>b.name),['B01','B02','B03']);
+ const cards=list.columns.find(column=>column.key==='cards');
+ assert.deepEqual(sortRowsBlanksLast(list.rows,{key:'cards',direction:'asc'},b=>cards.sortValue(b)).map(b=>b.name),['B01','B03','B02'],'9, 40, 120 by value');
+ const actions=list.columns.at(-1).render(list.rows[0]);
+ assert.ok(nodes(actions,n=>n.type==='button'&&React.Children.toArray(n.props.children).join('')==='View report').length,'View report stays on every row');
+ assert.equal(nodes(render(),n=>n.type==='div'&&n.props.id==='vlb-batch-site-panel')[0]&&nodes(nodes(render(),n=>n.type==='div'&&n.props.id==='vlb-batch-site-panel')[0],n=>n.type==='table').length,0,'no second, hand-drawn table');
 });

@@ -21,7 +21,7 @@ for(const kind of ['vehicle','equipment'])test(kind+' scan table aborts reading 
  const deletes=buttons.filter(button=>button.props.children==='Delete card');assert.equal(deletes.length,cards.length);
  for(let i=0;i<cards.length;i++){assert.equal(Boolean(deletes[i].props.disabled),i>=4);deletes[i].props.onClick();}
  assert.deepEqual(deleted,cards.slice(0,4));
- const html=renderToStaticMarkup(tree);assert.match(html,/scan-report-card-actions/);assert.match(html,/WhatsApp OTP verification/);
+ const html=renderToStaticMarkup(tree);assert.match(html,/scan-report-card-actions/);assert.doesNotMatch(html,/WhatsApp OTP verification/);
 });
 test('read-only reports have no mutation controls; busy or dirty state disables deletion',()=>{
  const report=Component({batch,cards});assert.ok(!nodes(report,'button').some(button=>['Delete card','Abort scanning'].includes(button.props.children)));

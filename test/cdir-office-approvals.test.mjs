@@ -62,7 +62,7 @@ test('real HTTP office/site approvals and employee/contact deletion retain histo
  assert.equal((await call('general','deletion-requests')).status,403);
  const officeId=await employee('OFFICE1');
  const lookup=(await call('hr','employee-transfers/lookup?empId=OFFICE1')).body;
- const transfer={...lookup,destination:'Majri OC',effectiveDate:'2026-10-09',remarks:'New assignment'};
+ const transfer={...lookup,destination:'Majri OC',effectiveDate:'2026-10-09',transfer:{transferType:'Permanent',reason:'Business need',relievingDate:'2026-10-08'},remarks:'New assignment'};
  const sent=await call('hr','employee-transfers','POST',transfer);assert.equal(sent.status,201,JSON.stringify(sent.body));
  assert.equal((await deletion('hr',officeId)).status,409);
  assert.equal((await call('pm',`employee-transfers/${sent.body.id}/approve`,'PATCH',{})).status,403);
@@ -71,7 +71,7 @@ test('real HTTP office/site approvals and employee/contact deletion retain histo
  assert.equal((await db.query('SELECT record_data FROM master_records WHERE id=$1',[officeId])).rows[0].record_data.site,'Corporate Office, Nagpur');
  assert.equal((await call('pm',`employee-transfers/${sent.body.id}/accept`,'PATCH',{})).status,200);
  const back=(await call('hr','employee-transfers/lookup?empId=OFFICE1')).body;
- const returning=await call('hr','employee-transfers','POST',{...back,destination:'Head Office, Chandrapur',effectiveDate:'2026-10-10'});assert.equal(returning.status,201,JSON.stringify(returning.body));
+ const returning=await call('hr','employee-transfers','POST',{...back,destination:'Head Office, Chandrapur',effectiveDate:'2026-10-10',transfer:{transferType:'Permanent',reason:'Business need',relievingDate:'2026-10-08'}});assert.equal(returning.status,201,JSON.stringify(returning.body));
  await call('pm',`employee-transfers/${returning.body.id}/approve`,'PATCH',{});
  assert.equal((await call('nagpur',`employee-transfers/${returning.body.id}/accept`,'PATCH',{})).status,403);
  assert.equal((await call('chandrapur',`employee-transfers/${returning.body.id}/accept`,'PATCH',{})).status,200);
@@ -80,7 +80,7 @@ test('real HTTP office/site approvals and employee/contact deletion retain histo
  const pending=await deletion('hr',id);assert.equal(pending.status,202);assert.equal(await exists(id),true);
  assert.equal((await deletion('hr',id)).status,409);
  const pendingLookup=(await call('hr','employee-transfers/lookup?empId=DELETE1')).body;
- assert.equal((await call('hr','employee-transfers','POST',{...pendingLookup,destination:'Majri OC',effectiveDate:'2026-10-09'})).status,409);
+ assert.equal((await call('hr','employee-transfers','POST',{...pendingLookup,destination:'Majri OC',effectiveDate:'2026-10-09',transfer:{transferType:'Permanent',reason:'Business need',relievingDate:'2026-10-08'}})).status,409);
  assert.equal((await decide('pm',pending.body.id)).status,403);assert.equal((await decide('chandrapur',pending.body.id)).status,403);assert.equal((await decide('admin',pending.body.id)).status,403);
  failNotice=true;assert.equal((await decide('nagpur',pending.body.id)).status,500);assert.equal(await exists(id),true);failNotice=false;
  assert.equal((await decide('nagpur',pending.body.id)).status,200);assert.equal(await exists(id),false);assert.equal((await decide('nagpur',pending.body.id)).status,409);

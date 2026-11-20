@@ -1,10 +1,24 @@
 import React,{useEffect,useState} from 'react';
 import './master-sync.css';
 import TableSmartPrint from './table-smart-print.jsx';
+import {SortableHeader,sortRowsBlanksLast} from './sortable-table.jsx';
+import SmartSearchReport from './smart-search-report.jsx';
 
 const labels={pending:'Waiting / retrying',review:'Needs MIS review',verified:'MIS verified in Pulse'};
-export default function PulseTripVerification({session,logbookId}){
+// The job list's headings sort it; the Recheck column does not.
+const jobColumns=[['card','Trip card / VLB'],['vehicle','Vehicle / site'],['status','Status'],['request','Pulse request'],['details','Details']];
+function jobValue(job={},key){
+ if(key==='card')return job.card_number||'';
+ if(key==='vehicle')return job.door||'';
+ if(key==='status')return labels[job.status]||job.status||'';
+ if(key==='request')return job.request_ref||'';
+ if(key==='details')return job.reason||'';
+ return '';
+}
+const istTime=value=>new Date(value).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'});
+export default function PulseTripVerification({session,logbookId,ReportSection}){
  const [data,setData]=useState(null),[error,setError]=useState(''),[working,setWorking]=useState('');
+ const [jobSort,setJobSort]=useState({key:'',direction:'asc'});const changeJobSort=key=>setJobSort(current=>({key,direction:current.key===key&&current.direction==='asc'?'desc':'asc'}));
  useEffect(()=>{
   const controller=new AbortController();
   let timer;
@@ -35,8 +49,13 @@ export default function PulseTripVerification({session,logbookId}){
   {data&&<><p role="status">{!data.enabled?'Automatic sending is disabled in this local scanner environment.':!data.connected?'Sign in to Pulse II normally to connect Pulse automatically. No separate connection password is required.':'Connected to Pulse. Saved trip cards are checked automatically every minute.'}</p>
    {data.error&&<p role="alert">Last check failed: {data.error}</p>}
    {!logbookId&&<p>Verified: {data.counts.verified||0} · Waiting: {data.counts.pending||0} · Needs MIS review: {data.counts.review||0}</p>}
+   {/* The full list (Sync all masters) gets the VLB batch look: Smart Search and a filter and sort menu on every heading. */}
+   {ReportSection&&!logbookId?<SmartSearchReport ReportSection={ReportSection} title="Automatic MIS verification" category="pulse-trip-verification" description={data.jobs.length+' trip cards'} searchLabel="Smart Search automatic MIS verification" placeholder="Trip card, VLB number, vehicle, site or Pulse request" rows={data.jobs} rowKey={job=>job.logbook_id} emptyMessage="No trip cards queued yet. Newly saved scanned vehicle trip cards will appear here."
+    columns={[...jobColumns.map(([key,label])=>({key,label,blanksLast:true,value:job=>jobValue(job,key),
+     render:key==='card'?job=><>{job.card_number||'—'}<small>{job.book_no}</small></>:key==='vehicle'?job=><>{job.door}<small>{job.site}</small></>:key==='details'?job=><>{job.reason}{job.first_trip_at&&<small>First trip: {istTime(job.first_trip_at)}</small>}{job.verified_at&&<small>Verified: {istTime(job.verified_at)}</small>}</>:undefined})),
+     {key:'recheck',label:'Recheck',value:()=>'',render:job=>job.status!=='verified'&&<button type="button" disabled={Boolean(working)||!data.connected||!data.enabled} onClick={()=>void retry(job.logbook_id)}>Recheck</button>}]}/>:<>
    {data.jobs.length>0&&<TableSmartPrint row title="Automatic MIS verification"/>}
-   <div className="master-sync-table"><table><thead><tr><th>Trip card / VLB</th><th>Vehicle / site</th><th>Status</th><th>Pulse request</th><th>Details</th><th/></tr></thead><tbody>{data.jobs.map(job=><tr key={job.logbook_id}><td>{job.card_number||'—'}<small>{job.book_no}</small></td><td>{job.door}<small>{job.site}</small></td><td>{labels[job.status]}</td><td>{job.request_ref||'—'}</td><td>{job.reason}{job.first_trip_at&&<small>First trip: {new Date(job.first_trip_at).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})}</small>}{job.verified_at&&<small>Verified: {new Date(job.verified_at).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})}</small>}</td><td>{job.status!=='verified'&&<button type="button" disabled={Boolean(working)||!data.connected||!data.enabled} onClick={()=>void retry(job.logbook_id)}>Recheck</button>}</td></tr>)}{!data.jobs.length&&<tr><td colSpan={6}>{logbookId?'This entry has no automatic verification job. Newly saved scanned vehicle trip cards are included.':'No trip cards queued yet. Newly saved scanned vehicle trip cards will appear here.'}</td></tr>}</tbody></table></div></>}
+   <div className="master-sync-table"><table><thead><tr>{jobColumns.map(([key,label])=><SortableHeader key={key} label={label} sortKey={key} sort={jobSort} onSort={changeJobSort} filterIcon={false}/>)}<th/></tr></thead><tbody>{sortRowsBlanksLast(data.jobs,jobSort,jobValue).map(job=><tr key={job.logbook_id}><td>{job.card_number||'—'}<small>{job.book_no}</small></td><td>{job.door}<small>{job.site}</small></td><td>{labels[job.status]}</td><td>{job.request_ref||'—'}</td><td>{job.reason}{job.first_trip_at&&<small>First trip: {new Date(job.first_trip_at).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})}</small>}{job.verified_at&&<small>Verified: {new Date(job.verified_at).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})}</small>}</td><td>{job.status!=='verified'&&<button type="button" disabled={Boolean(working)||!data.connected||!data.enabled} onClick={()=>void retry(job.logbook_id)}>Recheck</button>}</td></tr>)}{!data.jobs.length&&<tr><td colSpan={6}>{logbookId?'This entry has no automatic verification job. Newly saved scanned vehicle trip cards are included.':'No trip cards queued yet. Newly saved scanned vehicle trip cards will appear here.'}</td></tr>}</tbody></table></div></>}</>}
   {!data&&!error&&<p role="status">Loading verification status…</p>}
  </section>;
 }

@@ -46,6 +46,7 @@ Set by the owner on 15 November 2026: every report, today's and every future one
 - Title each step `Step 1 · …`, `Step 2 · …`: a step that opens below the screen is scrolled into view by that title.
 - The pattern, confirmed by the owner on 15 November 2026 with a sample (P1, then P2 under it, then P3): **Step 1** one line per site; **Step 2** the date by shift table, built with `DateShiftGrid` (src/date-shift-grid.jsx): dates down the side, the shifts across, in each shift box the count followed by a coloured box for every colour there, then the day totals and an All dates line; pressing a count or a colour opens **Step 3** (that date and shift) under it. Never draw Step 2 as one line per date and shift.
 - A step titled `Step N · …` shows only its title and Smart Print above the table: no search box, record count, Rows or Actions, every line on screen, every column (no saved layout hides one), and the table fits the screen (headings and names wrap; codes such as door numbers stay on one line).
+- Owner, 19 Nov 2026: a Step table's headings sort on one click (a second click reverses it), with no ↑ / ↓ / filter menu; the total line stays at the bottom. `ReportSection` does this by itself for every `Step N · …` title; hand-drawn step tables use `SortableHeader` from `src/sortable-table.jsx`.
 - `test/report-step-style.test.mjs` checks this.
 
 # Sidebar auto-hides while a scan card is open

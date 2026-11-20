@@ -1,0 +1,58 @@
+/* Owner, 19 Nov 2026: every report step heading (Step 1, Step 2 …, on the Reports page and in the dashboard Sr No tabs)
+   stays in view under the app's top bar while its own lines scroll, and is bold and easy to pick out: a coloured edge on
+   the left, the title in dark ink and the line under it dark and bold. Each heading stays only inside its own step; the
+   next step's heading takes its place when that step reaches the top. The bar's height is measured (--mis-top-stick,
+   top-bar-stick.js). */
+.generated-report-section[data-step-look] > .reports-section-heading {
+  border-left: 5px solid var(--report-accent, #56309a);
+  background: #fbf9fe;
+}
+.generated-report-section[data-step-look] > .reports-section-heading h2 { color: #14223b; font-weight: 800; }
+.generated-report-section[data-step-look] > .reports-section-heading p { color: #2d3b52; font-size: 11px; font-weight: 700; }
+:root[data-theme="dark"] .generated-report-section[data-step-look] > .reports-section-heading { background: #18263d; border-left-color: #b28cf0; }
+:root[data-theme="dark"] .generated-report-section[data-step-look] > .reports-section-heading h2 { color: #f2f6fc; }
+:root[data-theme="dark"] .generated-report-section[data-step-look] > .reports-section-heading p { color: #d5deeb; }
+
+/* The Batch Status report kept the width of its widest table, so the whole report scrolled sideways inside its dashboard
+   tab. It now keeps to the width of the screen and the table scrolls sideways in its own box, as in every other step. */
+.production-reports.batch-status-report { grid-template-columns: minmax(0, 1fr); }
+
+/* On a phone a pinned heading would cover most of the screen, so there the page scrolls as before. */
+@media (min-width: 761px) {
+  .generated-report-section[data-step-look] { overflow: visible; }
+  .generated-report-section[data-step-look] > .reports-section-heading {
+    position: sticky;
+    top: var(--mis-top-stick, 0px);
+    z-index: 7;
+    box-shadow: 0 6px 12px -8px rgba(23, 35, 60, .25);
+  }
+  /* A dashboard Sr No tab scrolled sideways on its own, which held every heading inside it instead of under the top bar.
+     Its reports now keep to its width (above), so it no longer needs to. */
+  .lb-reports > .lb-sr:not([hidden]) > section { overflow-x: visible; }
+  /* A step opened from the one above lands with its heading below the top bar, not under it. */
+  .generated-report-section[data-step-look] { scroll-margin-top: var(--mis-top-stick, 0px); }
+
+  /* Owner, 19 Nov 2026: the column headings of every step table stay in view too, right under the step heading, and every
+     line stays on the page (measured by step-table-heads.js). A table that fits the width: the boxes around it stop
+     scrolling sideways, so its heading row stays in view with the page itself. */
+  .generated-report-section[data-step-look] :is(.reports-detail-table, .ar-grid-wrap, .report-totals-scroll)[data-head-fits] { max-height: none; overflow: visible; }
+  .generated-report-section[data-step-look] table[data-head="page"] > thead th {
+    position: sticky;
+    top: calc(var(--mis-top-stick, 0px) + var(--step-head, 0px));
+    z-index: 6;
+  }
+  /* A wider table keeps its sideways scroll; its heading row is moved down as the page scrolls (--head-shift). */
+  .generated-report-section[data-step-look] table[data-head="shift"] > thead th {
+    transform: translateY(var(--head-shift, 0px));
+    z-index: 6;
+  }
+}
+
+/* The dashboard A3 PDF draws a copy of the page (data-printing): every heading where it was written. */
+[data-printing] .generated-report-section[data-step-look] > .reports-section-heading { position: static; box-shadow: none; }
+[data-printing] .generated-report-section[data-step-look] table[data-head] > thead th { top: 0; transform: none; }
+
+@media print {
+  .generated-report-section[data-step-look] > .reports-section-heading { position: static; box-shadow: none; }
+  .generated-report-section[data-step-look] table[data-head] > thead th { position: static; transform: none; }
+}

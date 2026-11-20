@@ -11,11 +11,13 @@ import {displaySiteName} from '../shared/region-scope.mjs';
 import {withLmvEntrySite} from './vlb-entry-context.mjs';
 import {activeWorkOrders,bookShiftCode,systemBookDate} from '../shared/trip-card-rules.mjs';
 import {vlbRecordSource,vlbRecordEntryType} from '../shared/vlb-batch-format.mjs';
-import VlbBatchReport from './vlb-batch-report.jsx';
+import VlbBatchReport,{ElbSavedCardsReport} from './vlb-batch-report.jsx';
+import SmartSearchReport from './smart-search-report.jsx';
 import VlbBatchGovernance from './vlb-batch-governance.jsx';
 import VlbReopenDialog from './vlb-reopen-dialog.jsx';
 import VlbBatchHolds,{NewEquipmentRequest} from './vlb-batch-holds.jsx';
 import TableSmartPrint from './table-smart-print.jsx';
+import {SortableHeader,sortRowsBlanksLast} from './sortable-table.jsx';
 import './log-book-form.css';
 import './vlb-create-batch.css';
 
@@ -29,7 +31,6 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
  const [showApproval,setShowApproval]=useState(false);
  const [batchSearch,setBatchSearch]=useState('');
  const [batchTab,setBatchTab]=useState('open');
- const [pmApprovalTrial,setPmApprovalTrial]=useState(null);
  const [recovery,setRecovery]=useState(null),[showDeleted,setShowDeleted]=useState(false);
  const [selectedCard,setSelectedCard]=useState(null);
  useEffect(()=>setSelectedCard(null),[viewed?.id]);
@@ -50,20 +51,24 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
  useEffect(()=>setInlineCard(null),[viewed?.id]);
  const vlbLocked=viewed?.closed_at||viewed?.trialExpired||(twoStage&&stage!=='vlb_open');
  const elbLocked=viewed?.closed_at||stage!=='elb_open'||viewed?.trialExpired;
+ const lmvLocked=viewed?.closed_at||stage!=='lmv_open'||Boolean(viewed?.stageWait);
+ const cardsLocked=kind=>kind==='equipment'?elbLocked:kind==='lmv'?lmvLocked:vlbLocked;
+ // An open batch never stops a user (owner, 19 Nov 2026): VLB, LMV and ELB cards show Edit
+ // while that stage is open, whoever created or reopened the batch.
  const canEditCard=(record,kind)=>kind==='equipment'
   ? !elbLocked&&viewed.canEditSavedFleet===true&&!record.data?.operatorSplit
-  : !vlbLocked&&(actor?.mis||actor?.admin)&&(!viewed.amendment_by||viewed.amendment_by.toLowerCase()===actor.login?.toLowerCase());
+  : !cardsLocked(kind);
  const editingCard=(record,kind)=>inlineCard?.batchId===viewed.id&&inlineCard?.id===record.id&&inlineCard?.kind===kind;
  const editCard=(record,kind,field)=>{
   if(inlineCard&&!editingCard(record,kind)&&!window.confirm('Discard unsaved changes and edit this card?'))return;
   setInlineCard({batchId:viewed.id,id:record.id,kind,field});
  };
- const canDeleteCard=(record,kind)=>!(kind==='equipment'?elbLocked:vlbLocked)&&
-  (actor?.mis||actor?.admin)&&Number.isInteger(record.revision)&&
-  (!viewed.amendment_by||viewed.amendment_by.toLowerCase()===actor.login?.toLowerCase());
+ // LMV cards are deleted from the LMV Log Book by an MIS administrator, not from this table.
+ const canDeleteCard=(record,kind)=>kind!=='lmv'&&!cardsLocked(kind)&&
+  Number.isInteger(record.revision);
  const action=(record,kind)=><div className="vlb-batch-actions">
   {canEditCard(record,kind)? <button type="button" aria-label={'Edit '+record.book_no} aria-expanded={editingCard(record,kind)} onClick={()=>editCard(record,kind)}>Edit</button>
-  : <span>{(kind==='equipment'?elbLocked:vlbLocked)?'Locked':kind==='equipment'&&record.data?.operatorSplit?'ELB Manual':'View only'}</span>}
+  : <span>{cardsLocked(kind)?'Locked':kind==='equipment'&&record.data?.operatorSplit?'ELB Manual':'View only'}</span>}
   {canDeleteCard(record,kind)&&<button type="button" className="danger" aria-label={'Delete '+record.book_no} disabled={busy||Boolean(inlineCard)} onClick={()=>deleteCard(record,kind)}>Delete</button>}
  </div>;
  const fieldCell=(record,kind,field,value)=>canEditCard(record,kind)
@@ -101,7 +106,7 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
  const listLoad=useRef(null);
  useEffect(()=>{const controller=new AbortController();let pending=false,again=false,failed=false;
   const load=()=>{if(pending){again=true;return}pending=true;
-   return read('/api/vlb-batches',{signal:controller.signal}).then(data=>{if(controller.signal.aborted)return;setBatches(data.batches);setOpenBatchStatuses(data.openBatchStatuses||[]);setOpenBatch(data.openBatch);setTwoStageList(Boolean(data.twoStage));setActor(data.actor);setPmApprovalTrial(data.pmApprovalTrial);setBatchStatusReady(true);if(failed){failed=false;setError('')}}).catch(e=>{if(!controller.signal.aborted){failed=true;setBatchStatusReady(false);setError(e.message)}}).finally(()=>{pending=false;if(again&&!controller.signal.aborted){again=false;void load()}});
+   return read('/api/vlb-batches',{signal:controller.signal}).then(data=>{if(controller.signal.aborted)return;setBatches(data.batches);setOpenBatchStatuses(data.openBatchStatuses||[]);setOpenBatch(data.openBatch);setTwoStageList(Boolean(data.twoStage));setActor(data.actor);setBatchStatusReady(true);if(failed){failed=false;setError('')}}).catch(e=>{if(!controller.signal.aborted){failed=true;setBatchStatusReady(false);setError(e.message)}}).finally(()=>{pending=false;if(again&&!controller.signal.aborted){again=false;void load()}});
   };
   listLoad.current=load;
   // A board left open in a background tab stops asking; it catches up when shown again.
@@ -130,6 +135,10 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
  const detailCache=useRef({id:'',etag:'',data:null});
  const [deleteBatchId,setDeleteBatchId]=useState(null);
  const [batchSiteByTab,setBatchSiteByTab]=useState({});
+ // Click-a-heading sorting for the site batch list and open batches across sites.
+ const [batchSort,setBatchSort]=useState({key:'',direction:'asc'}),[openSort,setOpenSort]=useState({key:'',direction:'asc'});
+ const nextSort=key=>current=>({key,direction:current.key===key&&current.direction==='asc'?'desc':'asc'});
+ const changeBatchSort=key=>setBatchSort(nextSort(key)),changeOpenSort=key=>setOpenSort(nextSort(key));
  const readDetail=async(id,signal)=>{
   const cached=detailCache.current.id===id?detailCache.current:null;
   const response=await fetch('/api/vlb-batches/'+id,{signal,cache:'no-store',headers:{Authorization:'Bearer '+session.token,...(cached?.etag?{'If-None-Match':cached.etag}:{})}});
@@ -208,6 +217,11 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
  const requestedBatchSite=batchSiteByTab[batchTab];
  const batchSite=batchSites.has(requestedBatchSite)?requestedBatchSite:'';
  const chooseBatchSite=site=>setBatchSiteByTab(current=>({...current,[batchTab]:site}));
+ const siteBatchActions=b=><div className="vlb-batch-actions"><button type="button" disabled={busy||detailLoading} onClick={()=>view(b)}>View report</button>{(actor?.mis||actor?.admin)&&<>{batchTab==='open'?(twoStageList&&b.stage!=='elb_open'?<button type="button" disabled={busy||detailLoading} onClick={()=>view(b,true)}>Open batch</button>:<button type="button" disabled={busy||detailLoading||!(b.canClose??(String(b.amendment_by||b.created_by||'').toLowerCase()===actor?.login))} onClick={()=>close(b)}>{twoStageList?'Close batch':'Save & lock batch'}</button>):<button type="button" disabled={busy||detailLoading} onClick={()=>view(b,true)}>{batchTab==='edit'?(b.closed_at?'Reopen batch':'Edit batch'):'Open batch'}</button>}<button type="button" disabled={busy||detailLoading} onClick={()=>remove(b)}>Delete</button><button type="button" className="danger" disabled={busy||detailLoading} onClick={()=>erase(b)}>Delete permanently</button></>}</div>;
+ // Site batches on the shared report table: a filter and sort menu on every heading, Rows, Actions and Smart Print, as on VLB.
+ const siteBatchReportColumns=[...siteBatchColumns.filter(([key])=>twoStageList||!batchStageKeys.includes(key)).map(([key,label])=>({key,label,blanksLast:true,
+  value:b=>key==='name'?b.name:key==='cards'?b.entry_count:key==='status'?batchListStatus(b,twoStageList):batchStageCells(b)[batchStageKeys.indexOf(key)],
+  sortValue:b=>siteBatchValue(b,key,twoStageList)})),{key:'actions',label:'Action',value:()=>'',render:siteBatchActions}];
  const search=batchSearch.trim().toLowerCase();
  const visibleBatches=batches.filter(b=>(batchTab==='edit'||(batchTab==='close'?Boolean(b.closed_at):!b.closed_at))
   &&(!batchSite||canonicalSiteName(b.site)===batchSite)
@@ -220,14 +234,13 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
    {preview?.previousShift&&!preview?.creationBlocker&&!preview?.existingBatch&&<p role="status">{preview.previousShift.message}</p>}
    {twoStageList&&!viewed&&preview?.existingBatch&&<p role="status">A batch already exists for this site, date and shift.</p>}
   </section>
-  {pmApprovalTrial?.active&&<p role="status" className="vlb-batch-notice">VLB trial: PM approval is paused until {new Date(pmApprovalTrial.endsAt).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})} IST. Authorized MIS users can reopen batches directly.</p>}
   {error&&<p className="logbook-message error" role="alert">{error}</p>}
  {openBatch&&<div className="vlb-batch-notice vlb-open-batch-notice" role="status"><strong>Open batch: {openBatch.restricted?'Site access changed':openBatch.name}</strong><p>{openBatch.stageWait||(twoStageList?(openBatch.stage==='elb_open'?'VLB is locked. Save ELBs for equipment with trips, then close and lock ELB. Equipment with zero trips is optional.':openBatch.stage==='lmv_open'?'Enter LMV cards, then lock LMV to open ELB.':'Enter VLB cards, then lock VLB to open LMV.'):'Continue Manual, Scan or Upload in this batch. Use Save & lock batch when finished.')}</p>{openBatch.restricted?<p>Your site assignment has changed. Contact an administrator to restore access before saving this batch.</p>:<div className="vlb-batch-actions"><button type="button" disabled={busy||detailLoading} onClick={()=>view(openBatch,true)}>Continue open batch</button>{twoStageList?(openBatch.stage==='elb_open'&&<button type="button" disabled={busy||openBatch.canClose===false} onClick={close}>Close &amp; lock ELB</button>):openBatch.canClose!==false&&<button type="button" disabled={busy} onClick={close}>Save &amp; lock batch</button>}</div>}</div>}
 
   <button type="button" onClick={()=>setShowDeleted(v=>!v)}>{showDeleted?'Hide deleted batches':'Deleted batches'}</button>
   {showDeleted&&<DeletedVlbBatches read={read} refresh={refresh} canManage={actor?.canCreate} onRestore={batch=>setRecovery({batch,operation:'restore'})} onPurge={batch=>setRecovery({batch,operation:'purge'})} onPurgeAll={()=>setRecovery({batch:{id:'all',name:'All deleted batches'},operation:'purge-all'})}/>}
   {recovery&&<VlbBatchDeletion key={recovery.batch.id+recovery.operation} {...recovery} read={read} onDismiss={()=>setRecovery(null)} onChanged={()=>{clearView();setOpenBatch(null);setRefresh(n=>n+1);setShowDeleted(true)}}/>}
-  <section className="logbook-section vlb-batch-list"><div className="vlb-batch-heading"><h2>Site batches</h2><div className="vlb-batch-tabs" role="tablist" aria-label="Batch management">{[['open','Open'],['close','Closed'],['edit','Edit']].map(([id,label])=><button key={id} type="button" role="tab" id={'vlb-batch-tab-'+id} aria-selected={batchTab===id} aria-controls="vlb-batch-panel" tabIndex={batchTab===id?0:-1} disabled={busy||detailLoading} onKeyDown={event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();const ids=['open','close','edit'],index=ids.indexOf(batchTab),next=event.key==='Home'?0:event.key==='End'?2:(index+(event.key==='ArrowRight'?1:2))%3;setBatchTab(ids[next]);event.currentTarget.parentElement.querySelectorAll('[role=tab]')[next]?.focus();}} onClick={()=>setBatchTab(id)}>{label}</button>)}</div></div><div role="tabpanel" id="vlb-batch-panel" aria-labelledby={'vlb-batch-tab-'+batchTab}><p>{batchTab==='open'?'Open a batch to continue Manual, Scan or Upload.':batchTab==='close'?'View saved VLB details in closed batches. Reopen through Edit when corrections are required.':(pmApprovalTrial?.active?'Select a batch to edit its cards. Reopen locked batches directly during the VLB trial.':'Select a batch to edit its cards. Locked batches require site PM approval before editing.')}</p>
+  <section className="logbook-section vlb-batch-list"><div className="vlb-batch-heading"><h2>Site batches</h2><div className="vlb-batch-tabs" role="tablist" aria-label="Batch management">{[['open','Open'],['close','Closed'],['edit','Edit']].map(([id,label])=><button key={id} type="button" role="tab" id={'vlb-batch-tab-'+id} aria-selected={batchTab===id} aria-controls="vlb-batch-panel" tabIndex={batchTab===id?0:-1} disabled={busy||detailLoading} onKeyDown={event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();const ids=['open','close','edit'],index=ids.indexOf(batchTab),next=event.key==='Home'?0:event.key==='End'?2:(index+(event.key==='ArrowRight'?1:2))%3;setBatchTab(ids[next]);event.currentTarget.parentElement.querySelectorAll('[role=tab]')[next]?.focus();}} onClick={()=>setBatchTab(id)}>{label}</button>)}</div></div><div role="tabpanel" id="vlb-batch-panel" aria-labelledby={'vlb-batch-tab-'+batchTab}><p>{batchTab==='open'?'Open a batch to continue Manual, Scan or Upload.':batchTab==='close'?'View saved VLB details in closed batches. Reopen through Edit when corrections are required.':'Select a batch to edit its cards. Reopen a locked batch to change it.'}</p>
   <div className="vlb-batch-site-tabs" role="tablist" aria-label="Batch sites">
    {siteTabs.map(([site,label],index)=><button key={site} type="button" role="tab" id={'vlb-batch-site-'+index} aria-selected={batchSite===site} aria-controls="vlb-batch-site-panel" tabIndex={batchSite===site?0:-1}
     onKeyDown={event=>{
@@ -239,13 +252,13 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
     }} onClick={()=>chooseBatchSite(site)}>{label}</button>)}
   </div>
   <div role="tabpanel" id="vlb-batch-site-panel" aria-labelledby={'vlb-batch-site-'+siteTabs.findIndex(([site])=>site===batchSite)}>
-  <label>Search batches<input type="search" aria-label="Search VLB batches" placeholder="Batch name, site, date or shift" value={batchSearch} onChange={e=>setBatchSearch(e.target.value)}/></label>{visibleBatches.length>0&&<TableSmartPrint row title={'Site batches · '+(batchTab==='open'?'Open':batchTab==='close'?'Closed':'Open and closed')+(batchSite?' · '+batchSites.get(batchSite):'')}/>}<div className="logbook-table-wrap"><table className="logbook-table"><thead><tr><th>Batch ID</th><th>Cards</th>{twoStageList&&<><th>VLB</th><th>LMV</th><th>ELB</th></>}<th>Status</th><th/></tr></thead><tbody>{visibleBatches.map(b=><tr key={b.id}><td>{b.name}</td><td>{b.entry_count}</td>{twoStageList&&batchStageCells(b).map((label,index)=><td key={index}>{label}</td>)}<td>{twoStageList?stageLabel(b.stage,b):b.closed_at?'SAVED · LOCKED':b.amendment_by?'REOPENED':'OPEN'}</td><td><div className="vlb-batch-actions"><button type="button" disabled={busy||detailLoading} onClick={()=>view(b)}>View report</button>{(actor?.mis||actor?.admin)&&<>{batchTab==='open'?(twoStageList&&b.stage!=='elb_open'?<button type="button" disabled={busy||detailLoading} onClick={()=>view(b,true)}>Open batch</button>:<button type="button" disabled={busy||detailLoading||!(b.canClose??(String(b.amendment_by||b.created_by||'').toLowerCase()===actor?.login))} onClick={()=>close(b)}>{twoStageList?'Close batch':'Save & lock batch'}</button>):<button type="button" disabled={busy||detailLoading} onClick={()=>view(b,true)}>{batchTab==='edit'?(b.closed_at?(pmApprovalTrial?.active?'Reopen batch':'Request PM approval'):'Edit batch'):'Open batch'}</button>}<button type="button" disabled={busy||detailLoading} onClick={()=>remove(b)}>Delete</button><button type="button" className="danger" disabled={busy||detailLoading} onClick={()=>erase(b)}>Delete permanently</button></>}</div></td></tr>)}{!visibleBatches.length&&<tr><td colSpan={twoStageList?7:4}>{batchTab==='edit'?'No batches match this site and search.':batchTab==='close'?'No closed batches match this site and search.':'No open batches match this site and search.'}</td></tr>}</tbody></table></div></div></div></section>
+  <label>Search batches<input type="search" aria-label="Search VLB batches" placeholder="Batch name, site, date or shift" value={batchSearch} onChange={e=>setBatchSearch(e.target.value)}/></label>{ReportSection?<ReportSection title={'Site batches · '+(batchTab==='open'?'Open':batchTab==='close'?'Closed':'Open and closed')+(batchSite?' · '+batchSites.get(batchSite):'')} category="vlb-site-batches" description={visibleBatches.length+' batch'+(visibleBatches.length===1?'':'es')} showSearch={false} recordDateFilter={false} smartPrintAction columns={siteBatchReportColumns} rows={visibleBatches} rowKey={b=>b.id} emptyMessage={batchTab==='edit'?'No batches match this site and search.':batchTab==='close'?'No closed batches match this site and search.':'No open batches match this site and search.'}/>:<>{visibleBatches.length>0&&<TableSmartPrint row title={'Site batches · '+(batchTab==='open'?'Open':batchTab==='close'?'Closed':'Open and closed')+(batchSite?' · '+batchSites.get(batchSite):'')}/>}<div className="logbook-table-wrap"><table className="logbook-table"><thead><tr>{siteBatchColumns.filter(([key])=>twoStageList||!batchStageKeys.includes(key)).map(([key,label])=><SortableHeader key={key} label={label} sortKey={key} sort={batchSort} onSort={changeBatchSort} filterIcon={false}/>)}<th/></tr></thead><tbody>{sortRowsBlanksLast(visibleBatches,batchSort,(b,key)=>siteBatchValue(b,key,twoStageList)).map(b=><tr key={b.id}><td>{b.name}</td><td>{b.entry_count}</td>{twoStageList&&batchStageCells(b).map((label,index)=><td key={index}>{label}</td>)}<td>{batchListStatus(b,twoStageList)}</td><td>{siteBatchActions(b)}</td></tr>)}{!visibleBatches.length&&<tr><td colSpan={twoStageList?7:4}>{batchTab==='edit'?'No batches match this site and search.':batchTab==='close'?'No closed batches match this site and search.':'No open batches match this site and search.'}</td></tr>}</tbody></table></div></>}</div></div></section>
   {actor?.mis&&batchStatusReady&&<section className="logbook-section vlb-batch-list">
    <h2>Open batches across all sites</h2>
    <div className="logbook-table-wrap"><table className="logbook-table">
-    <thead><tr><th scope="col">Site</th><th scope="col">Date</th><th scope="col">Shift</th><th scope="col">Stage</th></tr></thead>
+    <thead><tr>{openBatchColumns.map(([key,label])=><SortableHeader key={key} scope="col" label={label} sortKey={key} sort={openSort} onSort={changeOpenSort} filterIcon={false}/>)}</tr></thead>
     <tbody>
-     {openBatchStatuses.map(({site,date,shift,stage})=><tr key={JSON.stringify([site,date,shift])}>
+     {sortRowsBlanksLast(openBatchStatuses,openSort,openBatchValue).map(({site,date,shift,stage})=><tr key={JSON.stringify([site,date,shift])}>
       <td>{displaySiteName(site)}</td><td>{date}</td><td>{shift}</td><td>{stageLabel(stage)}</td>
      </tr>)}
      {!openBatchStatuses.length&&<tr><td colSpan={4}>No open batches across all sites.</td></tr>}
@@ -274,38 +287,22 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
      {!viewed.stageWait&&viewed.canClose===false&&<p role="status">The batch owner or an MIS administrator can close and lock this ELB.</p>}
      <div id="vlb-equipment-elb-details" hidden={equipmentElbHidden}>
      {viewed.fleetProgress&&<p role="status">ELBs saved: {viewed.fleetProgress.saved} · Required remaining: {viewed.fleetProgress.remaining}{viewed.fleetProgress.optionalUnsaved?' · '+viewed.fleetProgress.optionalUnsaved+' optional with no saved ELB':''}{viewed.fleetProgress.skipped?' · '+viewed.fleetProgress.skipped+' skipped':''}{viewed.fleetProgress.drafts?' · '+viewed.fleetProgress.drafts+' draft'+(viewed.fleetProgress.drafts===1?'':'s'):''}{viewed.fleetProgress.loaders?' · '+viewed.fleetProgress.loaders+' loading machine'+(viewed.fleetProgress.loaders===1?'':'s'):''}</p>}
-     {(viewed.fleet||[]).length>0&&<TableSmartPrint row title={'Equipment ELB · '+viewed.name}/>}
-     <div className="logbook-table-wrap"><table className="logbook-table vlb-fleet-table"><thead><tr><th>Door</th><th>Equipment</th><th>Trips</th><th>Status</th><th>Operator</th><th>Caliber ID</th><th>Opening HMR</th><th>Closing HMR</th><th>Working HMR</th><th>BD hours</th><th>Idle hours</th><th>Availability hours</th><th>Job card</th><th>Remarks</th><th>Date</th><th>Site</th><th>Shift</th><th>ELB entry</th></tr></thead><tbody>{(viewed.fleet||[]).map(row=>{const entry=fleetFrontEntry(row,viewed);return <tr key={row.assetId}><td>{row.door}</td><td>{row.equipmentName||'—'}</td><td>{row.trips}</td><td>{entry.status}</td><td>{entry.operator}</td><td>{entry.caliberId}</td><td>{entry.openingHmr}</td><td>{entry.closingHmr}</td><td>{entry.workingHmr}</td><td>{entry.breakdownHours}</td><td>{entry.idleHours}</td><td>{entry.availabilityHours}</td><td>{entry.jobCardNo}</td><td>{entry.remark}</td><td>{entry.bookDate}</td><td>{entry.location}</td><td>{entry.shift}</td><td>{entry.bookNo}</td></tr>})}{!(viewed.fleet||[]).length&&<tr><td colSpan={18}>No machines in the fleet list for this site.</td></tr>}</tbody></table></div>
+     <SmartSearchReport key={viewed.id} ReportSection={ReportSection} title={'Equipment ELB · '+viewed.name} category="elb-fleet" description={(viewed.fleet||[]).length+' machines in the fleet list · '+displaySiteName(viewed.site)+' · '+viewed.report_date+' · '+viewed.shift} searchLabel="Smart Search Equipment ELB" placeholder="Door, equipment, operator or job card" columns={fleetReportColumns(viewed)} rows={viewed.fleet||[]} rowKey={row=>row.assetId} emptyMessage="No machines in the fleet list for this site."/>
      </div>
      </>}
     {stage==='closed'&&viewed.canUnlockVlb&&<div className="vlb-batch-actions"><button type="button" disabled={busy} onClick={unlockVlb}>Unlock VLB</button></div>}
     {newEquipment&&stage==='vlb_open'&&<NewEquipmentRequest key={viewed.id} session={session} batch={viewed} onDismiss={()=>setNewEquipment(false)} onCreated={()=>setRefresh(n=>n+1)}/>}
     {viewed.elbRecords?.length>0&&<section aria-label="Saved ELB cards">
-     <h3>Saved ELB cards</h3>
-     <TableSmartPrint row title={'Saved ELB cards · '+viewed.name}/>
-     <div className="logbook-table-wrap"><table className="logbook-table">
-      <thead><tr><th className="batch-edit-action" scope="col" data-smart-print-skip="">Action</th><th>Book number</th><th>Equipment / Door</th><th>Operator</th><th>Opening HMR</th><th>Closing HMR</th><th>Job card</th><th data-smart-print-skip="">Details</th></tr></thead>
-      <tbody>{viewed.elbRecords.map(record=><React.Fragment key={record.id}>
-       <tr><td className="batch-edit-action">{action(record,'equipment')}</td><td>{record.book_no}</td>
-        <td>{fieldCell(record,'equipment','Equipment',record.data?.door||record.data?.assetName)}</td>
-        <td>{fieldCell(record,'equipment','Operator name',record.data?.employeeName)}</td>
-        <td>{fieldCell(record,'equipment','Opening HMR',record.data?.openingHmr)}</td>
-        <td>{fieldCell(record,'equipment','Closing HMR',record.data?.closingHmr)}</td>
-        <td>{fieldCell(record,'equipment','Job Card no.',record.data?.jobCardNo)}</td>
-        <td><button type="button" onClick={()=>viewCard(record,'equipment')}>View ELB</button></td>
-       </tr>
-       {editor(record,'equipment',8)}
-      </React.Fragment>)}</tbody>
-     </table></div>
+     <ElbSavedCardsReport key={viewed.id} batch={viewed} ReportSection={ReportSection} onView={record=>viewCard(record,'equipment')} rowAction={record=>action(record,'equipment')} renderField={(record,field,value)=>fieldCell(record,'equipment',field,value)} rowEditor={(record,colSpan)=>editor(record,'equipment',colSpan)}/>
     </section>}
     <VlbBatchHolds session={session} batch={viewed} onChanged={()=>setRefresh(n=>n+1)}/>
    </div>}
-   {loading||detailLoading?<p role="status">Loading entries…</p>:viewed?<VlbBatchReport key={viewed.id} batch={lmvOpen?{...viewed,records:viewed.lmvRecords||[]}:viewed} bookLabel={lmvOpen?'LMV':'VLB'} ReportSection={ReportSection} onView={record=>viewCard(record,lmvOpen?'lmv':'vehicle')} rowAction={lmvOpen?undefined:record=>action(record,'vehicle')} renderField={lmvOpen?undefined:(record,field,value)=>fieldCell(record,'vehicle',field,value)} rowEditor={lmvOpen?undefined:(record,colSpan)=>editor(record,'vehicle',colSpan)} entryType={entryFilter}/>:<><p>{records.length} cards · {manual} Manual + {records.length-manual} Scan · All included automatically. Each scan entry holds up to 40 cards; this final batch includes all matching saved entries and can exceed 40 cards.</p><div className="logbook-table-wrap"><table className="logbook-table"><thead><tr><th>Book number</th><th>Trip card</th><th>Vehicle</th><th>Driver</th><th>Source</th></tr></thead><tbody>{records.map(r=><tr key={r.id}><td>{r.book_no}</td><td>{r.data.aFormNo||'—'}</td><td>{r.data.door||'—'}</td><td>{r.data.employeeName||'—'}</td><td>{vlbRecordSource(r)}</td></tr>)}{!records.length&&<tr><td colSpan={5}>{selection.site&&selection.date&&selection.shift?'No saved, unbatched entries match this selection.':'Select site, date and shift to load saved entries.'}</td></tr>}</tbody></table></div></>}
+   {loading||detailLoading?<p role="status">Loading entries…</p>:viewed?<VlbBatchReport key={viewed.id} batch={lmvOpen?{...viewed,records:viewed.lmvRecords||[]}:viewed} bookLabel={lmvOpen?'LMV':'VLB'} ReportSection={ReportSection} onView={record=>viewCard(record,lmvOpen?'lmv':'vehicle')} rowAction={record=>action(record,lmvOpen?'lmv':'vehicle')} renderField={(record,field,value)=>fieldCell(record,lmvOpen?'lmv':'vehicle',field,value)} rowEditor={(record,colSpan)=>editor(record,lmvOpen?'lmv':'vehicle',colSpan)} entryType={entryFilter}/>:<><p>{records.length} cards · {manual} Manual + {records.length-manual} Scan · All included automatically. Each scan entry holds up to 40 cards; this final batch includes all matching saved entries and can exceed 40 cards.</p><SmartSearchReport ReportSection={ReportSection} title="Unbatched entries" category="vlb-unbatched-preview" description={[displaySiteName(selection.site),selection.date,selection.shift].filter(Boolean).join(' · ')||'Choose site, date and shift'} searchLabel="Smart Search unbatched entries" placeholder="Book number, trip card, vehicle or driver" columns={previewReportColumns} rows={records} rowKey={r=>r.id} emptyMessage={selection.site&&selection.date&&selection.shift?'No saved, unbatched entries match this selection.':'Select site, date and shift to load saved entries.'}/></>}
   </section>}
 
   {viewed&&selectedCard&&<VlbBatchCardDetails key={viewed.id+":"+selectedCard.viewKey} kind={selectedCard.kind} onClose={()=>{setSelectedCard(null);document.querySelector(".vlb-active-batch-panel")?.scrollIntoView({block:"start"})}} session={session} batch={viewed} record={selectedCard} ReportSection={ReportSection}/> }
-  <VlbBatchGovernance session={session} batch={viewed} actor={actor} refresh={refresh} onChanged={changed} onManual={twoStage&&stage!=='vlb_open'?undefined:onManual} onScan={twoStage&&stage!=='vlb_open'?undefined:onScan} onRequestReopen={()=>setShowApproval(true)} onApprovals={onApprovals}/>
-  {showApproval&&viewed?.closed_at&&<VlbReopenDialog key={viewed.id+':'+viewed.closure_revision} session={session} batch={viewed} actor={actor} onChanged={changed} onDismiss={()=>setShowApproval(false)}/>}
+  <VlbBatchGovernance batch={viewed} actor={actor} onManual={twoStage&&stage!=='vlb_open'?undefined:onManual} onScan={twoStage&&stage!=='vlb_open'?undefined:onScan} onRequestReopen={()=>setShowApproval(true)}/>
+  {showApproval&&viewed?.closed_at&&<VlbReopenDialog key={viewed.id+':'+viewed.closure_revision} session={session} batch={viewed} onChanged={changed} onDismiss={()=>setShowApproval(false)}/>}
  </section>;
 }
 export function availableShifts(options,selection){
@@ -332,6 +329,51 @@ export function StageSteps({stage,waiting}){
  return <ol className="vlb-stage-steps" aria-label="Batch stage">{[['vlb_open','1 VLB open'],['lmv_open','2 LMV open'],['elb_open','3 ELB open'],['closed','4 ELB locked · Batch closed']].map(([key,label])=><li key={key} aria-current={stage===key?'step':undefined} className={stage===key?'current':undefined}>{waiting&&stage===key?label.replace('open','waiting'):label}</li>)}</ol>;
 }
 const shown=value=>value===0||String(value??'').trim()?String(value):'—';
+const meterNumber=value=>{const text=String(value??'').trim();const number=Number(text);return text&&Number.isFinite(number)?number:'';};
+// Site batches: Batch ID, Cards, the three stage columns (two-stage lists only) and Status sort; the action column does not.
+const siteBatchColumns=[['name','Batch ID'],['cards','Cards'],['vlb','VLB'],['lmv','LMV'],['elb','ELB'],['status','Status']];
+const batchStageKeys=['vlb','lmv','elb'];
+function batchListStatus(batch,twoStageList){return twoStageList?stageLabel(batch.stage,batch):batch.closed_at?'SAVED · LOCKED':batch.amendment_by?'REOPENED':'OPEN'}
+export function siteBatchValue(batch={},key,twoStageList){
+ if(key==='name')return batch.name||'';
+ if(key==='cards')return meterNumber(batch.entry_count);
+ if(batchStageKeys.includes(key))return batchStageCells(batch)[batchStageKeys.indexOf(key)]||'';
+ if(key==='status')return batchListStatus(batch,twoStageList);
+ return '';
+}
+const openBatchColumns=[['site','Site'],['date','Date'],['shift','Shift'],['stage','Stage']];
+export function openBatchValue(row={},key){
+ if(key==='site')return displaySiteName(row.site)||'';
+ if(key==='stage')return stageLabel(row.stage);
+ return row[key]??'';
+}
+// Equipment ELB fleet: every column sorts; trips, HMR and hours by value, with "—" kept at the bottom.
+// The Sr. No. column is a CSS counter, so it numbers the rows 1..n in the order shown.
+const fleetColumns=[['door','Door'],['equipmentName','Equipment'],['trips','Trips'],['status','Status'],['operator','Operator'],['caliberId','Caliber ID'],['openingHmr','Opening HMR'],['closingHmr','Closing HMR'],['workingHmr','Working HMR'],['breakdownHours','BD hours'],['idleHours','Idle hours'],['availabilityHours','Availability hours'],['jobCardNo','Job card'],['remark','Remarks'],['bookDate','Date'],['location','Site'],['shift','Shift'],['bookNo','ELB entry']];
+const fleetNumberKeys=['openingHmr','closingHmr','workingHmr','breakdownHours','idleHours','availabilityHours'];
+export function fleetSortValue(row={},key,batch={}){
+ if(key==='door')return row.door||'';
+ if(key==='equipmentName')return row.equipmentName||'';
+ if(key==='trips')return meterNumber(row.trips);
+ const entry=fleetFrontEntry(row,batch);
+ return fleetNumberKeys.includes(key)?meterNumber(entry[key]):entry[key]??'';
+}
+// Shared report table columns: sorted by fleetSortValue, "—" kept at the bottom both ways, and BD hours never sorts the
+// list on its own when it opens (the fleet keeps the server's order until a heading is used).
+const fleetReportColumns=batch=>fleetColumns.map(([key,label])=>({key,label,blanksLast:true,duration:false,
+ value:row=>key==='door'?row.door:key==='equipmentName'?row.equipmentName||'—':key==='trips'?row.trips:fleetFrontEntry(row,batch)[key],
+ sortValue:row=>fleetSortValue(row,key,batch)}));
+const previewColumns=[['bookNo','Book number'],['tripCard','Trip card'],['vehicle','Vehicle'],['driver','Driver'],['source','Source']];
+const previewReportColumns=previewColumns.map(([key,label])=>({key,label,blanksLast:true,value:record=>previewValue(record,key)}));
+export function previewValue(record={},key){
+ const data=record.data||{};
+ if(key==='bookNo')return record.book_no||'';
+ if(key==='tripCard')return data.aFormNo||'';
+ if(key==='vehicle')return data.door||'';
+ if(key==='driver')return data.employeeName||'';
+ if(key==='source')return vlbRecordSource(record);
+ return '';
+}
 export function fleetFrontEntry(row={},batch={}){
  const data=row.logbook||{},opening=Number(data.openingHmr),closing=Number(data.closingHmr);
  const calculated=Number.isFinite(opening)&&Number.isFinite(closing)?Math.round((closing-opening)*1000)/1000:null;

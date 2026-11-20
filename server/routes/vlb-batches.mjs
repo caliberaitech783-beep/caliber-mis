@@ -3,7 +3,6 @@ import {isMisAdministrator} from '../../shared/mis-admin-access.mjs';
 import {registerVlbBatchDeletions} from './vlb-batch-deletions.mjs';
 import {withVlbTripHandovers} from '../../shared/vlb-trip-handover.mjs';
 import {operationalDate} from '../../shared/operational-start.mjs';
-import {activateVlbPmTrial,vlbPmTrial,VLB_PM_TRIAL_ID} from '../rules/vlb-pm-trial.mjs';
 import {activeWorkOrders,WORK_ORDER_MASTERS} from '../../shared/trip-card-rules.mjs';
 import {randomUUID} from 'node:crypto';
 import {canonicalSiteName} from '../../shared/site-location.mjs';
@@ -16,7 +15,7 @@ import {withoutRowSecurityRequest} from '../services/row-security.mjs';
 import {vlbBatchActor,batchPmAtSite} from '../rules/vlb-batch-access.mjs';
 import {readFleetBreakdowns,stageDetails,lockVlb,lockLmv,unlockVlb,assertCloseAllowed,saveFleetDraft,saveFleetEntry,equipmentAssets} from '../rules/vlb-batch-stages.mjs';
 import {twoStageEnabled,batchStage,FLEET_STATUSES} from '../rules/vlb-two-stage.mjs';
-import {issueApprovalOtp,consumeApprovalOtp,liveApprovalOtps,publicApprovalOtp} from '../services/vlb-approval-otp.mjs';
+import {consumeApprovalOtp,liveApprovalOtps,publicApprovalOtp} from '../services/vlb-approval-otp.mjs';
 import {batchStageWaits} from '../rules/vlb-batch-queue.mjs';
 import {previousBatchScope,batchOrderBlock} from '../../shared/vlb-batch-order.mjs';
 export {VLB_BATCH_SCHEMA} from '../rules/vlb-batch-policy.mjs';
@@ -25,7 +24,10 @@ const fail=batchFail;
 const creator=batch=>batch.creator_login||batch.created_by;
 const isOwner=(batch,actor)=>batchLogin(batch.amendment_by||creator(batch))===actor.login;
 const mayClose=(batch,actor,twoStage=twoStageEnabled())=>isOwner(batch,actor)||(twoStage&&actor.admin);
-const mayUnlockVlb=(batch,actor)=>isOwner(batch,actor)||actor.mis||actor.admin||batchPmAtSite(actor,batch.site);
+// Machines of an open batch are entered and corrected by any MIS user of the site, not only its owner.
+const mayEnterFleet=(batch,actor)=>isOwner(batch,actor)||Boolean(actor.mis||actor.admin);
+// Owner, 18 Nov 2026: reopening a saved batch and Unlock VLB no longer need the site PM's approval.
+const mayUnlockVlb=(batch,actor)=>actor.admin||actor.mis||isOwner(batch,actor)||batchPmAtSite(actor,batch.site);
 const canClose=(batch,actor,twoStage)=>!batch.closed_at&&(!twoStage||batchStage(batch)==='elb_open')&&mayClose(batch,actor,twoStage);
 async function eligible(client,selection){
  const {rows}=await client.query(`SELECT l.id,l.book_no,l.book_type,l.site,l.book_date::text,l.data,l.revision,l.created_by,l.created_at
@@ -62,7 +64,11 @@ async function visible(client,id,req){
  return batch;
 }
 async function details(client,batch,req){
- let records=(await client.query(`SELECT e.snapshot FROM ${ACTIVE_VLB_ENTRY_FROM} WHERE e.batch_id=$1 AND ${ACTIVE_VLB_ENTRY_FILTER} ORDER BY e.logbook_id`,[batch.id])).rows.map(r=>r.snapshot).filter(r=>operationalDate(r.data?.bookDate));
+ // The card's revision is read from the card itself, not from the stored snapshot. A change that
+ // does not pass through the card form (Pulse BD hours repair, 18 Nov 2026) raised the card's
+ // revision and left the snapshot's behind, so every later save from the batch was refused with
+ // "This log book changed or is unavailable" however often the user reloaded.
+ let records=(await client.query(`SELECT e.snapshot,l.revision FROM ${ACTIVE_VLB_ENTRY_FROM} WHERE e.batch_id=$1 AND ${ACTIVE_VLB_ENTRY_FILTER} ORDER BY e.logbook_id`,[batch.id])).rows.map(r=>({...r.snapshot,revision:r.revision})).filter(r=>operationalDate(r.data?.bookDate));
  const scanIds=records.map(record=>record.data?.scanCardId).filter(id=>uuid(id));
  const scanTable=scanIds.length&&(await client.query("SELECT to_regclass('mis_scan_cards') AS name")).rows[0]?.name;
  if(scanTable){
@@ -73,17 +79,16 @@ async function details(client,batch,req){
  records=await withVlbTripHandovers(client,records);
  const requests=(await client.query('SELECT * FROM mis_vlb_reopen_requests WHERE batch_id=$1 AND withdrawn_at IS NULL ORDER BY requested_at DESC',[batch.id])).rows.filter(r=>r.requested_by===req.batchActor.login||batchPmAtSite(req.batchActor,batch.site));
  const audit=(await client.query('SELECT * FROM mis_vlb_batch_audit WHERE batch_id=$1 ORDER BY id DESC LIMIT 200',[batch.id])).rows;
- const pmApprovalTrial=await vlbPmTrial(client,{cacheMs:30000});
  const approvalOtps=(await liveApprovalOtps(client,batch.id,req.batchActor.login)).map(publicApprovalOtp);
- const trialExpired=Boolean(batch.trial_reopened_until&&(await client.query('SELECT $1::timestamptz<=clock_timestamp() AS expired',[batch.trial_reopened_until])).rows[0].expired);
- const grant=requests.find(r=>r.requested_by===req.batchActor.login&&r.status==='approved'&&r.closure_revision===batch.closure_revision);
- const grantValid=grant?batchPmAtSite(await req.batchGetActor({login:grant.decided_by},client),batch.site):false;
+ // An open batch never freezes by itself (owner, 19 Nov 2026): a batch reopened under the
+ // retired PM-approval pause stays open until it is closed.
+ const trialExpired=false;
  const stageInfo=await stageDetails(client,batch,{tripCardRecords:records.filter(record=>siteAllowed(req.logBookScope,record.site||record.data?.location))});
  const owner=isOwner(batch,req.batchActor);
  const lmvRecords=stageInfo.stage==='lmv_open'?(await client.query(
   "SELECT id,book_no,book_type,data,revision FROM mis_log_books WHERE book_type='lmv' AND book_date=$1 AND deleted_at IS NULL ORDER BY id",
   [batch.report_date])).rows.filter(record=>canonicalSiteName(record.data.location)===canonicalSiteName(batch.site)&&vlbRecordScope(record.data).shift===batch.shift):[];
- return {...batch,canEditSavedFleet:req.batchActor.admin,created_by:creator(batch),pmApprovalTrial,trialExpired,records,lmvRecords,canLockLmv:!stageInfo.stageWait&&stageInfo.stage==='lmv_open'&&(owner||req.batchActor.admin)&&!trialExpired&&!stageInfo.lmvLockBlockers?.length,entry_count:records.length,requests,audit,approvalOtps,...stageInfo,canLockVlb:stageInfo.twoStage&&stageInfo.stage==='vlb_open'&&(owner||req.batchActor.admin)&&!trialExpired&&!stageInfo.lockBlockers.length,canUnlockVlb:stageInfo.twoStage&&['lmv_open','elb_open'].includes(stageInfo.stage)&&mayUnlockVlb(batch,req.batchActor),canEnterFleet:!stageInfo.stageWait&&stageInfo.twoStage&&stageInfo.stage==='elb_open'&&!trialExpired&&(owner||req.batchActor.admin),canContinue:!trialExpired&&!batch.closed_at&&(!batch.amendment_by||owner)&&(!stageInfo.twoStage||stageInfo.stage==='vlb_open'),canClose:!stageInfo.stageWait&&canClose(batch,req.batchActor,stageInfo.twoStage),canRequestReopen:Boolean(batch.closed_at&&req.batchActor.mis),canReopen:Boolean(batch.closed_at&&req.batchActor.mis&&(grantValid||pmApprovalTrial.active)),approvalExpired:Boolean(grant&&!grantValid&&!pmApprovalTrial.active)};
+ return {...batch,canEditSavedFleet:Boolean(req.batchActor.mis||req.batchActor.admin),created_by:creator(batch),trialExpired,records,lmvRecords,canLockLmv:!stageInfo.stageWait&&stageInfo.stage==='lmv_open'&&(owner||req.batchActor.admin)&&!trialExpired&&!stageInfo.lmvLockBlockers?.length,entry_count:records.length,requests,audit,approvalOtps,...stageInfo,canLockVlb:stageInfo.twoStage&&stageInfo.stage==='vlb_open'&&(owner||req.batchActor.admin)&&!trialExpired&&!stageInfo.lockBlockers.length,canUnlockVlb:stageInfo.twoStage&&['lmv_open','elb_open'].includes(stageInfo.stage)&&mayUnlockVlb(batch,req.batchActor),canEnterFleet:!stageInfo.stageWait&&stageInfo.twoStage&&stageInfo.stage==='elb_open'&&!trialExpired&&mayEnterFleet(batch,req.batchActor),canContinue:!trialExpired&&!batch.closed_at&&(!stageInfo.twoStage||stageInfo.stage==='vlb_open'),canClose:!stageInfo.stageWait&&canClose(batch,req.batchActor,stageInfo.twoStage),canRequestReopen:Boolean(batch.closed_at),canReopen:Boolean(batch.closed_at),approvalExpired:false};
 }
 // One read shared by callers that arrive together and reused for ttlMs. clear() drops the
 // copy, and a read already running when clear() is called is not handed to later callers.
@@ -127,16 +132,10 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
   actorCache.set(key,{value:structuredClone(value),until:Date.now()+ACTOR_CACHE_MS});
   return value;
  };
- // Site PMs who may approve by OTP: injected from the server (shared with Vehicle transfers), else derived from the Users master.
- const defaultPmLogins=async(client,site)=>{const {rows}=await client.query("SELECT DISTINCT lower(trim(record_data->>'login')) AS login FROM master_records WHERE master_name='Users & employees' AND COALESCE(trim(record_data->>'login'),'')<>''");const out=[];for(const {login} of rows){if(batchPmAtSite(await getActor({login},client),site))out.push(login)}return out};
- const pmLogins=approvalOtp.pmLogins||defaultPmLogins,deliver=approvalOtp.deliver;
  const ensure=async()=>{
   await ensureBooks();
   await(ready??=(async()=>{
    await pool.query(VLB_BATCH_SCHEMA);
-   const production=process.env.WEBSITE_SITE_NAME==='caliber-mis-783'&&
-    (!process.env.WEBSITE_SLOT_NAME||process.env.WEBSITE_SLOT_NAME.toLowerCase()==='production');
-   if(production||process.env.VLB_PM_APPROVAL_TRIAL===VLB_PM_TRIAL_ID)await activateVlbPmTrial(pool);
   })().catch(e=>{ready=null;throw e}));
  };
  const handle=fn=>async(req,res,next)=>{try{
@@ -189,7 +188,7 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
   })):undefined;
   const open=rows.find(b=>!b.closed_at&&(isOwner(b,req.batchActor)||batchLogin(creator(b))===req.batchActor.login));
   const openBatch=open?(siteAllowed(req.logBookScope,open.site)?{...open,created_by:creator(open),stageWait:waits.get(open.id)||'',canClose:!waits.has(open.id)&&canClose(open,req.batchActor,twoStage)}:{id:open.id,restricted:true}):null;
-  res.json({pmApprovalTrial:await vlbPmTrial(pool,{cacheMs:30000}),twoStage,batches,openBatchStatuses,openBatch:openBatch&&!openBatch.restricted?{...openBatch,stage:twoStage?batchStage(openBatch):(openBatch.closed_at?'closed':'open')}:openBatch,actor:{login:req.batchActor.login,mis:req.batchActor.mis,pm:req.batchActor.pm,canCreate:req.batchActor.canCreate,admin:req.batchActor.admin}});
+  res.json({twoStage,batches,openBatchStatuses,openBatch:openBatch&&!openBatch.restricted?{...openBatch,stage:twoStage?batchStage(openBatch):(openBatch.closed_at?'closed':'open')}:openBatch,actor:{login:req.batchActor.login,mis:req.batchActor.mis,pm:req.batchActor.pm,canCreate:req.batchActor.canCreate,admin:req.batchActor.admin}});
  }));
  app.get('/api/vlb-batches/approvals',...protect,handle(async(req,res)=>{
   const rows=(await pool.query('SELECT r.*,b.name,b.site,b.book_date::text AS report_date,b.shift,b.closed_at,b.closure_revision AS current_revision FROM mis_vlb_reopen_requests r JOIN mis_vlb_batches b ON b.id=r.batch_id WHERE b.archived_at IS NULL AND b.book_date>=$$2026-11-01$$ AND r.withdrawn_at IS NULL ORDER BY r.requested_at DESC')).rows;
@@ -232,7 +231,7 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
    const prior=(await client.query('SELECT *,book_date::text AS report_date FROM mis_vlb_batches WHERE request_key=$1',[req.body.requestKey])).rows[0];
    if(prior){if(batchLogin(creator(prior))!==user||prior.site!==selection.site||prior.report_date!==selection.date||prior.shift!==selection.shift)fail('Batch save reference already used.');repeated=true;return details(client,await visible(client,prior.id,req),req)}
    const existing=await matchingVlbBatch(client,{location:selection.site,bookDate:selection.date,bookShiftCode:selection.shift});
-   if(existing)fail('A batch already exists for this site, date and shift. Open that batch; closed batches require site PM approval to reopen.');
+   if(existing)fail('A batch already exists for this site, date and shift. Open that batch; reopen a closed batch from its batch page.');
    const {creationBlocker}=await openBatchCreationBlock(client,selection);
    if(creationBlocker)fail(creationBlocker);
    const previousShift=await previousShiftBlock(client,selection);
@@ -270,12 +269,10 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
  }))));
  app.post('/api/vlb-batches/:id/lock-vlb',...protect,handle(async(req,res)=>res.json(await batchTransaction(req,async(client,batch)=>{
   if(!isOwner(batch,req.batchActor)&&!req.batchActor.admin)fail('Only the active batch owner can lock VLB for this batch.',403);
-  if(batch.trial_reopened_until&&(await client.query('SELECT $1::timestamptz<=clock_timestamp() AS expired',[batch.trial_reopened_until])).rows[0].expired)fail('The VLB reopening trial has expired for this batch.',403);
   return details(client,await lockVlb(client,batch,req.batchActor.login),req);
  }))));
  app.post('/api/vlb-batches/:id/lock-lmv',...protect,handle(async(req,res)=>res.json(await batchTransaction(req,async(client,batch)=>{
   if(!isOwner(batch,req.batchActor)&&!req.batchActor.admin)fail('Only the active batch owner or an MIS administrator can lock LMV.',403);
-  if(batch.trial_reopened_until&&(await client.query('SELECT $1::timestamptz<=clock_timestamp() AS expired',[batch.trial_reopened_until])).rows[0].expired)fail('The batch reopening trial has expired.',403);
   return details(client,await lockLmv(client,batch,req.batchActor.login),req);
  }))));
  app.post('/api/vlb-batches/:id/unlock-vlb',...protect,handle(async(req,res)=>res.json(await batchTransaction(req,async(client,batch)=>{
@@ -298,7 +295,7 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
  }));
  app.put('/api/vlb-batches/:id/fleet/:assetId/draft',...protect,handle(async(req,res)=>{
   if(!/^\d+$/.test(req.params.assetId))fail('Invalid machine.',400);
-  res.json(await batchTransaction(req,async(client,batch)=>{if(!isOwner(batch,req.batchActor)&&!req.batchActor.admin)fail('Only the active batch owner can enter machines for this batch.',403);const row=await saveFleetDraft(client,batch,req.params.assetId,req.body?.draft||{},req.batchActor.login);return {assetId:String(row.asset_id),draft:row.draft,skipped:row.skipped};}));
+  res.json(await batchTransaction(req,async(client,batch)=>{if(!mayEnterFleet(batch,req.batchActor))fail('Only an MIS user or MIS administrator can enter machines for this batch.',403);const row=await saveFleetDraft(client,batch,req.params.assetId,req.body?.draft||{},req.batchActor.login);return {assetId:String(row.asset_id),draft:row.draft,skipped:row.skipped};}));
  }));
  app.post('/api/vlb-batches/:id/fleet/:assetId',...protect,handle(async(req,res)=>{
   if(!/^\d+$/.test(req.params.assetId))fail('Invalid machine.',400);
@@ -306,9 +303,9 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
   // Pulse is read before the batch lock; inside it, the saved rows answer without a remote call.
   const prefetched=await prefetchFleetBreakdownRows(req.batchActor.login);
   res.json(await batchTransaction(req,async(client,batch)=>{
-   if(!isOwner(batch,req.batchActor)&&!req.batchActor.admin)fail('Only the active batch owner can enter machines for this batch.',403);
+   if(!mayEnterFleet(batch,req.batchActor))fail('Only an MIS user or MIS administrator can enter machines for this batch.',403);
    const readHours=lockedReadHours(logBookOps.readHours&& (input=>logBookOps.readHours({...input,client})),prefetched);
-   const record=await saveFleetEntry(client,batch,req.params.assetId,req.body||{},req.batchActor.login,{allowEditSaved:req.batchActor.admin,resolve:logBookOps.resolve,insert:logBookOps.insert,applyHours:data=>logBookOps.applyHours(data,req.batchActor.login,readHours),readHours});
+   const record=await saveFleetEntry(client,batch,req.params.assetId,req.body||{},req.batchActor.login,{allowEditSaved:Boolean(req.batchActor.mis||req.batchActor.admin),resolve:logBookOps.resolve,insert:logBookOps.insert,applyHours:data=>logBookOps.applyHours(data,req.batchActor.login,readHours),readHours});
    const info=await stageDetails(client,batch);
    return {record,fleet:info.fleet,fleetProgress:info.fleetProgress,closeBlockers:info.closeBlockers,machineReport:info.machineReport};
   }));
@@ -349,32 +346,22 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
    await lockVlbBatchSite(client,batch.site);
    const siteOpen=await openSiteBatch(client,batch.site,{excludeId:batch.id});if(siteOpen)fail('Close the open batch '+siteOpen.name+' before reopening another batch for this site.');
    const request=(await client.query("SELECT * FROM mis_vlb_reopen_requests WHERE batch_id=$1 AND requested_by=$2 AND closure_revision=$3 AND status='approved' ORDER BY decided_at DESC LIMIT 1 FOR UPDATE",[batch.id,req.batchActor.login,batch.closure_revision])).rows[0];
-   const pmApprovalTrial=await vlbPmTrial(client);
-   if(!pmApprovalTrial.active&&!request)fail('Site PM approval is required for this MIS user and the current batch closure.',403);
-   if(!pmApprovalTrial.active){const approver=await getActor({login:request.decided_by},client);if(!batchPmAtSite(approver,batch.site))fail('The approving PM is no longer assigned to this site. Request approval from the current site PM.',403);}
    if(!req.batchActor.admin&&(await client.query('SELECT id FROM mis_vlb_batches WHERE book_date>=$$2026-11-01$$ AND closed_at IS NULL AND (lower(COALESCE(creator_login,created_by))=ANY($1::text[]) OR lower(amendment_by)=$2)',[[req.batchActor.login,batchLogin(creator(batch))],req.batchActor.login])).rows.length)fail('Close the existing open batch before reopening this batch.');
-   const opened=(await client.query("UPDATE mis_vlb_batches SET closed_at=NULL,amendment_by=$1,trial_reopened_until=$3,creator_login=COALESCE(creator_login,created_by),created_by=NULL,stage=CASE WHEN vlb_locked_at IS NOT NULL THEN 'elb_open' ELSE 'vlb_open' END WHERE id=$2 RETURNING *,book_date::text AS report_date",[req.batchActor.login,batch.id,pmApprovalTrial.active?pmApprovalTrial.endsAt:null])).rows[0];
+   const opened=(await client.query("UPDATE mis_vlb_batches SET closed_at=NULL,amendment_by=$1,trial_reopened_until=NULL,creator_login=COALESCE(creator_login,created_by),created_by=NULL,stage=CASE WHEN vlb_locked_at IS NOT NULL THEN 'elb_open' ELSE 'vlb_open' END WHERE id=$2 RETURNING *,book_date::text AS report_date",[req.batchActor.login,batch.id])).rows[0];
    if(request)await client.query("UPDATE mis_vlb_reopen_requests SET status='used',used_at=NOW() WHERE id=$1",[request.id]);
-   await auditVlbBatch(client,batch,req.batchActor.login,'reopened',{requestId:request?.id||null,approvedBy:pmApprovalTrial.active?null:request.decided_by,...(pmApprovalTrial.active?{trialId:VLB_PM_TRIAL_ID,trialEndsAt:pmApprovalTrial.endsAt}:{})});
+   await auditVlbBatch(client,batch,req.batchActor.login,'reopened',{requestId:request?.id||null,approvedBy:request?.decided_by||null,pmApproval:request?'approved':'not required'});
    const records=await eligible(client,{site:canonicalSiteName(batch.site),date:batch.report_date,shift:batch.shift});for(const record of records)await syncVlbBatchRecord(client,record,req.batchActor.login,{relock:false});
    return details(client,opened,req);
  };
  app.post('/api/vlb-batches/:id/reopen',...protect,handle(async(req,res)=>{
-  if(!req.batchActor.mis)fail('Only the MIS user approved by the site PM can reopen this batch.',403);
+  // Owner, 19 Nov 2026: every login that may use VLB batches reopens a saved batch, whatever its role.
   res.json(await batchTransaction(req,(client,batch)=>performReopen(client,batch,req)));
  }));
  app.get('/api/vlb-batches/:id/approval-otp',...protect,handle(async(req,res)=>{const batch=await visible(pool,req.params.id,req);res.json({otps:(await liveApprovalOtps(pool,batch.id,req.batchActor.login)).map(publicApprovalOtp)})}));
+ // PM approval by OTP is no longer needed (owner, 18 Nov 2026): reopen and Unlock VLB act directly.
  app.post('/api/vlb-batches/:id/approval-otp',...protect,handle(async(req,res)=>{
   const purpose=String(req.body?.purpose||'').trim();if(purpose!=='reopen')fail('PM OTP is only available for reopening a closed batch.',400);
-  const reason=String(req.body?.reason||'').trim();if(reason.length<5||reason.length>2000)fail('Enter a reopening reason of 5 to 2000 characters.',400);
-  res.json(await batchTransaction(req,async(client,batch)=>{
-   if(!req.batchActor.mis)fail('Only an MIS user can request batch reopening.',403);
-   if((await vlbPmTrial(client)).active)fail('PM approval is paused during the VLB trial. Reopen the batch directly.',409);
-   const requestId=(await ensureReopenRequest(client,batch,req,reason)).id;
-   const row=await issueApprovalOtp(client,{batch,purpose,reason,requestId,requestedBy:req.batchActor.login,requesterName:req.session?.name||req.batchActor.login,pmLogins,deliver});
-   await auditVlbBatch(client,batch,req.batchActor.login,'approval_otp_sent',{purpose,otpId:row.id,requestId,sentTo:row.sent_to,channels:row.channels,reason});
-   return {otp:publicApprovalOtp(row),requestId};
-  }));
+  fail('PM approval is no longer needed. Reopen the batch directly.',409);
  }));
  app.post('/api/vlb-batches/:id/approval-otp/:otpId/verify',...protect,handle(async(req,res)=>{
   await batchTransaction(req,async(client,batch)=>{

@@ -13,10 +13,12 @@ import {breakdownMeterValue} from '../shared/breakdown-meter-columns.mjs';
 import {isDurationColumn, compareDurationValues, defaultDurationSort} from '../src/duration-sort.mjs';
 import {calculateBreakdownMinutes} from '../src/lib/breakdown-duration.mjs';
 import {dailyUpdatesExportText} from '../src/daily-updates-order.mjs';
+import {sortingSource} from './helpers/sorting-source.mjs';
 
 const source = readFileSync(new URL('../src/main.jsx', import.meta.url), 'utf8');
 const component = source.slice(source.indexOf('function Status('), source.indexOf('function ThemeToggle('))
-  + source.slice(source.indexOf('const sortCollator ='), source.indexOf('function SortableHeader('))
+  + sortingSource()
+  + source.slice(source.indexOf('const WORKFLOW_INITIAL_RENDER_ROWS ='), source.indexOf('function visibleViewportBounds('))
   + source.slice(source.indexOf('const EMPTY_TABLE_FILTER_VALUE ='), source.indexOf('function TableParameterFilter('))
   + source.slice(source.indexOf('function MobileWorkflowTable('), source.indexOf('function RequestEditForm('))
   + source.slice(source.indexOf('function breakdownCell('), source.indexOf('const masterFields ='));

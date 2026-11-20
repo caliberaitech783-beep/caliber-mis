@@ -2,6 +2,7 @@ import {shiftChoiceLabel} from '../shared/report-filter-options.mjs';
 import React,{useMemo,useState} from 'react';
 import {DateShiftGrid,dateShiftGrid,dateShiftExport} from './date-shift-grid.jsx';
 import {StepBackButton} from './step-back.jsx';
+import {SortableHeader,sortRowsBlanksLast} from './sortable-table.jsx';
 import {buildAttendanceRegister,batchPeople,batchCategories,registerCategories,personCategories} from './attendance-register-model.mjs';
 import './attendance-register.css';
 
@@ -25,12 +26,21 @@ const tip=c=>c.kind==='present'?c.lines.map(l=>shiftName(l.shift)+' · '+[l.door
 // Batch-wise Step 4 lists red first, then orange, brown, blue and normal duties, then by name.
 const FLAG_ORDER={red:0,orange:1,review:2,zero:3};
 const flagOrder=f=>FLAG_ORDER[f]??4;
+// Batch-wise Step 4 headings sort its people (opening order stays red first). HMR hours, Trips and KM sort as numbers;
+// Colour / reason sorts by colour (red, orange, brown, blue, normal), then the reason.
+const BATCH_PEOPLE_HEADINGS=[['caliberCode','Caliber ID','ar-sticky ar-id'],['employeeName','Name','ar-sticky ar-name'],['code','Day code','ar-day-code'],['doors','Door / equipment','ar-text'],['equipment','Equipment','ar-text'],['logBook','Log book',''],['hours','HMR hours','ar-total-head'],['trips','Trips','ar-total-head'],['km','KM','ar-total-head'],['flagLabel','Colour / reason','ar-text'],['books','Saved cards','ar-text']];
+const asNumber=v=>typeof v==='number'?v:String(v??'').trim()&&Number.isFinite(Number(v))?Number(v):'';
+function batchPersonValue(p={},key){
+ if(key==='hours'||key==='trips'||key==='km')return asNumber(p[key]);
+ if(key==='flagLabel')return flagOrder(p.flag)+' '+(p.flagLabel||'');
+ return blank(p[key])||p[key]==='—'?'':String(p[key]);
+}
 // HMR hours is keyed 'hmrHours', not 'hours': the shared table sorts any 'hours' column high to low by default
 // (duration-sort.mjs), which put a person's duties out of date order on live (17 Nov 2026).
 const HMR=['hmrHours','HMR hours',r=>shown(r.hours)];
 const DUTY_COLUMNS=[['date','Date',r=>shortDate(r.date)],['shift','Shift',r=>shiftName(r.shift)],['logBook','Log book'],['doors','Door / equipment'],['equipment','Equipment'],HMR,['trips','Trips'],['km','KM'],['flagLabel','Colour / reason'],['books','Saved cards']];
 // A person's duties at the site in these dates: month-wise Step 4 and batch-wise Step 5 (owner, 16 Nov 2026: in line).
-const personDuties=({ReportSection,step,person,site,query})=><ReportSection key={'ar-person-'+query+'-'+site.siteKey+'-'+person.employeeKey} title={'Step '+step+' · '+person.caliberCode+' · '+person.employeeName+' · duties at '+site.site} category="attendance-person"
+const personDuties=({ReportSection,step,person,site,query})=><ReportSection quickSort key={'ar-person-'+query+'-'+site.siteKey+'-'+person.employeeKey} title={'Step '+step+' · '+person.caliberCode+' · '+person.employeeName+' · duties at '+site.site} category="attendance-person"
  description={[person.category,person.duties+(person.duties===1?' duty':' duties'),person.present+' days present',person.absent+' absent',person.attendance+' attendance'].filter(Boolean).join(' · ')}
  rows={[...person.lines].sort((a,b)=>a.date.localeCompare(b.date)||a.shift.localeCompare(b.shift))} columns={cols(DUTY_COLUMNS)} rowKey={r=>r.id} rowClassName={r=>'mp-duty-'+r.flag} showSearch={false} recordDateFilter={false} emptyMessage="No duty in these dates."/>;
 
@@ -43,6 +53,9 @@ export default function AttendanceRegister({report,filters,mode='attendance-batc
  const [siteKey,setSiteKey]=useState(''),[pick,setPick]=useState({date:'',shift:''}),[personKey,setPersonKey]=useState('');
  // The equipment category opened ('*' for all of them): batch-wise Step 3, month-wise Step 2; kept after the other state.
  const [equipment,setEquipment]=useState('');
+ // Batch-wise Step 4: the heading clicked to sort its people (none until one is clicked); kept after the other state.
+ const [peopleSort,setPeopleSort]=useState({key:'',direction:'asc'});
+ const changePeopleSort=key=>setPeopleSort(current=>({key,direction:current.key===key&&current.direction==='asc'?'desc':'asc'}));
  const today=todayIst();
  const model=useMemo(()=>buildAttendanceRegister({duties:report.otDuties||[],presence:report.attendanceEquipment||[],shifts:report.attendanceShifts||[],sites,from:filters.from,to:filters.to,today,lockedDays:report.lockedDays}),[report,sites,filters.from,filters.to,today]);
  const month=mode==='attendance-month';
@@ -68,7 +81,7 @@ export default function AttendanceRegister({report,filters,mode='attendance-batc
  // Step 1: one line per site, then All sites.
  const shiftCols=model.shiftCodes.map(code=>[code,shiftName(code)]);
  const siteColumns=cols([['site','Site'],['people','People'],['duties','Duties'],...shiftCols,['double','Double-duty days'],['present','Days present'],['absent','Absent (A)'],['pending','Pending (?)'],['locked','Batches locked',r=>r.locked+' of '+r.due],['attendance','Attendance %']]);
- const step1=<ReportSection key={'ar-sites-'+query+'-'+mode} title={'Step 1 · All sites · '+dateLabel} category="attendance-sites"
+ const step1=<ReportSection quickSort key={'ar-sites-'+query+'-'+mode} title={'Step 1 · All sites · '+dateLabel} category="attendance-sites"
   description="One line per site. People are those with at least one saved duty at the site in these dates. Days present and Absent are person-days; Attendance % = days present ÷ (days present + absent). Press a site to open it."
   rows={siteRows.length>1?[...siteRows,{...model.allSites,id:'all-sites'}]:siteRows} columns={siteColumns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}
   isTotalRow={r=>r.id==='all-sites'} onRowClick={r=>r.siteKey&&openSite(r.siteKey)} rowClassName={r=>(r.id==='all-sites'?'mp-att-total':'')+(r.siteKey&&r.siteKey===open?' report-row-picked':'')} emptyMessage="No site is available for these selections."/>;
@@ -105,7 +118,7 @@ export default function AttendanceRegister({report,filters,mode='attendance-batc
     <small className={'dsg-note ar-state ar-state-'+r.status}>{STATUS[r.status]}</small>
    </span>;};
   const flat=dateShiftExport(grid,{shiftLabel:shiftName,cellText:list=>list[0]?list[0].present+' present · '+STATUS[list[0].status]:'',dayColumns});
-  const step2=<ReportSection key={'ar-dates-'+query+'-'+open} title={'Step 2 · '+site.site+' · date by shift · '+dateLabel} category="attendance-dates"
+  const step2=<ReportSection quickSort key={'ar-dates-'+query+'-'+open} title={'Step 2 · '+site.site+' · date by shift · '+dateLabel} category="attendance-dates"
    description="In each box: the people present in that batch, the colours among them, and the batch state. Only locked days are counted: until every shift of a day is locked, its boxes show 0. Press a box to see that batch by equipment category."
    rows={flat.rows} columns={flat.columns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
    <DateShiftGrid grid={grid} renderCell={cell} dayColumns={dayColumns} shiftLabel={shiftName} isPicked={r=>r.date===pick.date&&r.shift===pick.shift} ariaLabel="People present by date and shift" emptyMessage="No shift in these dates."/>
@@ -119,13 +132,14 @@ export default function AttendanceRegister({report,filters,mode='attendance-batc
   const flagBox=(id,name)=>r=>r[id]>0?<span className={'dsg-box mp-flag mp-flag-'+id} title={name}>{r[id]}</span>:r[id];
   const categoryColumns=[...cols([['equipment','Equipment category'],['present','People present'],['double','Double duty (P1+3)']]),
    ...COLOURS.map(([id,name])=>({key:id,label:name,value:r=>r[id],render:flagBox(id,name)}))];
-  const step3=<ReportSection key={'ar-categories-'+query+'-'+open+'-'+pick.date+'-'+pick.shift} title={'Step 3 · '+batchWhere+' · by equipment category'} category="attendance-categories"
+  const step3=<ReportSection quickSort key={'ar-categories-'+query+'-'+open+'-'+pick.date+'-'+pick.shift} title={'Step 3 · '+batchWhere+' · by equipment category'} category="attendance-categories"
    description={many(present.length,'person')+' present · Batch '+(batch?.batch||'not created')+' · '+STATUS[batch?.status||'none']+' · One line per equipment category (the machine’s group in the Equipment master); a person on machines of two categories is in both. Press a category for its people.'}
    rows={present.length?[...categories.rows,categories.total]:[]} columns={categoryColumns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}
    isTotalRow={r=>r.id==='*'} onRowClick={r=>{setEquipment(equipment===r.id?'':r.id);setPersonKey('');}}rowClassName={r=>(r.id==='*'?'mp-att-total':'')+(r.id===equipment?' report-row-picked':'')} emptyMessage={model.dayState(open,pick.date)==='locked'?'Nobody has a saved duty in this batch.':'This day is not locked yet. Its people are counted once every shift of the day is locked.'}/>;
   // Step 4 (owner, 16 Nov 2026: in line with the month-wise register): Caliber ID, the name to press with the designation under
   // it, and the day code in the register's coloured box; red first, then orange, brown, blue and normal, then by name.
   const listed=level===4?present.filter(p=>equipment==='*'||p.categories.includes(equipment)).sort((a,b)=>flagOrder(a.flag)-flagOrder(b.flag)):[];
+  const sortedPeople=sortRowsBlanksLast(listed,peopleSort,batchPersonValue);
   const dayIndex=model.days.indexOf(pick.date),cellOf=p=>register.find(r=>r.employeeKey===p.employeeKey)?.cells[dayIndex];
   const missing=model.dayPeople(open,pick.date).filter(x=>x.cell.kind!=='present').map(({person,cell})=>{const last=person.lines.filter(l=>l.date<pick.date).map(l=>l.date).sort().at(-1);
    return {id:person.id,caliberCode:person.caliberCode,employeeName:person.employeeName,category:person.category||'—',code:cell.code,kind:cell.kind,meaning:cell.kind==='absent'?'Absent':cell.kind==='pending'?'Pending':'At '+cell.where,last:last?shortDate(last):'—'};});
@@ -134,15 +148,13 @@ export default function AttendanceRegister({report,filters,mode='attendance-batc
   const peopleColumns=cols([['caliberCode','Caliber ID'],['employeeName','Name'],['category','Category'],['code','Day code'],['doors','Door / equipment'],['equipment','Equipment'],['logBook','Log book'],HMR,['trips','Trips'],['km','KM'],['flagLabel','Colour / reason'],['books','Saved cards']]);
   const figures=[['hours','HMR hours'],['trips','Trips'],['km','KM']];
   const sumOf=key=>{const values=listed.map(p=>p[key]).filter(v=>typeof v==='number');return values.length?Math.round(values.reduce((a,b)=>a+b,0)*100)/100:'—';};
-  const step4=level===4&&<ReportSection key={'ar-people-'+query+'-'+open+'-'+pick.date+'-'+pick.shift+'-'+equipment} title={'Step 4 · '+batchWhere+' · '+equipmentLabel+' · people'} category="attendance-people"
+  const step4=level===4&&<ReportSection quickSort key={'ar-people-'+query+'-'+open+'-'+pick.date+'-'+pick.shift+'-'+equipment} title={'Step 4 · '+batchWhere+' · '+equipmentLabel+' · people'} category="attendance-people"
    description={many(listed.length,'person')+' present · '+equipmentLabel+' · Batch '+(batch?.batch||'not created')+' · '+STATUS[batch?.status||'none']+' · Red first, then orange. Press a name for that person’s duties. Day code is the whole day: P1+3 means Shift 1 and Shift 3; hover it for each shift.'}
-   rows={listed} columns={peopleColumns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
+   rows={sortedPeople} columns={peopleColumns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
    {listed.length?<div className="ar-grid-wrap" role="group" aria-label="People of this batch">
     <table className="ar-grid ar-batch-people">
-     <thead><tr><th scope="col" className="ar-sticky ar-id">Caliber ID</th><th scope="col" className="ar-sticky ar-name">Name</th><th scope="col" className="ar-day-code">Day code</th>
-      <th scope="col" className="ar-text">Door / equipment</th><th scope="col" className="ar-text">Equipment</th><th scope="col">Log book</th>
-      {figures.map(([key,label])=><th key={key} scope="col" className="ar-total-head">{label}</th>)}<th scope="col" className="ar-text">Colour / reason</th><th scope="col" className="ar-text">Saved cards</th></tr></thead>
-     <tbody>{listed.map(p=>{const c=cellOf(p),on=personKey===p.employeeKey;return <tr key={p.id} className={on?'report-row-picked':undefined}>
+     <thead><tr>{BATCH_PEOPLE_HEADINGS.map(([key,label,className])=><SortableHeader key={key} scope="col" className={className||undefined} label={label} sortKey={key} sort={peopleSort} onSort={changePeopleSort} filterIcon={false}/>)}</tr></thead>
+     <tbody>{sortedPeople.map(p=>{const c=cellOf(p),on=personKey===p.employeeKey;return <tr key={p.id} className={on?'report-row-picked':undefined}>
       <td className="ar-sticky ar-id">{p.caliberCode}</td>
       <th scope="row" className="ar-sticky ar-name"><button type="button" className="mp-cat-open" aria-pressed={on} aria-label={'Duties of '+p.employeeName} onClick={()=>setPersonKey(on?'':p.employeeKey)}>{p.employeeName}</button>{p.category&&p.category!=='—'&&<small>{p.category}</small>}</th>
       <td className={'ar-code ar-present'+(p.flag?' ar-flag-'+p.flag:'')} title={(c&&tip(c))||undefined}>{p.code}</td>
@@ -158,7 +170,7 @@ export default function AttendanceRegister({report,filters,mode='attendance-batc
   return <>{step2}{step3}
    {level===4?step4:<p className="mp-notice">Press a category above, or All categories, to list its people.</p>}
    {batchPerson&&personDuties({ReportSection,step:5,person:batchPerson,site,query})}
-   <ReportSection key={'ar-missing-'+query+'-'+open+'-'+pick.date} title={site.site+' · '+shortDate(pick.date)+' · not on any card here that day'} category="attendance-not-present"
+   <ReportSection quickSort key={'ar-missing-'+query+'-'+open+'-'+pick.date} title={site.site+' · '+shortDate(pick.date)+' · not on any card here that day'} category="attendance-not-present"
     description="People of this site with no duty here on this date: A when every batch of the day is locked, ? while one is open or missing, TR when they worked at another site."
     rows={missing} columns={missingColumns} rowKey={r=>r.id} recordDateFilter={false} emptyMessage="Everyone of this site worked here that day."/>
   </>;
@@ -176,12 +188,12 @@ export default function AttendanceRegister({report,filters,mode='attendance-batc
   const categories=registerCategories(register);
   const categoryColumns=cols([['equipment','Equipment category'],['people','People'],['duties','Duties'],['double','Double-duty days'],['present','Days present'],['absent','Absent (A)'],['pending','Pending (?)'],['attendance','Attendance %']]);
   const shownCategory=equipment==='*'?categories.total:categories.rows.find(c=>c.id===equipment);
-  const step2=<ReportSection key={'ar-month-categories-'+query+'-'+open} title={'Step 2 · '+site.site+' · by equipment category · '+dateLabel} category="attendance-month-categories"
+  const step2=<ReportSection quickSort key={'ar-month-categories-'+query+'-'+open} title={'Step 2 · '+site.site+' · by equipment category · '+dateLabel} category="attendance-month-categories"
    description="One line per equipment category (the machine’s group in the Equipment master). People are those with a duty on that category in these dates; a person on two categories is in both. Duties are on that category; days present, absent and pending are the person’s own days. Press a category for its month-wise register."
    rows={register.length?[...categories.rows,categories.total]:[]} columns={categoryColumns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}
    isTotalRow={r=>r.id==='*'} onRowClick={r=>{setEquipment(equipment===r.id?'':r.id);setPersonKey('');}} rowClassName={r=>(r.id==='*'?'mp-att-total':'')+(r.id===equipment?' report-row-picked':'')} emptyMessage="No saved duty at this site in these dates."/>;
   if(!equipment)return <>{step2}<p className="mp-notice">Press a category above, or All categories, for its month-wise register.</p></>;
-  const step3=<ReportSection key={'ar-month-'+query+'-'+open+'-'+equipment} title={'Step 3 · '+site.site+' · '+equipmentLabel+' · month-wise register · '+dateLabel} category="attendance-month"
+  const step3=<ReportSection quickSort key={'ar-month-'+query+'-'+open+'-'+equipment} title={'Step 3 · '+site.site+' · '+equipmentLabel+' · month-wise register · '+dateLabel} category="attendance-month"
    description={many(people.length,'person')+' · Press a name for that person’s duties. Hover a day for the shift, door, hours and trips. Sundays are shaded.'}
    rows={people} columns={exportColumns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
    {people.length?<div className="ar-grid-wrap" role="group" aria-label="Month-wise register">

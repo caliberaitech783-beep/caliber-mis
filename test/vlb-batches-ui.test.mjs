@@ -1,4 +1,7 @@
+import {SortableHeader,sortRowsBlanksLast} from './helpers/sortable-table-stub.mjs';
 import {TableSmartPrint} from './helpers/smart-print-stub.mjs';
+import {sortRows} from '../src/sort-rows.mjs';
+import {matchesSmartSearch} from '../shared/smart-search.mjs';
 import {meterCorrectionReport} from '../shared/scan-meter-history.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -16,7 +19,7 @@ import {misPageAllowed,misRequestAllowed} from '../shared/mis-application-access
 import {formatDisplayDateTime} from '../shared/date-time-format.mjs';
 
 async function compile(file,scope,names){
- scope={StepBackButton:()=>null,TableSmartPrint,WaitingScans:()=>null,...scope};
+ scope={StepBackButton:()=>null,TableSmartPrint,SortableHeader,sortRowsBlanksLast,WaitingScans:()=>null,SmartSearchReport:()=>null,...scope};
  scope={activeWorkOrders,WorkOrderJobSelect:()=>null,...scope};
  const source=readFileSync(new URL('../src/'+file,import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function').replaceAll('export const','const');
  const {code}=await transformWithOxc(source,file,{jsx:{runtime:'classic'}});
@@ -127,24 +130,20 @@ test('Create and Close Batch controls follow saved membership and open batch sta
  nodes(tree,n=>n.props.role==='tab'&&n.props.children==='Open')[0].props.onClick();tree=render();
  const rows=nodes(tree,n=>n.type==='tr');const ownerRow=rows.find(n=>renderToStaticMarkup(n).includes('CMLL/SASTI'));const otherRow=rows.find(n=>renderToStaticMarkup(n).includes('Other open batch'));assert.equal(button(ownerRow,'Save &amp; lock batch').props.disabled,false);assert.equal(button(otherRow,'Save &amp; lock batch').props.disabled,true);
  await button(ownerRow,'Save &amp; lock batch').props.onClick();assert.ok(calls.at(-1).url.endsWith('/batch1/close'));
- tree=render();nodes(tree,n=>n.props.role==='tab'&&n.props.children==='Edit')[0].props.onClick();tree=render();assert.ok(button(tree,'Edit batch'));const approval=button(tree,'Request PM approval');assert.ok(approval);await approval.props.onClick();assert.equal(slots[15],true,'locked edit opens the existing approval dialog');assert.equal(calls.at(-1).request.method,'GET','editing a locked batch does not bypass approval');
- slots[18]={active:true,endsAt:'2026-11-10T13:00:00Z'};tree=render();assert.ok(button(tree,'Reopen batch'));assert.equal(button(tree,'Request PM approval'),undefined);assert.match(renderToStaticMarkup(tree),/VLB trial: PM approval is paused until/);
+ tree=render();nodes(tree,n=>n.props.role==='tab'&&n.props.children==='Edit')[0].props.onClick();tree=render();assert.ok(button(tree,'Edit batch'));assert.equal(button(tree,'Request PM approval'),undefined);const reopen=button(tree,'Reopen batch');assert.ok(reopen);await reopen.props.onClick();assert.equal(slots[15],true,'a locked batch opens the reopen dialog');assert.equal(calls.at(-1).request.method,'GET','the row button only opens the dialog');assert.doesNotMatch(renderToStaticMarkup(render()),/VLB trial|PM approval/);
 
 });
 
-test('approval popup requests a reason, shows pending state, and consumes only an approved grant',async()=>{
+test('reopen popup reopens a saved batch directly without PM approval',async()=>{
  const slots=[];let cursor=0;const calls=[];let changes=0,dismissed=0;
  const useState=initial=>{const i=cursor++;if(!(i in slots))slots[i]=typeof initial==='function'?initial():initial;return [slots[i],value=>slots[i]=typeof value==='function'?value(slots[i]):value]};
- const fetch=async(url,request)=>{calls.push({url,body:JSON.parse(request.body)});return {ok:true,json:async()=>url.endsWith('/reopen-request')?{id:'request',requested_by:'alice',status:'pending',closure_revision:1}:{id:'batch',records:[]}}};
- const {VlbReopenDialog}=await compile('vlb-reopen-dialog.jsx',{React,SmartSelect:"select",useState,useRef:value=>useState(()=>({current:value}))[0],useEffect:()=>{},fetch,displaySiteName,formatDisplayDateTime,ApprovalOtpPanel:()=>null},['VlbReopenDialog']);
- let batch={id:'batch',name:'B01',site:'Sasti OC',closed_at:'2026-10-30',closure_revision:1,canRequestReopen:true,requests:[]};const actor={login:'alice',mis:true};
- const render=()=>{cursor=0;return VlbReopenDialog({session:{token:'test'},batch,actor,onChanged:async()=>{changes++},onDismiss:()=>dismissed++})};
+ const fetch=async(url,request)=>{calls.push({url,body:JSON.parse(request.body)});return {ok:true,json:async()=>({id:'batch',records:[]})}};
+ const {VlbReopenDialog}=await compile('vlb-reopen-dialog.jsx',{React,SmartSelect:"select",useState,useRef:value=>useState(()=>({current:value}))[0],useEffect:()=>{},fetch,displaySiteName,formatDisplayDateTime},['VlbReopenDialog']);
+ const batch={id:'batch',name:'B01',site:'Sasti OC',closed_at:'2026-10-30',closure_revision:1,canRequestReopen:true,canReopen:true,requests:[]};
+ const render=()=>{cursor=0;return VlbReopenDialog({session:{token:'test'},batch,onChanged:async()=>{changes++},onDismiss:()=>dismissed++})};
  const button=(tree,label)=>nodes(tree,n=>n.type==='button'&&renderToStaticMarkup(n).includes(label))[0];
- let tree=render();assert.equal(button(tree,'Request PM approval').props.disabled,true);assert.match(renderToStaticMarkup(tree),/PM approval required/);
- nodes(tree,n=>n.type==='textarea')[0].props.onChange({target:{value:'Additional cards received'}});tree=render();await button(tree,'Request PM approval').props.onClick();
- assert.equal(calls[0].url,'/api/vlb-batches/batch/reopen-request');assert.equal(calls[0].body.reason,'Additional cards received');assert.equal(changes,1);tree=render();assert.match(renderToStaticMarkup(tree),/Awaiting PM approval/);assert.equal(button(tree,'Request PM approval'),undefined);
- batch={...batch,canReopen:true,requests:[{id:'request',requested_by:'alice',status:'approved',closure_revision:1,decided_by:'pm'}]};tree=render();assert.match(renderToStaticMarkup(tree),/PM approval granted/);await button(tree,'Reopen approved batch').props.onClick();assert.equal(calls[1].url,'/api/vlb-batches/batch/reopen');assert.equal(dismissed,1);
- batch={...batch,pmApprovalTrial:{active:true,endsAt:'2026-11-10T13:00:00Z'},requests:[]};tree=render();assert.match(renderToStaticMarkup(tree),/Reopen during VLB trial/);assert.equal(nodes(tree,n=>n.type==='textarea').length,0);await button(tree,'Reopen batch').props.onClick();assert.equal(calls.at(-1).url,'/api/vlb-batches/batch/reopen');
+ const tree=render(),html=renderToStaticMarkup(tree);assert.match(html,/Reopen saved batch/);assert.doesNotMatch(html,/PM approval|Project Manager|otp/i);assert.equal(nodes(tree,n=>n.type==='textarea').length,0,'no reason or request needed');
+ await button(tree,'Reopen batch').props.onClick();assert.equal(calls.length,1);assert.equal(calls[0].url,'/api/vlb-batches/batch/reopen');assert.equal(changes,1);assert.equal(dismissed,1);
 });
 
 test('PM approval screen requires a rejection reason and sends the selected request and review remark',async()=>{
@@ -180,7 +179,8 @@ test('opened batch search and shared export controls use only its saved snapshot
  const source=main.slice(main.indexOf('function ReportSection('),main.indexOf('// The step a request waited'));
  const {code}=await transformWithOxc(source,'report-section.jsx',{jsx:{runtime:'classic'}});
  const ExportMenu=()=>null,ReportTable=()=>null,FileBarChart=()=>null;
- const shared=new Function('React','useState','ExportMenu','ReportTable','FileBarChart','VehicleHistoryScroll',code+';return ReportSection')(React,useState,ExportMenu,ReportTable,FileBarChart,()=>null);
+ // useStepTableHeads (column headings of a step, 19 Nov 2026) only measures the drawn page: a ref that does nothing here.
+ const shared=new Function('React','useState','ExportMenu','ReportTable','FileBarChart','VehicleHistoryScroll','useStepTableHeads',code+';return ReportSection')(React,useState,ExportMenu,ReportTable,FileBarChart,()=>null,()=>undefined);
  slots.length=0;cursor=0;let tree=shared(report.props);
  const table=nodes(tree,n=>n.type===ReportTable)[0];assert.equal(table.props.smartPrintAction,true);assert.equal(table.props.query,'V12');
  table.props.onExportViewChange({sourceRows:records,columns:[vlbBatchColumns[0]],rows:[records[1]]});
@@ -195,12 +195,12 @@ test('Create Batch edits VLB and ELB from the selected row and respects their lo
   if(!(index in slots))slots[index]=typeof initial==='function'?initial():initial;
   return [slots[index],value=>slots[index]=typeof value==='function'?value(slots[index]):value];
  };
- const stub=()=>null,Report=()=>null,Editor=()=>null;
+ const stub=()=>null,Report=()=>null,ElbReport=()=>null,Editor=()=>null;
  const deletions=[];let approve=false;
  const {VlbCreateBatch}=await compile('vlb-create-batch.jsx',{
   React,useState,useRef:value=>useState(()=>({current:value}))[0],useEffect:stub,SmartSelect:'select',
   canonicalSiteName,displaySiteName,bookShiftCode,systemBookDate,vlbRecordSource,vlbRecordEntryType,
-  VlbBatchCardDetails:stub,VlbBatchReport:Report,VlbBatchGovernance:stub,VlbBatchHolds:stub,LogBookForm:Editor,window:{confirm:()=>approve},
+  VlbBatchCardDetails:stub,VlbBatchReport:Report,ElbSavedCardsReport:ElbReport,VlbBatchGovernance:stub,VlbBatchHolds:stub,LogBookForm:Editor,window:{confirm:()=>approve},
   fetch:async(url,request)=>{deletions.push([url,request.method,JSON.parse(request.body)]);return {ok:true,json:async()=>({deleted:true})}}
  },['VlbCreateBatch']);
  const vehicle={id:1,book_no:'VLB-1',revision:2,data:{openingKmr:10}};
@@ -208,6 +208,7 @@ test('Create Batch edits VLB and ELB from the selected row and respects their lo
  const batch={id:'b1',name:'Batch 1',twoStage:true,stage:'vlb_open',canEditSavedFleet:true,records:[vehicle],elbRecords:[equipment]};
  const render=()=>{cursor=0;return VlbCreateBatch({session:{token:'test'}})};
  const report=tree=>nodes(tree,node=>node.type===Report)[0].props;
+ const elbReport=tree=>nodes(tree,node=>node.type===ElbReport)[0]?.props;
  const button=(tree,label)=>nodes(tree,node=>node.type==='button'&&node.props['aria-label']===label)[0];
  render();
  slots[5]=batch;slots[8]=false;slots[14]={login:'admin',admin:true};
@@ -228,19 +229,83 @@ test('Create Batch edits VLB and ELB from the selected row and respects their lo
 
  slots[5]={...batch,stage:'elb_open'};
  assert.match(renderToStaticMarkup(report(render()).rowAction(vehicle)),/Locked/);
- button(render(),'Edit Opening HMR for ELB-1').props.onClick();
- editor=nodes(render(),node=>node.type===Editor)[0];
+ assert.equal(elbReport(render()).batch.elbRecords[0],equipment,'saved ELB cards use the shared report table');
+ elbReport(render()).renderField(equipment,'Opening HMR',20).props.onClick();
+ editor=nodes(elbReport(render()).rowEditor(equipment,8),node=>node.type===Editor)[0];
  assert.equal(editor.props.kind,'equipment');
  assert.equal(editor.props.initialRecord,equipment);
  assert.equal(editor.props.focusField,'Opening HMR');
  editor.props.onSaved();
- assert.equal(nodes(render(),node=>node.type===Editor).length,0);
+ assert.equal(elbReport(render()).rowEditor(equipment,8),false);
  assert.equal(slots[9],2,'saving refreshes batch details');
- await button(render(),'Delete ELB-1').props.onClick();
+ await button(elbReport(render()).rowAction(equipment),'Delete ELB-1').props.onClick();
  assert.deepEqual(deletions[1],['/api/log-books/equipment/1','DELETE',{revision:3}]);
 
+ // An open batch never stops a user (owner, 19 Nov 2026): another user edits a
+ // batch reopened for someone else, and LMV cards get Edit while the LMV stage is open.
+ slots[5]={...batch,amendment_by:'alice'};slots[14]={login:'bob',mis:true};
+ assert.ok(button(report(render()).rowAction(vehicle),'Edit VLB-1'),'another MIS user edits a reopened batch');
+ assert.ok(button(report(render()).rowAction(vehicle),'Delete VLB-1'));
+ const lmv={id:7,book_no:'LMV-7',revision:1,data:{openingKmr:5}};
+ slots[5]={...batch,stage:'lmv_open',lmvRecords:[lmv]};
+ assert.ok(button(report(render()).rowAction(lmv),'Edit LMV-7'));
+ assert.equal(button(report(render()).rowAction(lmv),'Delete LMV-7'),undefined,'LMV cards are deleted from the LMV Log Book');
+ report(render()).renderField(lmv,'Opening KMR',5).props.onClick();
+ editor=nodes(report(render()).rowEditor(lmv,8),node=>node.type===Editor)[0];
+ assert.equal(editor.props.kind,'lmv');
+ assert.equal(editor.props.initialRecord,lmv);
+ editor.props.onExit();
+ slots[14]={login:'pm',pm:true};
+ assert.ok(button(report(render()).rowAction(lmv),'Edit LMV-7'),'every login that may use batches gets Edit on an open stage');
+ slots[14]={login:'admin',admin:true};
+
  slots[5]={...batch,stage:'closed',closed_at:'closed'};
- assert.equal(button(render(),'Edit ELB-1'),undefined);
- assert.equal(button(render(),'Delete ELB-1'),undefined);
+ assert.equal(button(elbReport(render()).rowAction(equipment),'Edit ELB-1'),undefined);
+ assert.equal(button(elbReport(render()).rowAction(equipment),'Delete ELB-1'),undefined);
+ assert.match(renderToStaticMarkup(elbReport(render()).rowAction(equipment)),/Locked/);
  assert.match(renderToStaticMarkup(report(render()).rowAction(vehicle)),/Locked/);
+});
+
+test('Saved ELB cards get the VLB Smart Search, and sort by any heading with numbers by value and empty job cards last',async()=>{
+ const slots=[];let cursor=0;
+ const useState=initial=>{const index=cursor++;if(!(index in slots))slots[index]=typeof initial==='function'?initial():initial;return [slots[index],value=>slots[index]=typeof value==='function'?value(slots[index]):value]};
+ const ReportSection=()=>null;
+ const {ElbSavedCardsReport,elbSavedCardColumns}=await compile('vlb-batch-report.jsx',{React,useState,vlbRecordEntryType,vlbRecordSource,vlbRecordTrips,displaySiteName,meterCorrectionReport},['ElbSavedCardsReport','elbSavedCardColumns']);
+ const card=(id,book,door,operator,opening,closing,jobCardNo)=>({id,book_no:book,data:{door,employeeName:operator,openingHmr:opening,closingHmr:closing,jobCardNo}});
+ const elbRecords=[
+  card(1,'CAL/ELB/18-11-26/103','LPC5 - 21031','RAJ KUMAR RAM','17222.8','17227.8',''),
+  card(2,'CAL/ELB/18-11-26/104','TPC11 - 00653','NIRAJ SINGH','29794.9','29802.2','JC-9'),
+  card(3,'CAL/ELB/18-11-26/105','TPC93-50219','RAJIV LOCHAN PATEL','7255.3','7261.9','JC-10'),
+ ];
+ const batch={id:'b1',name:'Batch 1',site:'Sasti OC',report_date:'2026-11-18',shift:'A',elbRecords};
+ const viewed=[];
+ const render=()=>{cursor=0;return ElbSavedCardsReport({batch,ReportSection,onView:record=>viewed.push(record.id),rowAction:record=>'action '+record.id,renderField:(record,field,value)=>field+'='+value})};
+ let report=render();
+ assert.equal(report.type,ReportSection);
+ assert.equal(report.props.rows,elbRecords);
+ assert.equal(report.props.smartPrintAction,true);
+ assert.equal(report.props.showSearch,false,'one search box, as on VLB');
+ assert.equal(report.props.rowAction(elbRecords[0]),'action 1');
+ assert.deepEqual(report.props.columns.map(column=>column.label),['Book number','Equipment / Door','Operator','Opening HMR','Closing HMR','Job card','Details']);
+ assert.equal(report.props.columns[3].render(elbRecords[1]),'Opening HMR=29794.9','HMR cells still open the inline editor');
+ assert.equal(report.props.columns[5].render(elbRecords[1]),'Job Card no.=JC-9');
+ report.props.columns[6].render(elbRecords[2]).props.onClick();assert.deepEqual(viewed,[3]);
+ const search=nodes(report.props.headingControl,node=>node.type==='input')[0];
+ assert.equal(search.props['aria-label'],'Smart Search saved ELB cards');
+ search.props.onChange({target:{value:'tpc11'}});report=render();
+ assert.equal(report.props.query,'tpc11');
+ assert.deepEqual(elbRecords.filter(row=>matchesSmartSearch(report.props.query,row)).map(row=>row.id),[2],'the report table keeps only matching cards');
+ assert.deepEqual(elbRecords.filter(row=>matchesSmartSearch('rajiv',row)).map(row=>row.id),[3]);
+ report.props.onResetSearch();assert.equal(render().props.query,'');
+
+ // Sorted the way the shared report table sorts: sortValue first, blanksLast columns keep empty lines at the bottom.
+ const main=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');
+ assert.ok(main.includes('?.blanksLast ? sortRowsBlanksLast(filteredRows, sort, sortValueOf) : sortedByValue'),'the report table keeps blank job cards last');
+ const books=(key,direction)=>{const column=elbSavedCardColumns.find(item=>item.key===key),value=row=>column.sortValue?.(row)??column.value(row),sort={key,direction};
+  return (column.blanksLast?sortRowsBlanksLast(elbRecords,sort,value):sortRows(elbRecords,sort,value)).map(row=>row.book_no.slice(-3))};
+ assert.deepEqual(books('openingHmr','asc'),['105','103','104'],'HMR sorts as numbers, not text');
+ assert.deepEqual(books('openingHmr','desc'),['104','103','105']);
+ assert.deepEqual(books('jobCard','asc'),['104','105','103'],'JC-9 before JC-10, empty job card last');
+ assert.deepEqual(books('jobCard','desc'),['105','104','103'],'empty job card stays last in descending order too');
+ assert.deepEqual(books('operator','asc'),['104','103','105']);
 });

@@ -25,7 +25,9 @@ test('a step that opens below the screen is brought into view',()=>{
  const main=read('src/main.jsx');
  const section=main.slice(main.indexOf('function ReportSection('),main.indexOf('function withStageGapHighlights('));
  assert.match(section,/\/\^Step \(\\d\+\)\/[^\n]*> 1;/);
- assert.match(section,/ref=\{laterStep \? showOpenedStep : undefined\}/);
+ // Since 19 Nov 2026 the step's own ref (column headings, step-table-heads.js) calls it for a later step.
+ assert.match(section,/useStepTableHeads\(stepLook, laterStep \? showOpenedStep : null\)/);
+ assert.match(section,/ref=\{stepLook \? stepRef : undefined\}/);
  const show=main.slice(main.indexOf('function showOpenedStep('),main.indexOf('function ReportSection('));
  assert.match(show,/scrollIntoView\(\{ block: "start" \}\)/,'no smooth scrolling: the app has no motion');
 });

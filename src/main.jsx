@@ -14,6 +14,7 @@ import ScanCardBackup from './scan-card-backup.jsx';
 import SiteUpdateNotice from './site-update-notice.jsx';
 import EnvironmentBanner from './environment-banner.jsx';
 import {FleetPopulationReport} from './fleet-population.jsx';
+import {ATTENDANCE_PAGES,AttendanceComparison,BiometricIntegration} from './attendance-management.jsx';
 import {operationReports} from './operations-report-model.mjs';
 import EquipmentAliasAdminPanel,{EquipmentAliasCell,EquipmentAliasRevokeDialog,useEquipmentAliases} from './equipment-alias-admin.jsx';
 import {misPageAllowed} from '../shared/mis-application-access.mjs';
@@ -86,6 +87,7 @@ import { filterRecordsByDate } from "./record-date-range.mjs";
 import { primaryRecordDateColumn } from "./record-date-range.mjs";
 import RecordDateRange from "./record-date-range.jsx";
 import { isDurationColumn, compareDurationValues, defaultDurationSort } from "./duration-sort.mjs";
+import { sortCollator, useSortableRows, SortableHeader, sortRowsBlanksLast } from "./sortable-table.jsx";
 import { closedTimeAfterStartedColumns, ensureJobReferenceVisibleKeys } from "./table-actions-model.mjs";
 import UserProfile from "./user-profile.jsx";
 import TelegramGate from "./telegram-gate.jsx";
@@ -382,6 +384,9 @@ import "./vehicle-history-density.css";
 import "./ticket-status-tabs.css";
 import "./linked-request-picker.css";
 import "./report-step-style.css";
+import "./report-step-sticky.css";
+import { useTopBarStick } from "./top-bar-stick.js";
+import { useStepTableHeads } from "./step-table-heads.js";
 import "./workspace-readability.css";
 import DailyBdBalanceChart from "./daily-bd-balance-chart.jsx";
 import EmployeeTenureReport from "./employee-tenure-report.jsx";
@@ -3384,54 +3389,8 @@ function normalizeEquipmentRecord(record = {}) {
     acquisitionDate,
   };
 }
-const sortCollator = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
-function comparableValue(value) {
-  if (typeof value === "boolean") return value ? 1 : 0;
-  if (typeof value === "number") return value;
-  const text = String(value ?? "").trim();
-  const indianDate = text.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})(?:\s+(.*))?$/);
-  if (indianDate) {
-    const [, day, month, year, time = "00:00:00"] = indianDate;
-    const timestamp = Date.parse(`${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}T${time}`);
-    if (!Number.isNaN(timestamp)) return timestamp;
-  }
-  return text;
-}
-function useSortableRows(rows, defaultSort = "", valueForKey = (row, key) => row[key], durationSorting = true) {
-  const [sort, setSort] = useState(() => typeof defaultSort === "string" ? { key: defaultSort, direction: "asc" } : defaultSort);
-  const sortedRows = useMemo(() => {
-    if (!sort.key) return rows;
-    const durationColumn = typeof durationSorting === "function" ? durationSorting(sort.key) : durationSorting && isDurationColumn("", sort.key);
-    return rows.map((row, index) => ({ row, index })).sort((left, right) => {
-      const a = comparableValue(valueForKey(left.row, sort.key));
-      const b = comparableValue(valueForKey(right.row, sort.key));
-      if (durationColumn) return compareDurationValues(a, b, sort.direction) || left.index - right.index;
-      let result;
-      if (typeof a === "number" && typeof b === "number") result = a - b;
-      else result = sortCollator.compare(String(a), String(b));
-      if (!result) result = left.index - right.index;
-      return sort.direction === "asc" ? result : -result;
-    }).map(({ row }) => row);
-  }, [rows, sort, valueForKey, durationSorting]);
-  const changeSort = (key, direction) => setSort((current) => ({
-    key,
-    direction: direction || (current.key === key && current.direction === "asc" ? "desc" : "asc"),
-  }));
-  return [sortedRows, sort, changeSort];
-}
 const WORKFLOW_INITIAL_RENDER_ROWS = 100;
 const WORKFLOW_RENDER_BATCH = 100;
-function SortableHeader({ label, sortKey, sort, onSort }) {
-  const active = sort.key === sortKey,
-    Icon = active ? (sort.direction === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
-  return (
-    <th aria-sort={active ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}>
-      <button className={`sort-header ${active ? "active" : ""}`} onClick={() => onSort(sortKey)} type="button">
-        <span>{label}</span><Icon aria-hidden="true" /><ListFilter className="header-filter-icon" aria-hidden="true" />
-      </button>
-    </th>
-  );
-}
 function visibleViewportBounds() {
   const viewport = window.visualViewport;
   const left = viewport?.offsetLeft || 0;
@@ -3467,6 +3426,9 @@ function FilterableHeader({
   width = 0,
   onResize = null,
   className = "",
+  // quickSort: one click on the heading sorts it (again reverses it), with no ↑ / ↓ / filter menu.
+  quickSort = false,
+  labelText = "",
 }) {
   const [valueSearch, setValueSearch] = useState("");
   const [resizing, setResizing] = useState(false);
@@ -3545,16 +3507,15 @@ function FilterableHeader({
       <button
         ref={triggerRef}
         className={`sort-header ${active ? "active" : ""} ${filterValue ? "filtered" : ""}`}
-        onClick={(event) => { event.stopPropagation(); onToggle(sortKey); }}
+        onClick={(event) => { event.stopPropagation(); if (quickSort) onSort(sortKey); else onToggle(sortKey); }}
         type="button"
-        aria-expanded={open}
-        aria-haspopup="dialog"
+        {...(quickSort ? { title: `Sort by ${labelText || (typeof label === "string" ? label : sortKey)}` } : { "aria-expanded": open, "aria-haspopup": "dialog" })}
       >
         <span>{headingLines ? <>{headingLines[0]}<br />{headingLines[1]}</> : label}</span><Icon aria-hidden="true" />
         {filterValue && <i className="column-filter-dot" aria-label="Filtered" />}
       </button>
       {onResize && <span className={`column-resize-handle ${resizing ? "dragging" : ""}`} role="separator" aria-orientation="vertical" aria-label={`Change the width of ${typeof label === "string" ? label : "this column"}`} title="Drag to make this column wider or narrower. Double-click to fit it again." tabIndex={0} onPointerDown={startResize} onDoubleClick={(event) => { event.stopPropagation(); onResize(null); }} onClick={(event) => event.stopPropagation()} onKeyDown={nudgeWidth} />}
-      {open && createPortal(
+      {open && !quickSort && createPortal(
         <div className="column-filter-popover column-filter-popover-portal" style={popoverPosition} role="dialog" aria-label={`${label} filter`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}><div className="mis-popup-close-bar"><button type="button" className="mis-popup-close" onClick={() => onToggle(sortKey)}  aria-label="Close window">× Close</button></div>
           <div className="column-filter-popover-head">
             <strong>{label}</strong>
@@ -4371,7 +4332,7 @@ function figureColumnKeys(columns, rows, valueOf) {
     return found;
   }).map((column) => column.key));
 }
-function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], onVisibleColumnsChange, rows = [], query = "", emptyMessage, rowKey, rowClassName, isTotalRow, isSubtotalRow, toolbarTarget = null, toolbarPortal = false, title = "", layoutKey = "", onExportViewChange = null, onResetSearch = null, smartPrintAction = false, recordDateFilter = null, dataReady = true, rowAction, rowEditor, serialColumn = true, stepLook = false, figuresRight = false }) {
+function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], onVisibleColumnsChange, rows = [], query = "", emptyMessage, rowKey, rowClassName, isTotalRow, isSubtotalRow, toolbarTarget = null, toolbarPortal = false, title = "", layoutKey = "", onExportViewChange = null, onResetSearch = null, smartPrintAction = false, recordDateFilter = null, dataReady = true, rowAction, rowEditor, serialColumn = true, stepLook = false, figuresRight = false, quickSort = false }) {
   const {shifts}=useRequestShiftData();
   columns=requestShiftColumns(columns,rows,shifts);
   const [appliedColumns, applyColumns] = useColumnPreferences(layoutKey || "report-table", columns, visibleColumnKeys);
@@ -4405,15 +4366,9 @@ function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], 
     matchesSmartSearch(deferredQuery, row) &&
     tableRowMatchesFilters(row, columns, columnFilters),
   );
-  const [sortedRows, sort, changeSort] = useSortableRows(
-    filteredRows,
-    defaultDurationSort(columns),
-    (row, key) => {
-      const column = columns.find((item) => item.key === key);
-      return column?.sortValue?.(row) ?? column?.value?.(row);
-    },
-    (key) => isDurationColumn(columns.find((column) => column.key === key)?.label, key),
-  );
+  const sortValueOf = (row, key) => { const column = columns.find((item) => item.key === key); return column?.sortValue?.(row) ?? column?.value?.(row); };
+  const [sortedByValue, sort, changeSort] = useSortableRows(filteredRows, defaultDurationSort(columns), sortValueOf, (key) => isDurationColumn(columns.find((column) => column.key === key)?.label, key));
+  const sortedRows = columns.find((column) => column.key === sort.key)?.blanksLast ? sortRowsBlanksLast(filteredRows, sort, sortValueOf) : sortedByValue;
   const updateColumnFilter = (key, value) => {
     setColumnFilters((current) => {
       const next = { ...current };
@@ -4517,6 +4472,8 @@ function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], 
             sortKey={column.key}
             sort={sort}
             onSort={changeSort}
+            quickSort={quickSort}
+            labelText={typeof column.label === "string" ? column.label : ""}
             open={openFilter === column.key}
             onToggle={(key) => setOpenFilter((current) => current === key ? null : key)}
             values={columnValues[column.key] || []}
@@ -5617,7 +5574,7 @@ function Equipment({
         </ActionsTable>
       </div>
       {aliasRevoke && <EquipmentAliasRevokeDialog session={aliasSession} alias={aliasRevoke} otpEnabled={aliasData.otpEnabled} approver={aliasData.approver} approverTelegramLinked={aliasData.approverTelegramLinked} onDone={aliasData.refresh} onDismiss={() => setAliasRevoke(null)} />}
-      {pageTitle === 'Equipment master' && <EquipmentAliasAdminPanel session={aliasSession} isAdmin={aliasAdmin} />}
+      {pageTitle === 'Equipment master' && <EquipmentAliasAdminPanel session={aliasSession} isAdmin={aliasAdmin} ReportSection={ReportSection} />}
       {detail && (
         <Modal title="Equipment details" close={() => setDetail(null)}>
           <div className="detailhead">
@@ -7449,7 +7406,7 @@ function showOpenedStep(node) {
   setTimeout(() => { stepOpenedInThisPress = false; }, 0);
   if (node.getBoundingClientRect().top > window.innerHeight * 0.6) node.scrollIntoView({ block: "start" });
 }
-function ReportSection({ title, description, category = "general", icon: ReportIcon = FileBarChart, rows = [], columns = [], query = "", showSearch = true, emptyMessage = "No records available", rowKey, rowClassName, isTotalRow, isSubtotalRow, headingControl = null, controls = null, exportLabel = "Smart Print", smartPrintAction = false, onResetSearch = null, recordDateFilter = null, reportKey = "", dataReady = true, rowAction, rowEditor, onRowClick = null, onBack = null, backLabel = "Back", children }) {
+function ReportSection({ title, description, category = "general", icon: ReportIcon = FileBarChart, rows = [], columns = [], query = "", showSearch = true, emptyMessage = "No records available", rowKey, rowClassName, isTotalRow, isSubtotalRow, headingControl = null, controls = null, exportLabel = "Smart Print", smartPrintAction = false, onResetSearch = null, recordDateFilter = null, reportKey = "", dataReady = true, rowAction, rowEditor, onRowClick = null, onBack = null, backLabel = "Back", quickSort = false, children }) {
   const recordCount = rows.filter((row) => !isTotalRow?.(row) && !isSubtotalRow?.(row)).length;
   const [exportView, setExportView] = useState(null);
   const TableViewport = category === "vehicle-history" ? VehicleHistoryScroll : "div";
@@ -7462,8 +7419,10 @@ function ReportSection({ title, description, category = "general", icon: ReportI
   // above it: no search box, record count, Rows or Actions, and every line on screen.
   const stepLook = /^Step \d/.test(String(title));
   const searchShown = showSearch && !stepLook;
+  // Owner, 19 Nov 2026: the column headings of a step stay in view under its heading (step-table-heads.js).
+  const stepRef = useStepTableHeads(stepLook, laterStep ? showOpenedStep : null);
   return (
-    <div ref={laterStep ? showOpenedStep : undefined} className="reports-section generated-report-section" data-category={category} data-step-look={stepLook ? "true" : undefined}>
+    <div ref={stepLook ? stepRef : undefined} className="reports-section generated-report-section" data-category={category} data-step-look={stepLook ? "true" : undefined}>
       <div className="reports-section-heading">
         <div className="generated-report-title">
           <span className="generated-report-icon"><ReportIcon aria-hidden="true" /></span>
@@ -7493,7 +7452,7 @@ function ReportSection({ title, description, category = "general", icon: ReportI
             rowKey={rowKey}
             rowClassName={rowClassName}
             isTotalRow={isTotalRow} isSubtotalRow={isSubtotalRow}
-            rowAction={rowAction} rowEditor={rowEditor} onRowClick={onRowClick} figuresRight stepLook={stepLook}
+            rowAction={rowAction} rowEditor={rowEditor} onRowClick={onRowClick} figuresRight stepLook={stepLook} quickSort={quickSort || stepLook}
             emptyMessage={emptyMessage}
             columns={columns}
             visibleColumnKeys={visibleColumnKeys}
@@ -11571,6 +11530,7 @@ function App() {
     [accountWorkspace,setAccountWorkspace]=useState("accounts"),
     [employeeLocationOpen,setEmployeeLocationOpen]=useState(false),
     [accountDirectoryView,setAccountDirectoryView]=useState("directory");
+  const topBarRef=useTopBarStick();
   const changeSidebarHidden=hidden=>{setSidebarHidden(hidden);setMenu(false);try{localStorage.setItem("caliberSidebarHidden",String(hidden));}catch{}};
   // Rule (15 Nov 2026): while a VLB, LMV or ELB scan card is open for review the sidebar runs in auto-hide.
   const sidebarAuto=sidebarAutoHide(sidebarAutoSaved,scanCardOpen);
@@ -11680,7 +11640,7 @@ function App() {
   const adminOnlyPages=new Set([...adminNav.map(([name])=>name),'Admin locks','Full Backup','Database']);
   const canOpenAdminPage = (name) => {
     if(name==='Employee Current Location')return Boolean(session?.token);
-    if(['Fleet Capacity','Equipment Deployment'].includes(name))return canOpenAdminPage('Reports');
+    if(['Fleet Capacity','Equipment Deployment'].includes(name)||ATTENDANCE_PAGES[name])return canOpenAdminPage('Reports');
     if(name==='Fleet reconciliation')return canOpenAdminPage('Dashboard');
     if(name==='Capacity master')return isMisAdministrator(session)&&canOpenAdminPage('Equipment master');
     if(name==='Batch reopening approvals')return correctionApprovalAccess;
@@ -12032,23 +11992,25 @@ function App() {
   // renders so opening navigation cannot rebuild a large dashboard or table.
   const adminPageContent = useMemo(() => renderedActive === "Dashboard" ? (
     requestsLoaded ? <MisDashboard goto={selectMenu} gotoEquipment={gotoEquipment} gotoBreakdownFleet={gotoBreakdownFleet} requests={requests} requestsError={requestsError} requestsUpdatedAt={requestState.updatedAt} onRefreshRequests={loadRequests} theme={theme} session={session} ReportSection={ReportSection} printDashboard={printDashboardReport} /> : <RequestDataState error={requestsError} retry={loadRequests} />
-  ) : renderedActive==='Fleet reconciliation' ? (<details open className="scan-fleet-reconciliation"><summary>Site fleet · VLB / LMV / ELB, breakdown and idle details</summary><FleetReconciliation session={session}/></details>) : renderedActive==='Employee Current Location' ? (<EmployeeCurrentLocation session={session}/>) : renderedActive==='Employee master' ? (<EmployeeMaster session={session} ExportMenu={ExportMenu} PrintButton={PrintButton} parseCsv={parseCsv}/>) : ['Work Order master','Financial Year master','Company master'].includes(renderedActive) ? (
+  ) : renderedActive==='Fleet reconciliation' ? (<details open className="scan-fleet-reconciliation"><summary>Site fleet · VLB / LMV / ELB, breakdown and idle details</summary><FleetReconciliation session={session}/></details>) : renderedActive==='Employee Current Location' ? (<EmployeeCurrentLocation session={session}/>) : renderedActive==='Employee master' ? (<EmployeeMaster session={session} ExportMenu={ExportMenu} PrintButton={PrintButton} parseCsv={parseCsv} ReportSection={ReportSection}/>) : ['Work Order master','Financial Year master','Company master'].includes(renderedActive) ? (
     <ErpMasters key={renderedActive} name={renderedActive} session={session} ExportMenu={ExportMenu} PrintButton={PrintButton} parseCsv={parseCsv}/>
   ) : renderedActive==='Pulse Master Sync' ? (
-    <><PulseMasterSync session={session}/><PendingInPulse session={session}/></>
+    <><PulseMasterSync session={session} ReportSection={ReportSection}/><PendingInPulse session={session}/></>
   ) : renderedActive==='Deletion' ? (<LogBookDeletion session={session}/>) : renderedActive==='Scan Backup' ? (<ScanCardBackup session={session}/>)
   : renderedActive==='LMV Log Book' ? (<LogBookModeChoice kind="lmv" canScan={canOpenAdminPage('LMV Scan')} onManual={()=>selectMenu('LMV Manual')} onScan={()=>selectMenu('LMV Scan')}/>)
-  : renderedActive==='LMV Manual' ? (<VlbEntryWorkspace key="lmv-manual" kind="lmv" mode="manual" session={session} ReportSection={ReportSection} onExit={()=>selectMenu('LMV Log Book')}><LogBookForm kind="lmv" session={session} onExit={()=>selectMenu('LMV Log Book')} onBulkScan={canOpenAdminPage('LMV Scan')?()=>selectMenu('LMV Scan'):undefined}/></VlbEntryWorkspace>)
+  : renderedActive==='LMV Manual' ? (<VlbEntryWorkspace key="lmv-manual" kind="lmv" mode="manual" session={session} ReportSection={ReportSection} onExit={()=>selectMenu('LMV Log Book')}><LogBookForm kind="lmv" session={session} ReportSection={ReportSection} onExit={()=>selectMenu('LMV Log Book')} onBulkScan={canOpenAdminPage('LMV Scan')?()=>selectMenu('LMV Scan'):undefined}/></VlbEntryWorkspace>)
   : renderedActive==='LMV Scan' ? (<VlbEntryWorkspace key="lmv-scan" kind="lmv" mode="scan" session={session} ReportSection={ReportSection} onExit={()=>selectMenu('LMV Log Book')}><BulkCardScanning kind="vehicle" logBookKind="lmv" session={session} ReportSection={ReportSection}/></VlbEntryWorkspace>)
   : ['Vehicle Log Book Options','Equipment Log Book Options'].includes(renderedActive) ? (<LogBookModeChoice onBatches={()=>selectMenu('Create VLB Batch')} kind={renderedActive==='Vehicle Log Book Options'?'vehicle':'equipment'} canSaved={renderedActive==='Vehicle Log Book Options'&&canOpenAdminPage('Saved VLB')} onSaved={()=>selectMenu('Saved VLB')} canScan={canOpenAdminPage(renderedActive==='Vehicle Log Book Options'?'Trip Card Bulk Scan':'Job Card Bulk Scan')} onManual={()=>selectMenu(renderedActive==='Vehicle Log Book Options'?'Vehicle Log Book':'Equipment Log Book')} onScan={()=>selectMenu(renderedActive==='Vehicle Log Book Options'?'Trip Card Bulk Scan':'Job Card Bulk Scan')}/>) : ['Trip Card Bulk Scan','Job Card Bulk Scan'].includes(renderedActive) ? (
     <VlbEntryWorkspace key={renderedActive} mode="scan" kind={renderedActive==='Trip Card Bulk Scan'?'vehicle':'equipment'} session={session} ReportSection={ReportSection} onExit={()=>selectMenu(renderedActive==='Trip Card Bulk Scan'?'Vehicle Log Book Options':'Equipment Log Book Options')}><BulkCardScanning ReportSection={ReportSection} key={renderedActive} kind={renderedActive==='Trip Card Bulk Scan'?'vehicle':'equipment'} session={session}/></VlbEntryWorkspace>
+  ) : renderedActive==='Biometric integration' ? (<BiometricIntegration session={session} ReportSection={ReportSection}/>
+  ) : ATTENDANCE_PAGES[renderedActive] ? (<AttendanceComparison key={renderedActive} page={renderedActive} session={session} ReportSection={ReportSection}/>
   ) : ['Fleet Capacity','Equipment Deployment'].includes(renderedActive) ? (
     <FleetPopulationReport key={renderedActive} session={session} ReportSection={ReportSection} capacity={renderedActive==='Fleet Capacity'}/>
   ) : renderedActive==='VLB Reports' ? (<VlbBatchReports ReportSection={ReportSection} key={renderedActive} session={session}/>
   ) : renderedActive==='ELB Reports' ? (<ElbBatchReports ReportSection={ReportSection} key={renderedActive} session={session}/>
   ) : renderedActive==='Batch reopening approvals' ? (<VlbBatchApprovals session={session}/>) : ['Create VLB Batch','Saved VLB'].includes(renderedActive) ? (<VlbCreateBatch onExit={canGoBack?goBack:undefined} canDeleteManualElb={canOpenAdminPage('Deletion')} onApprovals={()=>selectMenu('Batch reopening approvals')} onManual={batch=>{rememberVlbEntryBatch(session,batch);selectMenu('Vehicle Log Book')}} onScan={batch=>{rememberVlbEntryBatch(session,batch);selectMenu('Trip Card Bulk Scan')}} onLmvManual={batch=>{rememberVlbEntryBatch(session,batch);selectMenu('LMV Manual')}} onLmvScan={canOpenAdminPage('LMV Scan')?batch=>{rememberVlbEntryBatch(session,batch);selectMenu('LMV Scan')}:undefined} onElbEntry={batch=>{rememberVlbEntryBatch(session,batch);selectMenu('Equipment Log Book Options')}} onEquipmentElb={batch=>{rememberVlbEntryBatch(session,batch);selectMenu('Equipment Log Book')}} ReportSection={ReportSection} session={session} onExit={()=>selectMenu('Vehicle Log Book Options')}/>
   ) : ['Vehicle Log Book','Equipment Log Book'].includes(renderedActive) ? (<>
-    <VlbEntryWorkspace key={renderedActive} mode="manual" canDeleteElb={canOpenAdminPage('Deletion')} ExportMenu={ExportMenu} kind={renderedActive==='Vehicle Log Book'?'vehicle':'equipment'} session={session} ReportSection={ReportSection} onExit={()=>selectMenu(renderedActive==='Vehicle Log Book'?'Vehicle Log Book Options':'Equipment Log Book Options')}><LogBookForm key={renderedActive} kind={renderedActive==='Vehicle Log Book'?'vehicle':'equipment'} session={session} onExit={()=>selectMenu(renderedActive==='Vehicle Log Book'?'Vehicle Log Book Options':'Equipment Log Book Options')} onBulkScan={()=>selectMenu(renderedActive==='Vehicle Log Book'?'Trip Card Bulk Scan':'Job Card Bulk Scan')}/></VlbEntryWorkspace></>
+    <VlbEntryWorkspace key={renderedActive} mode="manual" canDeleteElb={canOpenAdminPage('Deletion')} ExportMenu={ExportMenu} kind={renderedActive==='Vehicle Log Book'?'vehicle':'equipment'} session={session} ReportSection={ReportSection} onExit={()=>selectMenu(renderedActive==='Vehicle Log Book'?'Vehicle Log Book Options':'Equipment Log Book Options')}><LogBookForm key={renderedActive} kind={renderedActive==='Vehicle Log Book'?'vehicle':'equipment'} session={session} ReportSection={ReportSection} onExit={()=>selectMenu(renderedActive==='Vehicle Log Book'?'Vehicle Log Book Options':'Equipment Log Book Options')} onBulkScan={()=>selectMenu(renderedActive==='Vehicle Log Book'?'Trip Card Bulk Scan':'Job Card Bulk Scan')}/></VlbEntryWorkspace></>
   ) : renderedActive === "Stock Statement" ? (
     <StockStatement token={session?.token || authToken} ReportSection={ReportSection} />
   ) : renderedActive === "Purchase Order" ? (
@@ -12070,7 +12032,7 @@ function App() {
   ) : renderedActive === "Employee Tenure Report" ? (
     <EmployeeTenureReport token={session?.token || authToken} ReportSection={ReportSection} />
   ) : renderedActive === "CD" ? (
-    <CaliberDirectoryPage token={session?.token || authToken} />
+    <CaliberDirectoryPage token={session?.token || authToken} ReportSection={ReportSection} />
   ) : renderedActive === "Manager Profile" ? (
     <MisDashboard session={session} canCreateRequest={activeNavigationPermissions.desktopManagerCreateRequest === true} onCreateRequest={addRequest} managerRole={adminPermissions.managerRole} managerRoles={adminPermissions.managerRoles} managerLocation={profileLocation} managerDesignationKey={profileDesignationKey} requests={requests} ReportSection={ReportSection} printDashboard={printDashboardReport} requestsLoaded={requestsLoaded} requestsError={requestsError} requestsUpdatedAt={requestState.updatedAt} onRefreshRequests={loadRequests} gotoEquipment={gotoEquipment} onApproveIdeal={(row)=>updateRequest(row.ref,{},"ideal-onroad")} onCancelIdeal={(row)=>updateRequest(row.ref,{},"idle-cancel")} onUpdateRequest={updateRequest} onAddDailyRemark={addDailyRemark} TimelineButton={RequestTimelineButton} />
   ) : renderedActive === 'Automation Centre' ? (<React.Suspense fallback={<p role="status">Loading Automation Centre…</p>}><AutomationCentre session={session} onOpenPage={selectMenu}/></React.Suspense>
@@ -12085,7 +12047,7 @@ function App() {
   ) : renderedActive === "User Sessions" ? (
     <UserSessionsPage session={session} />
   ) : renderedActive === "OEM Email Delivery Status" ? (
-    <OemEmailDeliveryStatus session={session} />
+    <OemEmailDeliveryStatus session={session} ReportSection={ReportSection} />
   ) : renderedActive === "Recovery guide" ? (
     <RecoveryGuide onNavigate={selectMenu} />
   ) : renderedActive === "Speed Test" ? (
@@ -12186,6 +12148,8 @@ function App() {
           {name:'WhatsApp Integration',pages:whatsappNav.map(([name])=>name).filter(canOpenAdminPage)},
           {name:'MIS',pages:[...(canOpenAdminPage('Batch reopening approvals')?[{label:'Batch reopening approvals',page:'Batch reopening approvals'}]:[]),{label:'Create Batch',page:'Create VLB Batch'},{label:'Vehicle Log Book (VLB)',page:'Vehicle Log Book Options',activePages:['Vehicle Log Book','Trip Card Bulk Scan','Saved VLB']},{label:'LMV Log Book (LMV)',page:'LMV Log Book',activePages:['LMV Manual','LMV Scan']},{label:'Equipment Log Book (ELB)',page:'Equipment Log Book Options',activePages:['Equipment Log Book','Job Card Bulk Scan','Create VLB Batch']}].filter(item=>canOpenAdminPage(item.page))},
           {name:'Reports',pages:[...['VLB Reports','ELB Reports','Fleet Capacity','Equipment Deployment'].filter(canOpenAdminPage),...(canOpenAdminPage('Reports')?[...new Set(operationReports.map(r=>r.group))].map(group=>({label:group,children:operationReports.filter(r=>r.group===group).map(r=>({label:r.title,page:'Reports',reportCategory:'operations-'+r.id}))})):[])],keepEmpty:canOpenAdminPage('Reports')},
+          {name:'Attendance Management',pages:['Biometric integration','Mismatch attendance'].filter(canOpenAdminPage)},
+          {name:'Attendance Regularization',pages:['Late come / early going','Miss punch'].filter(canOpenAdminPage)},
           {name:'Deletion',direct:true,pages:canOpenAdminPage('Deletion')?['Deletion']:[]},
           {name:'Backup',direct:true,pages:canOpenAdminPage('Scan Backup')?[{label:'Backup',page:'Scan Backup'}]:[]},
           {name:'Tickets',direct:true,pages:canOpenAdminPage('Tickets')?['Tickets']:[]},
@@ -12213,7 +12177,7 @@ function App() {
         activeReportCategory={activeReportCategory}
       />
       <main className="content">
-        <div className="top">
+        <div className="top" ref={topBarRef}>
           <button id="erp-sidebar-toggle" type="button" className="erp-sidebar-toggle" aria-label={sidebarClosed?"Show sidebar":"Hide sidebar"} aria-expanded={!sidebarClosed} aria-controls="admin-primary-navigation" title={sidebarClosed?"Show menu":"Hide menu"} onClick={()=>sidebarAuto?setSidebarPeek(!sidebarPeek):changeSidebarHidden(!sidebarHidden)}><Menu/><span>{sidebarClosed?"Show menu":"Hide menu"}</span></button>
           <button type="button" className="menubtn" aria-label={menu ? "Close navigation menu" : "Open navigation menu"} aria-expanded={menu} aria-controls="admin-primary-navigation" onClick={() => {if(sidebarAuto)setSidebarPeek(true);else if(sidebarHidden){setSidebarHidden(false);try{localStorage.setItem("caliberSidebarHidden","false");}catch{}}setMenu(!menu);}}>
             <Menu />

@@ -17,7 +17,7 @@ export async function inspectDeletionBackup(folder,files){
 }
 
 export async function removeDeletionBackups({state,folders,onReceipt}){
- if(!state?.otpVerified||!state.databaseDeleted||!state.scopeHash)throw Error('Successful WhatsApp OTP verification is required before removing backup files.');
+ if(!(state?.confirmed||state?.otpVerified)||!state.databaseDeleted||!state.scopeHash)throw Error('Confirmed deletion is required before removing backup files.');
  for(const approved of state.pendingFiles){
   const expected=state.files.find(f=>f.key===approved.key),folder=folders.get(expected?.folderName);
   if(!expected||!folder||folder.name!==expected.folderName||!validName(expected.filename))throw Error('Choose the exact listed backup folder to resume cleanup.');

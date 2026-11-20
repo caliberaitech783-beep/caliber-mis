@@ -4,6 +4,7 @@ import {compactLogBookLabel} from '../shared/log-book-labels.mjs';
 import React,{useEffect,useMemo,useRef,useState} from 'react';
 import {StepBackButton} from './step-back.jsx';
 import TableSmartPrint from './table-smart-print.jsx';
+import {SortableHeader,sortRowsBlanksLast} from './sortable-table.jsx';
 import {DateShiftGrid,dateShiftGrid} from './date-shift-grid.jsx';
 import AttendanceRegister from './attendance-register.jsx';
 import {canonicalSiteName} from '../shared/site-location.mjs';
@@ -32,6 +33,16 @@ const dutyCount=(n,kind)=>n+' '+kind+(n===1?' duty':' duties');
 // Colours shared by both reports. Red, orange and brown are the OT patterns; blue is attendance only.
 const dutyFlags=[['red','Red','Back-to-back shifts, or all three shifts'],['orange','Orange','Shift A and Shift C with a gap'],['review','Brown','Shift pattern needs review'],['zero','Blue','Present with 0 trips']];
 const otFlags=dutyFlags.slice(0,3);
+// Step 1 (sites) and Step 3 (equipment categories) sort by any heading; the All sites / All categories line stays last.
+// Percentages are stored as text ("12.5%") and sort as numbers; "—" and empty values go to the bottom.
+const stepValue=(row,key)=>{const value=row[key];return typeof value==='string'&&/^\d+(?:\.\d+)?%$/.test(value)?parseFloat(value):value;};
+export function stepSorter(sorts={},setSorts=()=>{},id){
+ const sort=sorts[id]||{key:'',direction:'asc'};
+ const onSort=key=>setSorts(all=>{const now=all[id]||{};return {...all,[id]:{key,direction:now.key===key&&now.direction==='asc'?'desc':'asc'}};});
+ const head=(key,label,small,extra={})=><SortableHeader key={key} scope="col" label={small?<>{label}<small>{small}</small></>:label} labelText={label} sortKey={key} sort={sort} onSort={onSort} filterIcon={false} {...extra}/>;
+ const rows=(list,isTotal=()=>false)=>[...sortRowsBlanksLast(list.filter(row=>!isTotal(row)),sort,stepValue),...list.filter(isTotal)];
+ return {head,rows};
+}
 const logBooks=[['VLB','Vehicle Log Book'],['ELB','Equipment Log Book'],['LMV','LMV Log Book']];
 const flagChip=key=>c=>c.key===key?{...c,render:r=><strong className={'mp-flag mp-flag-'+(r.flag||r.severity)}>{r[key]}</strong>}:c;
 // The driver's name opens his history; the row carries `driverId` (driver and site).
@@ -86,7 +97,7 @@ function driverHistory({driver,detail,reader,year,close,historyBox,ReportSection
 // the drivers of a category, one driver's history. Plain render function: its state lives in ManpowerReports.
 // Cases (one driver, several shifts) are counted on the site lines; from the date table down every number is a duty
 // (one driver, one shift, one date) and a duty carries the colour of the case it is part of.
-function otOverview({report,filters,query,ReportSection,sites,otPick,setOtPick,logBook,setLogBook,tally,tallyKey,tallySite,driverOpen,setDriverOpen,historyBox}){
+function otOverview({stepSorts,setStepSorts,report,filters,query,ReportSection,sites,otPick,setOtPick,logBook,setLogBook,tally,tallyKey,tallySite,driverOpen,setDriverOpen,historyBox}){
  // A duty saved in two log books belongs to both, so it is counted under each.
  const inBook=r=>!logBook||(r.logBooks||[]).includes(logBook);
  const cases=report.ot.filter(inBook),lines=(report.otDuties||[]).filter(inBook);
@@ -130,6 +141,7 @@ function otOverview({report,filters,query,ReportSection,sites,otPick,setOtPick,l
  const redShare=s=>{const all=worked(s.siteKey);return all.length?flagged(all,'red')/all.length:-1;};
  const byRedShare=sites.map(s=>({s,share:redShare(s)})).sort((a,b)=>b.share-a.share||of(b.s.siteKey,'red').length-of(a.s.siteKey,'red').length||a.s.site.localeCompare(b.s.site)).map(x=>x.s);
  const siteRows=[...byRedShare.map(s=>siteTally(s.siteKey,s.site)),...(sites.length>1?[siteTally(EVERY,'All sites')]:[])];
+ const s1=stepSorter(stepSorts,setStepSorts,'ot-sites'),s3=stepSorter(stepSorts,setStepSorts,'ot-categories'),sortedSites=s1.rows(siteRows,row=>row.siteKey===EVERY),sortedCategories=s3.rows(categories);
  const line=s=>{const total=s.siteKey===EVERY&&sites.length>1,pressed=siteKey===s.siteKey;return <tr key={s.siteKey} className={[total&&'mp-att-total',pressed&&'mp-on'].filter(Boolean).join(' ')||undefined}>
   <th scope="row">{s.site}</th>
   <td>{s.duties?<button type="button" className="mp-cat-count mp-ot-duties" aria-pressed={pressed} aria-label={duties(s.duties)+' · '+s.site} onClick={()=>openSiteAt(s.siteKey)}>{s.duties}</button>:0}</td>
@@ -165,10 +177,10 @@ function otOverview({report,filters,query,ReportSection,sites,otPick,setOtPick,l
   <p className="mp-notice">A case is one driver working more than one shift: back to back (red), Shift A and Shift C on one day (orange), or a pattern that needs checking (brown). {many(cases.length,'case')} and {many(driversIn(cases),'driver')} in the selected dates, out of {duties(lines.length)}.</p>
   <div className="mp-book-pick" role="group" aria-label="Log book">{[['','All log books'],...logBooks].map(([code,name])=><button key={code||'all'} type="button" aria-pressed={logBook===code} title={name} onClick={()=>setLogBook(code)}>{code||name}</button>)}</div>
   {siteKey&&<p className="mp-trail" aria-label="Where you are">{(open||scope||sites.length>1)&&<StepBackButton onBack={()=>setOtPick(open?{...base,scope:true,date,shift}:scope?base:noOtPick)}/>}{sites.length>1&&<><button type="button" onClick={()=>setOtPick(noOtPick)}>All sites</button><span>›</span></>}<button type="button" onClick={()=>setOtPick(base)}>{siteLabel}</button>{scope&&<><span>›</span><button type="button" onClick={()=>setOtPick({...base,scope:true,date,shift})}>{scopeLabel}</button></>}{open&&<><span>›</span><strong>{openLabel}{colour?' · '+colour+' only':''}</strong></>}</p>}
-  <ReportSection key={'ot-sites-'+query+'-'+logBook} title={'Step 1 · All sites · '+dateLabel+' · '+books} category="manpower-ot-sites" description="One line per site. Red, Orange and Brown are cases; the percentages are OT duties out of total duties. Press a number to open that site date by shift." rows={siteRows} columns={siteColumns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
+  <ReportSection key={'ot-sites-'+query+'-'+logBook} title={'Step 1 · All sites · '+dateLabel+' · '+books} category="manpower-ot-sites" description="One line per site. Red, Orange and Brown are cases; the percentages are OT duties out of total duties. Press a number to open that site date by shift." rows={sortedSites} columns={siteColumns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
    <div className="mp-category mp-att" role="group" aria-label="Cases by site">
-    {sites.length?<table><thead><tr><th scope="col">Site</th><th scope="col">Total duties<small>One driver, one shift</small></th>{otFlags.map(([id,label,meaning])=><th key={id} scope="col">{label}<small>{meaning}</small></th>)}<th scope="col">Red OT %<small>Of total duties</small></th><th scope="col">Orange OT %<small>Of total duties</small></th><th scope="col">Drivers<small>With any colour</small></th></tr></thead>
-     <tbody>{siteRows.map(line)}</tbody>
+    {sites.length?<table><thead><tr>{s1.head('site','Site')}{s1.head('duties','Total duties','One driver, one shift')}{otFlags.map(([id,label,meaning])=>s1.head(id,label,meaning))}{s1.head('redPct','Red OT %','Of total duties')}{s1.head('orangePct','Orange OT %','Of total duties')}{s1.head('drivers','Drivers','With any colour')}</tr></thead>
+     <tbody>{sortedSites.map(line)}</tbody>
     </table>:<p>No site is available for these selections.</p>}
    </div>
   </ReportSection>
@@ -182,10 +194,10 @@ function otOverview({report,filters,query,ReportSection,sites,otPick,setOtPick,l
      </table>
     </div>
    </ReportSection>
-   {scope?<ReportSection key={'ot-categories-'+query+'-'+siteKey+'-'+logBook+'-'+filter+'-'+date+'-'+shift} title={'Step 3 · '+siteLabel+' · '+scopeLabel+' · by equipment category'} category="manpower-ot-categories" description={(wide?'People are different persons; the percentages are on duties. ':'')+'Press a category or its People number for all its drivers; press a colour for only those drivers.'} rows={[...categories,everyCategory]} columns={categoryColumns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
+   {scope?<ReportSection key={'ot-categories-'+query+'-'+siteKey+'-'+logBook+'-'+filter+'-'+date+'-'+shift} title={'Step 3 · '+siteLabel+' · '+scopeLabel+' · by equipment category'} category="manpower-ot-categories" description={(wide?'People are different persons; the percentages are on duties. ':'')+'Press a category or its People number for all its drivers; press a colour for only those drivers.'} rows={[...sortedCategories,everyCategory]} columns={categoryColumns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
     <div className="mp-category mp-att mp-ot-categories" role="group" aria-label="Duties by equipment category">
-     {categories.length?<table><thead><tr><th scope="col">Equipment category</th><th scope="col">People<small>Drivers / operators</small></th>{wide&&<th scope="col">Duties</th>}<th scope="col">Equipment worked<small>Nos.</small></th><th scope="col">Red OT</th><th scope="col">Red OT %</th><th scope="col">Orange OT</th><th scope="col">Orange OT %</th><th scope="col">Brown</th><th scope="col">Total OT</th><th scope="col">Total OT %</th></tr></thead>
-      <tbody>{categories.map(categoryLine)}{categoryLine(everyCategory)}</tbody>
+     {categories.length?<table><thead><tr>{s3.head('equipment','Equipment category')}{s3.head('people','People','Drivers / operators')}{wide&&s3.head('duties','Duties')}{s3.head('machines','Equipment worked','Nos.')}{s3.head('red','Red OT')}{s3.head('redPct','Red OT %')}{s3.head('orange','Orange OT')}{s3.head('orangePct','Orange OT %')}{s3.head('review','Brown')}{s3.head('ot','Total OT')}{s3.head('otPct','Total OT %')}</tr></thead>
+      <tbody>{sortedCategories.map(categoryLine)}{categoryLine(everyCategory)}</tbody>
      </table>:<p>No duty saved in this selection.</p>}
     </div>
    </ReportSection>:<p className="mp-notice">Press a box in the date table to see that date and shift by equipment category, then a category for its drivers, then a driver’s name for the month-wise history.</p>}
@@ -202,7 +214,7 @@ function otOverview({report,filters,query,ReportSection,sites,otPick,setOtPick,l
 // Shift Attendance Equipment Wise in five steps (owner, 16 Nov 2026): every site; one site date by shift, each box red while
 // its batch is missing and outlined orange while the batch is open; one date and shift by equipment; its drivers; a driver's
 // month-wise history. Plain render function: its state lives in ManpowerReports.
-function attendanceOverview({report,filters,query,ReportSection,pick,setPick,tally,tallyKey,tallySite,driverOpen,setDriverOpen,historyBox}){
+function attendanceOverview({stepSorts,setStepSorts,report,filters,query,ReportSection,pick,setPick,tally,tallyKey,tallySite,driverOpen,setDriverOpen,historyBox}){
  const rows=report.attendanceEquipment||[],sites=report.attendanceSites||[],held=report.attendanceShifts||[];
  // Every Shift Master shift is shown, Day and Night too, even with 0 duties and no batch (owner, 16 Nov 2026).
  const batches=held;
@@ -260,6 +272,7 @@ function attendanceOverview({report,filters,query,ReportSection,pick,setPick,tal
  // A number of Step 1: red for shifts without a batch, orange for batches open.
  const siteNumber=(s,key,which,said,className='mp-cat-count mp-ot-duties')=>{const pressed=siteKey===s.siteKey&&mark===which;
   return s[key]?<button type="button" className={className} aria-pressed={pressed} aria-label={said(s[key])+' · '+s.site} onClick={()=>openSiteAt(s.siteKey,which)}>{s[key]}</button>:zero;};
+ const a1=stepSorter(stepSorts,setStepSorts,'attendance-sites'),a3=stepSorter(stepSorts,setStepSorts,'attendance-equipment'),sortedSites=a1.rows(siteRows,row=>row.siteKey===EVERY),sortedEquipment=a3.rows(equipment);
  const siteLine=s=>{const total=s.siteKey===EVERY&&sites.length>1;return <tr key={s.siteKey} className={[total&&'mp-att-total',siteKey===s.siteKey&&'mp-on'].filter(Boolean).join(' ')||undefined}>
   <th scope="row"><button type="button" className="mp-cat-open" aria-pressed={siteKey===s.siteKey&&!mark} onClick={()=>openSiteAt(s.siteKey)}>{s.site}</button></th>
   <td>{siteNumber(s,'actual','',n=>dutyCount(n,'actual'))}</td>
@@ -299,12 +312,12 @@ function attendanceOverview({report,filters,query,ReportSection,pick,setPick,tal
  return <>
   <p className="mp-notice">{dutyCount(actual(rows),'actual')} · {dutyCount(rows.length,'equipment-wise')}. An actual duty is one driver in one shift on one date. A driver on two equipment types in one shift is counted on both machines and once in actual duties.</p>
   {siteKey&&<p className="mp-trail" aria-label="Where you are">{back&&<StepBackButton onBack={back}/>}{trail.map(([label,go],i)=><React.Fragment key={i}>{i>0&&<span>›</span>}{go&&i<trail.length-1?<button type="button" onClick={go}>{label}</button>:<strong>{label}</strong>}</React.Fragment>)}</p>}
-  <ReportSection key={'att-sites-'+query} title={'Step 1 · All sites · '+dateLabel+' · actual duties'} category="shift-attendance-sites" description="One line per site. Shifts due are the shifts that have ended by the Shift Master times. Press a site or a number to open it date by shift; the red or orange number opens only the dates with a shift without a batch, or with a batch still open." rows={siteRows} columns={siteColumns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
+  <ReportSection key={'att-sites-'+query} title={'Step 1 · All sites · '+dateLabel+' · actual duties'} category="shift-attendance-sites" description="One line per site. Shifts due are the shifts that have ended by the Shift Master times. Press a site or a number to open it date by shift; the red or orange number opens only the dates with a shift without a batch, or with a batch still open." rows={sortedSites} columns={siteColumns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
    <div className="mp-category mp-att mp-att-sites" role="group" aria-label="Actual duties and batches by site">
     {sites.length?<>
      <p className="mp-att-status">{all.none>0&&<span className="mp-flag mp-att-none">{many(all.none,'shift')} without a batch</span>}{all.open>0&&<span className="mp-flag mp-att-open">{all.open===1?'1 batch open':all.open+' batches open'}</span>}{!all.none&&!all.open&&<span>Every shift that has ended has a closed batch.</span>}<span>Red: batch not created. Orange outline: batch not closed.</span></p>
-     <table><thead><tr><th scope="col">Site</th><th scope="col">Actual duties<small>One driver, one shift</small></th><th scope="col">Equipment-wise duties<small>Each machine worked</small></th><th scope="col">Shifts due<small>Ended by Shift Master times</small></th><th scope="col">Batch closed</th><th scope="col">Batch not created</th><th scope="col">Batch open<small>VLB, LMV or ELB open</small></th></tr></thead>
-      <tbody>{siteRows.map(siteLine)}</tbody>
+     <table><thead><tr>{a1.head('site','Site')}{a1.head('actual','Actual duties','One driver, one shift')}{a1.head('duties','Equipment-wise duties','Each machine worked')}{a1.head('due','Shifts due','Ended by Shift Master times')}{a1.head('closed','Batch closed')}{a1.head('none','Batch not created')}{a1.head('open','Batch open','VLB, LMV or ELB open')}</tr></thead>
+      <tbody>{sortedSites.map(siteLine)}</tbody>
      </table>
     </>:<p>No site is available for these selections.</p>}
    </div>
@@ -317,15 +330,15 @@ function attendanceOverview({report,filters,query,ReportSection,pick,setPick,tal
       isPicked={r=>scope&&at===r.siteKey&&date===r.date} onOpenAll={()=>show(siteKey,'','')} allPicked={scope&&at===siteKey&&!date&&!shift} ariaLabel="Actual duties by date and shift" emptyMessage={mark?'No date matches this choice.':'No shift in these dates.'}/>
     </div>
    </ReportSection>
-   {scope?<ReportSection key={'att-equipment-'+query+'-'+siteKey+'-'+at+'-'+date+'-'+shift} title={'Step 3 · '+heading+' · by equipment'} category="shift-attendance-equipment" description="Equipment-wise duties count the driver on every machine worked; actual duties once per shift. Press an equipment or a number for its drivers." rows={equipment.length?[...equipment,totals]:[]} columns={equipmentColumns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
+   {scope?<ReportSection key={'att-equipment-'+query+'-'+siteKey+'-'+at+'-'+date+'-'+shift} title={'Step 3 · '+heading+' · by equipment'} category="shift-attendance-equipment" description="Equipment-wise duties count the driver on every machine worked; actual duties once per shift. Press an equipment or a number for its drivers." rows={equipment.length?[...sortedEquipment,totals]:[]} columns={equipmentColumns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
     <div className="mp-category mp-att">
      {missing.length>0&&<p className="mp-att-batch mp-att-batch-none"><strong>Batch not created:</strong> {missing.length===1&&!where(missing[0])?'this shift':missing.slice(0,60).map(where).join(' · ')+(missing.length>60?' · and '+(missing.length-60)+' more':'')}</p>}
      {stillOpen.length>0&&<p className="mp-att-batch mp-att-batch-open"><strong>Batch not closed:</strong> {stillOpen.slice(0,60).map(b=>[where(b),b.batch,'('+stageName(b.state)+')'].filter(Boolean).join(' ')).join(' · ')}</p>}
      {closedHere.length===1&&!missing.length&&!stillOpen.length&&closedHere[0].batch&&<p className="mp-category-hint">Batch {closedHere[0].batch} · closed.</p>}
      {equipment.length?<>
       <p className="mp-category-hint">{open?<>Showing <strong>{openLabel}{flagName?' · '+flagName+' only':''}</strong> below. <button type="button" onClick={()=>setPick(scoped)}>Close the driver list</button></>:'Press an equipment or a number to list its drivers below.'}</p>
-      <table><thead><tr><th scope="col">Equipment</th><th scope="col">Equipment-wise duties</th><th scope="col">Actual duties</th><th scope="col" title="Equipment-wise duties minus actual duties: drivers for whom this equipment was a second machine in the shift">Second machine</th>{dutyFlags.map(([id,colour,meaning])=><th key={id} scope="col" title={meaning}>{colour}</th>)}</tr></thead>
-       <tbody>{equipment.map(e=>line(e,false))}{line(totals,true)}</tbody>
+      <table><thead><tr>{a3.head('equipment','Equipment')}{a3.head('duties','Equipment-wise duties')}{a3.head('actual','Actual duties')}{a3.head('second','Second machine','',{title:'Equipment-wise duties minus actual duties: drivers for whom this equipment was a second machine in the shift'})}{dutyFlags.map(([id,colour,meaning])=>a3.head(id,colour,'',{title:meaning}))}</tr></thead>
+       <tbody>{sortedEquipment.map(e=>line(e,false))}{line(totals,true)}</tbody>
       </table>
       {totals.second>0&&<p className="mp-att-foot">{totals.second} {totals.second===1?'duty here is':'duties here are'} a second machine for the driver: counted on each machine, once in actual duties. Press a number under Second machine to list those drivers.</p>}
      </>:<p>No duty saved in this selection.</p>}
@@ -345,7 +358,7 @@ function attendanceOverview({report,filters,query,ReportSection,pick,setPick,tal
 // Machines, employees and duties are counted on the server from the keys on the saved cards (manpowerCategoryCells): one line per
 // site, date, shift and equipment category and for every total of them ('*'), so every table agrees with the count cards on top.
 // A month of every site is too many cards to send, so the saved card list is read for one opened date (cards, from ManpowerReports).
-function manpowerOverview({report,filters,query,description,ReportSection,sites,mpPick,setMpPick,cards={rows:null,error:''}}){
+function manpowerOverview({stepSorts,setStepSorts,report,filters,query,description,ReportSection,sites,mpPick,setMpPick,cards={rows:null,error:''}}){
  const lines=report.cells||[],cells=new Map(lines.map(c=>[c.slice(0,4).join('\u0001'),c]));
  const tallyOf=(site,day,code,group)=>{const c=cells.get([site,day||EVERY,code||EVERY,group||EVERY].join('\u0001'));return {machines:c?.[4]||0,employees:c?.[5]||0,duties:c?.[6]||0,cards:c?.[7]||0};};
  const siteKey=openSite(sites,mpPick.siteKey),inSite=siteKey?lines.filter(c=>c[0]===siteKey):[];
@@ -374,15 +387,16 @@ function manpowerOverview({report,filters,query,description,ReportSection,sites,
  const numbers=(row,label,press,pressed)=>measures.map(([key,,word])=><td key={key}>{row[key]?<button type="button" className="mp-cat-count mp-ot-duties" aria-pressed={pressed} aria-label={said(row[key],word)+' · '+label} onClick={press}>{row[key]}</button>:0}</td>);
  const box=(row,code)=>{const label=row.date+' · '+shiftName(code);if(!row[code+'_cards'])return zero;
   return <button type="button" className="mp-att-count" aria-pressed={scope&&date===row.day&&shift===code} aria-label={duties(row[code+'_duties'])+' · '+many(row[code+'_machines'],'machine')+' · '+label} onClick={()=>show(row.day,code)}>{row[code+'_duties']}<small>{many(row[code+'_machines'],'machine')}</small></button>;};
+ const m1=stepSorter(stepSorts,setStepSorts,'manpower-sites'),m3=stepSorter(stepSorts,setStepSorts,'manpower-categories'),sortedSites=m1.rows(siteRows,row=>row.siteKey===EVERY),sortedCategories=m3.rows(categories);
  const siteColumns=columns([['site','Site'],...measures.map(([key,label])=>[key,label])]);
  const dayColumns=columns([['date','Date'],...gridShifts.flatMap(code=>[[code+'_duties',shiftName(code)+' duties'],[code+'_machines',shiftName(code)+' vehicles / equipment']]),['duties','Day duties'],['machines','Day vehicles / equipment'],['employees','Day employees'],['cards','Saved cards']]);
  const categoryColumns=columns([['equipment','Equipment category'],...measures.map(([key,label])=>[key,label])]);
  return <>
   {siteKey&&<p className="mp-trail" aria-label="Where you are">{(open||scope||sites.length>1)&&<StepBackButton onBack={()=>setMpPick(open?{...base,scope:true,date,shift}:scope?base:noMpPick)}/>}{sites.length>1&&<><button type="button" onClick={()=>setMpPick(noMpPick)}>All sites</button><span>›</span></>}<button type="button" onClick={()=>setMpPick(base)}>{siteLabel}</button>{scope&&<><span>›</span><button type="button" onClick={()=>setMpPick({...base,scope:true,date,shift})}>{scopeLabel}</button></>}{open&&<><span>›</span><strong>{openLabel}</strong></>}</p>}
-  <ReportSection key={'mp-sites-'+query} title={'Step 1 · All sites · '+dateLabel} category="manpower-sites" description="One line per site: different vehicles and machines, different employees, duties (one employee, one shift, one date) and saved cards. Press a number to open that site date by shift." rows={siteRows} columns={siteColumns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
+  <ReportSection key={'mp-sites-'+query} title={'Step 1 · All sites · '+dateLabel} category="manpower-sites" description="One line per site: different vehicles and machines, different employees, duties (one employee, one shift, one date) and saved cards. Press a number to open that site date by shift." rows={sortedSites} columns={siteColumns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
    <div className="mp-category mp-att" role="group" aria-label="Manpower by site">
-    {sites.length?<table><thead><tr><th scope="col">Site</th>{measures.map(([key,label])=><th key={key} scope="col">{label}</th>)}</tr></thead>
-     <tbody>{siteRows.map(s=><tr key={s.id} className={[s.siteKey===EVERY&&sites.length>1&&'mp-att-total',siteKey===s.siteKey&&'mp-on'].filter(Boolean).join(' ')||undefined}><th scope="row">{s.site}</th>{numbers(s,s.site,()=>openSiteAt(s.siteKey),siteKey===s.siteKey)}</tr>)}</tbody>
+    {sites.length?<table><thead><tr>{m1.head('site','Site')}{measures.map(([key,label])=>m1.head(key,label))}</tr></thead>
+     <tbody>{sortedSites.map(s=><tr key={s.id} className={[s.siteKey===EVERY&&sites.length>1&&'mp-att-total',siteKey===s.siteKey&&'mp-on'].filter(Boolean).join(' ')||undefined}><th scope="row">{s.site}</th>{numbers(s,s.site,()=>openSiteAt(s.siteKey),siteKey===s.siteKey)}</tr>)}</tbody>
     </table>:<p>No site is available for these selections.</p>}
    </div>
   </ReportSection>
@@ -400,10 +414,10 @@ function manpowerOverview({report,filters,query,description,ReportSection,sites,
      </table>
     </div>
    </ReportSection>
-   {scope?<ReportSection key={'mp-categories-'+query+'-'+siteKey+'-'+date+'-'+shift} title={'Step 3 · '+siteLabel+' · '+scopeLabel+' · by equipment category'} category="manpower-categories" description="One line per equipment category. Press a category or a number to list its makes, models and saved cards below." rows={[...categories,everyCategory]} columns={categoryColumns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
+   {scope?<ReportSection key={'mp-categories-'+query+'-'+siteKey+'-'+date+'-'+shift} title={'Step 3 · '+siteLabel+' · '+scopeLabel+' · by equipment category'} category="manpower-categories" description="One line per equipment category. Press a category or a number to list its makes, models and saved cards below." rows={[...sortedCategories,everyCategory]} columns={categoryColumns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
     <div className="mp-category mp-att mp-ot-categories" role="group" aria-label="Manpower by equipment category">
-     {categories.length?<table><thead><tr><th scope="col">Equipment category</th>{measures.map(([key,label])=><th key={key} scope="col">{label}</th>)}</tr></thead>
-      <tbody>{[...categories,everyCategory].map(c=><tr key={c.id} className={[c.id===EVERY&&'mp-att-total',open===c.id&&'mp-on'].filter(Boolean).join(' ')||undefined}><td><button type="button" className="mp-cat-open" aria-pressed={open===c.id} onClick={()=>list(c.id)}>{c.equipment}</button></td>{numbers(c,c.equipment,()=>list(c.id),open===c.id)}</tr>)}</tbody>
+     {categories.length?<table><thead><tr>{m3.head('equipment','Equipment category')}{measures.map(([key,label])=>m3.head(key,label))}</tr></thead>
+      <tbody>{[...sortedCategories,everyCategory].map(c=><tr key={c.id} className={[c.id===EVERY&&'mp-att-total',open===c.id&&'mp-on'].filter(Boolean).join(' ')||undefined}><td><button type="button" className="mp-cat-open" aria-pressed={open===c.id} onClick={()=>list(c.id)}>{c.equipment}</button></td>{numbers(c,c.equipment,()=>list(c.id),open===c.id)}</tr>)}</tbody>
      </table>:<p>No saved card in this selection.</p>}
     </div>
    </ReportSection>:<p className="mp-notice">Press a box in the date table to see that date and shift by equipment category and list its saved cards. The make and model list below shows the whole site until then.</p>}
@@ -422,7 +436,7 @@ function manpowerOverview({report,filters,query,description,ReportSection,sites,
 // Plain render function: its state lives in ManpowerReports. Totals over several shifts are machine-shifts.
 const rcMeasures=[['available','Available','As per fleet list'],['carded','Card saved','VLB or ELB'],['active','Active production','Trips or running hours'],['zero','Zero trips','Card saved, no work'],['zeroKm','Zero km','VLB with 0 km'],['none','No card','Available, not deployed']];
 const rcStatus={active:'Active production',zero:'Zero trips',none:'No card',outside:'Not in fleet list'};
-function reconciliationOverview({report,filters,query,ReportSection,sites,rcPick,setRcPick}){
+function reconciliationOverview({stepSorts,setStepSorts,report,filters,query,ReportSection,sites,rcPick,setRcPick}){
  const fleet=report.fleet||[],work=report.fleetWork||[];
  const span=[];for(let day=filters.from;day<=filters.to&&span.length<32;day=nextDay(day))span.push(day);
  const shifts=filters.shift?[filters.shift]:[...new Set(['S1','S2','S3',...work.map(w=>w.shift)])].sort();
@@ -460,6 +474,8 @@ function reconciliationOverview({report,filters,query,ReportSection,sites,rcPick
  const show=(day,code)=>setRcPick(scope&&date===day&&shift===code&&!open?base:{...base,scope:true,date:day,shift:code});
  const list=(name,level)=>setRcPick(open===name&&status===level?{...base,scope:true,date,shift}:{...base,scope:true,date,shift,equipment:name,status:level});
  const siteRows=[...sites.map(s=>({id:s.siteKey,siteKey:s.siteKey,site:s.site,machines:roster(s.siteKey,'').length,...tallyOf(s.siteKey,'','','')})),...(sites.length>1?[{id:EVERY,siteKey:EVERY,site:'All sites',machines:fleet.length,...tallyOf(EVERY,'','','')}]:[])];
+ const r1=stepSorter(stepSorts,setStepSorts,'rc-sites'),r3=stepSorter(stepSorts,setStepSorts,'rc-categories'),sortedSites=r1.rows(siteRows,row=>row.siteKey===EVERY),sortedCategories=r3.rows(categories);
+ const sortHeads=h=>[...rcMeasures.map(([key,name,meaning])=>h.head(key,name,meaning)),h.head('share','Deployed %','Card saved of available'),h.head('outside','Not in fleet list','Card of a machine listed elsewhere')];
  const shiftRows=siteKey?[...span.flatMap(day=>shifts.map(code=>({id:day+code,day,code,date:shortDate(day),shift:shiftName(code),...tallyOf(siteKey,day,code,'')}))),...(oneCell?[]:[{id:'all',day:'',code:'',date:'All dates',shift:'All shifts',...tallyOf(siteKey,'','','')}])]:[];
  // The numbers of one line. With `press`, each becomes a button; otherwise plain figures.
  const figures=(row,label,press,pressed)=>[...rcMeasures.map(([key,name])=><td key={key}>{row[key]&&press?<button type="button" className={'mp-cat-count mp-ot-duties mp-rc-'+key} aria-pressed={pressed(key)} aria-label={row[key]+' '+name+' · '+label} onClick={()=>press(key)}>{row[key]}</button>:row[key]||0}</td>),
@@ -470,10 +486,10 @@ function reconciliationOverview({report,filters,query,ReportSection,sites,rcPick
  return <>
   <p className="mp-notice">Available is the machines the Equipment master places at the site today, as on the Fleet reconciliation screen (LMVs left out); the list for an earlier date is not kept. Each line then shows how many had a card saved in the shift, how many did active production, how many had zero trips or zero km, and how many had no card. Over several shifts the numbers are machine-shifts: one machine in three shifts counts three times.</p>
   {siteKey&&<p className="mp-trail" aria-label="Where you are">{(open||scope||sites.length>1)&&<StepBackButton onBack={()=>setRcPick(open?{...base,scope:true,date,shift}:scope?base:noRcPick)}/>}{sites.length>1&&<><button type="button" onClick={()=>setRcPick(noRcPick)}>All sites</button><span>›</span></>}<button type="button" onClick={()=>setRcPick(base)}>{siteLabel}</button>{scope&&<><span>›</span><button type="button" onClick={()=>setRcPick({...base,scope:true,date,shift})}>{scopeLabel}</button></>}{open&&<><span>›</span><strong>{openLabel}{statusLabel?' · '+statusLabel:''}</strong></>}</p>}
-  <ReportSection key={'rc-sites-'+query} title={'Step 1 · All sites · '+dateLabel} category="manpower-rc-sites" description="One line per site, all the selected dates and shifts together. Press a number to open that site shift by shift." rows={siteRows} columns={columns([['site','Site'],['machines','Machines in fleet'],...measureColumns])} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
+  <ReportSection key={'rc-sites-'+query} title={'Step 1 · All sites · '+dateLabel} category="manpower-rc-sites" description="One line per site, all the selected dates and shifts together. Press a number to open that site shift by shift." rows={sortedSites} columns={columns([['site','Site'],['machines','Machines in fleet'],...measureColumns])} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
    <div className="mp-category mp-att mp-rc" role="group" aria-label="Reconciliation by site">
-    {sites.length?<table><thead><tr><th scope="col">Site</th><th scope="col">Machines in fleet<small>Today</small></th>{heads}</tr></thead>
-     <tbody>{siteRows.map(s=><tr key={s.id} className={[s.siteKey===EVERY&&sites.length>1&&'mp-att-total',siteKey===s.siteKey&&'mp-on'].filter(Boolean).join(' ')||undefined}><th scope="row">{s.site}</th>
+    {sites.length?<table><thead><tr>{r1.head('site','Site')}{r1.head('machines','Machines in fleet','Today')}{sortHeads(r1)}</tr></thead>
+     <tbody>{sortedSites.map(s=><tr key={s.id} className={[s.siteKey===EVERY&&sites.length>1&&'mp-att-total',siteKey===s.siteKey&&'mp-on'].filter(Boolean).join(' ')||undefined}><th scope="row">{s.site}</th>
       <td>{s.machines?<button type="button" className="mp-cat-count mp-ot-duties" aria-pressed={siteKey===s.siteKey} aria-label={many(s.machines,'machine')+' · '+s.site} onClick={()=>openSiteAt(s.siteKey)}>{s.machines}</button>:0}</td>{figures(s,s.site,()=>openSiteAt(s.siteKey),()=>siteKey===s.siteKey)}</tr>)}</tbody>
     </table>:<p>No site is available for these selections.</p>}
    </div>
@@ -488,10 +504,10 @@ function reconciliationOverview({report,filters,query,ReportSection,sites,rcPick
      </table>
     </div>
    </ReportSection>
-   {scope?<ReportSection key={'rc-categories-'+query+'-'+siteKey+'-'+date+'-'+shift} title={'Step 3 · '+siteLabel+' · '+scopeLabel+' · by equipment category'} category="manpower-rc-categories" description="One line per equipment category. Press a category for all its machines, or a number for only those machines." rows={[...categories,everyCategory]} columns={columns([['equipment','Equipment category'],...measureColumns])} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
+   {scope?<ReportSection key={'rc-categories-'+query+'-'+siteKey+'-'+date+'-'+shift} title={'Step 3 · '+siteLabel+' · '+scopeLabel+' · by equipment category'} category="manpower-rc-categories" description="One line per equipment category. Press a category for all its machines, or a number for only those machines." rows={[...sortedCategories,everyCategory]} columns={columns([['equipment','Equipment category'],...measureColumns])} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
     <div className="mp-category mp-att mp-rc mp-ot-categories" role="group" aria-label="Reconciliation by equipment category">
-     {categories.length?<table><thead><tr><th scope="col">Equipment category</th>{heads}</tr></thead>
-      <tbody>{[...categories,everyCategory].map(c=><tr key={c.id} className={[c.id===EVERY&&'mp-att-total',open===c.id&&'mp-on'].filter(Boolean).join(' ')||undefined}><td><button type="button" className="mp-cat-open" aria-pressed={open===c.id&&!status} onClick={()=>list(c.id,'')}>{c.equipment}</button></td>{figures(c,c.equipment,key=>list(c.id,key==='available'?'':key),key=>open===c.id&&status===(key==='available'?'':key))}</tr>)}</tbody>
+     {categories.length?<table><thead><tr>{r3.head('equipment','Equipment category')}{sortHeads(r3)}</tr></thead>
+      <tbody>{[...sortedCategories,everyCategory].map(c=><tr key={c.id} className={[c.id===EVERY&&'mp-att-total',open===c.id&&'mp-on'].filter(Boolean).join(' ')||undefined}><td><button type="button" className="mp-cat-open" aria-pressed={open===c.id&&!status} onClick={()=>list(c.id,'')}>{c.equipment}</button></td>{figures(c,c.equipment,key=>list(c.id,key==='available'?'':key),key=>open===c.id&&status===(key==='available'?'':key))}</tr>)}</tbody>
      </table>:<p>No machine in the fleet list and no saved card in this selection.</p>}
     </div>
    </ReportSection>:<p className="mp-notice">Press a number on a line of the shift table to see that date and shift by equipment category, then a number there for the machines.</p>}
@@ -504,7 +520,7 @@ function reconciliationOverview({report,filters,query,ReportSection,sites,rcPick
 // shift by equipment category, then the duties of a category. A duty on machines of two categories is in both lines and once
 // in All categories. Plain render function: its state lives in ManpowerReports.
 const pfMeasures=[['duties','Duties','One driver, one shift'],['employees','Drivers / operators','Different persons'],['hours','HMR hours','Machine performance'],['trips','Completed trips','VLB'],['km','Kilometres','VLB']];
-function performanceOverview({report,filters,query,description,ReportSection,sites,pfPick,setPfPick}){
+function performanceOverview({stepSorts,setStepSorts,report,filters,query,description,ReportSection,sites,pfPick,setPfPick}){
  const lines=report.performance||[],sum=(list,key)=>{const values=list.map(r=>r[key]).filter(v=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v)));return values.length?Math.round(values.reduce((a,b)=>a+Number(b),0)*100)/100:0;};
  const tallyOf=list=>({duties:list.length,employees:new Set(list.map(r=>r.employeeKey||r.employeeId)).size,hours:sum(list,'hours'),trips:sum(list,'trips'),km:sum(list,'km')});
  const within=site=>lines.filter(r=>site===EVERY||r.siteKey===site);
@@ -528,6 +544,8 @@ function performanceOverview({report,filters,query,description,ReportSection,sit
  const list=name=>setPfPick(open===name?{...base,scope:true,date,shift}:{...base,scope:true,date,shift,equipment:name});
  const zero=<span className="mp-zero">0</span>;
  const siteRows=[...sites.map(s=>({id:s.siteKey,siteKey:s.siteKey,site:s.site,...tallyOf(within(s.siteKey))})),...(sites.length>1?[{id:EVERY,siteKey:EVERY,site:'All sites',...tallyOf(lines)}]:[])];
+ const p1=stepSorter(stepSorts,setStepSorts,'performance-sites'),p3=stepSorter(stepSorts,setStepSorts,'performance-categories'),sortedSites=p1.rows(siteRows,row=>row.siteKey===EVERY),sortedCategories=p3.rows(categories);
+ const sortHeads=h=>pfMeasures.map(([key,label,meaning])=>h.head(key,label,meaning));
  const dayRows=[...gridDates.map(day=>({id:day,day,date:shortDate(day)})),...(oneDate?[]:[{id:'all',day:'',date:'All dates'}])].map(row=>{const out={...row,...tallyOf(at(row.day,''))};for(const code of gridShifts){const t=tallyOf(at(row.day,code));out[code+'_duties']=t.duties;out[code+'_hours']=t.hours;}return out;});
  // The figures of one line; the duty count opens what is below it.
  const figures=(row,label,press,pressed)=>pfMeasures.map(([key],i)=><td key={key}>{i===0&&row.duties?<button type="button" className="mp-cat-count mp-ot-duties" aria-pressed={pressed} aria-label={duties(row.duties)+' · '+label} onClick={press}>{row.duties}</button>:row[key]||0}</td>);
@@ -540,10 +558,10 @@ function performanceOverview({report,filters,query,description,ReportSection,sit
  return <>
   <p className="mp-notice">One duty is one employee, one site, one date and one shift. Changing vehicles within a shift remains one duty. HMR hours are machine performance.</p>
   {siteKey&&<p className="mp-trail" aria-label="Where you are">{(open||scope||sites.length>1)&&<StepBackButton onBack={()=>setPfPick(open?{...base,scope:true,date,shift}:scope?base:noPfPick)}/>}{sites.length>1&&<><button type="button" onClick={()=>setPfPick(noPfPick)}>All sites</button><span>›</span></>}<button type="button" onClick={()=>setPfPick(base)}>{siteLabel}</button>{scope&&<><span>›</span><button type="button" onClick={()=>setPfPick({...base,scope:true,date,shift})}>{scopeLabel}</button></>}{open&&<><span>›</span><strong>{openLabel}</strong></>}</p>}
-  <ReportSection key={'pf-sites-'+query} title={'Step 1 · All sites · '+dateLabel} category="manpower-performance-sites" description="One line per site: duties, different drivers and operators, HMR hours, completed trips and kilometres. Press the duties to open that site date by shift." rows={siteRows} columns={columns([['site','Site'],...measureColumns])} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
+  <ReportSection key={'pf-sites-'+query} title={'Step 1 · All sites · '+dateLabel} category="manpower-performance-sites" description="One line per site: duties, different drivers and operators, HMR hours, completed trips and kilometres. Press the duties to open that site date by shift." rows={sortedSites} columns={columns([['site','Site'],...measureColumns])} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
    <div className="mp-category mp-att" role="group" aria-label="Shift performance by site">
-    {sites.length?<table><thead><tr><th scope="col">Site</th>{heads}</tr></thead>
-     <tbody>{siteRows.map(s=><tr key={s.id} className={[s.siteKey===EVERY&&sites.length>1&&'mp-att-total',siteKey===s.siteKey&&'mp-on'].filter(Boolean).join(' ')||undefined}><th scope="row">{s.site}</th>{figures(s,s.site,()=>openSiteAt(s.siteKey),siteKey===s.siteKey)}</tr>)}</tbody>
+    {sites.length?<table><thead><tr>{p1.head('site','Site')}{sortHeads(p1)}</tr></thead>
+     <tbody>{sortedSites.map(s=><tr key={s.id} className={[s.siteKey===EVERY&&sites.length>1&&'mp-att-total',siteKey===s.siteKey&&'mp-on'].filter(Boolean).join(' ')||undefined}><th scope="row">{s.site}</th>{figures(s,s.site,()=>openSiteAt(s.siteKey),siteKey===s.siteKey)}</tr>)}</tbody>
     </table>:<p>No site is available for these selections.</p>}
    </div>
   </ReportSection>
@@ -560,10 +578,10 @@ function performanceOverview({report,filters,query,description,ReportSection,sit
      </table>
     </div>
    </ReportSection>
-   {scope?<ReportSection key={'pf-categories-'+query+'-'+siteKey+'-'+date+'-'+shift} title={'Step 3 · '+siteLabel+' · '+scopeLabel+' · by equipment category'} category="manpower-performance-categories" description="One line per equipment category (the machine’s group in the Equipment master); a duty on machines of two categories is in both lines. Press a category or its duties for the duties below." rows={[...categories,everyCategory]} columns={columns([['equipment','Equipment category'],...measureColumns])} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
+   {scope?<ReportSection key={'pf-categories-'+query+'-'+siteKey+'-'+date+'-'+shift} title={'Step 3 · '+siteLabel+' · '+scopeLabel+' · by equipment category'} category="manpower-performance-categories" description="One line per equipment category (the machine’s group in the Equipment master); a duty on machines of two categories is in both lines. Press a category or its duties for the duties below." rows={[...sortedCategories,everyCategory]} columns={columns([['equipment','Equipment category'],...measureColumns])} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
     <div className="mp-category mp-att mp-ot-categories" role="group" aria-label="Shift performance by equipment category">
-     {categories.length?<table><thead><tr><th scope="col">Equipment category</th>{heads}</tr></thead>
-      <tbody>{[...categories,everyCategory].map(c=><tr key={c.id} className={[c.id===EVERY&&'mp-att-total',open===c.id&&'mp-on'].filter(Boolean).join(' ')||undefined}><td><button type="button" className="mp-cat-open" aria-pressed={open===c.id} onClick={()=>list(c.id)}>{c.equipment}</button></td>{figures(c,c.equipment,()=>list(c.id),open===c.id)}</tr>)}</tbody>
+     {categories.length?<table><thead><tr>{p3.head('equipment','Equipment category')}{sortHeads(p3)}</tr></thead>
+      <tbody>{[...sortedCategories,everyCategory].map(c=><tr key={c.id} className={[c.id===EVERY&&'mp-att-total',open===c.id&&'mp-on'].filter(Boolean).join(' ')||undefined}><td><button type="button" className="mp-cat-open" aria-pressed={open===c.id} onClick={()=>list(c.id)}>{c.equipment}</button></td>{figures(c,c.equipment,()=>list(c.id),open===c.id)}</tr>)}</tbody>
      </table>:<p>No duty in this selection.</p>}
     </div>
    </ReportSection>:<p className="mp-notice">Press a box in the date table to see that date and shift by equipment category, then a category for its duties.</p>}
@@ -585,6 +603,8 @@ export default function ManpowerReports({session,reportId='manpower',onSelect,Re
  const [pfPick,setPfPick]=useState(noPfPick);
  // Manpower by Category: the saved cards of the opened date, read on their own (kept after the other state).
  const [mpCards,setMpCards]=useState({key:'',rows:null,error:''});
+ // Step 1 / Step 3 heading sorts, by table (kept after the other state).
+ const [stepSorts,setStepSorts]=useState({});
  // The OT view always loads every assigned site; the Site selection there narrows the list of sites.
  // The attendance register reads every shift of every site: a day is coded from all its shifts and a person's other sites.
  const register=['attendance-batch','attendance-month'].includes(reportId);
@@ -661,15 +681,15 @@ export default function ManpowerReports({session,reportId='manpower',onSelect,Re
    <p className="mp-source">{description} · Updated {new Date(report.generatedAt).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})} IST</p>
    {!register&&!['attendance','ot','manpower-reconciliation'].includes(reportId)&&<div className="mp-metrics">{[['assets','Distinct assets'],['employees','Distinct employees'],['duties','Employee shift duties'],['exceptions','Review items']].map(([key,label])=><div key={key}><strong>{report.totals[key]}</strong><span>{label}</span></div>)}</div>}
    {register?<AttendanceRegister report={report} filters={filters} mode={reportId} ReportSection={ReportSection} sites={otSites} query={query}/>:reportId==='attendance'?<>
-    {attendanceOverview({report,filters,query,ReportSection,pick,setPick,tally,tallyKey,tallySite,driverOpen,setDriverOpen,historyBox})}
+    {attendanceOverview({stepSorts,setStepSorts,report,filters,query,ReportSection,pick,setPick,tally,tallyKey,tallySite,driverOpen,setDriverOpen,historyBox})}
    </>:reportId==='ot'?<>
-    {otOverview({report,filters,query,ReportSection,sites:otSites,otPick,setOtPick,logBook,setLogBook,tally,tallyKey,tallySite,driverOpen,setDriverOpen,historyBox})}
+    {otOverview({stepSorts,setStepSorts,report,filters,query,ReportSection,sites:otSites,otPick,setOtPick,logBook,setLogBook,tally,tallyKey,tallySite,driverOpen,setDriverOpen,historyBox})}
    </>:reportId==='manpower-reconciliation'?<>
-    {reconciliationOverview({report,filters,query,ReportSection,sites:otSites,rcPick,setRcPick})}
+    {reconciliationOverview({stepSorts,setStepSorts,report,filters,query,ReportSection,sites:otSites,rcPick,setRcPick})}
    </>:reportId==='employee'?<>
-    {performanceOverview({report,filters,query,description,ReportSection,sites:otSites,pfPick,setPfPick})}
+    {performanceOverview({stepSorts,setStepSorts,report,filters,query,description,ReportSection,sites:otSites,pfPick,setPfPick})}
    </>:<>
-    {manpowerOverview({report,filters,query,description,ReportSection,sites:otSites,mpPick,setMpPick,cards:mpCards.key===mpCardsKey?mpCards:{rows:null,error:''}})}
+    {manpowerOverview({stepSorts,setStepSorts,report,filters,query,description,ReportSection,sites:otSites,mpPick,setMpPick,cards:mpCards.key===mpCardsKey?mpCards:{rows:null,error:''}})}
    </>}
    {embedded?null:register||['attendance','ot','manpower-reconciliation'].includes(reportId)?exceptions.length>0&&<details className="mp-notes mp-review"><summary>{exceptions.length===1?'1 saved card needs':exceptions.length+' saved cards need'} correction (list for the MIS team)</summary>{review}</details>:review}
    {!embedded&&<details className="mp-notes"><summary>Sources and calculation rules</summary><ul>{report.notes.map(note=><li key={note}>{note}</li>)}</ul><p>Manpower requirements, shortages and relief availability are reserved for a later phase.</p></details>}

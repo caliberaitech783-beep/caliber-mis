@@ -111,10 +111,15 @@ function duplicateElb(records){
 export async function refreshLateVlbTrips(client,batch){
  const assets=await equipmentAssets(client),records=await batchVlbRecords(client,batch);
  const {machines}=buildMachineSnapshot(records,assets,batch.site);
- for(const m of machines){
-  await client.query('INSERT INTO mis_vlb_batch_machines(batch_id,asset_id,machine_label,door,trips,source_cards) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(batch_id,asset_id) DO UPDATE SET trips=EXCLUDED.trips,source_cards=EXCLUDED.source_cards',[batch.id,m.assetId,m.label,m.door,m.trips,m.sourceCards]);
- }
- for(const row of buildFleetList(assets,batch.site,machines))await client.query('INSERT INTO mis_vlb_batch_fleet(batch_id,asset_id,door,equipment_name,equipment_group,trips,source_cards) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(batch_id,asset_id) DO UPDATE SET trips=EXCLUDED.trips,source_cards=EXCLUDED.source_cards',[batch.id,row.assetId,row.door,row.equipmentName,row.equipmentGroup,row.trips,row.sourceCards]);
+ if(machines.length)await client.query(`INSERT INTO mis_vlb_batch_machines(batch_id,asset_id,machine_label,door,trips,source_cards)
+  SELECT $1,(r->>'assetId')::bigint,r->>'label',r->>'door',(r->>'trips')::integer,(r->>'sourceCards')::integer
+  FROM jsonb_array_elements($2::jsonb) r
+  ON CONFLICT(batch_id,asset_id) DO UPDATE SET trips=EXCLUDED.trips,source_cards=EXCLUDED.source_cards`,[batch.id,JSON.stringify(machines)]);
+ const fleet=buildFleetList(assets,batch.site,machines);
+ if(fleet.length)await client.query(`INSERT INTO mis_vlb_batch_fleet(batch_id,asset_id,door,equipment_name,equipment_group,trips,source_cards)
+  SELECT $1,(r->>'assetId')::bigint,r->>'door',r->>'equipmentName',r->>'equipmentGroup',(r->>'trips')::integer,(r->>'sourceCards')::integer
+  FROM jsonb_array_elements($2::jsonb) r
+  ON CONFLICT(batch_id,asset_id) DO UPDATE SET trips=EXCLUDED.trips,source_cards=EXCLUDED.source_cards`,[batch.id,JSON.stringify(fleet)]);
 }
 
 export async function lockVlb(client,batch,actor,{assets}={}){
@@ -190,7 +195,7 @@ export async function saveFleetEntry(client,batch,assetId,input,actor,ops){
  const additional=input.additionalCard===true;
  if(additional&&!row.logbook_id)fail('Save the first ELB card before adding a relief operator.',409);
  if(row.logbook_id&&!additional){
-  if(!ops.allowEditSaved)fail('Only an MIS administrator can edit a saved ELB.',403);
+  if(!ops.allowEditSaved)fail('Only an MIS user or MIS administrator can edit a saved ELB.',403);
   const prior=(await client.query('SELECT revision FROM mis_log_books WHERE id=$1 AND deleted_at IS NULL FOR UPDATE',[row.logbook_id])).rows[0];
   if(!prior)fail('This ELB is unavailable. Reload the batch.',409);
   if(Number(input.revision)!==Number(prior.revision))fail('This ELB changed. Reload the batch before editing.',409);
@@ -277,7 +282,6 @@ export async function assertLmvBatchWrite(client,data){
  await lockVlbBatchScope(client,vlbRecordScope(data));
  const batch=await matchingVlbBatch(client,data);
  if(!batch||batch.deleted_at||batch.archived_at||batchStage(batch)!=='lmv_open')fail('Select an existing Vehicle Log Book batch open for LMV entry before saving or changing LMV cards.',409);
- if(batch.trial_reopened_until&&(await client.query('SELECT $1::timestamptz<=clock_timestamp() AS expired',[batch.trial_reopened_until])).rows[0].expired)fail('The batch reopening trial has expired.',409);
  await requireStageTurn(client,batch);
  return batch;
 }
@@ -293,7 +297,7 @@ export async function assertElbBatchWrite(client,data,{adding=false}={}){
  const stage=batchStage(batch);
  if(stage==='vlb_open'||stage==='lmv_open')fail('Lock VLB and LMV for batch '+batch.name+' before saving ELB cards.',409);
  if(stage==='closed'&&batch.lmv_locked_at)fail('This batch is locked. Reopen it before saving ELB cards.',409);
- if(stage==='closed'&&!adding)fail('Batch '+batch.name+' is closed. Reopen it with site PM approval before changing existing ELB cards.',409);
+ if(stage==='closed'&&!adding)fail('Batch '+batch.name+' is closed. Reopen it before changing existing ELB cards.',409);
  await requireStageTurn(client,batch);
  return batch;
 }

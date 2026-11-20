@@ -1,3 +1,4 @@
+import {readSaveBreakdownRequests} from './log-book-save-deadline.mjs';
 export function idleShiftHours(shiftHours,runningHours,breakdownHours){
  if(shiftHours==null||shiftHours===''||runningHours==null||runningHours==='')return null;
  const remaining=Number(shiftHours)-Number(runningHours)-Number(breakdownHours||0);
@@ -33,7 +34,7 @@ export async function applyBreakdownHours(data,{readHours,actor='',now=()=>new D
 // lock, readHours reuses the rows, or repeats the fetch failure, without a call.
 export async function prefetchBreakdownRows(readBreakdownRows,actor){
  if(typeof readBreakdownRows!=='function')return null;
- try{return {rows:await readBreakdownRows(actor)}}catch(error){return {error}}
+ try{return {rows:await readSaveBreakdownRequests(()=>readBreakdownRows(actor))}}catch(error){return {error}}
 }
 export function createBreakdownRowsPrefetchCache(readBreakdownRows,{ttlMs=300000,now=Date.now}={}){
  const cache=new Map();

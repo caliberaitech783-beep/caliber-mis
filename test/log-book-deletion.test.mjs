@@ -9,7 +9,7 @@ import {SCAN_SCHEMA,checkScanCard} from '../server/routes/bulk-card-scanning.mjs
 import {registerLogBookDeletion} from '../server/rules/log-book-deletion.mjs';
 
 process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
-test('bulk deletion requires exact approval and delivered WhatsApp OTP, is atomic, scoped and permanent',async t=>{
+test('card deletion without OTP requires exact approval, remains atomic, scoped and permanent',async t=>{
  const db=new PGlite();t.after(()=>db.close());await db.exec(LOG_BOOK_SCHEMA+SCAN_SCHEMA+VLB_BATCH_SCHEMA);
  let failDeletion=false;
  const query=(sql,args)=>failDeletion&&sql.startsWith('DELETE FROM mis_log_books')?Promise.reject(Error('Injected transaction failure')):sql.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):!args&&sql.includes(';')?db.exec(sql):db.query(sql,args);
@@ -58,29 +58,18 @@ test('bulk deletion requires exact approval and delivered WhatsApp OTP, is atomi
  assert.equal((await call('/api/log-books/vehicle/'+a.id,{revision:1},'admin','DELETE')).status,403);
  let p=await preview([a,b]);
  assert.deepEqual(p.records.map(r=>String(r.id)),[String(a.id),String(b.id)]);assert.match(p.impact,/permanently/i);assert.equal(p.scans[0].id,scanId);
- assert.equal((await api(p.id+'/otp',{approval:'Approve these changes'})).status,400);
- assert.equal((await api(p.id+'/otp',{approval:p.approval},'other-admin')).status,409);
- assert.equal((await api(p.id+'/confirm',{approval:p.approval,otp:'123456'})).status,403);
- available=false;assert.equal((await api(p.id+'/otp',{approval:p.approval})).status,503);
- assert.equal((await api(p.id+'/confirm',{approval:p.approval,otp:'123456'})).status,403);
- assert.equal((await api('entries')).data.records.length,3);
- // Reset the test clock's request timestamp, without weakening runtime throttling.
- await db.query("UPDATE mis_log_book_deletions SET otp_requested_at=NOW()-INTERVAL '2 minutes'");available=true;
- p=await preview([a,b]);
- assert.equal((await api(p.id+'/otp',{approval:p.approval})).status,200);assert.equal(sent.at(-1).to,'917379771776');
- assert.equal((await api(p.id+'/otp',{approval:p.approval})).status,409);
- assert.ok(!JSON.stringify(p).includes(sent.at(-1).otp));
- const wrong=sent.at(-1).otp==='111111'?'222222':'111111';
- assert.equal((await api(p.id+'/confirm',{approval:p.approval,otp:wrong})).status,400);
- assert.equal((await db.query('SELECT attempts FROM mis_log_book_deletions WHERE id=$1',[p.id])).rows[0].attempts,1);
+ assert.equal((await api(p.id+'/confirm',{approval:'wrong'})).status,400);
+ assert.equal((await api(p.id+'/confirm',{approval:p.approval},'other-admin')).status,409);
+ assert.equal((await api(p.id+'/confirm',{approval:p.approval},'normal')).status,403);
+ available=false;assert.equal(sent.length,0);
  // A concurrent edit invalidates the whole approved batch, including the other record.
  await db.query('UPDATE mis_log_books SET revision=2 WHERE id=$1',[b.id]);
- assert.equal((await api(p.id+'/confirm',{approval:p.approval,otp:sent.at(-1).otp,files:p.manifest.localFiles})).status,409);
+ assert.equal((await api(p.id+'/confirm',{approval:p.approval,files:p.manifest.localFiles})).status,409);
  assert.equal((await api('entries')).data.records.length,3);
  const updated={...b,revision:2};await db.query("UPDATE mis_log_book_deletions SET otp_requested_at=NOW()-INTERVAL '2 minutes'");
- p=await preview([a,updated]);assert.equal((await api(p.id+'/otp',{approval:p.approval})).status,200);
+ p=await preview([a,updated]);
  await db.query('UPDATE mis_scan_cards SET revision=2 WHERE id=$1',[scanId]);
- assert.equal((await api(p.id+'/confirm',{approval:p.approval,otp:sent.at(-1).otp,files:p.manifest.localFiles})).status,409);
+ assert.equal((await api(p.id+'/confirm',{approval:p.approval,files:p.manifest.localFiles})).status,409);
  assert.equal((await db.query('SELECT id FROM mis_scan_cards WHERE id=$1',[scanId])).rows.length,1);
  await db.query("UPDATE mis_log_book_deletions SET otp_requested_at=NOW()-INTERVAL '2 minutes'");
  const elbBatchId='60000000-0000-4000-8000-000000000001';
@@ -89,15 +78,15 @@ test('bulk deletion requires exact approval and delivered WhatsApp OTP, is atomi
  p=await preview([a,updated]);
  assert.equal(p.manifest.elbLinks.length,1);
  assert.equal(p.manifest.fleetLinks.length,1);
- assert.equal((await api(p.id+'/otp',{approval:p.approval})).status,200);
+
  failDeletion=true;
- assert.equal((await api(p.id+'/confirm',{approval:p.approval,otp:sent.at(-1).otp,files:p.manifest.localFiles})).status,500);
+ assert.equal((await api(p.id+'/confirm',{approval:p.approval,files:p.manifest.localFiles})).status,500);
  failDeletion=false;
  assert.equal((await db.query('SELECT id FROM mis_scan_cards WHERE id=$1',[scanId])).rows.length,1);
  assert.equal((await api('entries')).data.records.length,3);
- const success=await api(p.id+'/confirm',{approval:p.approval,otp:sent.at(-1).otp,files:p.manifest.localFiles,records:[c]});assert.ok([200,202].includes(success.status),JSON.stringify(success.data));for(let n=0;n<100&&!success.data.complete;n++){await new Promise(r=>setTimeout(r,10));success.data=(await api(p.id+'/status')).data;}assert.equal(success.data.complete,true);assert.equal(success.data.deleted,2);
+ const success=await api(p.id+'/confirm',{approval:p.approval,files:p.manifest.localFiles,records:[c]});assert.ok([200,202].includes(success.status),JSON.stringify(success.data));for(let n=0;n<100&&!success.data.complete;n++){await new Promise(r=>setTimeout(r,10));success.data=(await api(p.id+'/status')).data;}assert.equal(success.data.complete,true);assert.equal(success.data.deleted,2);
  assert.deepEqual((await api('entries')).data.records.map(r=>String(r.id)),[String(c.id)]);
- assert.equal((await api(p.id+'/confirm',{approval:p.approval,otp:sent.at(-1).otp,files:p.manifest.localFiles})).status,409);
+ assert.equal((await api(p.id+'/confirm',{approval:p.approval,files:p.manifest.localFiles})).status,409);
  assert.equal((await db.query('SELECT * FROM mis_log_books WHERE id=$1',[b.id])).rows.length,0);
  assert.equal((await db.query('SELECT * FROM mis_scan_cards WHERE id=$1',[scanId])).rows.length,0);
  assert.equal((await db.query('SELECT count(*)::int AS count FROM mis_elb_batch_entries')).rows[0].count,0);
@@ -108,14 +97,11 @@ test('bulk deletion requires exact approval and delivered WhatsApp OTP, is atomi
  assert.equal(await duplicate(),false);assert.deepEqual(removedBlobs,[blobKey]);
  const snapshots=(await db.query('SELECT snapshot FROM mis_log_book_deletions')).rows;
  for(const row of snapshots)for(const record of row.snapshot)if([String(a.id),String(b.id)].includes(String(record.id)))assert.deepEqual(Object.keys(record).sort(),['book_no','book_type','id','site']);
- const h=(await api('history')).data.records;assert.equal(h.length,1);assert.equal(h[0].snapshot.length,2);assert.ok(h[0].approved_at);assert.ok(h[0].delivered_at);assert.equal(h[0].otp_hash,undefined);
- // Too many guesses, expiry, account binding and hourly throttling all fail closed.
- await db.query("UPDATE mis_log_book_deletions SET otp_requested_at=NOW()-INTERVAL '2 minutes'");p=await preview([c]);assert.equal((await api(p.id+'/otp',{approval:p.approval})).status,200);
- for(let i=0;i<5;i++)assert.equal((await api(p.id+'/confirm',{approval:p.approval,otp:'bad'})).status,400);
- assert.equal((await api(p.id+'/confirm',{approval:p.approval,otp:sent.at(-1).otp,files:p.manifest.localFiles})).status,429);
- const limited=await preview([c]);assert.equal((await api(limited.id+'/otp',{approval:limited.approval})).status,429);
+ const h=(await api('history')).data.records;assert.equal(h.length,1);assert.equal(h[0].snapshot.length,2);assert.ok(h[0].approved_at);assert.equal(h[0].delivered_at,null);assert.equal(sent.length,0);assert.equal(success.data.confirmed,true);assert.equal(success.data.otpVerified,false);assert.equal(h[0].otp_hash,undefined);
+ // Expiry still prevents deletion.
+ p=await preview([c]);
  await db.query("UPDATE mis_log_book_deletions SET expires_at=NOW()-INTERVAL '1 minute' WHERE id=$1",[p.id]);
- assert.equal((await api(p.id+'/confirm',{approval:p.approval,otp:sent.at(-1).otp,files:p.manifest.localFiles})).status,409);
+ assert.equal((await api(p.id+'/confirm',{approval:p.approval,files:p.manifest.localFiles})).status,409);
  assert.equal((await api('entries')).data.records.length,1);
 });
 
@@ -137,9 +123,9 @@ test('approved blob cleanup survives storage failure and retries only the exact 
  const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.on('listening',r));t.after(()=>{server.closeAllConnections();server.close();});
  const api=async(path,body)=>{const r=await fetch('http://127.0.0.1:'+server.address().port+'/api/log-book-deletions/'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});return {status:r.status,data:await r.json()};};
  const p=(await api('preview',{records:[{id:book.id,revision:book.revision}],reason:'Test permanent image deletion'})).data;
- assert.equal((await api(p.id+'/confirm',{approval:p.approval,otp:'123456'})).status,403);assert.deepEqual(attempts,[]);
- assert.equal((await api(p.id+'/otp',{approval:p.approval})).status,200);
- const done=await api(p.id+'/confirm',{approval:p.approval,otp});assert.equal(done.status,202);assert.equal(done.data.cleanupPending,true);
+ assert.equal((await api(p.id+'/confirm',{approval:'wrong'})).status,400);assert.deepEqual(attempts,[]);
+
+ const done=await api(p.id+'/confirm',{approval:p.approval});assert.equal(done.status,202);assert.equal(done.data.cleanupPending,true);
  assert.equal((await db.query('SELECT id FROM mis_log_books WHERE id=$1',[book.id])).rows.length,0);
  assert.deepEqual((await db.query('SELECT pending_scan_blobs FROM mis_log_book_deletions WHERE id=$1',[p.id])).rows[0].pending_scan_blobs,[{key,etag:'fixture'}]);
  const freshId='60000000-0000-4000-8000-000000000002';await db.query("INSERT INTO mis_scan_cards(id,batch_id,ordinal,filename,image,image_hash,image_blob_key) VALUES($1,$2,2,'fresh scan.png',NULL,'hash',$3)",[freshId,batch,key]);

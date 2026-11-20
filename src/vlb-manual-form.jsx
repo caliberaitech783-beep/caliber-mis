@@ -14,6 +14,7 @@ import EmployeeIdLookup from './employee-id-lookup.jsx';
 import ManualBookDate from './manual-book-date.jsx';
 import {advanceLogBookField,focusNextLogBookField,isEmptyTripPlaceholder} from './log-book-enter-navigation.mjs';
 import WorkOrderJobSelect from './work-order-job-select.jsx';
+import {SortableHeader,sortRowsBlanksLast} from './sortable-table.jsx';
 import React,{useEffect,useState,useRef} from 'react';
 
 import {Plus,Save,Trash2,RotateCcw,BookOpen,Search,ChevronsLeft,ChevronsRight,Pencil,Printer,X,LogOut,Info,ListFilter} from 'lucide-react';
@@ -32,6 +33,24 @@ const delta=(opening,closing)=>opening!==''&&closing!==''&&Number(closing)>=Numb
 
 const fixed=value=>value==null?'—':Number(value).toFixed(2);
 const display=value=>value===null||value===undefined?'—':Number(value).toLocaleString('en-IN',{maximumFractionDigits:3});
+// Saved log books list: click a heading to sort (numbers by value, blanks at the bottom); it opens in the saved order.
+const savedBookColumns=[['bookNo','Book no.'],['bookDate','Date'],['location','Location'],['door','Door no.'],['shift','Shift'],['employee','Driver'],['workHmr','Work HMR']];
+const savedBookTripColumns=[['openingTrips','Opening trips'],['endingTrips','Ending trips'],['countedTrips','Counted trips']];
+const savedBookNumber=value=>{const text=String(value??'').trim();const number=Number(text);return text&&Number.isFinite(number)?number:text;};
+function savedBookValue(row={},key){
+ const data=row.data||{};
+ if(key==='bookNo')return row.book_no||'';
+ if(key==='bookDate')return data.bookDate||'';
+ if(key==='location')return data.location||'';
+ if(key==='door')return data.door||'';
+ if(key==='shift')return data.shiftName||'';
+ if(key==='employee')return data.employeeName||'';
+ if(key==='workHmr')return savedBookNumber(data.totalWorkingHmr);
+ if(key==='openingTrips')return savedBookNumber(data.openingTrips);
+ if(key==='endingTrips')return savedBookNumber(data.endingTrips);
+ if(key==='countedTrips')return savedBookNumber(data.completedTrips??data.totalTrips);
+ return '';
+}
 
 const gap=(start,end)=>{if(!/^\d{2}:\d{2}(?::\d{2})?$/.test(start)||!/^\d{2}:\d{2}(?::\d{2})?$/.test(end))return null;const seconds=t=>t.split(':').reduce((sum,v,i)=>sum+Number(v)*[3600,60,1][i],0);return Math.round(((seconds(end)-seconds(start)+86400)%86400)/60*1000)/1000;};
 
@@ -48,6 +67,8 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch}){
  const [hours,setHours]=useState(null),[hoursError,setHoursError]=useState(''),[hoursLoading,setHoursLoading]=useState(false);
  const [editing,setEditing]=useState(true),[showDelete,setShowDelete]=useState(false),[showStatus,setShowStatus]=useState(false);
  const initialLocationFocused=useRef(false);
+ const [registerSort,setRegisterSort]=useState({key:'',direction:'asc'});
+ const changeRegisterSort=key=>setRegisterSort(current=>({key,direction:current.key===key&&current.direction==='asc'?'desc':'asc'}));
 
  useEffect(()=>{
    const saveShortcut=event=>{
@@ -205,7 +226,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch}){
 
    </form>
 
-   <section className="logbook-section logbook-register"><div className="logbook-section-title"><h2>Saved log books</h2><input aria-label="Search saved log books" placeholder="Search book, door, employee or site…" value={query} onChange={e=>setQuery(e.target.value)}/></div><div className="logbook-table-wrap"><table className="logbook-table"><thead><tr><th>Book no.</th><th>Date</th><th>Location</th><th>Door no.</th><th>Shift</th><th>{vehicle?'Driver':'Operator'}</th><th>Work HMR</th>{vehicle&&<><th>Opening trips</th><th>Ending trips</th><th>Counted trips</th></>}<th/></tr></thead><tbody>{filtered.map(row=><tr key={row.id}><td>{row.book_no}</td><td>{row.data.bookDate}</td><td>{row.data.location}</td><td>{row.data.door}</td><td>{row.data.shiftName}</td><td>{row.data.employeeName}</td><td>{display(row.data.totalWorkingHmr)}</td>{vehicle&&<><td>{display(row.data.openingTrips)}</td><td>{display(row.data.endingTrips)}</td><td>{display(row.data.completedTrips??row.data.totalTrips)}</td></>}<td><button type="button" onClick={()=>openEntry(row)}>Open</button></td></tr>)}{!filtered.length&&<tr><td colSpan={vehicle?11:8} className="logbook-empty">No saved entries found.</td></tr>}</tbody></table></div>{nextCursor&&<button type="button" onClick={()=>void loadRegister(nextCursor).catch(e=>setError(e.message))}>Load older entries</button>}</section>
+   <section className="logbook-section logbook-register"><div className="logbook-section-title"><h2>Saved log books</h2><input aria-label="Search saved log books" placeholder="Search book, door, employee or site…" value={query} onChange={e=>setQuery(e.target.value)}/></div><div className="logbook-table-wrap"><table className="logbook-table"><thead><tr>{[...savedBookColumns,...(vehicle?savedBookTripColumns:[])].map(([key,label])=><SortableHeader key={key} label={key==='employee'&&!vehicle?'Operator':label} sortKey={key} sort={registerSort} onSort={changeRegisterSort} filterIcon={false}/>)}<th/></tr></thead><tbody>{sortRowsBlanksLast(filtered,registerSort,savedBookValue).map(row=><tr key={row.id}><td>{row.book_no}</td><td>{row.data.bookDate}</td><td>{row.data.location}</td><td>{row.data.door}</td><td>{row.data.shiftName}</td><td>{row.data.employeeName}</td><td>{display(row.data.totalWorkingHmr)}</td>{vehicle&&<><td>{display(row.data.openingTrips)}</td><td>{display(row.data.endingTrips)}</td><td>{display(row.data.completedTrips??row.data.totalTrips)}</td></>}<td><button type="button" onClick={()=>openEntry(row)}>Open</button></td></tr>)}{!filtered.length&&<tr><td colSpan={vehicle?11:8} className="logbook-empty">No saved entries found.</td></tr>}</tbody></table></div>{nextCursor&&<button type="button" onClick={()=>void loadRegister(nextCursor).catch(e=>setError(e.message))}>Load older entries</button>}</section>
 
  </section></div>;
 

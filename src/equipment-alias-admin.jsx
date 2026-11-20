@@ -3,6 +3,8 @@ import EquipmentAliasOtpPanel,{aliasApi} from './equipment-alias-otp-panel.jsx';
 import {formatDisplayDateTime} from '../shared/date-time-format.mjs';
 import TableSmartPrint from './table-smart-print.jsx';
 import {sameSite,siteChoices} from '../shared/report-filter-options.mjs';
+import {SortableHeader,sortRowsBlanksLast} from './sortable-table.jsx';
+import SmartSearchReport from './smart-search-report.jsx';
 
 // Equipment master overlay: the ALIAS column, the revoke dialog (same two OTP routes as
 // approval) and the administrator list per site with full history and the approver setting.
@@ -51,13 +53,36 @@ export function EquipmentLetterRules({rules=[]}){
  </div>;
 }
 
-export default function EquipmentAliasAdminPanel({session,isAdmin}){
+// The alias list's headings sort it (When by date and time); History and the revoke buttons do not sort.
+const aliasColumns=[['written','Written'],['record','Pulse record'],['site','Site'],['status','Status'],['route','Route'],['requestedBy','Requested by'],['when','When']];
+const aliasReportColumns=({open,setOpen,aliasActions})=>[
+ ...aliasColumns.map(([key,label])=>({key,label,blanksLast:true,value:a=>key==='when'?formatDisplayDateTime(a.approvedAt||a.createdAt):aliasSortValue(a,key),sortValue:a=>aliasSortValue(a,key),
+  render:key==='written'?a=><>{a.writtenText}<br/><small>{a.writtenKey}</small></>:key==='record'?a=><>{a.equipmentDoor||a.equipmentId}{a.equipmentName&&a.equipmentName!==a.equipmentDoor?<><br/><small>{a.equipmentName}</small></>:null}</>
+  :key==='status'?a=><span title={aliasHover(a)}>{aliasStatusLabel[a.status]||a.status}{a.suspendedReason?<><br/><small>{a.suspendedReason}</small></>:null}</span>:key==='route'?a=><>{aliasRouteLabel(a)}{a.approvedBy?<><br/><small>{a.approvedBy}</small></>:null}</>:undefined})),
+ {key:'history',label:'History',value:a=>(a.history||[]).length+' event(s)',render:a=><button type="button" aria-expanded={open===a.id} onClick={()=>setOpen(open===a.id?null:a.id)}>{(a.history||[]).length} event(s)</button>},
+ {key:'actions',label:'Action',value:()=>'',render:aliasActions},
+];
+function aliasSortValue(a={},key){
+ if(key==='written')return a.writtenText||'';
+ if(key==='record')return String(a.equipmentDoor||a.equipmentId||'');
+ if(key==='site')return a.equipmentSite||a.site||'';
+ if(key==='status')return aliasStatusLabel[a.status]||a.status||'';
+ if(key==='route')return aliasRouteLabel(a);
+ if(key==='requestedBy')return a.requestedBy||'';
+ if(key==='when'){const time=Date.parse(a.approvedAt||a.createdAt||'');return Number.isNaN(time)?'':time;}
+ return '';
+}
+
+export default function EquipmentAliasAdminPanel({session,isAdmin,ReportSection}){
  const {aliases,letterRules=[],otpEnabled,approver,approverTelegramLinked,error,refresh}=useEquipmentAliases(session?.token,{all:true});
  const [ruleError,setRuleError]=useState('');
  const setAllSites=async(alias,allSites)=>{setRuleError('');try{await aliasApi(session)('/api/equipment-aliases/'+alias.id+'/all-sites',{allSites},'PUT');await refresh();}catch(e){setRuleError(e.message)}};
  const [site,setSite]=useState(''),[status,setStatus]=useState(''),[open,setOpen]=useState(null),[revoke,setRevoke]=useState(null),[login,setLogin]=useState(''),[notice,setNotice]=useState(''),[saveError,setSaveError]=useState('');
+ const [aliasSort,setAliasSort]=useState({key:'',direction:'asc'});const changeAliasSort=key=>setAliasSort(current=>({key,direction:current.key===key&&current.direction==='asc'?'desc':'asc'}));
  useEffect(()=>{if(approver?.login)setLogin(approver.login)},[approver?.login]);
  const sites=siteChoices(aliases.map(a=>a.equipmentSite||a.site));
+ const aliasActions=a=>isAdmin&&['pending','active','suspended'].includes(a.status)&&<><button type="button" onClick={()=>setRevoke(a)}>Revoke…</button>{a.allSites===false?<button type="button" onClick={()=>setAllSites(a,true)} title="Let this mapping teach its letter rule to every site again">Use at all sites</button>:<button type="button" onClick={()=>setAllSites(a,false)} title="Keep this machine's alias but stop its letter rule at the other sites">This machine only</button>}</>;
+ const historyList=a=><ul>{(a.history||[]).map(h=><li key={h.id}>{formatDisplayDateTime(h.at)} · {h.action} · {h.actor}{h.detail&&Object.keys(h.detail).length?' · '+Object.entries(h.detail).filter(([k,v])=>v!==null&&v!==''&&k!=='otpId').map(([k,v])=>k+': '+(Array.isArray(v)?v.join(', '):typeof v==='object'?JSON.stringify(v):v)).join(' · '):''}</li>)}</ul>;
  const rows=aliases.filter(a=>(!site||sameSite(a.equipmentSite||a.site,site))&&(!status||a.status===status));
  const saveApprover=async event=>{event.preventDefault();setSaveError('');setNotice('');try{await aliasApi(session)('/api/equipment-aliases/settings',{approver:{login}},'PUT');await refresh();setNotice('Equipment mapping approver saved.');}catch(e){setSaveError(e.message)}};
  return <section className="panel equipment-alias-admin"><h2>Equipment aliases</h2>
@@ -67,10 +92,12 @@ export default function EquipmentAliasAdminPanel({session,isAdmin}){
   <EquipmentLetterRules rules={letterRules}/>
   {ruleError&&<p role="alert" className="logbook-message error">{ruleError}</p>}
   <div className="equipment-alias-filters"><label>Site<select value={site} onChange={e=>setSite(e.target.value)}><option value="">All sites</option>{sites.map(s=><option key={s}>{s}</option>)}</select></label><label>Status<select value={status} onChange={e=>setStatus(e.target.value)}><option value="">All</option>{Object.entries(aliasStatusLabel).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label><button type="button" onClick={refresh}>Refresh</button></div>
+  {ReportSection?<SmartSearchReport ReportSection={ReportSection} title={'Equipment aliases · '+(site||'All sites')+(status?' · '+aliasStatusLabel[status]:'')} category="equipment-aliases" description={rows.length+' alias'+(rows.length===1?'':'es')} searchLabel="Smart Search equipment aliases" placeholder="Written label, door, site, status or person" rows={rows} rowKey={a=>a.id} emptyMessage={'No aliases'+(site||status?' match these filters':' yet')+'.'}
+   columns={aliasReportColumns({open,setOpen,aliasActions})} rowEditor={(a,colSpan)=>open===a.id&&<tr className="equipment-alias-history"><td colSpan={colSpan}>{historyList(a)}</td></tr>}/>:<>
   {rows.length>0&&<TableSmartPrint row title={'Equipment aliases · '+(site||'All sites')+(status?' · '+aliasStatusLabel[status]:'')}/>}
-  <table className="equipment-alias-table"><thead><tr><th>Written</th><th>Pulse record</th><th>Site</th><th>Status</th><th>Route</th><th>Requested by</th><th>When</th><th>History</th><th></th></tr></thead>
-   <tbody>{rows.length?rows.map(a=><React.Fragment key={a.id}><tr><td>{a.writtenText}<br/><small>{a.writtenKey}</small></td><td>{a.equipmentDoor||a.equipmentId}{a.equipmentName&&a.equipmentName!==a.equipmentDoor?<><br/><small>{a.equipmentName}</small></>:null}</td><td>{a.equipmentSite||a.site}</td><td title={aliasHover(a)}>{aliasStatusLabel[a.status]||a.status}{a.suspendedReason?<><br/><small>{a.suspendedReason}</small></>:null}</td><td>{aliasRouteLabel(a)}{a.approvedBy?<><br/><small>{a.approvedBy}</small></>:null}</td><td>{a.requestedBy}</td><td>{formatDisplayDateTime(a.approvedAt||a.createdAt)}</td><td><button type="button" aria-expanded={open===a.id} onClick={()=>setOpen(open===a.id?null:a.id)}>{(a.history||[]).length} event(s)</button></td><td>{isAdmin&&['pending','active','suspended'].includes(a.status)&&<><button type="button" onClick={()=>setRevoke(a)}>Revoke…</button>{a.allSites===false?<button type="button" onClick={()=>setAllSites(a,true)} title="Let this mapping teach its letter rule to every site again">Use at all sites</button>:<button type="button" onClick={()=>setAllSites(a,false)} title="Keep this machine's alias but stop its letter rule at the other sites">This machine only</button>}</>}</td></tr>
-    {open===a.id&&<tr className="equipment-alias-history"><td colSpan="9"><ul>{(a.history||[]).map(h=><li key={h.id}>{formatDisplayDateTime(h.at)} · {h.action} · {h.actor}{h.detail&&Object.keys(h.detail).length?' · '+Object.entries(h.detail).filter(([k,v])=>v!==null&&v!==''&&k!=='otpId').map(([k,v])=>k+': '+(Array.isArray(v)?v.join(', '):typeof v==='object'?JSON.stringify(v):v)).join(' · '):''}</li>)}</ul></td></tr>}</React.Fragment>):<tr><td colSpan="9" className="empty-state">No aliases{site||status?' match these filters':' yet'}.</td></tr>}</tbody></table>
+  <table className="equipment-alias-table"><thead><tr>{aliasColumns.map(([key,label])=><SortableHeader key={key} label={label} sortKey={key} sort={aliasSort} onSort={changeAliasSort} filterIcon={false}/>)}<th>History</th><th></th></tr></thead>
+   <tbody>{rows.length?sortRowsBlanksLast(rows,aliasSort,aliasSortValue).map(a=><React.Fragment key={a.id}><tr><td>{a.writtenText}<br/><small>{a.writtenKey}</small></td><td>{a.equipmentDoor||a.equipmentId}{a.equipmentName&&a.equipmentName!==a.equipmentDoor?<><br/><small>{a.equipmentName}</small></>:null}</td><td>{a.equipmentSite||a.site}</td><td title={aliasHover(a)}>{aliasStatusLabel[a.status]||a.status}{a.suspendedReason?<><br/><small>{a.suspendedReason}</small></>:null}</td><td>{aliasRouteLabel(a)}{a.approvedBy?<><br/><small>{a.approvedBy}</small></>:null}</td><td>{a.requestedBy}</td><td>{formatDisplayDateTime(a.approvedAt||a.createdAt)}</td><td><button type="button" aria-expanded={open===a.id} onClick={()=>setOpen(open===a.id?null:a.id)}>{(a.history||[]).length} event(s)</button></td><td>{aliasActions(a)}</td></tr>
+    {open===a.id&&<tr className="equipment-alias-history"><td colSpan="9">{historyList(a)}</td></tr>}</React.Fragment>):<tr><td colSpan="9" className="empty-state">No aliases{site||status?' match these filters':' yet'}.</td></tr>}</tbody></table></>}
   {revoke&&<EquipmentAliasRevokeDialog session={session} alias={revoke} otpEnabled={otpEnabled} approver={approver} approverTelegramLinked={approverTelegramLinked} onDone={refresh} onDismiss={()=>setRevoke(null)}/>}
  </section>;
 }

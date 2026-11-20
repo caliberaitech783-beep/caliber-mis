@@ -34,7 +34,7 @@ test("shared tables number every row by default with the Sr. No. label and forwa
 test("report, backup and WhatsApp rule tables include Sr. No. before data columns", () => {
   const main = read("../src/main.jsx");
   // Every table keeps Sr. No., report steps too since 17 Nov 2026 (coloured 1-5 red, 6-10 orange, then green).
-  assert.match(main, /rowAction, rowEditor, serialColumn = true, stepLook = false, figuresRight = false \}\) \{/);
+  assert.match(main, /rowAction, rowEditor, serialColumn = true, stepLook = false, figuresRight = false, quickSort = false \}\) \{/);
   assert.match(main, /const serialFirst = serialColumn && displayedColumns\[0\]\?\.key !== 'requestShift';/);
   assert.match(main, /<thead>(?:[\s\S]*?className="fleet-site-header"[\s\S]*?<\/tr>\})?<tr>\{rowAction&&<th className="batch-edit-action" scope="col">Action<\/th>\}\{serialFirst&&<th className="table-serial-header" scope="col">Sr\. No\.<\/th>\}/);
   assert.match(main, /renderRow\(row, index, subtotalSerials \? subtotalSerials\.get\(row\) : firstVisibleRow \+ index\)/);

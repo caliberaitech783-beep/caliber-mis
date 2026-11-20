@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
+import { sortRows } from "../src/sort-rows.mjs";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { transformWithOxc } from "vite";
@@ -103,9 +104,10 @@ test("all duration tables default to descending, preferring breakdown days over 
 });
 
 test("request and report sorting keeps manual ascending through live data updates and supports clear sort", () => {
-  const source = main.slice(main.indexOf("function comparableValue("), main.indexOf("function SortableHeader("));
+  const sortable = readFileSync(new URL("../src/sortable-table.jsx", import.meta.url), "utf8");
+  const source = sortable.slice(sortable.indexOf("export function useSortableRows("), sortable.indexOf("export function SortableHeader(")).replaceAll("export function", "function");
   let state;
-  const bindings = {SmartSelect: "select", isDurationColumn, compareDurationValues, sortCollator: new Intl.Collator(undefined, { numeric: true }), useMemo: (fn) => fn(),
+  const bindings = {SmartSelect: "select", sortRows, useMemo: (fn) => fn(),
     useState(initial) { state ??= typeof initial === "function" ? initial() : initial; return [state, (next) => { state = typeof next === "function" ? next(state) : next; }]; } };
   const useRows = new Function(...Object.keys(bindings), `${source}; return useSortableRows;`)(...Object.values(bindings));
   for (const key of ["breakdownDays", "hours", "tat", "prodToMis"]) {
@@ -161,4 +163,25 @@ test("generated duration reports all receive a descending default, including dif
   }
   const report = reports.find(report => report.title === "Total Fleet");
   assert.deepEqual(defaultDurationSort(report.columns), { key: "", direction: "asc" });
+});
+
+test("quickSort headings sort on one click with no menu, and both Attendance tabs use them", () => {
+  const { tree, events, html } = menu({ quickSort: true, durationSortOnly: false, label: "Duties", sortKey: "duties" });
+  for (const unwanted of ["Filter...", "All values", "Close window"]) assert.ok(!html.includes(unwanted), unwanted);
+  assert.ok(!html.includes("aria-haspopup"));
+  assert.ok(html.includes('title="Sort by Duties"'));
+  const heading = descendants(tree, (node) => node.type === "button" && String(node.props.className || "").includes("sort-header"))[0];
+  heading.props.onClick({ stopPropagation() {} });
+  assert.deepEqual(events, [["sort", "duties"]]);
+  const plain = menu({ durationSortOnly: false, label: "Duties", sortKey: "duties" });
+  descendants(plain.tree, (node) => node.type === "button" && String(node.props.className || "").includes("sort-header"))[0].props.onClick({ stopPropagation() {} });
+  assert.deepEqual(plain.events, [["toggle", "duties"]], "tables that are not Steps keep the heading menu");
+  assert.ok(menu({ quickSort: true, durationSortOnly: false, label: "Hours", labelText: "BD hours", sortKey: "hours" }).html.includes('title="Sort by BD hours"'));
+  const report = main.slice(main.indexOf("function ReportTable("), main.indexOf("function MasterField(", main.indexOf("function ReportTable(")));
+  assert.match(report, /quickSort=\{quickSort\}/);
+  // Owner, 19 Nov 2026: every "Step N · …" table (Batch Status, BD hours, Loading, saved reports, Manpower) sorts on one click.
+  assert.match(main, /stepLook=\{stepLook\} quickSort=\{quickSort \|\| stepLook\}/);
+  const attendance = readFileSync(new URL("../src/attendance-register.jsx", import.meta.url), "utf8");
+  const sections = attendance.match(/<ReportSection\b/g).length;
+  assert.equal(attendance.match(/<ReportSection quickSort\b/g).length, sections, "every Attendance step sorts on one click");
 });

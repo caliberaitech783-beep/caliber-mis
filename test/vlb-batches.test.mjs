@@ -76,15 +76,9 @@ test('batch APIs include every matching saved source, remain open until closed, 
  assert.equal((await call('','POST',{...selection,requestKey:randomUUID()})).status,409);
  const newId=await add({scan:true});assert.equal((await call('','POST',{...selection,requestKey:randomUUID()})).status,409);
  assert.equal((await call('','POST',{...selection,requestKey:randomUUID()},'bob')).status,409);
- assert.equal((await call('/'+created.data.id+'/reopen','POST',{})).status,403);
- const request=await call('/'+created.data.id+'/reopen-request','POST',{reason:'Additional scan card received'});assert.equal(request.status,200);
- assert.equal((await call('/'+created.data.id+'/reopen-decision','POST',{requestId:request.data.id,decision:'approve'},'wrong-pm')).status,403);
- assert.equal((await call('/'+created.data.id+'/reopen-decision','POST',{requestId:request.data.id,decision:'approve'},'alice')).status,403);
- assert.equal((await call('/'+created.data.id+'/reopen-decision','POST',{requestId:request.data.id,decision:'approve'},'pm')).status,200);
- assert.equal((await call('/'+created.data.id+'/reopen','POST',{},'bob')).status,403);
+ assert.equal((await call('/'+created.data.id,'GET',undefined,'pm')).data.canReopen,true,'a PM who is not an MIS user may reopen too (owner, 19 Nov 2026)');
  const reopened=await call('/'+created.data.id+'/reopen','POST',{});assert.equal(reopened.status,200,JSON.stringify(reopened.data));assert.equal(reopened.data.name,created.data.name);assert.equal(reopened.data.entry_count,132);assert.ok(reopened.data.records.some(r=>r.id===newId));assert.equal(reopened.data.amendment_by,'alice');
  assert.equal((await call('/'+created.data.id+'/close','POST',{})).status,200);
- assert.equal((await call('/'+created.data.id+'/reopen','POST',{})).status,403,'used approvals cannot reopen a new closure');
  const shiftBatch=await call('','POST',{...selection,shift:'S2',requestKey:randomUUID()},'bob');assert.equal(shiftBatch.status,201);assert.deepEqual(shiftBatch.data.records.map(r=>r.id),[otherShift]);
  assert.equal((await call('/'+shiftBatch.data.id+'/archive','POST',{},'bob')).status,410,'hide-only removal is discontinued');
  assert.equal((await call('/'+shiftBatch.data.id)).status,200,'legacy archive route does not change data');
