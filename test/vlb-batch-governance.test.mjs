@@ -76,6 +76,14 @@ test('live saves auto-attach, closure blocks existing-card edits, and an MIS use
  assert.ok(batch.audit.some(e=>e.action==='card_updated'&&e.detail.before&&e.detail.after));assert.ok(batch.audit.some(e=>e.action==='reopened'));assert.ok(batch.audit.find(e=>e.action==='reopened').detail.pmApproval==='not required');assert.equal(batch.audit.filter(e=>e.action==='saved_and_locked').length,2);
  assert.equal((await call('/api/log-books/vehicle/'+manual.data.id,'PUT',{...input,revision:3})).status,409,'a closed batch still blocks edits');
  assert.equal((await call(path+'/reopen','POST',{})).status,200,'a saved batch reopens again without PM approval');
+ // A change made outside the card form (Pulse BD hours repair) raises the card's revision without
+ // rewriting the batch snapshot. The batch still hands out the card's own revision, so it saves.
+ await db.query('UPDATE mis_log_books SET revision=revision+1 WHERE id=$1',[manual.data.id]);
+ const liveRevision=(await db.query('SELECT revision FROM mis_log_books WHERE id=$1',[manual.data.id])).rows[0].revision;
+ const listed=(await call(path)).data.records.find(r=>r.id===manual.data.id);
+ assert.equal(listed.revision,liveRevision,'the batch lists the revision the card has now');
+ const afterRepair=await call('/api/log-books/vehicle/'+manual.data.id,'PUT',{...input,remark:'Saved after a repair',revision:listed.revision});
+ assert.equal(afterRepair.status,200,JSON.stringify(afterRepair.data));
 
  await assert.rejects(()=>db.query("INSERT INTO mis_vlb_batches(id,name,site,book_date,shift,sequence,created_by,request_key,closed_at) VALUES($1,'duplicate','sasti ob','2026-12-30','S1',2,'other',$2,NOW())",[randomUUID(),randomUUID()]),/already exists/,'database guard rejects duplicate batches');
  const pm=await vlbBatchActor(pool,{login:'pm'});assert.ok(batchPmAtSite(pm,'Sasti OC'));assert.equal(batchPmAtSite(pm,'Jayant OC'),false);

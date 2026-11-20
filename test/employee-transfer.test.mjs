@@ -35,12 +35,14 @@ test('HTTP employee transfer flow enforces site scope, preserves history, sends 
  assert.equal((await call('hr','/lookup?empId=missing')).status,404);
  assert.equal((await call('other','/lookup?empId=E001')).status,403);
  const lookup=(await call('hr','/lookup?empId=e001')).body;assert.equal(lookup.source,'Majri OC');assert.equal(lookup.record.contact,'9876543210');assert.ok(lookup.fields.some(field=>field.key==='designation'));
- let request={...lookup,record:{...lookup.record,name:'Employee changed',contact:'9123456789'},destination:'Jayant OC',effectiveDate:'2026-10-09',remarks:'Transfer for new project'};
+ let request={...lookup,record:{...lookup.record,name:'Employee changed',contact:'9123456789'},destination:'Jayant OC',effectiveDate:'2026-10-09',transfer:{transferType:'Permanent',reason:'Business need',relievingDate:'2026-10-08'},remarks:'Transfer for new project'};
  assert.equal((await call('hr','','POST',{...request,destination:'Majri OC'})).status,400);
  assert.equal((await call('hr','','POST',{...request,destination:'Sasti OC'})).status,400);
  assert.equal((await call('hr','','POST',{...request,record:{...request.record,adminLevel:'Admin'}})).status,400);
  notificationFailure=true;assert.equal((await call('hr','','POST',request)).status,500);assert.equal((await db.query('SELECT * FROM employee_transfers')).rows.length,0);notificationFailure=false;
  const created=await call('hr','','POST',request);assert.equal(created.status,201);const transferId=created.body.id;
+ const trail=await call('hr','/employee/e001');assert.equal(trail.status,200);assert.deepEqual(trail.body.records.map(row=>[row.transferNo,row.status]),[[created.body.transferNo,'Awaiting source approval']]);assert.equal(trail.body.records[0].before,undefined);
+ assert.equal((await call('other','/employee/E001')).body.records.length,0);assert.equal((await call('general','/employee/E001')).status,403);
  assert.equal((await call('hr','','POST',request)).status,409);
  const employee=async()=> (await db.query('SELECT record_data FROM master_records WHERE id=$1',[id])).rows[0].record_data;
  assert.equal((await employee()).site,'Majri OC');assert.equal((await employee()).name,'EMPLOYEE ONE');
@@ -57,7 +59,7 @@ test('HTTP employee transfer flow enforces site scope, preserves history, sends 
  assert.equal((await db.query('SELECT record_data FROM master_records WHERE master_name=$1',[CDIR_MASTERS.contact])).rows[0].record_data.contact,'9123456789');
  const finished=(await call('hr')).body.records[0];assert.equal(finished.status,ET_STATUS.DONE);assert.deepEqual(finished.history.map(row=>row.action),['Requested','Source approved','Accepted']);assert.equal(finished.approvedBy,'Source PM');assert.equal(finished.acceptedBy,'Destination PM');assert.equal(finished.before.site,'Majri OC');
  assert.equal((await call('destination',`/${transferId}/accept`,'PATCH',{})).status,409);
- const fresh=(await call('destination','/lookup?empId=E001')).body;request={...fresh,destination:'Majri OC',effectiveDate:'2026-10-10',remarks:'Return'};
+ const fresh=(await call('destination','/lookup?empId=E001')).body;request={...fresh,destination:'Majri OC',effectiveDate:'2026-10-10',transfer:{transferType:'Permanent',reason:'Business need',relievingDate:'2026-10-08'},remarks:'Return'};
  const returnTransfer=(await call('destination','','POST',request)).body.id;
  assert.equal((await call('destination',`/${returnTransfer}/reject`,'PATCH',{})).status,400);
  assert.equal((await call('destination',`/${returnTransfer}/reject`,'PATCH',{note:'No replacement available'})).status,200);assert.equal((await employee()).site,'Jayant OC');
@@ -69,7 +71,7 @@ test('HTTP employee transfer flow enforces site scope, preserves history, sends 
 
 test('transfer UI provides form, inboxes, record details and exportable history via shared ReportSection',()=>{
  const ui=readFileSync(new URL('../src/employee-transfer.jsx',import.meta.url),'utf8');const main=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');
- for(const text of ['Employee ID','Where to transfer','Outgoing','Incoming','History','ReportSection','Approval history','effectiveDate','employee-transfer-access'])assert.ok(ui.includes(text),text);
+ for(const text of ['Employee ID','To location','Outgoing','Incoming','History','ReportSection','Approval history','effectiveDate','employee-transfer-access'])assert.ok(ui.includes(text),text);
  assert.ok(main.includes('data-workspace="employee-transfer"'));assert.ok(main.includes('renderedActive === "Employee Transfer"'));
  const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');assert.ok(server.includes('${EMPLOYEE_TRANSFER_SCHEMA}'));assert.ok(server.includes('registerEmployeeTransfers(app,'));
 });

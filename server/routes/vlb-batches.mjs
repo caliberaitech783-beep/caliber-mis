@@ -64,7 +64,11 @@ async function visible(client,id,req){
  return batch;
 }
 async function details(client,batch,req){
- let records=(await client.query(`SELECT e.snapshot FROM ${ACTIVE_VLB_ENTRY_FROM} WHERE e.batch_id=$1 AND ${ACTIVE_VLB_ENTRY_FILTER} ORDER BY e.logbook_id`,[batch.id])).rows.map(r=>r.snapshot).filter(r=>operationalDate(r.data?.bookDate));
+ // The card's revision is read from the card itself, not from the stored snapshot. A change that
+ // does not pass through the card form (Pulse BD hours repair, 18 Nov 2026) raised the card's
+ // revision and left the snapshot's behind, so every later save from the batch was refused with
+ // "This log book changed or is unavailable" however often the user reloaded.
+ let records=(await client.query(`SELECT e.snapshot,l.revision FROM ${ACTIVE_VLB_ENTRY_FROM} WHERE e.batch_id=$1 AND ${ACTIVE_VLB_ENTRY_FILTER} ORDER BY e.logbook_id`,[batch.id])).rows.map(r=>({...r.snapshot,revision:r.revision})).filter(r=>operationalDate(r.data?.bookDate));
  const scanIds=records.map(record=>record.data?.scanCardId).filter(id=>uuid(id));
  const scanTable=scanIds.length&&(await client.query("SELECT to_regclass('mis_scan_cards') AS name")).rows[0]?.name;
  if(scanTable){
