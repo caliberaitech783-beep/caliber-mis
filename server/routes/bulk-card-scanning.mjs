@@ -348,7 +348,7 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
    if(!row)await lockOpenDeletion(c);
    const card=await getCard(c,req.params.id,true);deletable(card);
    const reason=row?.reason||String(req.body.reason||'').trim();
-   if(!row&&!(await openDeletion(c,await getBatch(c,card.batch_id),req)))fail('The batch stage is unavailable for deletion without OTP. Reload before deleting.',409);
+
    if(!reason||reason.length>2000)fail('Enter a deletion reason of up to 2000 characters.',400);
    if(card.revision!==(row?.revision??req.body.revision)||req.body.approval!==deletionPhrase(card))fail('Card changed. Prepare a fresh deletion approval.',409);
    if(card.image_blob_key){

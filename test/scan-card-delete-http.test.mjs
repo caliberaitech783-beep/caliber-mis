@@ -18,7 +18,7 @@ test('single-card deletion requires exact approval, delivered OTP, owner and unc
  for(const [index,cardId] of [id,other].entries())await db.query("INSERT INTO mis_scan_cards(id,batch_id,ordinal,filename,image,image_hash,draft,status) VALUES($1,$2,$3,'fixture.png',$4,$5,$6::jsonb,'review')",[cardId,batch,index+1,Buffer.from('test image'),randomUUID(),JSON.stringify({bookDate:'2026-12-30',location:index?'Jayant OC':'Sasti OC',door:'V-200'})]);
  const path='/api/scan-cards/'+id,approval='Approve deletion of card '+id+' revision 1';
  const request={revision:1,reason:'Test-only fixture',approval};
- assert.equal((await call(path+'/delete',{otp:'123456',approval})).status,409);
+ assert.equal((await call(path+'/delete',{otp:'123456',approval})).status,400);
  assert.equal((await call(path+'/deletion-otp',{...request,approval:'yes'})).status,400);
  deliveryWorks=false;assert.equal((await call(path+'/deletion-otp',request,'POST','delivery-failure')).status,503);deliveryWorks=true;
  const issued=await call(path+'/deletion-otp',request);assert.equal(issued.status,200,JSON.stringify(issued));assert.equal(JSON.stringify(issued).includes(deliveredOtp),false);
@@ -51,8 +51,9 @@ test('single-card deletion requires exact approval, delivered OTP, owner and unc
  await prepareVlbFixture(db,{bookDate:'2026-12-30',location:'Sasti OC',cardShift:'I'});
  const openRequest={revision:2,reason:'Wrong scan',approval:'Approve deletion of card '+other+' revision 2'};
  await db.query('UPDATE mis_vlb_batches SET closed_at=NOW()');
- assert.equal((await call(second+'/delete',openRequest)).status,409);
- await db.query('UPDATE mis_vlb_batches SET closed_at=NULL');
+ assert.equal((await call(second+'/delete',{...openRequest,approval:'yes'})).status,409);
+ assert.equal((await call(second+'/delete',{...openRequest,reason:''})).status,400);
+
  assert.equal((await call(second+'/delete',openRequest)).status,200);
  const audit=(await db.query('SELECT raw_fields FROM mis_scan_cards WHERE id=$1',[other])).rows[0].raw_fields.manualDeletion;
  assert.equal(audit.otpVerifiedAt,undefined);
