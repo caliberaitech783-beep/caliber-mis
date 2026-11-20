@@ -428,3 +428,21 @@ test('Jayant OC displays its server-provided Shift Master duration without an ed
   assert.equal(select.props.disabled,disabled);
  }
 });
+
+test('Site batches use the shared report table when the page has it: filters on every heading, actions kept',async()=>{
+ const h=hooks(),ReportSection=()=>null;let viewed=null;
+ const {VlbCreateBatch}=await compile('vlb-create-batch.jsx',{React,SmartSelect:'select',useState:h.useState,useRef:h.useRef,useEffect:()=>{},fetch:async()=>({ok:true,json:async()=>({})}),canonicalSiteName,displaySiteName,bookShiftCode,systemBookDate,vlbRecordSource,vlbRecordEntryType,VlbBatchCardDetails:()=>null,VlbBatchReport:()=>null,VlbBatchGovernance:()=>null,VlbReopenDialog:()=>null,VlbBatchHolds:()=>null,NewEquipmentRequest:()=>null,window:{}},['VlbCreateBatch']);
+ const base={site:'Jayant OC',report_date:'2026-11-01',shift:'S1',records:[],created_by:'alice',twoStage:true,stage:'vlb_open'};
+ const render=()=>{h.reset();return VlbCreateBatch({session:{token:'t'},ReportSection,onExit(){},onManual(){},onScan(){}})};
+ render();h.slots[0]={sites:['Jayant OC'],shifts:[{site:'Jayant OC',name:'Shift A',shiftCode:'I'}]};h.slots[8]=false;h.slots[13]=true;h.slots[14]={login:'alice',mis:true};h.slots[22]=true;
+ h.slots[3]=[{...base,id:'a',name:'B01',entry_count:'9'},{...base,id:'b',name:'B02',entry_count:'120'},{...base,id:'c',name:'B03',entry_count:'40'}];
+ const list=nodes(render(),n=>n.type===ReportSection&&n.props.category==='vlb-site-batches')[0].props;
+ assert.equal(list.showSearch,false,'the Search batches box stays the one search');
+ assert.deepEqual(list.columns.map(column=>column.label),['Batch ID','Cards','VLB','LMV','ELB','Status','Action']);
+ assert.deepEqual(list.rows.map(b=>b.name),['B01','B02','B03']);
+ const cards=list.columns.find(column=>column.key==='cards');
+ assert.deepEqual(sortRowsBlanksLast(list.rows,{key:'cards',direction:'asc'},b=>cards.sortValue(b)).map(b=>b.name),['B01','B03','B02'],'9, 40, 120 by value');
+ const actions=list.columns.at(-1).render(list.rows[0]);
+ assert.ok(nodes(actions,n=>n.type==='button'&&React.Children.toArray(n.props.children).join('')==='View report').length,'View report stays on every row');
+ assert.equal(nodes(render(),n=>n.type==='div'&&n.props.id==='vlb-batch-site-panel')[0]&&nodes(nodes(render(),n=>n.type==='div'&&n.props.id==='vlb-batch-site-panel')[0],n=>n.type==='table').length,0,'no second, hand-drawn table');
+});

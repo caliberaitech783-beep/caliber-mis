@@ -21,7 +21,26 @@ function deliveryValue(row={},key){
   return '';
 }
 
-export default function OemEmailDeliveryStatus({session}) {
+// What a cell shows and what its column filter lists: the same words as the plain table below.
+const slotLabel=row=>{const key=String(row.recipient_key||'');return key.includes(':test-1300')?'1:00 PM':key.includes(':test-1100')?'11:00 AM':key.includes(':extra-1900')?'7:00 PM':'5:00 PM';};
+function deliveryText(row,key,time){
+  if(key==='scheduled')return row.day+' '+slotLabel(row);
+  if(key==='oem')return row.oem+' / '+row.level;
+  if(key==='cases')return row.case_count;
+  if(key==='files')return row.attachments?.length?row.attachments.map(file=>file.filename+' ('+file.bytes+' bytes)').join(', '):'Not recorded for this attempt';
+  if(key==='attempt')return time(row.last_attempt_at);
+  if(key==='accepted')return time(row.sent_at);
+  if(key==='messageId')return row.message_id||'Not recorded';
+  if(key==='acknowledgement')return row.acknowledgement_status||'Not recorded / not requested';
+  if(key==='error')return row.error||'—';
+  return deliveryValue(row,key);
+}
+function deliveryCell(row,key,{time,busy,retry}){
+  if(key==='files')return row.attachments?.length?row.attachments.map(file=><div key={file.filename}>{file.filename} ({file.bytes} bytes)</div>):'Not recorded for this attempt';
+  return <>{row.error||'—'}{row.retry_safe&&row.status==='Failed / review required'&&!row.message_id?<button data-print-hide="" disabled={busy} onClick={()=>retry(row)}>Retry failed email</button>:row.status==='Failed / review required'?<p>Manual review required; retry blocked to prevent duplicates.</p>:null}
+    {!!row.attempts?.length&&<details><summary>Retry history</summary>{row.attempts.map((attempt,index)=><p key={index}>{time(attempt.at)} · {attempt.actor} · {attempt.reason} · Previous: {attempt.previousError}</p>)}</details>}</>;
+}
+export default function OemEmailDeliveryStatus({session,ReportSection}) {
   const [data,setData]=useState(null),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false),[query,setQuery]=useState('');
   const [sort,setSort]=useState({key:'',direction:'asc'});const changeSort=key=>setSort(current=>({key,direction:current.key===key&&current.direction==='asc'?'desc':'asc'}));
   const headers={Authorization:`Bearer ${session.token}`,'Content-Type':'application/json'};
@@ -48,6 +67,11 @@ export default function OemEmailDeliveryStatus({session}) {
     {data&&<p>Sender: {data.sender} · Scheduler: {data.schedulerEnabled?'Enabled':'Disabled'} · Credentials: {data.configured?'Configured (not verified)':'Missing'}<br/>{data.schedule}<br/>{data.note}</p>}
     {error&&<p role="alert">{error}</p>}{notice&&<p role="status">{notice}</p>}
     <input type="search" aria-label="Search OEM email deliveries" placeholder="Search OEM, recipient, date or status" value={query} onChange={event=>setQuery(event.target.value)}/>
+    {/* With the shared report table (the MIS page) the list has the VLB look: a filter and sort menu on every heading,
+        Rows, Actions and Smart Print. The search box above still narrows it first. */}
+    {ReportSection?<ReportSection title={'OEM Email Delivery Status'+(query.trim()?' · '+query.trim():'')} category="oem-email-deliveries" description={rows.length+' recorded attempt'+(rows.length===1?'':'s')} showSearch={false} recordDateFilter={false} smartPrintAction
+      columns={deliveryColumns.map(([key,label])=>({key,label,blanksLast:true,duration:false,value:row=>deliveryText(row,key,time),sortValue:row=>deliveryValue(row,key),render:key==='files'||key==='error'?row=>deliveryCell(row,key,{time,busy,retry}):undefined}))}
+      rows={rows} rowKey={row=>row.day+':'+row.recipient_key} emptyMessage={data?'No recorded attempts match this view.':'Loading…'}/>:<>
     {rows.length>0&&<TableSmartPrint row title={'OEM Email Delivery Status'+(query.trim()?' · '+query.trim():'')}/>}
     <div style={{overflowX:'auto',marginTop:16}}><table><thead><tr>{deliveryColumns.map(([key,label])=><SortableHeader key={key} label={label} sortKey={key} sort={sort} onSort={changeSort} filterIcon={false}/>)}</tr></thead>
       <tbody>{sortRowsBlanksLast(rows,sort,deliveryValue).map(row=><tr key={`${row.day}:${row.recipient_key}`}>
@@ -58,5 +82,6 @@ export default function OemEmailDeliveryStatus({session}) {
         <td>{row.error||'—'}{row.retry_safe&&row.status==='Failed / review required'&&!row.message_id?<button data-print-hide="" disabled={busy} onClick={()=>retry(row)}>Retry failed email</button>:row.status==='Failed / review required'?<p>Manual review required; retry blocked to prevent duplicates.</p>:null}
           {!!row.attempts?.length&&<details><summary>Retry history</summary>{row.attempts.map((attempt,index)=><p key={index}>{time(attempt.at)} · {attempt.actor} · {attempt.reason} · Previous: {attempt.previousError}</p>)}</details>}
         </td></tr>)}{!rows.length&&<tr><td colSpan={11}>{data?'No recorded attempts match this view.':'Loading…'}</td></tr>}</tbody></table></div>
+    </>}
   </section>;
 }

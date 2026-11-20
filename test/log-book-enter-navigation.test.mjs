@@ -342,3 +342,21 @@ test('Saved log books sort by a clicked heading: numbers by value, blanks last, 
  heading('bookNo').props.onSort('bookNo');assert.deepEqual(order(),['saved-3','saved-1','saved-2'],'VLB-2 < VLB-9 < VLB-10');
  assert.equal(all(app.render('equipment'),node=>node.type===SortableHeader&&node.props.sortKey==='employee')[0].props.label,'Operator');
 });
+
+test('With the shared report table, saved log books get the VLB column filters and keep their sort rules',()=>{
+ const app=harness();const ReportSection=()=>null;app.render('vehicle',{ReportSection});
+ const book=(id,no,door,hmr)=>({id:'saved-'+id,book_no:no,data:{door,totalWorkingHmr:hmr,bookDate:'2026-11-0'+id,location:'Sasti OC',employeeName:'Driver '+id}});
+ app.slots[3]=[book(1,'VLB-9','V-10',12),book(2,'VLB-10','V-9',null),book(3,'VLB-2','V-100',9.5)];
+ const report=kind=>all(app.render(kind,{ReportSection}),node=>node.type===ReportSection)[0].props;
+ const list=report('vehicle');
+ assert.equal(list.showSearch,false,'the search box above the list stays the one search');
+ assert.equal(list.smartPrintAction,true);
+ assert.deepEqual(list.columns.map(column=>column.label),['Book NO','Date','Location','Door NO','Shift','Driver','Work HMR','Opening trips','Ending trips','Counted trips','Open']);
+ assert.ok(list.columns.slice(0,-1).every(column=>column.blanksLast),'blanks stay last in both directions');
+ const hmr=list.columns.find(column=>column.key==='workHmr');
+ assert.deepEqual(list.rows.map(row=>hmr.sortValue(row)),[12,'',9.5],'Work HMR sorts by value');
+ assert.equal(hmr.value(list.rows[2]),'9.5');
+ assert.equal(list.columns.at(-1).render(list.rows[0]).props.children,'Open');
+ assert.equal(report('equipment').columns.find(column=>column.key==='employee').label,'Operator');
+ assert.equal(all(app.render('vehicle',{ReportSection}),node=>node.type===SortableHeader).length,0,'no second, hand-drawn table');
+});
