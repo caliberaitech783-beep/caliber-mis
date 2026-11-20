@@ -175,10 +175,12 @@ test("quickSort headings sort on one click with no menu, and both Attendance tab
   assert.deepEqual(events, [["sort", "duties"]]);
   const plain = menu({ durationSortOnly: false, label: "Duties", sortKey: "duties" });
   descendants(plain.tree, (node) => node.type === "button" && String(node.props.className || "").includes("sort-header"))[0].props.onClick({ stopPropagation() {} });
-  assert.deepEqual(plain.events, [["toggle", "duties"]], "other reports keep the heading menu");
+  assert.deepEqual(plain.events, [["toggle", "duties"]], "tables that are not Steps keep the heading menu");
+  assert.ok(menu({ quickSort: true, durationSortOnly: false, label: "Hours", labelText: "BD hours", sortKey: "hours" }).html.includes('title="Sort by BD hours"'));
   const report = main.slice(main.indexOf("function ReportTable("), main.indexOf("function MasterField(", main.indexOf("function ReportTable(")));
   assert.match(report, /quickSort=\{quickSort\}/);
-  assert.match(main, /stepLook=\{stepLook\} quickSort=\{quickSort\}/);
+  // Owner, 19 Nov 2026: every "Step N · …" table (Batch Status, BD hours, Loading, saved reports, Manpower) sorts on one click.
+  assert.match(main, /stepLook=\{stepLook\} quickSort=\{quickSort \|\| stepLook\}/);
   const attendance = readFileSync(new URL("../src/attendance-register.jsx", import.meta.url), "utf8");
   const sections = attendance.match(/<ReportSection\b/g).length;
   assert.equal(attendance.match(/<ReportSection quickSort\b/g).length, sections, "every Attendance step sorts on one click");
