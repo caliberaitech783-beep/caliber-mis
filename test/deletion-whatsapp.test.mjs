@@ -16,7 +16,7 @@ test('dedicated Pulse sender is restricted to deletion OTPs and the approved rec
 test('Jayant deletion uses the new number without changing the recipient for other sites',async()=>{
  const pool={query:async()=>({rows:[{setting_value:{enabled:true,purpose:'logBookDeletionOtp',recipient:DELETION_PHONE}}]})};
  const delivered=[];
- const transport={sendTemplate:async({to})=>delivered.push(to)};
+ const transport={sendTemplate:async({to})=>{delivered.push(to);return {sent:true,messageId:'test-'+to}}};
  const request={pool,otp:'123456',requestId:'routing-test',count:1};
  const jayant='919936297751';
  await sendDeletionOtp({...request,to:jayant,sites:['Jayant OC','Jayant OB']},transport);
@@ -24,7 +24,7 @@ test('Jayant deletion uses the new number without changing the recipient for oth
  await assert.rejects(()=>sendDeletionOtp({...request,to:DELETION_PHONE,sites:['Jayant OC']},transport),/Invalid/);
  await assert.rejects(()=>sendDeletionOtp({...request,to:jayant,sites:['Sasti OC']},transport),/Invalid/);
  await assert.rejects(()=>sendDeletionOtp({...request,to:jayant,sites:['Jayant OC','Sasti OC']},transport),/separately/);
- assert.deepEqual(delivered,[jayant,DELETION_PHONE]);
+ assert.deepEqual(delivered,[jayant,'917024738178',DELETION_PHONE]);
 });
 
 test('Dudhichua East and Dudhichua each use their own deletion number',async()=>{
@@ -64,4 +64,20 @@ test('each WCL site sends deletion OTPs only to its assigned number',async()=>{
  }
  await sendDeletionOtp({...request,sites:['Lalpeth OC'],to:DELETION_PHONE},transport);
  assert.deepEqual(sent,[...cases.map(([,to])=>to),DELETION_PHONE]);
+});
+
+
+test('Jayant sends the same OTP to both approvers and refuses incomplete delivery',async()=>{
+ const pool={query:async()=>({rows:[{setting_value:{enabled:true,purpose:'logBookDeletionOtp',recipient:DELETION_PHONE}}]})};
+ const request={pool,to:'919936297751',sites:['Jayant OB'],otp:'654321',requestId:'dual-recipient',count:40};
+ const calls=[];
+ const result=await sendDeletionOtp(request,{sendTemplate:async payload=>{calls.push(payload);return {sent:true,messageId:'test-'+payload.to}}});
+ assert.equal(result.sent,true);assert.deepEqual(calls.map(p=>p.to),['919936297751','917024738178']);
+ assert.ok(calls.every(p=>p.parameters[0]==='654321'&&p.purpose==='logBookDeletionOtp'));
+ for(const failed of ['919936297751','917024738178']){
+  const attempted=[];
+  const failure=await sendDeletionOtp(request,{sendTemplate:async payload=>{attempted.push(payload.to);if(payload.to===failed)throw Error('Provider failure');return {sent:true,messageId:'test-only'}}});
+  assert.equal(failure.sent,false);assert.equal(failure.messageId,'');assert.equal(attempted.length,2);
+ }
+ await assert.rejects(()=>sendDeletionOtp({...request,to:'917024738178'},{sendTemplate:async()=>{throw Error('must not send')}}),/Invalid/);
 });

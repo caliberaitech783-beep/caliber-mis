@@ -16,7 +16,7 @@ for(const [label,kind,logBookKind] of [['VLB','vehicle','vehicle'],['LMV','vehic
  assert.equal((await call('otp',{...request(),cards:[cards[0],{...cards[0],id:cards[0].id.toUpperCase()}]})).status,400);
  const foreign=[cards[0],{id:ids[3],revision:1}];assert.equal((await call('otp',{cards:foreign,reason:'Wrong scans',approval:scanDeletionApproval(foreign)})).status,403);
  delivery=false;assert.equal((await call('otp',request())).status,503);delivery=true;clock+=61000;
- let issued=await call('otp',request());assert.equal(issued.status,200);assert.equal(issued.data.count,2);assert.equal(issued.data.recipient,'+91 9936297751');assert.equal(JSON.stringify(issued).includes(otp),false);
+ let issued=await call('otp',request());assert.equal(issued.status,200);assert.equal(issued.data.count,2);assert.equal(issued.data.recipient,'+91 9936297751 and +91 7024738178');assert.equal(JSON.stringify(issued).includes(otp),false);
  assert.equal((await call('confirm',confirm(issued),'bob')).status,409);assert.equal((await call('confirm',{...confirm(issued),cards:[cards[0]]})).status,409);assert.equal((await call('confirm',{...confirm(issued),otp:'000000'})).status,400);
  await db.query('UPDATE cards SET revision=2 WHERE id=$1',[cards[1].id]);assert.equal((await call('confirm',confirm(issued))).status,409);assert.equal((await db.query('SELECT count(*)::int AS n FROM cards WHERE image IS NOT NULL')).rows[0].n,4);
  cards=cards.map((c,i)=>({...c,revision:i===1?2:1}));clock+=61000;issued=await call('otp',request());failSecond=true;assert.equal((await call('confirm',confirm(issued))).status,500);failSecond=false;assert.equal((await db.query('SELECT count(*)::int AS n FROM cards WHERE image IS NOT NULL')).rows[0].n,4,'rollback restores every selected image');

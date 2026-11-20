@@ -1,5 +1,5 @@
 import {sendMetaWhatsAppTemplate} from '../rules/meta-whatsapp.mjs';
-import {DELETION_PHONE,deletionPhone} from '../rules/deletion-otp-routing.mjs';
+import {DELETION_PHONE,deletionPhone,deletionPhonesForRecipient} from '../rules/deletion-otp-routing.mjs';
 
 export const DELETION_WHATSAPP_KEY='mis_deletion_whatsapp';
 // The owner-only WhatsApp connection (recipient DELETION_PHONE). Its environment is
@@ -14,7 +14,15 @@ export async function sendDeletionOtp({pool,to,otp,requestId,count,sites=[],test
  const env=await ownerWhatsAppEnv(pool);
  // The existing approved AUTHENTICATION template displays a generic security code.
  // This creates no password reset and grants no deletion approval by itself.
- return sendTemplate({to,templateKey:'passwordResetOtp',purpose:'logBookDeletionOtp',parameters:[String(otp)]},{env});
+ const recipients=deletionPhonesForRecipient(to);
+ const send=recipient=>sendTemplate({to:recipient,templateKey:'passwordResetOtp',purpose:'logBookDeletionOtp',parameters:[String(otp)]},{env});
+ if(recipients.length===1)return send(to);
+ // Both approved recipients receive the same request-bound code. Do not mark
+ // the request delivered if either send fails; callers retain their failure gate.
+ const results=await Promise.allSettled(recipients.map(send));
+ const deliveries=results.filter(result=>result.status==='fulfilled').map(result=>result.value);
+ const sent=results.every(result=>result.status==='fulfilled'&&result.value?.sent&&result.value.messageId);
+ return {sent,messageId:sent?deliveries[0].messageId:'',recipients};
 }
 // Urgent production release OTP: always to the owner's number (DELETION_PHONE), never
 // to an address a caller supplies. Same approved template and delivery purpose.
