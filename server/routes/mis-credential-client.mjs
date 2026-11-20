@@ -30,6 +30,15 @@ export function installMisCredentialClient(app,{pool,sessionStore,fetcher=fetch}
   }catch{res.status(503).json({error:'Sign out could not be completed. Please retry.'});}
  });
  return {
+  async openHr(token){
+   const {rows}=await pool.query('SELECT grant_token FROM mis_credential_sessions WHERE session_token=$1',[token]);
+   if(!rows[0])return {status:401,data:{error:'Sign in through Pulse to open HR.'}};
+   return request('open-hr',{grant:rows[0].grant_token});
+  },
+  async revokeSession(token){
+   const {rows}=await pool.query('SELECT grant_token FROM mis_credential_sessions WHERE session_token=$1',[token]);
+   if(rows[0]&&(await request('logout',{grant:rows[0].grant_token})).status!==200)throw Error('Pulse sign-out could not be completed.');
+  },
   async validateSession(token,session){
    if(!session?.permissions?.separateMisCredentials)return null;
    const {rows}=await pool.query('SELECT grant_token FROM mis_credential_sessions WHERE session_token=$1',[token]);

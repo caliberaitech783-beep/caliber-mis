@@ -1223,6 +1223,7 @@ function Side({ active, setActive, logout, open, permissions = {}, session, prof
     <aside id="admin-primary-navigation" className={open ? "open" : ""} aria-label="Primary navigation" aria-hidden={navigationHidden ? true : undefined} inert={navigationHidden ? true : undefined}>
       <CaliberBrand className="logo" />
       <nav onPointerOver={warmNavigationFeature} onPointerDownCapture={warmNavigationFeature} onFocusCapture={warmNavigationFeature}>
+        {permissions.separateMisCredentials && <div className="nav-config-row"><button type="button" className="header-nav-item" onClick={()=>window.location.assign('/hr/')}><span className="header-nav-icon" aria-hidden="true"><Users /></span><span className="nav-label">HR</span></button></div>}
         {visibleNav.filter(([name]) => name === "Dashboard").map(([n, I]) => (
           <div className="nav-config-row" key={n}><button
             className={`header-nav-item${active === n ? " active" : ""}`}
@@ -11541,6 +11542,12 @@ function App() {
   const sharedSignIn=useMisSharedSignIn(session,{autoStart:true,paused:sharedSignedOut});
   const accountSecurity=useAccountSecurity(session,{enabled:sharedSignIn.mode==='client'||Boolean(session?.browserSession||session?.permissions?.separateMisCredentials)});
   const locationGate=useSignInLocationGate(session?.token);
+  const canOpenHr=Boolean(session?.token&&accountSecurity.verified&&!accountSecurity.loading&&locationGate.phase==='open');
+  useEffect(()=>{
+    if(!canOpenHr||sessionStorage.getItem('pulseIIOpenHr')!=='1')return;
+    sessionStorage.removeItem('pulseIIOpenHr');
+    window.location.replace('/hr/');
+  },[canOpenHr]);
   useEffect(()=>{
     const receive=event=>{const value=event.detail;if(!value?.token)return;
       authToken=value.token;currentEmployeeName=value.name;
