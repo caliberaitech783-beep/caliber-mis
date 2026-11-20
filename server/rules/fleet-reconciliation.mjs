@@ -3,6 +3,8 @@ import {allowsLogBookKind,assetBookKind} from '../../shared/equipment-kind.mjs';
 import {equipmentDoorNumber} from '../../shared/equipment-door.mjs';
 import {shiftDurationMinutes} from '../../shared/shift-master.mjs';
 import {bookShiftCode} from '../../shared/trip-card-rules.mjs';
+import {assetAtSiteOnDate} from '../../shared/equipment-transfer-history.mjs';
+import {assignmentWindows,overlapsAssignment} from '../../shared/log-book-transfers.mjs';
 
 const text=v=>String(v??'').trim();
 const identity=v=>text(v).toUpperCase().replace(/[^A-Z0-9]/g,'');
@@ -11,6 +13,16 @@ const epoch=v=>{const s=text(v);return Date.parse(/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\
 export const IDLE_REASONS=['Driver unavailable','Operator unavailable','No work allocated','Standby','Not in use','Fuel unavailable','Maintenance','Other'];
 export const fleetShift=v=>bookShiftCode(v)||({A:'S1',B:'S2',C:'S3','SHIFT A':'S1','SHIFT B':'S2','SHIFT C':'S3','SHIFT DAY':'D','SHIFT NIGHT':'N'})[text(v).toUpperCase()]||'';
 export const fleetAssetKind=asset=>allowsLogBookKind(asset,'lmv')?'lmv':assetBookKind(asset);
+// Reconciliation is historical too: a later transfer must not remove earlier cards.
+// Pending transfers do not change this report's roster. Date-only completed transfers
+// retain the shared date-based rule; exact transfers use the selected shift interval.
+export function fleetAssetAtShift(asset,site,date,window){
+ const history=(asset.transferHistory||[]).filter(t=>!t.status||t.status==='Completed');
+ if(!history.length)return canonicalSiteName(asset.currentLocation||asset.site||asset.location)===canonicalSiteName(site);
+ if(!assetAtSiteOnDate(asset,history,site,date)&&!assetAtSiteOnDate(asset,history,site,new Date(window.end-1+19800000).toISOString().slice(0,10)))return false;
+ const windows=assignmentWindows(asset,history);
+ return !windows.length||windows.some(w=>canonicalSiteName(w.site)===canonicalSiteName(site)&&overlapsAssignment(w,window.start,window.end));
+}
 export const assetIdentity=asset=>{
  const chassis=serial(asset.chassis||asset.chassisNo);
  const key=chassis?'chassis:'+chassis:'id:'+text(asset.id);
@@ -31,7 +43,7 @@ export function reconcileFleet({assets,books,breakdowns,reasons=[],date,site,shi
  // blocked the server for 11-14 s per report on 11 Nov 2026.
  const siteKey=canonicalSiteName(site);
  const grouped=new Map(),warnings=[];
- for(const asset of assets){if(asset.sourceMissing||canonicalSiteName(asset.currentLocation||asset.site||asset.location)!==siteKey||kind&&fleetAssetKind(asset)!==kind)continue;const key=assetIdentity(asset);const current=grouped.get(key);if(current){current.aliases.push(text(asset.id));warnings.push('Duplicate master records grouped for '+(asset.door||asset.id));}else grouped.set(key,{...asset,aliases:[text(asset.id)]});}
+ for(const asset of assets){if(asset.sourceMissing||!fleetAssetAtShift(asset,site,date,window)||kind&&fleetAssetKind(asset)!==kind)continue;const key=assetIdentity(asset);const current=grouped.get(key);if(current){current.aliases.push(text(asset.id));warnings.push('Duplicate master records grouped for '+(asset.door||asset.id));}else grouped.set(key,{...asset,aliases:[text(asset.id)]});}
  const shiftBooks=books.filter(b=>canonicalSiteName(b.site||b.data?.location)===siteKey&&fleetShift(b.data?.cardShift||b.data?.batchShift||b.data?.bookShiftCode||b.data?.shiftName)===shift).map(b=>({book:b,assetRef:text(b.asset_id||b.data?.assetId)}));
  const siteRequests=breakdowns.filter(request=>!request.archivedAt&&canonicalSiteName(request.site)===siteKey).map(request=>({request,chassis:serial(request.chassis),keys:[request.door,request.equipment,request.reg].map(identity)}));
  const unmatched=[];
