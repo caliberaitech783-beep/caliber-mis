@@ -1,0 +1,17 @@
+/* Attendance Management and Attendance Regularization pages (src/attendance-management.jsx). */
+.am-page .am-filters{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin:12px 0}
+.am-page .am-error{color:#a31f20;font-weight:600;margin:6px 0}
+.am-page .am-notice{color:#3d2a5c;background:#f3eefb;border:1px solid #d9cdee;border-radius:8px;padding:8px 12px;margin:8px 0}
+.am-page .am-upload{display:flex;flex-direction:column;gap:8px;margin:12px 0}
+.am-page .am-upload-button{display:inline-flex;align-items:center;gap:8px;align-self:flex-start;background:#6a3fa0;color:#fff;border-radius:8px;padding:9px 16px;font-weight:600;cursor:pointer}
+.am-page .am-upload-button.busy{opacity:.6;cursor:progress}
+.am-page .am-upload-button input{display:none}
+.am-page .am-refused{margin:0;padding-left:20px;color:#a31f20;font-size:13px}
+.am-page .am-chips{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+.am-page .am-chips button{border:1px solid #cbbfe0;border-radius:999px;padding:5px 12px;background:#fff;color:#3d2a5c;font-weight:600}
+.am-page .am-chips button[aria-current="page"]{outline:2px solid #6a3fa0;outline-offset:2px}
+.am-page .am-count{display:inline-block;min-width:22px;padding:1px 7px;border-radius:4px;color:#fff;font-weight:700;text-align:center}
+.am-page .am-red,.am-page .am-chips button.am-red,.am-page .dsg-box.am-red{background:#c92c2c;color:#fff;border-color:#a31f20}
+.am-page .am-orange,.am-page .am-chips button.am-orange,.am-page .dsg-box.am-orange{background:#d46a00;color:#fff;border-color:#a85400}
+.am-page .am-brown,.am-page .am-chips button.am-brown,.am-page .dsg-box.am-brown{background:#8a5a2b;color:#fff;border-color:#6d4520}
+.am-page .am-purple,.am-page .am-chips button.am-purple,.am-page .dsg-box.am-purple{background:#6a3fa0;color:#fff;border-color:#4e2d78}
