@@ -3425,6 +3425,7 @@ function FilterableHeader({
   className = "",
   // quickSort: one click on the heading sorts it (again reverses it), with no ↑ / ↓ / filter menu.
   quickSort = false,
+  labelText = "",
 }) {
   const [valueSearch, setValueSearch] = useState("");
   const [resizing, setResizing] = useState(false);
@@ -3505,7 +3506,7 @@ function FilterableHeader({
         className={`sort-header ${active ? "active" : ""} ${filterValue ? "filtered" : ""}`}
         onClick={(event) => { event.stopPropagation(); if (quickSort) onSort(sortKey); else onToggle(sortKey); }}
         type="button"
-        {...(quickSort ? { title: `Sort by ${typeof label === "string" ? label : sortKey}` } : { "aria-expanded": open, "aria-haspopup": "dialog" })}
+        {...(quickSort ? { title: `Sort by ${labelText || (typeof label === "string" ? label : sortKey)}` } : { "aria-expanded": open, "aria-haspopup": "dialog" })}
       >
         <span>{headingLines ? <>{headingLines[0]}<br />{headingLines[1]}</> : label}</span><Icon aria-hidden="true" />
         {filterValue && <i className="column-filter-dot" aria-label="Filtered" />}
@@ -4469,6 +4470,7 @@ function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], 
             sort={sort}
             onSort={changeSort}
             quickSort={quickSort}
+            labelText={typeof column.label === "string" ? column.label : ""}
             open={openFilter === column.key}
             onToggle={(key) => setOpenFilter((current) => current === key ? null : key)}
             values={columnValues[column.key] || []}
@@ -7445,7 +7447,7 @@ function ReportSection({ title, description, category = "general", icon: ReportI
             rowKey={rowKey}
             rowClassName={rowClassName}
             isTotalRow={isTotalRow} isSubtotalRow={isSubtotalRow}
-            rowAction={rowAction} rowEditor={rowEditor} onRowClick={onRowClick} figuresRight stepLook={stepLook} quickSort={quickSort}
+            rowAction={rowAction} rowEditor={rowEditor} onRowClick={onRowClick} figuresRight stepLook={stepLook} quickSort={quickSort || stepLook}
             emptyMessage={emptyMessage}
             columns={columns}
             visibleColumnKeys={visibleColumnKeys}
