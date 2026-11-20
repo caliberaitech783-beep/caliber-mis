@@ -27,38 +27,54 @@ const METER_COLUMNS=`to_char(book_date,'YYYY-MM-DD') AS date, data->>'bookShiftC
     data->'closingKmr' AS "openingKmr", data->'closingHmr' AS "openingHmr",
     CASE WHEN book_date=$2::date THEN data->'trips' END AS trips,
     data->>'masterShiftStart' AS "masterShiftStart"`;
-// Saved Trip Cards of one vehicle on the card date and on its latest earlier date.
+const METER_HISTORY_SQL=`
+ SELECT cards.asset_id::text AS asset_id, ${METER_COLUMNS}
+ FROM unnest($1::bigint[]) AS assets(asset_id)
+ LEFT JOIN LATERAL (
+  SELECT book_date AS previous_date FROM mis_log_books
+  WHERE book_type='vehicle' AND deleted_at IS NULL AND asset_id=assets.asset_id
+   AND book_date<$2::date AND ($3::text[] IS NULL OR site=ANY($3))
+  ORDER BY book_date DESC LIMIT 1
+ ) previous ON true
+ JOIN mis_log_books cards ON cards.asset_id=assets.asset_id
+  AND cards.book_date IN ($2::date,previous.previous_date)
+ WHERE cards.book_type='vehicle' AND cards.deleted_at IS NULL
+  AND ($3::text[] IS NULL OR cards.site=ANY($3))
+ ORDER BY cards.book_date DESC,cards.id DESC`;
+
+// Both paths read all shifts on the card date and on the latest earlier allowed date.
 export async function readVlbOpeningMeterRows(client,assetId,date,sites){
- return (await client.query(`
-   SELECT ${METER_COLUMNS}
-   FROM mis_log_books
-   WHERE book_type='vehicle' AND deleted_at IS NULL AND asset_id=$1
-    AND ($3::text[] IS NULL OR site=ANY($3))
-    AND book_date IN ($2::date, (
-     SELECT max(book_date) FROM mis_log_books
-     WHERE book_type='vehicle' AND deleted_at IS NULL AND asset_id=$1 AND book_date<$2::date
-      AND ($3::text[] IS NULL OR site=ANY($3))
-    ))
-   ORDER BY book_date DESC,id DESC`,[assetId,date,sites])).rows;
+ const {rows}=await client.query(METER_HISTORY_SQL,[[assetId],date,sites]);
+ return rows.map(({asset_id,...row})=>row);
 }
-// The same rows for many vehicles in one query: a scan entry asks for every card's vehicle at once.
+
 export async function preloadVlbOpeningMeterRows(client,assetIds,date,sites){
  const ids=[...new Set(assetIds.map(String))].filter(id=>/^[1-9]\d{0,17}$/.test(id));
  const byAsset=new Map(ids.map(id=>[id,[]]));
  if(!ids.length||!/^\d{4}-\d{2}-\d{2}$/.test(date||''))return new Map();
- const {rows}=await client.query(`
-   SELECT l.asset_id::text AS asset_id, ${METER_COLUMNS}
-   FROM mis_log_books l
-   WHERE l.book_type='vehicle' AND l.deleted_at IS NULL AND l.asset_id=ANY($1::bigint[])
-    AND ($3::text[] IS NULL OR l.site=ANY($3))
-    AND (l.book_date=$2::date OR l.book_date=(
-     SELECT max(p.book_date) FROM mis_log_books p
-     WHERE p.book_type='vehicle' AND p.deleted_at IS NULL AND p.asset_id=l.asset_id AND p.book_date<$2::date
-      AND ($3::text[] IS NULL OR p.site=ANY($3))
-    ))
-   ORDER BY l.book_date DESC,l.id DESC`,[ids,date,sites]);
+ const {rows}=await client.query(METER_HISTORY_SQL,[ids,date,sites]);
  for(const {asset_id,...row} of rows)byAsset.get(asset_id)?.push(row);
  return byAsset;
+}
+
+const METER_HISTORY_INDEX='mis_log_books_vlb_meter_asset_date';
+export async function ensureVlbOpeningMeterIndex(pool){
+ const client=await pool.connect();
+ const lock=2026111901;
+ let locked=false;
+ try{
+  locked=(await client.query('SELECT pg_try_advisory_lock($1) AS locked',[lock])).rows[0].locked;
+  if(!locked)return 'busy';
+  const {rows:[index]}=await client.query('SELECT indisvalid FROM pg_index WHERE indexrelid=to_regclass($1)',[METER_HISTORY_INDEX]);
+  if(index?.indisvalid)return;
+  if(index)await client.query(`DROP INDEX CONCURRENTLY ${METER_HISTORY_INDEX}`);
+  await client.query(`CREATE INDEX CONCURRENTLY IF NOT EXISTS ${METER_HISTORY_INDEX}
+   ON mis_log_books(asset_id,book_date DESC) WHERE book_type='vehicle' AND deleted_at IS NULL`);
+ }finally{
+  try{if(locked)await client.query('SELECT pg_advisory_unlock($1)',[lock]);}
+  catch(error){client.release(error);throw error;}
+  if(client.release)client.release();
+ }
 }
 
 export async function fillVlbScanOpeningMeters(client,draft,{sites,extraction={},context=draft,readRows=readVlbOpeningMeterRows}){

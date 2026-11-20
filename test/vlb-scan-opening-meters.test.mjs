@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PGlite} from '@electric-sql/pglite';
-import {fillVlbScanOpeningMeters} from '../server/rules/vlb-scan-opening-meters.mjs';
+import {fillVlbScanOpeningMeters,preloadVlbOpeningMeterRows,readVlbOpeningMeterRows} from '../server/rules/vlb-scan-opening-meters.mjs';
 
 test('VLB opening meters follow the preceding saved vehicle card in operational order',async t=>{
  const db=new PGlite();
@@ -21,6 +21,18 @@ test('VLB opening meters follow the preceding saved vehicle card in operational 
  await save('2026-11-10','S2',103,203);
  await save('2026-11-11','S1',104,204);
  await save('2026-11-09','S3',5,null,{asset:2});
+
+ // A newer card at an out-of-scope site must not hide an older allowed card.
+ await save('2026-11-09','S2',6,7,{asset:2,site:'Other'});
+ await save('2026-11-09','S3',8,9,{asset:2,site:'Other'});
+ await save('2026-11-10','S1',10,11,{asset:2,site:'Other'});
+ const history=await preloadVlbOpeningMeterRows(db,['1','2','2','3'],'2026-11-10',['Sasti']);
+ for(const asset of ['1','2','3']){
+  assert.deepEqual(history.get(asset),await readVlbOpeningMeterRows(db,asset,'2026-11-10',['Sasti']));
+ }
+ assert.deepEqual(history.get('1').map(row=>row.openingKmr),[103,44,40]);
+ assert.deepEqual(history.get('2').map(row=>row.openingKmr),[5]);
+ assert.deepEqual(history.get('3'),[]);
 
  const input={assetId:'1',location:'Sasti',bookDate:'2026-11-10',cardShift:'II',
   openingKmr:'999',openingHmr:'',closingKmr:'50',meterReviewFields:['openingKmr','closingKmr']};
