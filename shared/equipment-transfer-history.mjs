@@ -3,6 +3,22 @@ import {canonicalSiteName} from './site-location.mjs';
 const clean=value=>String(value??'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
 const date=value=>/^\d{4}-\d{2}-\d{2}$/.test(String(value||''))?String(value):'';
 
+// Confirmed operational history (20 Nov 2026): these two Jayant machines were
+// transferred to Dudhichua only after the 17 Nov log-book date. Their short
+// machine numbers are duplicated in the master, so the generic door fallback
+// cannot safely attach the transfer row to either record.
+const confirmedSiteHistory=[
+ {doors:new Set(['VPC52','VPC53']),site:'Jayant OB',through:'2026-11-17'},
+];
+const confirmedSiteOnDate=(asset,site,bookDate)=>{
+ const machine=String(asset.door||asset.doorNo||'').trim().toUpperCase().match(/\b(VPC\s*0?(?:52|53))\b/)?.[1]?.replace(/\s+/g,'');
+ if(!machine)return null;
+ const rule=confirmedSiteHistory.find(item=>item.doors.has(machine));
+ const current=canonicalSiteName(asset.currentLocation||asset.site||asset.location);
+ if(!rule||current!==canonicalSiteName('Dudhichua OB')||!date(bookDate)||bookDate>rule.through)return null;
+ return canonicalSiteName(site)===canonicalSiteName(rule.site);
+};
+
 // Prefer stable identifiers. A name is deliberately not enough to associate a transfer.
 export function transferForAsset(transfer={},asset={}){
  const transferId=String(transfer.equipmentMasterId||''),assetId=String(asset.id||'');
@@ -30,6 +46,8 @@ export function pendingTransfers(asset={},transfers=[]){
 export function assetAtSiteOnDate(asset={},transfers=[],site='',bookDate=''){
  const target=canonicalSiteName(site),day=date(bookDate);
  if(!target||!day)return false;
+ const confirmed=confirmedSiteOnDate(asset,site,day);
+ if(confirmed!==null)return confirmed;
  let current=canonicalSiteName(asset.currentLocation||asset.site||asset.location);
  if(!current)return false;
  if(pendingTransfers(asset,transfers).some(t=>canonicalSiteName(t.destination)===target&&day>=t.transferDate))return true;
