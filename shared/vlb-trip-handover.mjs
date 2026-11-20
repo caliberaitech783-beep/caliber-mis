@@ -76,9 +76,17 @@ export function withVlbTripCounts(records){
 
 export async function withVlbTripHandovers(client,records,permittedSites=null){
  if(!records.length)return records;
- const partial=(await client.query(`SELECT id,book_no,book_type,data FROM mis_log_books
+ // Complete trips never enter the handover queue. Most manual saves need only
+ // their own counts, not every historical card's trips and copied Pulse feed.
+ const keys=new Set(records.filter(record=>record.data?.location&&record.data?.door&&record.data.timeMode!=='without'&&(record.data.trips||[]).some(row=>validTripTimes(row)&&Boolean(row.loadingTime&&!isUnloadingOnlyTrip(row))!==Boolean(row.unloadingTime))).map(record=>keyFor(record.data)));
+ if(!keys.size)return linkVlbTripHandovers(records);
+ // Match with the same JavaScript site/door rules as the linker. Fetch only
+ // identity fields first so aliases and arbitrarily old open trips still work.
+ const candidates=(await client.query(`SELECT id,data->>'location' AS location,data->>'door' AS door FROM mis_log_books
  WHERE book_type='vehicle' AND deleted_at IS NULL AND book_date>=$$2026-11-01$$ AND ($1::text[] IS NULL OR site=ANY($1::text[]))
  AND mis_vlb_has_handover_trip(data)`,[permittedSites])).rows;
+ const ids=candidates.filter(row=>keys.has(keyFor(row))).map(row=>row.id);
+ const partial=ids.length?(await client.query('SELECT id,book_no,book_type,data FROM mis_log_books WHERE id=ANY($1::bigint[]) AND book_type=\'vehicle\' AND deleted_at IS NULL AND book_date>=$$2026-11-01$$ AND ($2::text[] IS NULL OR site=ANY($2::text[]))',[ids,permittedSites])).rows:[];
  const all=new Map(partial.map(row=>[String(row.id),row]));for(const row of records)all.set(String(row.id),row);
  const linked=new Map(linkVlbTripHandovers([...all.values()]).map(row=>[String(row.id),row]));
  return records.map(row=>linked.get(String(row.id)));
