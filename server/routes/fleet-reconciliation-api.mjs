@@ -1,5 +1,6 @@
 import {siteChoices} from '../../shared/report-filter-options.mjs';
-import {reconcileFleet,shiftForDate,validFleetDate,fleetShift,fleetAssetKind,assetIdentity,IDLE_REASONS} from '../rules/fleet-reconciliation.mjs';
+import {reconcileFleet,shiftForDate,validFleetDate,fleetShift,fleetAssetKind,fleetAssetAtShift,assetIdentity,IDLE_REASONS} from '../rules/fleet-reconciliation.mjs';
+import {attachTransferHistory} from '../../shared/equipment-transfer-history.mjs';
 import {siteAllowed,requireLogBookSite} from '../../shared/log-book-access.mjs';
 import {canonicalSiteName} from '../../shared/site-location.mjs';
 import {misPageAllowed} from '../../shared/mis-application-access.mjs';
@@ -20,22 +21,22 @@ export function registerFleetReconciliation(app,{pool,protect,ensureBooks,pulseM
  const handle=fn=>async(req,res,next)=>{try{res.set('Cache-Control','no-store');await fn(req,res)}catch(e){if(e.status)return res.status(e.status).json({error:e.message});next(e)}};
  const kindsFor=req=>Object.keys(fleetBookPages).filter(kind=>!req.session.permissions?.separateMisCredentials||fleetBookPages[kind].some(page=>misPageAllowed(req.session,page)));
  const masters=async()=>{
-  const {rows}=await pool.query("SELECT id,master_name,record_data FROM master_records WHERE master_name=ANY($1::text[])",[['Equipment master','Shift Master']]);
+  const {rows}=await pool.query("SELECT id,master_name,record_data FROM master_records WHERE master_name=ANY($1::text[])",[['Equipment master','Shift Master','Vehicle transfers']]);
   const assets=[],shifts=[],lmvIds=new Set();
   for(const row of rows){
    const record={...row.record_data,id:String(row.id)};
    if(row.master_name==='Shift Master')shifts.push(record);
-   else{
+   else if(row.master_name==='Equipment master'){
     assets.push(record);
     if(fleetAssetKind(record)==='lmv')lmvIds.add(record.id);
    }
   }
-  return {assets,shifts,lmvIds};
+  return {assets:attachTransferHistory(assets,rows.filter(r=>r.master_name==='Vehicle transfers').map(r=>r.record_data)),shifts,lmvIds};
  };
  app.get('/api/reports/fleet-reconciliation/options',...protect,handle(async(req,res)=>{
   const data=await masters(),kinds=kindsFor(req);
   const assets=kinds.includes('lmv')?data.assets:data.assets.filter(asset=>!data.lmvIds.has(asset.id));
-  const sites=siteChoices(assets.map(a=>a.currentLocation||a.site||a.location).filter(s=>s&&siteAllowed(req.logBookScope,s)));
+  const sites=siteChoices(assets.flatMap(a=>[a.currentLocation||a.site||a.location,...a.transferHistory.filter(t=>!t.status||t.status==='Completed').flatMap(t=>[t.source,t.destination])]).filter(s=>s&&siteAllowed(req.logBookScope,s)));
   const shifts=data.shifts.filter(s=>siteAllowed(req.logBookScope,s.site||s.siteName)).map(s=>({...s,code:fleetShift(s.shiftCode||s.shiftName||s.name||s.shift)}));
   res.json({sites,shifts,kinds,reasons:IDLE_REASONS});
  }));
@@ -61,11 +62,11 @@ export function registerFleetReconciliation(app,{pool,protect,ensureBooks,pulseM
   const reasons=(await pool.query('SELECT asset_key,reason,remarks,updated_at,updated_by FROM mis_fleet_idle_reasons WHERE site_key=$1 AND book_date=$2::date AND shift=$3',[canonicalSiteName(s.site),s.date,s.shift])).rows;
   const result=reconcileFleet({...s,assets:s.assets.filter(a=>s.kinds.includes(fleetAssetKind(a))),books,breakdowns,reasons});
   const sync=pulseMasterSync.status?.();
-  res.json({...result,date:s.date,site:s.site,shift:s.shift,window:s.window,partialShift:Date.now()<s.window.end,updatedAt:new Date().toISOString(),breakdownsReadAt,masterSync:sync?{connected:sync.connected,lastSuccess:sync.lastSuccess}:null,populationNote:'Fleet population uses the current Pulse-synced Equipment Master location. Historical site assignments are not available; compare unmatched cards before relying on past-date totals.'});
+  res.json({...result,date:s.date,site:s.site,shift:s.shift,window:s.window,partialShift:Date.now()<s.window.end,updatedAt:new Date().toISOString(),breakdownsReadAt,masterSync:sync?{connected:sync.connected,lastSuccess:sync.lastSuccess}:null,populationNote:'Fleet population uses completed transfer history for the selected date and shift, with current master location where no history is linked. Date-only transfers cannot establish the exact handover shift.'});
  }));
  app.put('/api/reports/fleet-reconciliation/idle-reason',...protect,handle(async(req,res)=>{
   const s=await selection(req,req.body),asset=s.assets.find(a=>String(a.id)===String(req.body.assetId));
-  if(!asset||canonicalSiteName(asset.currentLocation||asset.site||asset.location)!==canonicalSiteName(s.site)||!s.kinds.includes(fleetAssetKind(asset)))throw Object.assign(Error('Asset is not in the permitted site roster.'),{status:403});
+  if(!asset||asset.sourceMissing||!fleetAssetAtShift(asset,s.site,s.date,s.window)||!s.kinds.includes(fleetAssetKind(asset)))throw Object.assign(Error('Asset is not in the permitted site roster.'),{status:403});
   const reason=String(req.body.reason||''),remarks=String(req.body.remarks||'').trim();if(!IDLE_REASONS.includes(reason)||remarks.length>2000||reason==='Other'&&!remarks)throw Object.assign(Error('Choose an idle reason. Other requires remarks (maximum 2,000 characters).'),{status:400});
   await ensure();const values=[canonicalSiteName(s.site),s.date,s.shift,assetIdentity(asset),reason,remarks,String(req.session.login||req.session.name)];
   // A single statement saves the current reason and an append-only audit record atomically.

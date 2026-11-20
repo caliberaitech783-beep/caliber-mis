@@ -40,6 +40,20 @@ test('API enforces site/type permissions, preserves history, and refuses missing
   session={login:'test',permissions:{separateMisCredentials:true,misDesktopAccess:['Equipment Log Book']}};
   assert.equal((await request('/api/reports/fleet-reconciliation'+q+'&kind=lmv')).status,403);
   assert.equal((await save({assetId:'4',reason:'Standby'})).status,403);
+  // The panel on historical entry/edit screens must use completed transfer history,
+  // including for idle-reason writes; current destination cannot replace the old site.
+  session={login:'test',role:'super'};
+  await pool.query("UPDATE master_records SET record_data=record_data||$1::jsonb WHERE id=1",[{currentLocation:'Dudhichua'}]);
+  await pool.query("INSERT INTO master_records VALUES(10,'Vehicle transfers',$1)",[{equipmentMasterId:'1',source:site,destination:'Dudhichua',transferDate:'2026-11-12',transferTime:'10:00:00',status:'Completed'}]);
+  await pool.query("INSERT INTO mis_log_books VALUES(11,'OLD-VLB','vehicle',1,$1,$2,$3,NULL)",[site,{cardShift:'I',door:'V1'},date]);
+  data=await(await request('/api/reports/fleet-reconciliation'+q)).json();
+  assert.equal(data.rows.find(r=>r.assetId==='1').cards[0].reference,'OLD-VLB');assert.deepEqual(data.unmatched,[]);
+  assert.equal((await save({reason:'Standby',remarks:'Historical correction'})).status,200);
+  const after='?'+new URLSearchParams({site,date:'2026-11-13',shift:'S1'});
+  data=await(await request('/api/reports/fleet-reconciliation'+after)).json();assert.equal(data.rows.some(r=>r.assetId==='1'),false);
+  assert.equal((await save({date:'2026-11-13',reason:'Standby'})).status,403);
+  const historicalOptions=await(await request('/api/reports/fleet-reconciliation/options')).json();
+  assert.ok(historicalOptions.sites.some(s=>s===site));assert.ok(!historicalOptions.sites.includes('Dudhichua'));
   session={login:'test',permissions:{separateMisCredentials:true,misDesktopAccess:['Reports']}};assert.equal((await request('/api/reports/fleet-reconciliation'+q)).status,403);
   assert.equal(misRequestAllowed(session,{path:'/api/reports/fleet-reconciliation',method:'GET'}),false);
   assert.equal((await request('/api/reports/fleet-reconciliation?'+new URLSearchParams({site,date:'2026-02-30',shift:'S1'}))).status,400);

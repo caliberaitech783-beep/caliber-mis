@@ -8,6 +8,48 @@ const asset=(id,kind='vehicle')=>({id:String(id),door:'V'+id,chassis:'CH'+id,cat
 const book=(id,extra={})=>({id:String(id),book_no:'VLB-'+id,book_type:'vehicle',asset_id:String(id),site,data:{cardShift:'I',...extra}});
 const bd=(id,extra={})=>({ref:'BD-'+id,site,chassis:'CH'+id,start:date+' 08:00:00',closedAt:date+' 10:00:00',...extra});
 const run=extra=>reconcileFleet({assets:[],books:[],breakdowns:[],date,site,shift,window,now,...extra});
+
+test('later transfers preserve old VLB and ELB cards at the source, not the destination',()=>{
+ for(const kind of ['vehicle','equipment','lmv']){
+  const moved={...asset(52,kind),currentLocation:'Dudhichua',transferHistory:[{equipmentMasterId:'52',status:'Completed',source:site,destination:'Dudhichua',transferDate:'2026-11-12',transferTime:'10:00:00'}]};
+  const cards=[{...book(52,{totalWorkingHmr:4}),book_type:kind}];
+  const old=run({assets:[moved],books:cards});
+  assert.equal(old.summary[kind].total,1);assert.equal(old.rows[0].cards.length,1);assert.deepEqual(old.unmatched,[]);
+  assert.equal(run({assets:[moved],site:'Dudhichua'}).rows.length,0);
+  const after={start:Date.parse('2026-11-13T05:00:00+05:30'),end:Date.parse('2026-11-13T13:00:00+05:30')};
+  assert.equal(run({assets:[moved],date:'2026-11-13',window:after}).rows.length,0);
+  assert.equal(run({assets:[moved],site:'Dudhichua',date:'2026-11-13',window:after}).rows.length,1);
+ }
+});
+
+test('exact transfer boundaries use shift overlap and pending transfers do not move the roster',()=>{
+ const moved={...asset(52),currentLocation:'Dudhichua',transferHistory:[{equipmentMasterId:'52',status:'Completed',source:site,destination:'Dudhichua',transferDate:date,transferTime:'13:00:00'}]};
+ assert.equal(run({assets:[moved]}).rows.length,1);
+ assert.equal(run({assets:[moved],site:'Dudhichua'}).rows.length,0);
+ const next={start:window.end,end:window.end+8*3600000};
+ assert.equal(run({assets:[moved],window:next}).rows.length,0);
+ assert.equal(run({assets:[moved],window:next,site:'Dudhichua'}).rows.length,1);
+ const pending={...moved,currentLocation:site,transferHistory:[{...moved.transferHistory[0],status:'Awaiting destination PM acceptance'}]};
+ assert.equal(run({assets:[pending]}).rows.length,1);
+ assert.equal(run({assets:[pending],site:'Dudhichua'}).rows.length,0);
+});
+
+test('date-only history supports pre-transfer dates and broken chains cannot invent assignments',()=>{
+ const moved={...asset(52),currentLocation:'Dudhichua',transferHistory:[{equipmentMasterId:'52',status:'Completed',source:site,destination:'Dudhichua',transferDate:'2026-11-12'}]};
+ assert.equal(run({assets:[moved]}).rows.length,1);
+ assert.equal(run({assets:[moved],site:'Dudhichua'}).rows.length,0);
+ const broken={...moved,transferHistory:[{...moved.transferHistory[0],destination:'Jayant OC'}]};
+ assert.equal(run({assets:[broken]}).rows.length,0);
+});
+
+test('overnight transfer includes only sites whose assignment overlaps the shift',()=>{
+ const moved={...asset(52),currentLocation:'Dudhichua',transferHistory:[{equipmentMasterId:'52',status:'Completed',source:site,destination:'Dudhichua',transferDate:'2026-11-03',transferTime:'02:00:00'}]};
+ const night={start:Date.parse(date+'T21:00:00+05:30'),end:Date.parse('2026-11-03T05:00:00+05:30')};
+ assert.equal(run({assets:[moved],window:night}).rows.length,1);
+ assert.equal(run({assets:[moved],window:night,site:'Dudhichua'}).rows.length,1);
+ const before={start:night.start,end:Date.parse('2026-11-03T02:00:00+05:30')};
+ assert.equal(run({assets:[moved],window:before,site:'Dudhichua'}).rows.length,0);
+});
 test('100 vehicles reconcile with overlapping work/breakdown and multiple cards counted once',()=>{
  const assets=Array.from({length:100},(_,i)=>asset(i+1));
  const books=Array.from({length:80},(_,i)=>book(i+1));books.push({...book(1),id:'duplicate',book_no:'VLB-second'});
