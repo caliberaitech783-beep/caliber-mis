@@ -39,6 +39,9 @@ export function registerScanBackup(app,{pool,requireSession,requireAdministrator
      FROM mis_scan_cards c JOIN mis_scan_batches b ON b.id=c.batch_id LEFT JOIN mis_log_books l ON l.id=c.logbook_id
      WHERE c.image_blob_key IS NOT NULL AND c.blob_uploaded_at >= $2 AND c.blob_uploaded_at < $3`,[id,window.from,window.to]);
    }
+   // The SSD folder name (never a full path) is shown in the history while the backup is incomplete.
+   const destination=String(req.body?.destination||'').trim().slice(0,120);
+   if(destination&&job.status!=='complete')job=(await c.query('UPDATE mis_scan_backups SET destination=$2 WHERE id=$1 RETURNING *',[job.id,destination])).rows[0];
    await c.query('COMMIT');res.json({job});
   }catch(e){await c.query('ROLLBACK');throw e}finally{c.release()}
  }));
