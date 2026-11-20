@@ -30,6 +30,17 @@ test('dated options include the prior site through the transfer date',()=>{
  assert.equal(assetForSiteOnDate(record,'Majari','2026-11-13').site,'Gauri Pauni');
 });
 
+test('VPC52 and VPC53 remain at Jayant through 17 November only',()=>{
+ for(const door of ['VPC52','VPC 53 - 01702']){
+  const moved={id:door,door,currentLocation:'Dudhichua OB'};
+  assert.equal(assetAtSiteOnDate(moved,[],'Jayant OB','2026-11-01'),true,door);
+  assert.equal(assetAtSiteOnDate(moved,[],'Jayant OB','2026-11-17'),true,door);
+  assert.equal(assetAtSiteOnDate(moved,[],'Dudhichua OB','2026-11-17'),false,door);
+  assert.equal(assetAtSiteOnDate(moved,[],'Jayant OB','2026-11-18'),false,door);
+  assert.equal(assetAtSiteOnDate(moved,[],'Dudhichua OB','2026-11-18'),true,door);
+ }
+});
+
 test('manual and scan validation use the transfer date for a previous site',async t=>{
  const db=new PGlite();t.after(()=>db.close());
  await db.exec('CREATE TABLE master_records(id BIGSERIAL PRIMARY KEY, master_name TEXT, record_data JSONB)');
