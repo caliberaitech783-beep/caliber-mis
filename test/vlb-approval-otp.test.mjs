@@ -36,7 +36,7 @@ test('Unlock VLB and reopening a saved batch need no site PM approval',async t=>
  assert.equal(created.data.stage,'vlb_open');assert.deepEqual(created.data.approvalOtps,[]);
  const locked=await call(path+'/lock-vlb','POST',{});assert.equal(locked.status,200,JSON.stringify(locked.data));assert.equal(locked.data.stage,'lmv_open');
  assert.equal(locked.data.canUnlockVlb,true);
- assert.equal((await call(path,'GET',undefined,'viewer')).status,403);
+ assert.equal((await call(path,'GET',undefined,'viewer')).status,200);
  const reason='Wrong tipper on card 12';
  assert.equal((await call(path+'/unlock-vlb','POST',{reason},'viewer')).status,403);
  assert.equal((await call(path+'/unlock-vlb','POST',{reason:'abc'})).status,400);

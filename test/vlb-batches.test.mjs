@@ -24,7 +24,7 @@ test('batch APIs include every matching saved source, remain open until closed, 
  const app=express();app.use(express.json());
  const session=(req,res,next)=>{if(!req.headers.authorization)return res.status(401).json({error:'Sign in'});req.session={login:req.headers.authorization};req.logBookScope={sites:req.headers.authorization==='restricted'?['jayant ob']:['sasti ob']};next()};
  const authorized=(req,res,next)=>req.session.login==='denied'?res.status(403).json({error:'Not allowed'}):next();
- registerVlbBatches(app,{pool,protect:[session,authorized],ensureBooks:async()=>{},getActor:async session=>({login:session.login,mis:!['pm','wrong-pm'].includes(session.login),pm:['pm','wrong-pm'].includes(session.login),pmScope:{sites:session.login==='pm'?['sasti ob']:['jayant ob']}})});
+ registerVlbBatches(app,{pool,protect:[session,authorized],ensureBooks:async()=>{},getActor:async session=>({login:session.login,mis:!['pm','wrong-pm','employee'].includes(session.login),pm:['pm','wrong-pm'].includes(session.login),pmScope:{sites:session.login==='pm'?['sasti ob']:['jayant ob']}})});
  app.use((e,req,res,next)=>res.status(500).json({error:e.message}));
  const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.on('listening',resolve));t.after(()=>{server.closeAllConnections();server.close()});
  const call=async(route='',method='GET',body,user='alice')=>{const response=await fetch(`http://127.0.0.1:${server.address().port}/api/vlb-batches${route}`,{method,headers:{Authorization:user,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return {status:response.status,data:await response.json()}};
@@ -39,6 +39,11 @@ test('batch APIs include every matching saved source, remain open until closed, 
  assert.deepEqual(scanEntries.map(id=>before.data.records.filter(r=>r.data.scanBatchId===id).length),[40,40,40,10]);
  assert.ok(before.data.records.some(r=>r.data.scanCardId));assert.ok(before.data.records.some(r=>!r.data.scanCardId));
  const body={...selection,requestKey:randomUUID()};const created=await call('','POST',body);assert.equal(created.status,201,JSON.stringify(created.data));assert.equal(created.data.entry_count,131);
+ const employee=await call('/'+created.data.id,'GET',undefined,'employee');
+ assert.equal(employee.status,200);
+ assert.equal(employee.data.canContinue,true);
+ assert.equal((await call('/'+created.data.id+'/reopen','POST',{},'employee')).status,403);
+ assert.equal((await call('/'+created.data.id+'/close','POST',{},'employee')).status,403);
  const crossSite=await call('','GET',undefined,'restricted');
  assert.equal(crossSite.status,200);
  assert.deepEqual(crossSite.data.batches,[]);

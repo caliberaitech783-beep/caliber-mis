@@ -99,7 +99,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
    return()=>window.removeEventListener('keydown',saveShortcut);
  },[editing,working,loading,showDelete||showSaveConfirm]);
 
- const api=async(url,config={})=>{const response=await fetch(url,{...config,headers:{Authorization:`Bearer ${session.token}`,'Content-Type':'application/json',...config.headers}});const body=await response.json().catch(()=>({}));if(!response.ok)throw Object.assign(new Error(body.error||'Could not reach the log book service.'),{details:body});return body;};
+ const api=async(url,config={})=>{if(inlineEdit&&vlbBatch&&url.startsWith('/api/log-books/'))url+=(url.includes('?')?'&':'?')+'siteBatchEdit=1&batchId='+encodeURIComponent(vlbBatch.id);const response=await fetch(url,{...config,headers:{Authorization:`Bearer ${session.token}`,'Content-Type':'application/json',...config.headers}});const body=await response.json().catch(()=>({}));if(!response.ok)throw Object.assign(new Error(body.error||'Could not reach the log book service.'),{details:body});return body;};
 
  const loadOptions=async()=>{
   const masters=await api('/api/log-books/options');

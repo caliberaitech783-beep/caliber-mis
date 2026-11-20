@@ -25,7 +25,7 @@ const creator=batch=>batch.creator_login||batch.created_by;
 const isOwner=(batch,actor)=>batchLogin(batch.amendment_by||creator(batch))===actor.login;
 const mayClose=(batch,actor,twoStage=twoStageEnabled())=>isOwner(batch,actor)||(twoStage&&actor.admin);
 // Machines of an open batch are entered and corrected by any MIS user of the site, not only its owner.
-const mayEnterFleet=(batch,actor)=>isOwner(batch,actor)||Boolean(actor.mis||actor.admin);
+const mayEnterFleet=(batch,actor)=>isOwner(batch,actor)||Boolean(actor.mis||actor.admin||actor.siteEditor&&!batch.closed_at);
 // Owner, 18 Nov 2026: reopening a saved batch and Unlock VLB no longer need the site PM's approval.
 const mayUnlockVlb=(batch,actor)=>actor.admin||actor.mis||isOwner(batch,actor)||batchPmAtSite(actor,batch.site);
 const canClose=(batch,actor,twoStage)=>!batch.closed_at&&(!twoStage||batchStage(batch)==='elb_open')&&mayClose(batch,actor,twoStage);
@@ -88,7 +88,7 @@ async function details(client,batch,req){
  const lmvRecords=stageInfo.stage==='lmv_open'?(await client.query(
   "SELECT id,book_no,book_type,data,revision FROM mis_log_books WHERE book_type='lmv' AND book_date=$1 AND deleted_at IS NULL ORDER BY id",
   [batch.report_date])).rows.filter(record=>canonicalSiteName(record.data.location)===canonicalSiteName(batch.site)&&vlbRecordScope(record.data).shift===batch.shift):[];
- return {...batch,canEditSavedFleet:Boolean(req.batchActor.mis||req.batchActor.admin),created_by:creator(batch),trialExpired,records,lmvRecords,canLockLmv:!stageInfo.stageWait&&stageInfo.stage==='lmv_open'&&(owner||req.batchActor.admin)&&!trialExpired&&!stageInfo.lmvLockBlockers?.length,entry_count:records.length,requests,audit,approvalOtps,...stageInfo,canLockVlb:stageInfo.twoStage&&stageInfo.stage==='vlb_open'&&(owner||req.batchActor.admin)&&!trialExpired&&!stageInfo.lockBlockers.length,canUnlockVlb:stageInfo.twoStage&&['lmv_open','elb_open'].includes(stageInfo.stage)&&mayUnlockVlb(batch,req.batchActor),canEnterFleet:!stageInfo.stageWait&&stageInfo.twoStage&&stageInfo.stage==='elb_open'&&!trialExpired&&mayEnterFleet(batch,req.batchActor),canContinue:!trialExpired&&!batch.closed_at&&(!stageInfo.twoStage||stageInfo.stage==='vlb_open'),canClose:!stageInfo.stageWait&&canClose(batch,req.batchActor,stageInfo.twoStage),canRequestReopen:Boolean(batch.closed_at),canReopen:Boolean(batch.closed_at),approvalExpired:false};
+ return {...batch,canEditSavedFleet:Boolean(req.batchActor.mis||req.batchActor.admin||req.batchActor.siteEditor&&!batch.closed_at),created_by:creator(batch),trialExpired,records,lmvRecords,canLockLmv:!stageInfo.stageWait&&stageInfo.stage==='lmv_open'&&(owner||req.batchActor.admin)&&!trialExpired&&!stageInfo.lmvLockBlockers?.length,entry_count:records.length,requests,audit,approvalOtps,...stageInfo,canLockVlb:stageInfo.twoStage&&stageInfo.stage==='vlb_open'&&(owner||req.batchActor.admin)&&!trialExpired&&!stageInfo.lockBlockers.length,canUnlockVlb:stageInfo.twoStage&&['lmv_open','elb_open'].includes(stageInfo.stage)&&mayUnlockVlb(batch,req.batchActor),canEnterFleet:!stageInfo.stageWait&&stageInfo.twoStage&&stageInfo.stage==='elb_open'&&!trialExpired&&mayEnterFleet(batch,req.batchActor),canContinue:!trialExpired&&!batch.closed_at&&(!stageInfo.twoStage||stageInfo.stage==='vlb_open'),canClose:!stageInfo.stageWait&&canClose(batch,req.batchActor,stageInfo.twoStage),canRequestReopen:Boolean(batch.closed_at),canReopen:Boolean(batch.closed_at&&(req.batchActor.admin||req.batchActor.pm||req.batchActor.mis)),approvalExpired:false};
 }
 // One read shared by callers that arrive together and reused for ttlMs. clear() drops the
 // copy, and a read already running when clear() is called is not handed to later callers.
@@ -138,13 +138,15 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
    await pool.query(VLB_BATCH_SCHEMA);
   })().catch(e=>{ready=null;throw e}));
  };
- const handle=fn=>async(req,res,next)=>{try{
-  await ensure();req.batchGetActor=getActor;req.batchActor=await readActor(req.session);
+ const handle=(fn,allowSiteEditor=false)=>async(req,res,next)=>{try{
+  await ensure();req.batchGetActor=getActor;req.batchActor={...await readActor(req.session)};
   const admin=isMisAdministrator(req.session);
   req.batchActor.admin=admin;req.batchActor.canCreate=req.batchActor.mis||admin;
-  if(!req.batchActor.login||!req.batchActor.mis&&!req.batchActor.pm&&!admin)fail('Only authorized MIS users and site Project Managers can use VLB batches.',403);
+  req.batchActor.siteEditor=allowSiteEditor&&Boolean(req.logBookScope?.sites?.length);
+  if(!req.batchActor.login||!req.batchActor.siteEditor&&!req.batchActor.mis&&!req.batchActor.pm&&!admin)fail('Only authorized MIS users and site Project Managers can use VLB batches.',403);
   res.set('Cache-Control','no-store');await fn(req,res);
  }catch(e){if(e.status)return res.status(e.status).json({error:e.message});next(e)}};
+ const editRoute=fn=>handle(fn,true);
  // With a scope, the transaction locks only that site, date and shift; without one it
  // takes the whole-table lock, so unscoped actions still wait for every batch writer.
  const transaction=async(fn,scope)=>{const client=await pool.connect();try{await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock_shared(709224102)');if(scope)await lockVlbBatchScope(client,scope);else await lockVlbBatchWrites(client);const result=await fn(client);await client.query('COMMIT');return result}catch(e){await client.query('ROLLBACK').catch(()=>{});throw e}finally{client.release()}};
@@ -156,7 +158,7 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
   return transaction(async client=>fn(client,await visible(client,req.params.id,req)),scope);
  };
  const recovery=registerVlbBatchDeletions(app,{pool,protect:recoveryProtect,handle,ensure,sendOtp,imageStorage});
- app.get('/api/vlb-batches',...protect,handle(async(req,res)=>{
+ app.get('/api/vlb-batches',...protect,editRoute(async(req,res)=>{
   const rows=await sharedBatchRows(()=>withoutRowSecurityRequest(async()=>(await pool.query(`
    WITH visible_batches AS (
     SELECT * FROM mis_vlb_batches WHERE archived_at IS NULL AND book_date>=$$2026-11-01$$
@@ -203,13 +205,13 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
   const sequence=Number((await pool.query('SELECT COALESCE(MAX(sequence),0)+1 AS n FROM mis_vlb_batches WHERE site=$1 AND book_date=$2 AND shift=$3',[selection.site,selection.date,selection.shift])).rows[0].n);
   res.json({selection,records,name:existingBatch?.name||vlbBatchName(selection,sequence),existingBatch,...blocker,previousShift});
  }));
- app.get('/api/vlb-batches/:id/card-counts',...protect,handle(async(req,res)=>{
+ app.get('/api/vlb-batches/:id/card-counts',...protect,editRoute(async(req,res)=>{
   const batch=await visible(pool,req.params.id,req);
   res.json(await readVlbCardCounts(pool,batch.id));
  }));
  // The batch board asks every 10 s. An unchanged batch answers 304 to the board's
  // If-None-Match instead of resending its records and audit history again.
- app.get('/api/vlb-batches/:id',...protect,handle(async(req,res)=>{
+ app.get('/api/vlb-batches/:id',...protect,editRoute(async(req,res)=>{
   // The details are several dozen small queries. On one connection they wait in the pool queue
   // once; sent one by one through the pool, each waited its own turn (about 44 turns a request
   // on 12 Nov 2026).
@@ -280,24 +282,24 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
   const reason=String(req.body?.reason||'').trim();if(reason.length<5||reason.length>2000)fail('Enter an unlock reason of 5 to 2000 characters.',400);
   return details(client,await unlockVlb(client,batch,req.batchActor.login,{reason}),req);
  },{exclusive:true}))));
- app.get('/api/vlb-batches/:id/fleet',...protect,handle(async(req,res)=>{
+ app.get('/api/vlb-batches/:id/fleet',...protect,editRoute(async(req,res)=>{
   const db=await pool.connect();let info;
   try{info=await stageDetails(db,await visible(db,req.params.id,req));}finally{db.release();}
   void prefetchFleetBreakdownRows(req.batchActor.login);
   res.json({stage:info.stage,fleet:info.fleet||[],fleetProgress:info.fleetProgress||null,machines:info.machines||[],holds:info.holds||[],closeBlockers:info.closeBlockers||[],statuses:FLEET_STATUSES,machineReport:info.machineReport||null});
  }));
- app.get('/api/vlb-batches/:id/fleet/:assetId/breakdowns',...protect,handle(async(req,res)=>{
+ app.get('/api/vlb-batches/:id/fleet/:assetId/breakdowns',...protect,editRoute(async(req,res)=>{
   if(!/^\d+$/.test(req.params.assetId))fail('Invalid machine.',400);
   const batch=await visible(pool,req.params.id,req);
   const prefetched=await prefetchFleetBreakdownRows(req.batchActor.login);
   const readHours=lockedReadHours(logBookOps?.readHours,prefetched);
   res.set('Cache-Control','no-store').json(await readFleetBreakdowns(pool,batch,req.params.assetId,readHours,req.batchActor.login,req.query));
  }));
- app.put('/api/vlb-batches/:id/fleet/:assetId/draft',...protect,handle(async(req,res)=>{
+ app.put('/api/vlb-batches/:id/fleet/:assetId/draft',...protect,editRoute(async(req,res)=>{
   if(!/^\d+$/.test(req.params.assetId))fail('Invalid machine.',400);
   res.json(await batchTransaction(req,async(client,batch)=>{if(!mayEnterFleet(batch,req.batchActor))fail('Only an MIS user or MIS administrator can enter machines for this batch.',403);const row=await saveFleetDraft(client,batch,req.params.assetId,req.body?.draft||{},req.batchActor.login);return {assetId:String(row.asset_id),draft:row.draft,skipped:row.skipped};}));
  }));
- app.post('/api/vlb-batches/:id/fleet/:assetId',...protect,handle(async(req,res)=>{
+ app.post('/api/vlb-batches/:id/fleet/:assetId',...protect,editRoute(async(req,res)=>{
   if(!/^\d+$/.test(req.params.assetId))fail('Invalid machine.',400);
   if(!logBookOps)fail('Machine entry is unavailable on this server.',503);
   // Pulse is read before the batch lock; inside it, the saved rows answer without a remote call.
@@ -305,7 +307,7 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
   res.json(await batchTransaction(req,async(client,batch)=>{
    if(!mayEnterFleet(batch,req.batchActor))fail('Only an MIS user or MIS administrator can enter machines for this batch.',403);
    const readHours=lockedReadHours(logBookOps.readHours&& (input=>logBookOps.readHours({...input,client})),prefetched);
-   const record=await saveFleetEntry(client,batch,req.params.assetId,req.body||{},req.batchActor.login,{allowEditSaved:Boolean(req.batchActor.mis||req.batchActor.admin),resolve:logBookOps.resolve,insert:logBookOps.insert,applyHours:data=>logBookOps.applyHours(data,req.batchActor.login,readHours),readHours});
+   const record=await saveFleetEntry(client,batch,req.params.assetId,req.body||{},req.batchActor.login,{allowEditSaved:Boolean(req.batchActor.mis||req.batchActor.admin||req.batchActor.siteEditor&&!batch.closed_at),resolve:logBookOps.resolve,insert:logBookOps.insert,applyHours:data=>logBookOps.applyHours(data,req.batchActor.login,readHours),readHours});
    const info=await stageDetails(client,batch);
    return {record,fleet:info.fleet,fleetProgress:info.fleetProgress,closeBlockers:info.closeBlockers,machineReport:info.machineReport};
   }));
