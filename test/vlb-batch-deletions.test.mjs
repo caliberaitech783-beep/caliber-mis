@@ -49,8 +49,8 @@ async function setup(t){
  };
  const preview=async(b,operation='delete',user='alice')=>call('vlb-batch-deletions/preview','POST',{batchId:b.id,operation,reason:'Correct testing batch'},user);
  const send=async p=>call('vlb-batch-deletions/'+p.id+'/otp','POST',{approval:p.approval,deleteReplacement:true});
- const confirm=async(p,patch={})=>call('vlb-batch-deletions/'+p.id+'/confirm','POST',{approval:p.approval,deleteReplacement:true,otp,...patch});
- const execute=async(b,operation='delete')=>{const p=await preview(b,operation);assert.equal(p.status,200,JSON.stringify(p.data));const s=await send(p.data);assert.equal(s.status,200,JSON.stringify(s.data));const r=await confirm(p.data);assert.equal(r.status,200,JSON.stringify(r.data));return r};
+ const confirm=async(p,patch={})=>call('vlb-batch-deletions/'+p.id+'/confirm','POST',{approval:p.approval,deleteReplacement:true,...(p.operation==='restore'?{otp}:{}),...patch});
+ const execute=async(b,operation='delete')=>{const p=await preview(b,operation);assert.equal(p.status,200,JSON.stringify(p.data));if(operation==='restore'){const s=await send(p.data);assert.equal(s.status,200,JSON.stringify(s.data));}const r=await confirm(p.data);assert.equal(r.status,200,JSON.stringify(r.data));return r};
  return {db,pool,call,create,add,preview,send,confirm,execute,recovery,removed,otp:()=>otp,failSend:(on=true)=>sendFail=on};
 }
 
@@ -59,14 +59,9 @@ test('whole batch deletion retains images for 240 hours, releases scope, and res
  await h.db.query("INSERT INTO mis_scan_backup_items VALUES($1,$2,$3,'hash',$4)",[randomUUID(),card.scanId,'vehicle/'+card.scanId,JSON.stringify({logbookId:card.id})]);
  const unsaved=randomUUID();await h.db.query("INSERT INTO mis_scan_cards VALUES($1,$2,2,'draft.png','review',1,NULL,$3,'draft-hash',NULL,'{}','{}')",[unsaved,card.scanBatch,Buffer.from('draft-image')]);
  const p=await h.preview(old);assert.equal(p.status,200,JSON.stringify(p.data));assert.equal(p.data.manifest.target.records.length,1);assert.equal(p.data.manifest.target.scans.length,2);
- assert.equal((await h.confirm(p.data)).status,403,'no OTP cannot delete');
- assert.equal((await h.send(p.data)).status,200);
- const first=h.otp(),again=await h.send(p.data);assert.equal(again.status,200);assert.equal(again.data.alreadySent,true,'a repeat click reuses the delivered OTP');assert.equal(h.otp(),first);
- assert.equal(Math.round((new Date(again.data.validUntil)-new Date(again.data.sentAt))/60000),10,'one OTP is valid for 10 minutes from sending');
- await h.db.query("UPDATE mis_vlb_batch_deletions SET otp_requested_at=otp_requested_at-INTERVAL '5 minutes',delivered_at=delivered_at-INTERVAL '5 minutes' WHERE id=$1",[p.data.id]);
- const later=await h.send(p.data);assert.equal(later.data.alreadySent,true,'minutes later the same OTP is still the one to use');assert.equal(h.otp(),first);
- assert.equal((await h.confirm(p.data,{otp:'000000'})).status,400);
- assert.equal((await h.confirm(p.data)).status,200);
+ assert.equal(p.data.otpRequired,false);assert.equal(p.data.recipient,undefined);
+ assert.equal((await h.confirm(p.data,{approval:'wrong'})).status,400);
+ h.failSend();assert.equal((await h.confirm(p.data)).status,200,'deletion does not depend on OTP delivery');h.failSend(false);
  assert.equal((await h.call('vlb-batches/'+old.id)).status,404);
  assert.equal((await h.db.query('SELECT id FROM mis_scan_cards')).rows.length,0);
  assert.equal((await h.db.query('SELECT * FROM mis_scan_backup_items')).rows.length,0);
@@ -77,7 +72,12 @@ test('whole batch deletion retains images for 240 hours, releases scope, and res
  const replacement=await h.create();assert.notEqual(replacement.id,old.id);assert.match(replacement.name,/B02$/);const replacementCard=await h.add(replacement);
  const restore=await h.preview(old,'restore');assert.equal(restore.status,200,JSON.stringify(restore.data));assert.equal(restore.data.manifest.target.batch.id,replacement.id);assert.equal(restore.data.requiresReplacementDeletion,true);
  assert.equal((await h.call('vlb-batch-deletions/'+restore.data.id+'/otp','POST',{approval:restore.data.approval})).status,400);
+ assert.equal((await h.confirm(restore.data)).status,403,'restoration still requires OTP');
+ h.failSend();assert.equal((await h.send(restore.data)).status,503);h.failSend(false);
  assert.equal((await h.send(restore.data)).status,200);
+ assert.equal((await h.send(restore.data)).data.alreadySent,true);
+ assert.equal((await h.confirm(restore.data,{otp:'000000'})).status,400);
+
  // Force a restoration failure after replacement deletion: the whole transaction must roll back.
  await h.db.exec(`CREATE FUNCTION fail_restore() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test restore failure'; END $$; CREATE TRIGGER fail_restore BEFORE INSERT ON mis_scan_cards FOR EACH ROW EXECUTE FUNCTION fail_restore();`);
  assert.equal((await h.confirm(restore.data)).status,500);
@@ -94,16 +94,16 @@ test('whole batch deletion retains images for 240 hours, releases scope, and res
  await h.recovery.cleanupExpired();assert.equal(h.removed.length,0);
 });
 
-test('scope authorization, stale previews, extraction, OTP failure, and expiry fail without data loss',async t=>{
+test('scope authorization, stale previews, extraction and expiry fail without data loss',async t=>{
  const h=await setup(t),b=await h.create(),card=await h.add(b);
  assert.equal((await h.preview(b,'delete','viewer')).status,403);
  assert.equal((await h.preview(b,'delete','other-site')).status,404);
- const p=await h.preview(b);await h.db.query('UPDATE mis_log_books SET revision=revision+1 WHERE id=$1',[card.id]);assert.equal((await h.send(p.data)).status,409);
+ const p=await h.preview(b);await h.db.query('UPDATE mis_log_books SET revision=revision+1 WHERE id=$1',[card.id]);assert.equal((await h.confirm(p.data)).status,409);
  await h.db.query("UPDATE mis_scan_cards SET status='reading' WHERE id=$1",[card.scanId]);assert.equal((await h.preview(b)).status,409);await h.db.query("UPDATE mis_scan_cards SET status='posted' WHERE id=$1",[card.scanId]);
- const fresh=await h.preview(b);h.failSend();assert.equal((await h.send(fresh.data)).status,503);assert.equal((await h.confirm(fresh.data)).status,403);
- h.failSend(false);assert.equal((await h.send(fresh.data)).status,200,'a failed delivery does not start the one-minute cooldown');assert.equal((await h.send(fresh.data)).data.alreadySent,true);
- await h.db.query('UPDATE mis_vlb_batch_deletions SET delivered_at=NULL WHERE id=$1',[fresh.data.id]);const wait=await h.send(fresh.data);assert.equal(wait.status,429);assert.match(wait.data.error,/Wait \d+ more seconds/);
- await h.db.query("UPDATE mis_vlb_batch_deletions SET expires_at=NOW()-INTERVAL '1 second' WHERE id=$1",[fresh.data.id]);assert.equal((await h.send(fresh.data)).status,409);
+ const fresh=await h.preview(b);
+ assert.equal((await h.call('vlb-batch-deletions/'+fresh.data.id+'/confirm','POST',{approval:fresh.data.approval},'viewer')).status,403);
+ assert.equal((await h.call('vlb-batch-deletions/'+fresh.data.id+'/confirm','POST',{approval:fresh.data.approval},'other-user')).status,409);
+ await h.db.query("UPDATE mis_vlb_batch_deletions SET expires_at=NOW()-INTERVAL '1 second' WHERE id=$1",[fresh.data.id]);assert.equal((await h.confirm(fresh.data)).status,409);
  assert.equal((await h.call('vlb-batches/'+b.id)).status,200);
 });
 
@@ -155,7 +155,7 @@ test('all deleted batches can be permanently deleted with one approval',async t=
  const kept=await h.create('S1'),live=await h.add(kept,{hash:'live'});
  const p=await h.preview({id:'all'},'purge-all');assert.equal(p.status,200,JSON.stringify(p.data));
  assert.deepEqual(p.data.manifest.counts,{batches:2,cards:2,scans:2});
- assert.equal((await h.send(p.data)).status,200);
+
  const r=await h.confirm(p.data);assert.equal(r.status,200,JSON.stringify(r.data));
  for(const id of [first.id,second.id])assert.ok((await h.db.query('SELECT purged_at FROM mis_vlb_batches WHERE id=$1',[id])).rows[0].purged_at);
  for(const id of [a.id,b.id])assert.deepEqual((await h.db.query('SELECT data FROM mis_log_books WHERE id=$1',[id])).rows[0].data,{permanentlyDeleted:true});
@@ -167,7 +167,7 @@ test('all deleted batches can be permanently deleted with one approval',async t=
 test('an active batch and its cards can be permanently deleted in one approved step',async t=>{
  const h=await setup(t),b=await h.create(),card=await h.add(b);
  const p=await h.preview(b,'erase');assert.equal(p.status,200,JSON.stringify(p.data));assert.equal(p.data.manifest.target.records.length,1);assert.match(p.data.impact,/no 10-day restore window/);
- assert.equal((await h.send(p.data)).status,200);assert.equal((await h.confirm(p.data)).status,200);
+assert.equal((await h.confirm(p.data)).status,200);
  assert.equal((await h.call('vlb-batches/'+b.id)).status,404);
  assert.ok((await h.db.query('SELECT purged_at FROM mis_vlb_batches WHERE id=$1',[b.id])).rows[0].purged_at);
  assert.equal((await h.db.query('SELECT * FROM mis_vlb_batch_recovery_items WHERE batch_id=$1',[b.id])).rows.length,0);
@@ -183,7 +183,7 @@ test('the same card image saved in another batch does not block deleting this ba
  const second=await h.create('S2'),copy=await h.add(second,{hash:'same-card'});
  const p=await h.preview(first);assert.equal(p.status,200,JSON.stringify(p.data));
  assert.deepEqual(p.data.manifest.target.scans.map(s=>s.id),[card.scanId],'the other batch keeps its copy');
- assert.equal((await h.send(p.data)).status,200);assert.equal((await h.confirm(p.data)).status,200);
+assert.equal((await h.confirm(p.data)).status,200);
  assert.equal((await h.db.query('SELECT logbook_id FROM mis_scan_cards WHERE id=$1',[copy.scanId])).rows[0].logbook_id+"",String(copy.id));
  assert.equal((await h.call('vlb-batches/'+second.id)).status,200);
 });

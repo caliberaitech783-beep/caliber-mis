@@ -14,6 +14,7 @@ import ScanCardBackup from './scan-card-backup.jsx';
 import SiteUpdateNotice from './site-update-notice.jsx';
 import EnvironmentBanner from './environment-banner.jsx';
 import {FleetPopulationReport} from './fleet-population.jsx';
+import {ATTENDANCE_PAGES,AttendanceComparison,BiometricIntegration} from './attendance-management.jsx';
 import {operationReports} from './operations-report-model.mjs';
 import EquipmentAliasAdminPanel,{EquipmentAliasCell,EquipmentAliasRevokeDialog,useEquipmentAliases} from './equipment-alias-admin.jsx';
 import {misPageAllowed} from '../shared/mis-application-access.mjs';
@@ -385,6 +386,7 @@ import "./linked-request-picker.css";
 import "./report-step-style.css";
 import "./report-step-sticky.css";
 import { useTopBarStick } from "./top-bar-stick.js";
+import { useStepTableHeads } from "./step-table-heads.js";
 import "./workspace-readability.css";
 import DailyBdBalanceChart from "./daily-bd-balance-chart.jsx";
 import EmployeeTenureReport from "./employee-tenure-report.jsx";
@@ -3425,6 +3427,7 @@ function FilterableHeader({
   className = "",
   // quickSort: one click on the heading sorts it (again reverses it), with no ↑ / ↓ / filter menu.
   quickSort = false,
+  labelText = "",
 }) {
   const [valueSearch, setValueSearch] = useState("");
   const [resizing, setResizing] = useState(false);
@@ -3505,7 +3508,7 @@ function FilterableHeader({
         className={`sort-header ${active ? "active" : ""} ${filterValue ? "filtered" : ""}`}
         onClick={(event) => { event.stopPropagation(); if (quickSort) onSort(sortKey); else onToggle(sortKey); }}
         type="button"
-        {...(quickSort ? { title: `Sort by ${typeof label === "string" ? label : sortKey}` } : { "aria-expanded": open, "aria-haspopup": "dialog" })}
+        {...(quickSort ? { title: `Sort by ${labelText || (typeof label === "string" ? label : sortKey)}` } : { "aria-expanded": open, "aria-haspopup": "dialog" })}
       >
         <span>{headingLines ? <>{headingLines[0]}<br />{headingLines[1]}</> : label}</span><Icon aria-hidden="true" />
         {filterValue && <i className="column-filter-dot" aria-label="Filtered" />}
@@ -4469,6 +4472,7 @@ function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], 
             sort={sort}
             onSort={changeSort}
             quickSort={quickSort}
+            labelText={typeof column.label === "string" ? column.label : ""}
             open={openFilter === column.key}
             onToggle={(key) => setOpenFilter((current) => current === key ? null : key)}
             values={columnValues[column.key] || []}
@@ -7414,8 +7418,10 @@ function ReportSection({ title, description, category = "general", icon: ReportI
   // above it: no search box, record count, Rows or Actions, and every line on screen.
   const stepLook = /^Step \d/.test(String(title));
   const searchShown = showSearch && !stepLook;
+  // Owner, 19 Nov 2026: the column headings of a step stay in view under its heading (step-table-heads.js).
+  const stepRef = useStepTableHeads(stepLook, laterStep ? showOpenedStep : null);
   return (
-    <div ref={laterStep ? showOpenedStep : undefined} className="reports-section generated-report-section" data-category={category} data-step-look={stepLook ? "true" : undefined}>
+    <div ref={stepLook ? stepRef : undefined} className="reports-section generated-report-section" data-category={category} data-step-look={stepLook ? "true" : undefined}>
       <div className="reports-section-heading">
         <div className="generated-report-title">
           <span className="generated-report-icon"><ReportIcon aria-hidden="true" /></span>
@@ -7445,7 +7451,7 @@ function ReportSection({ title, description, category = "general", icon: ReportI
             rowKey={rowKey}
             rowClassName={rowClassName}
             isTotalRow={isTotalRow} isSubtotalRow={isSubtotalRow}
-            rowAction={rowAction} rowEditor={rowEditor} onRowClick={onRowClick} figuresRight stepLook={stepLook} quickSort={quickSort}
+            rowAction={rowAction} rowEditor={rowEditor} onRowClick={onRowClick} figuresRight stepLook={stepLook} quickSort={quickSort || stepLook}
             emptyMessage={emptyMessage}
             columns={columns}
             visibleColumnKeys={visibleColumnKeys}
@@ -11627,7 +11633,7 @@ function App() {
   const adminOnlyPages=new Set([...adminNav.map(([name])=>name),'Admin locks','Full Backup','Database']);
   const canOpenAdminPage = (name) => {
     if(name==='Employee Current Location')return Boolean(session?.token);
-    if(['Fleet Capacity','Equipment Deployment'].includes(name))return canOpenAdminPage('Reports');
+    if(['Fleet Capacity','Equipment Deployment'].includes(name)||ATTENDANCE_PAGES[name])return canOpenAdminPage('Reports');
     if(name==='Fleet reconciliation')return canOpenAdminPage('Dashboard');
     if(name==='Capacity master')return isMisAdministrator(session)&&canOpenAdminPage('Equipment master');
     if(name==='Batch reopening approvals')return correctionApprovalAccess;
@@ -11989,6 +11995,8 @@ function App() {
   : renderedActive==='LMV Scan' ? (<VlbEntryWorkspace key="lmv-scan" kind="lmv" mode="scan" session={session} ReportSection={ReportSection} onExit={()=>selectMenu('LMV Log Book')}><BulkCardScanning kind="vehicle" logBookKind="lmv" session={session} ReportSection={ReportSection}/></VlbEntryWorkspace>)
   : ['Vehicle Log Book Options','Equipment Log Book Options'].includes(renderedActive) ? (<LogBookModeChoice onBatches={()=>selectMenu('Create VLB Batch')} kind={renderedActive==='Vehicle Log Book Options'?'vehicle':'equipment'} canSaved={renderedActive==='Vehicle Log Book Options'&&canOpenAdminPage('Saved VLB')} onSaved={()=>selectMenu('Saved VLB')} canScan={canOpenAdminPage(renderedActive==='Vehicle Log Book Options'?'Trip Card Bulk Scan':'Job Card Bulk Scan')} onManual={()=>selectMenu(renderedActive==='Vehicle Log Book Options'?'Vehicle Log Book':'Equipment Log Book')} onScan={()=>selectMenu(renderedActive==='Vehicle Log Book Options'?'Trip Card Bulk Scan':'Job Card Bulk Scan')}/>) : ['Trip Card Bulk Scan','Job Card Bulk Scan'].includes(renderedActive) ? (
     <VlbEntryWorkspace key={renderedActive} mode="scan" kind={renderedActive==='Trip Card Bulk Scan'?'vehicle':'equipment'} session={session} ReportSection={ReportSection} onExit={()=>selectMenu(renderedActive==='Trip Card Bulk Scan'?'Vehicle Log Book Options':'Equipment Log Book Options')}><BulkCardScanning ReportSection={ReportSection} key={renderedActive} kind={renderedActive==='Trip Card Bulk Scan'?'vehicle':'equipment'} session={session}/></VlbEntryWorkspace>
+  ) : renderedActive==='Biometric integration' ? (<BiometricIntegration session={session} ReportSection={ReportSection}/>
+  ) : ATTENDANCE_PAGES[renderedActive] ? (<AttendanceComparison key={renderedActive} page={renderedActive} session={session} ReportSection={ReportSection}/>
   ) : ['Fleet Capacity','Equipment Deployment'].includes(renderedActive) ? (
     <FleetPopulationReport key={renderedActive} session={session} ReportSection={ReportSection} capacity={renderedActive==='Fleet Capacity'}/>
   ) : renderedActive==='VLB Reports' ? (<VlbBatchReports ReportSection={ReportSection} key={renderedActive} session={session}/>
@@ -12133,6 +12141,8 @@ function App() {
           {name:'WhatsApp Integration',pages:whatsappNav.map(([name])=>name).filter(canOpenAdminPage)},
           {name:'MIS',pages:[...(canOpenAdminPage('Batch reopening approvals')?[{label:'Batch reopening approvals',page:'Batch reopening approvals'}]:[]),{label:'Create Batch',page:'Create VLB Batch'},{label:'Vehicle Log Book (VLB)',page:'Vehicle Log Book Options',activePages:['Vehicle Log Book','Trip Card Bulk Scan','Saved VLB']},{label:'LMV Log Book (LMV)',page:'LMV Log Book',activePages:['LMV Manual','LMV Scan']},{label:'Equipment Log Book (ELB)',page:'Equipment Log Book Options',activePages:['Equipment Log Book','Job Card Bulk Scan','Create VLB Batch']}].filter(item=>canOpenAdminPage(item.page))},
           {name:'Reports',pages:[...['VLB Reports','ELB Reports','Fleet Capacity','Equipment Deployment'].filter(canOpenAdminPage),...(canOpenAdminPage('Reports')?[...new Set(operationReports.map(r=>r.group))].map(group=>({label:group,children:operationReports.filter(r=>r.group===group).map(r=>({label:r.title,page:'Reports',reportCategory:'operations-'+r.id}))})):[])],keepEmpty:canOpenAdminPage('Reports')},
+          {name:'Attendance Management',pages:['Biometric integration','Mismatch attendance'].filter(canOpenAdminPage)},
+          {name:'Attendance Regularization',pages:['Late come / early going','Miss punch'].filter(canOpenAdminPage)},
           {name:'Deletion',direct:true,pages:canOpenAdminPage('Deletion')?['Deletion']:[]},
           {name:'Backup',direct:true,pages:canOpenAdminPage('Scan Backup')?[{label:'Backup',page:'Scan Backup'}]:[]},
           {name:'Tickets',direct:true,pages:canOpenAdminPage('Tickets')?['Tickets']:[]},

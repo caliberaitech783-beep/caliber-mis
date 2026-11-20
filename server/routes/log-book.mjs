@@ -23,6 +23,7 @@ import {vlbBatchActor} from '../rules/vlb-batch-access.mjs';
 import {registerVlbBatches} from './vlb-batches.mjs';
 import {registerManpowerReports} from './manpower-report-api.mjs';
 import {registerShiftAttendance,SHIFT_ATTENDANCE_SCHEMA} from './shift-attendance.mjs';
+import {registerBiometricAttendance} from './biometric-attendance.mjs';
 import {registerProductionReports} from './production-report-api.mjs';
 import {registerMeterContinuityReport} from '../../shared/meter-continuity-report.mjs';
 import {registerBatchStatusReport} from './batch-status-report-api.mjs';
@@ -298,6 +299,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
  registerFleetReconciliation(app,{pool,protect,ensureBooks:ensure,pulseMasterSync,breakdownMirror});
  const batchScope=protect[2];
  registerManpowerReports(app,{pool,protect,ensureBooks:ensure,withHandovers:withVlbTripHandovers,lane});
+ registerBiometricAttendance(app,{pool,protect,ensureBooks:ensure});
  const attendanceAccess=(req,res,next)=>{
   const kind=req.method==='POST'?req.body?.kind:req.query?.kind;
   const page=kind==='vehicle'?'Vehicle Log Book':kind==='equipment'?'Equipment Log Book':'';

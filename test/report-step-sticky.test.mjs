@@ -38,3 +38,46 @@ test('the top bar is measured once for every step heading',()=>{
  assert.equal(topBarBottom(bar,view('static')),0,'a bar that scrolls away: headings stick at the very top');
  assert.equal(topBarBottom(null,view('sticky')),0);
 });
+
+test('a step table that fits keeps its column headings under the step heading with the page; a wider one keeps every line and slides its heading row down',async()=>{
+ const {placeStepTableHeads,shiftStepTableHeads}=await import('../src/step-table-heads.js');
+ const wide=css.slice(css.indexOf('@media (min-width: 761px)'),css.indexOf('[data-printing]'));
+ assert.match(wide,/:is\(\.reports-detail-table, \.ar-grid-wrap, \.report-totals-scroll\)\[data-head-fits\] \{ max-height: none; overflow: visible; \}/);
+ assert.match(wide,/table\[data-head="page"\] > thead th \{[^}]*position: sticky;[^}]*top: calc\(var\(--mis-top-stick, 0px\) \+ var\(--step-head, 0px\)\);/);
+ assert.match(wide,/table\[data-head="shift"\] > thead th \{[^}]*transform: translateY\(var\(--head-shift, 0px\)\);/);
+ assert.doesNotMatch(css,/max-height: max\(/,'no step table is put in a box of its own: every line stays on the page');
+ assert.match(css,/\[data-printing\] \.generated-report-section\[data-step-look\] table\[data-head\] > thead th \{ top: 0; transform: none; \}/,'the dashboard PDF draws each heading row where it is written');
+
+ // A small stand-in page: a step with a heading, a table that fits, a wide table and a table of a step inside it.
+ const el=(props={})=>{const attrs=new Map(),style=new Map();return Object.assign({parentElement:null,getAttribute:a=>attrs.has(a)?attrs.get(a):null,hasAttribute:a=>attrs.has(a),setAttribute:(a,v)=>attrs.set(a,v),removeAttribute:a=>attrs.delete(a),style:{setProperty:(k,v)=>style.set(k,v),getPropertyValue:k=>style.get(k)||''},matches:()=>false,closest:()=>null,attrs,styles:style},props);};
+ const section=el();const head=el({getBoundingClientRect:()=>({height:88.4,bottom:153})});
+ section.querySelector=()=>head;
+ const box=(w,cw,ow)=>el({scrollWidth:w,clientWidth:cw,offsetWidth:ow,scrollHeight:500,clientHeight:500,matches:()=>true,parentElement:section});
+ const fitsBox=box(900,900,902),wideBox=box(1400,900,902),tallFitsBox=box(898,885,902);
+ const table=(parent,top=0,height=0)=>el({tHead:{getBoundingClientRect:()=>({height:40})},tFoot:null,parentElement:parent,closest:()=>section,getBoundingClientRect:()=>({top,height})});
+ const fitsTable=table(fitsBox),wideTable=table(wideBox,-300,1000),tallTable=table(tallFitsBox),inner=el({tHead:{},closest:()=>({})});
+ for(const b of [fitsBox,wideBox,tallFitsBox])b.closest=()=>b;
+ section.querySelectorAll=()=>[fitsTable,wideTable,tallTable,inner];
+ globalThis.getComputedStyle=()=>({borderLeftWidth:'1px',borderRightWidth:'1px',overflowY:'auto'});
+ placeStepTableHeads(section);
+ assert.equal(section.styles.get('--step-head'),'89px');
+ assert.equal(fitsTable.getAttribute('data-head'),'page');
+ assert.equal(fitsBox.getAttribute('data-head-fits'),'');
+ assert.equal(wideTable.getAttribute('data-head'),'shift');
+ assert.equal(wideBox.getAttribute('data-head-fits'),null);
+ assert.equal(tallTable.getAttribute('data-head'),'page','the room of an upright scroll bar counts, so a table that fits is not held in its box');
+ assert.equal(inner.getAttribute('data-head'),null,'a table of a step inside this one is left to that step');
+ shiftStepTableHeads(section);
+ assert.equal(wideTable.styles.get('--head-shift'),'453px','the heading row of the wide table sits under the step heading (153 px from the top of the screen)');
+ wideTable.getBoundingClientRect=()=>({top:-1000,height:1000});shiftStepTableHeads(section);
+ assert.equal(wideTable.styles.get('--head-shift'),'960px','it stops at the last line of the table');
+ wideTable.getBoundingClientRect=()=>({top:400,height:1000});shiftStepTableHeads(section);
+ assert.equal(wideTable.styles.get('--head-shift'),'0px','before the table reaches the top it stays where it is written');
+ delete globalThis.getComputedStyle;
+});
+
+test('every step section is measured, and an opened step still scrolls into view',()=>{
+ assert.match(jsx,/import \{ useStepTableHeads \} from "\.\/step-table-heads\.js";/);
+ assert.match(jsx,/const stepRef = useStepTableHeads\(stepLook, laterStep \? showOpenedStep : null\);/);
+ assert.match(jsx,/<div ref=\{stepLook \? stepRef : undefined\} className="reports-section generated-report-section"/);
+});

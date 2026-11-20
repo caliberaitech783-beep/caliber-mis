@@ -1,9 +1,11 @@
 import {managerRoleSelection} from './admin-access.mjs';
 import {isMisAdministrator,MIS_ADMIN_PAGES} from './mis-admin-access.mjs';
 import {normalizedMisSelection,MIS_PERMISSION_OPTIONS} from './mis-permissions.mjs';
+// Attendance Management and Attendance Regularization pages (src/attendance-management.jsx) follow the Reports right.
+export const ATTENDANCE_PAGE_NAMES=['Biometric integration','Mismatch attendance','Late come / early going','Miss punch'];
 export function misPageAllowed(session,page,view){
  if(!session?.permissions?.separateMisCredentials)return false;
- if(['Fleet Capacity','Equipment Deployment'].includes(page))return misPageAllowed(session,'Reports',view);
+ if(['Fleet Capacity','Equipment Deployment',...ATTENDANCE_PAGE_NAMES].includes(page))return misPageAllowed(session,'Reports',view);
  if(page==='Capacity master')return isMisAdministrator(session)&&misPageAllowed(session,'Equipment master',view);
  if(page==='Batch reopening approvals')return session.role==='super'&&session.permissions.adminLevel==='Manager'&&managerRoleSelection(session.permissions.managerRoles?.length?session.permissions.managerRoles:session.permissions.managerRole).includes('Project Manager');
  if(['Tickets','Telegram Integration'].includes(page))return true;
