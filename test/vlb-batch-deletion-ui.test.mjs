@@ -26,3 +26,22 @@ test('restoring over a replacement requires preview, explicit replacement consen
  nodes(tree,n=>n.type==='input'&&n.props.autoComplete==='one-time-code')[0].props.onChange({target:{value:'123456'}});
  await button(render(),'Delete replacement and restore original').props.onClick();assert.equal(calls[2].body.otp,'123456');assert.equal(calls[2].body.approval,preview.approval);assert.equal(changed,1);assert.equal(dismissed,1);
 });
+
+for(const operation of ['delete','erase','purge','purge-all'])test(operation+' confirms the exact batch selection without requesting OTP',async()=>{
+ const slots=[];let cursor=0;const useState=initial=>{const i=cursor++;if(!(i in slots))slots[i]=initial;return [slots[i],v=>slots[i]=v]};
+ const source=readFileSync(new URL('../src/vlb-batch-deletion.jsx',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function');
+ const {code}=await transformWithOxc(source,'vlb-batch-deletion.jsx',{jsx:{runtime:'classic'}});
+ const Component=new Function('TableSmartPrint','React','useState','useEffect',code+';return VlbBatchDeletion')(TableSmartPrint,React,useState,()=>{});
+ const calls=[],preview={id:'request',operation,approval:'Exact selection approval',expiresAt:'2026-11-20T10:00:00Z',manifest:{target:null,original:{name:'B01',counts:{cards:1}},counts:{batches:1,cards:1,scans:0},batches:[{original:{id:'old',name:'B01',counts:{cards:1}}}]}};
+ let changed=0,dismissed=0;
+ const read=async(path,options)=>{calls.push({path,body:options.body});return path.endsWith('/preview')?preview:{complete:true}};
+ const render=()=>{cursor=0;return Component({batch:{id:'old',name:'B01'},operation,read,onChanged:()=>changed++,onDismiss:()=>dismissed++})};
+ const buttons=tree=>nodes(tree,n=>n.type==='button');
+ nodes(render(),n=>n.type==='textarea')[0].props.onChange({target:{value:'Duplicate testing batch'}});
+ await buttons(render()).find(n=>n.props.children==='Preview exact items').props.onClick();
+ let tree=render();assert.doesNotMatch(renderToStaticMarkup(tree),/OTP/);
+ let confirm=buttons(tree).find(n=>String(n.props.children).startsWith('Delete')&&!String(n.props.children).includes('Close'));assert.equal(confirm.props.disabled,true);
+ nodes(tree,n=>n.type==='input'&&n.props.autoComplete==='off')[0].props.onChange({target:{value:preview.approval}});
+ confirm=buttons(render()).find(n=>String(n.props.children).startsWith('Delete')&&!String(n.props.children).includes('Close'));assert.equal(confirm.props.disabled,false);await confirm.props.onClick();
+ assert.equal(calls.length,2);assert.ok(calls[1].path.endsWith('/confirm'));assert.equal(calls[1].body.approval,preview.approval);assert.equal('otp' in calls[1].body,false);assert.equal(changed,1);assert.equal(dismissed,1);
+});
