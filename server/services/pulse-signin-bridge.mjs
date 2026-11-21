@@ -4,7 +4,7 @@ export function createPulseSignInBridge({pool,fetchImpl=fetch}){
  // menu: only a sign-in whose MIS menus include it (the background breakdown copy needs
  // 'Pulse Master Sync', because Pulse gives the whole list only to that menu).
  const rows=async(actor,menu=null)=>{const result=await pool.query(`SELECT c.grant_token FROM mis_credential_sessions c JOIN auth_sessions s ON s.token=c.session_token
-  WHERE s.created_at>NOW()-CASE WHEN c.remembered THEN INTERVAL '30 days' ELSE INTERVAL '7 days' END AND ($1::text IS NULL OR lower(s.login_name)=lower($1))
+  WHERE s.created_at>NOW()-CASE WHEN c.remembered THEN INTERVAL '40 days' ELSE INTERVAL '7 days' END AND ($1::text IS NULL OR lower(s.login_name)=lower($1))
   AND (s.permissions->'misDesktopAccess' ?| ARRAY['Pulse Master Sync','Vehicle Log Book','Trip Card Bulk Scan','Equipment Log Book','Job Card Bulk Scan'] OR s.permissions->'misMobileAccess' ?| ARRAY['Pulse Master Sync','Vehicle Log Book','Trip Card Bulk Scan'])
   AND ($2::text IS NULL OR s.permissions->'misDesktopAccess' ? $2 OR s.permissions->'misMobileAccess' ? $2)
   ORDER BY s.created_at DESC LIMIT 1`,[actor||null,menu||null]);if(!actor&&!menu)connected=Boolean(result.rows.length);return result.rows;};

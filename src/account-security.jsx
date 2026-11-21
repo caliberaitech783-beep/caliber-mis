@@ -2,7 +2,7 @@ import React,{useEffect,useState} from 'react';
 import './account-security.css';
 import {isBrowserSessionToken} from './browser-session-transport.mjs';
 // The stored value is only the browser-session marker and profile; the credential is the
-// HttpOnly cookie. A "Remember me" sign-in (30-day cookie) keeps the marker on the device
+// HttpOnly cookie. A "Remember me" sign-in (40-day cookie) keeps the marker on the device
 // so MIS reopens signed in after a browser restart; any other sign-in keeps it in this tab.
 export function storeBrowserSession(value,{local=globalThis.localStorage,tab=globalThis.sessionStorage}={}){
  const keep=value?.rememberDevice===true;
