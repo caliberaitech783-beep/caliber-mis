@@ -54,7 +54,6 @@ import {createPaddleEvidence,validatePaddleEvidence,paddleEvidenceResult} from '
 import {mergeReextractedDraft} from '../rules/scan-reextract.mjs';
 import {createReportLane} from '../services/report-lane.mjs';
 import {ignoreScanLoadingWithoutEquipment,CARD_SHIFTS,machineDiscrepancies,bookShiftCode,machineTripTotal} from '../../shared/trip-card-rules.mjs';
-import {canonicalSiteName} from '../../shared/site-location.mjs';
 import {randomUUID,randomInt,createHash,timingSafeEqual} from 'node:crypto';
 import {sendDeletionOtp} from '../services/deletion-whatsapp.mjs';
 import {deletionPhone} from '../rules/deletion-otp-routing.mjs';
