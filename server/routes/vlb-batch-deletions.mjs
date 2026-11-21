@@ -33,7 +33,7 @@ export function registerVlbBatchDeletions(app,{pool,protect,handle,ensure,sendOt
   const records=(await c.query('SELECT l.*,md5(to_jsonb(l)::text) AS fingerprint FROM mis_log_books l JOIN mis_vlb_batch_entries e ON e.logbook_id=l.id WHERE e.batch_id=$1 ORDER BY l.id FOR UPDATE OF l',[b.id])).rows;
   if(records.some(r=>r.deleted_at))fail('This batch includes an independently deleted record. Resolve that deletion before deleting the complete batch.');
   const ids=records.map(r=>String(r.id)),linked=records.map(r=>r.data?.scanCardId).filter(Boolean);
-  let scans=[],scanBatches=[];
+  let scans=[],scanBatches=[],deletedScanRecords=[];
   if(await exists(c,'mis_scan_cards')){
    const candidates=(await c.query("SELECT * FROM mis_scan_batches WHERE kind='vehicle' AND COALESCE(expected_context->>'logBookKind','')<>'lmv' AND NOT(COALESCE(expected_context,'{}'::jsonb) ? 'deletedVlbBatch') ORDER BY id")).rows;
    const contextual=candidates.filter(s=>sameScope(b,s.expected_context)).map(s=>s.id);
@@ -42,8 +42,19 @@ export function registerVlbBatchDeletions(app,{pool,protect,handle,ensure,sendOt
    // A copy saved to another record, or sitting in an upload for another kind, site, date or shift, stays with its owner.
    if(scans.length){const own=s=>(!s.logbook_id||ids.includes(String(s.logbook_id)))&&contextual.includes(s.batch_id);const duplicates=(await c.query("SELECT c.id,c.batch_id,c.ordinal,c.filename,c.status,c.revision,c.logbook_id,c.image_hash,c.image_blob_key,c.draft,md5((to_jsonb(c)-'image')::text) AS fingerprint FROM mis_scan_cards c WHERE c.image_hash=ANY($1::text[]) ORDER BY c.id FOR UPDATE",[scans.map(s=>s.image_hash).filter(Boolean)])).rows.filter(own);scans=[...new Map([...scans,...duplicates].map(s=>[s.id,s])).values()].sort((a,b)=>a.id.localeCompare(b.id));}
    if(scans.some(s=>!candidates.some(b=>b.id===s.batch_id)))fail('A duplicate image belongs to another kind of upload. Resolve that ownership first.');
-   const foreign=scans.find(s=>s.logbook_id&&!ids.includes(String(s.logbook_id)));
-   if(foreign){const door=decodeScanRow({draft:foreign.draft}).draft?.door,book=(await c.query('SELECT book_no FROM mis_log_books WHERE id=$1',[foreign.logbook_id])).rows[0]?.book_no;fail(`Scan card ${foreign.filename||foreign.id}${door?` (door ${door})`:''} in this batch's upload is saved as ${book||'record '+foreign.logbook_id}, which is not in this batch. No batch was changed; delete or move that record first.`);}
+   for(const foreign of scans.filter(s=>s.logbook_id&&!ids.includes(String(s.logbook_id)))){
+    const record=(await c.query('SELECT l.*,md5(to_jsonb(l)::text) AS fingerprint FROM mis_log_books l WHERE id=$1 FOR UPDATE',[foreign.logbook_id])).rows[0];
+    // A deleted, unbatched book may leave its original scan behind. Only that
+    // upload's scan is included; the deleted book itself is never changed.
+    const owners=(await c.query("SELECT batch_id FROM mis_vlb_batch_entries WHERE logbook_id=$1 OR snapshot->'data'->>'scanCardId'=$2 ORDER BY batch_id FOR UPDATE",[foreign.logbook_id,foreign.id])).rows;
+    const references=(await c.query("SELECT id FROM mis_log_books WHERE id<>$1 AND data->>'scanCardId'=$2 ORDER BY id FOR UPDATE",[foreign.logbook_id,foreign.id])).rows;
+    if(record?.deleted_at&&record.book_type==='vehicle'&&contextual.includes(foreign.batch_id)&&sameScope(b,record.data)&&record.data?.scanCardId===foreign.id&&record.data?.scanBatchId===foreign.batch_id&&!owners.length&&!references.length){
+     deletedScanRecords.push({id:record.id,bookNo:record.book_no,revision:record.revision,fingerprint:record.fingerprint});
+     continue;
+    }
+    const door=decodeScanRow({draft:foreign.draft}).draft?.door;
+    fail(`Scan card ${foreign.filename||foreign.id}${door?` (door ${door})`:''} in this batch's upload is saved as ${record?.book_no||'record '+foreign.logbook_id}, which is not in this batch. No batch was changed; its record must be deleted, match this upload and have no batch owner before its scan can be removed.`);
+   }
    if(scans.some(s=>s.status==='reading'))fail('Extraction is still running for this batch. Wait for it to finish, then prepare deletion again.');
    scanBatches=candidates.filter(s=>contextual.includes(s.id)||scans.some(c=>c.batch_id===s.id));
    // A scan upload is indivisible: never delete another scope through an upload containing mixed data.
@@ -52,7 +63,7 @@ export function registerVlbBatchDeletions(app,{pool,protect,handle,ensure,sendOt
    if(all.some(s=>!scans.some(x=>x.id===s.id)))fail('A linked upload contains cards outside this batch. Resolve its ownership first.');
   }
   const backups=await exists(c,'mis_scan_backup_items')?(await c.query("SELECT backup_id,card_id,md5(to_jsonb(i)::text) AS fingerprint FROM mis_scan_backup_items i WHERE card_id=ANY($1::uuid[]) OR metadata->>'logbookId'=ANY($2::text[]) ORDER BY backup_id,card_id FOR UPDATE",[scans.map(s=>s.id),ids])).rows:[];
-  return {batch:{id:b.id,name:b.name,site:b.site,date:b.report_date,shift:b.shift,closedAt:b.closed_at,revision:b.closure_revision},records:records.map(r=>({id:r.id,bookNo:r.book_no,revision:r.revision,fingerprint:r.fingerprint})),scans:scans.map(({draft,...s})=>({...s,door:decodeScanRow({draft}).draft?.door||''})),scanBatches:scanBatches.map(s=>({id:s.id,context:s.expected_context})),backups};
+  return {batch:{id:b.id,name:b.name,site:b.site,date:b.report_date,shift:b.shift,closedAt:b.closed_at,revision:b.closure_revision},records:records.map(r=>({id:r.id,bookNo:r.book_no,revision:r.revision,fingerprint:r.fingerprint})),deletedScanRecords,scans:scans.map(({draft,...s})=>({...s,door:decodeScanRow({draft}).draft?.door||''})),scanBatches:scanBatches.map(s=>({id:s.id,context:s.expected_context})),backups};
  }
  async function plan(c,req,operation,id){
   if(operation==='purge-all'){

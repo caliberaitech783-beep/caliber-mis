@@ -195,6 +195,66 @@ test('a scan in this batch upload saved outside the batch names the card and rec
  const p=await h.preview(b);assert.equal(p.status,409);assert.match(p.data.error,/stray\.png.*VLB\/STRAY/);
 });
 
+async function deletedStray(h,b,card){
+ const scanId=randomUUID(),data={location:b.site,bookDate:b.report_date,bookShiftCode:b.shift,scanCardId:scanId,scanBatchId:card.scanBatch};
+ const row=(await h.db.query("INSERT INTO mis_log_books(book_no,book_type,site,book_date,data,deleted_at) VALUES('VLB_S/20TH-NOV26/S2/205','vehicle',$1,$2,$3,NOW()) RETURNING *",[b.site,b.report_date,JSON.stringify(data)])).rows[0];
+ await h.db.query("INSERT INTO mis_scan_cards VALUES($1,$2,2,'page-094-upload.jpg','posted',1,$3,$4,'deleted-stray-hash',NULL,$5,'{}')",[scanId,card.scanBatch,row.id,Buffer.from('deleted-source'),JSON.stringify(data)]);
+ return {...row,scanId};
+}
+
+test('batch erase includes its orphan scan but preserves the deleted book and every other batch',async t=>{
+ const h=await setup(t),b=await h.create(),card=await h.add(b),stray=await deletedStray(h,b,card);
+ await h.call('vlb-batches/'+b.id+'/close','POST');
+ const other=await h.create('S2'),otherCard=await h.add(other,{hash:'deleted-stray-hash'});
+ const before=(await h.db.query('SELECT * FROM mis_log_books WHERE id=$1',[stray.id])).rows[0];
+ const otherBefore=(await h.db.query('SELECT * FROM mis_scan_cards WHERE id=$1',[otherCard.scanId])).rows[0];
+ const preview=await h.preview(b,'erase');assert.equal(preview.status,200,JSON.stringify(preview.data));
+ assert.deepEqual(preview.data.manifest.target.records.map(r=>String(r.id)),[String(card.id)]);
+ assert.deepEqual(preview.data.manifest.target.deletedScanRecords.map(r=>String(r.id)),[String(stray.id)]);
+ assert.deepEqual(new Set(preview.data.manifest.target.scans.map(s=>s.id)),new Set([card.scanId,stray.scanId]));
+ const result=await h.confirm(preview.data);assert.equal(result.status,200,JSON.stringify(result.data));
+ assert.deepEqual((await h.db.query('SELECT * FROM mis_log_books WHERE id=$1',[stray.id])).rows[0],before);
+ assert.deepEqual((await h.db.query('SELECT * FROM mis_scan_cards WHERE id=$1',[otherCard.scanId])).rows[0],otherBefore);
+ assert.equal((await h.call('vlb-batches/'+other.id)).status,200);
+});
+
+test('deleted scan remains protected when another batch owns its book or snapshot',async t=>{
+ const h=await setup(t),b=await h.create(),card=await h.add(b),stray=await deletedStray(h,b,card);
+ await h.call('vlb-batches/'+b.id+'/close','POST');const other=await h.create('S2');
+ await h.db.query('INSERT INTO mis_vlb_batch_entries(batch_id,logbook_id,snapshot) VALUES($1,$2,$3)',[other.id,stray.id,JSON.stringify(stray)]);
+ assert.equal((await h.preview(b,'erase')).status,409);
+ await h.db.query('DELETE FROM mis_vlb_batch_entries WHERE batch_id=$1',[other.id]);
+ const otherCard=await h.add(other,{scan:false});
+ await h.db.query('UPDATE mis_vlb_batch_entries SET snapshot=$2 WHERE logbook_id=$1',[otherCard.id,JSON.stringify({data:{scanCardId:stray.scanId}})]);
+ assert.equal((await h.preview(b,'erase')).status,409);
+ assert.equal((await h.db.query('SELECT count(*)::int AS n FROM mis_scan_cards')).rows[0].n,2);
+});
+
+test('orphan scan exception rejects live books, wrong scope, wrong scan identity and shared references',async t=>{
+ const h=await setup(t),b=await h.create(),card=await h.add(b),stray=await deletedStray(h,b,card);
+ for(const patch of [{bookShiftCode:'S2'},{location:'Jayant OC'},{bookDate:'2026-12-29'},{scanCardId:randomUUID()},{scanBatchId:randomUUID()}]){
+  await h.db.query('UPDATE mis_log_books SET data=$2 WHERE id=$1',[stray.id,JSON.stringify({...stray.data,...patch})]);
+  assert.equal((await h.preview(b,'erase')).status,409,JSON.stringify(patch));
+ }
+ await h.db.query('UPDATE mis_log_books SET data=$2,deleted_at=NULL WHERE id=$1',[stray.id,JSON.stringify(stray.data)]);
+ assert.equal((await h.preview(b,'erase')).status,409);
+ await h.db.query('UPDATE mis_log_books SET deleted_at=NOW() WHERE id=$1',[stray.id]);
+ await h.db.query("INSERT INTO mis_log_books(book_no,book_type,data) VALUES('shared','vehicle',$1)",[JSON.stringify({scanCardId:stray.scanId})]);
+ assert.equal((await h.preview(b,'erase')).status,409);
+});
+
+test('orphan ownership and deleted book changes invalidate an approved deletion preview',async t=>{
+ const h=await setup(t),b=await h.create(),card=await h.add(b),stray=await deletedStray(h,b,card);
+ const p=await h.preview(b,'erase');assert.equal(p.status,200,JSON.stringify(p.data));
+ await h.db.query('UPDATE mis_log_books SET revision=revision+1 WHERE id=$1',[stray.id]);
+ assert.equal((await h.confirm(p.data)).status,409);
+ const fresh=await h.preview(b,'erase');assert.equal(fresh.status,200);
+ await h.db.query('UPDATE mis_log_books SET deleted_at=NULL WHERE id=$1',[stray.id]);
+ assert.equal((await h.confirm(fresh.data)).status,409);
+ assert.equal((await h.call('vlb-batches/'+b.id)).status,200);
+ assert.equal((await h.db.query('SELECT count(*)::int AS n FROM mis_scan_cards')).rows[0].n,2);
+});
+
 test('new recovery endpoints require VLB application access',()=>{
  const session={permissions:{separateMisCredentials:true,misDesktopAccess:['Vehicle Log Book']}};
  assert.ok(misRequestAllowed(session,{path:'/api/vlb-batch-deletions/preview',method:'POST'}));
