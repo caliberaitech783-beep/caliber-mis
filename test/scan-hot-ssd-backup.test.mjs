@@ -67,7 +67,8 @@ test('backup API snapshots only new Blob images and cannot complete before every
  const service=registerScanBackup(app,{pool,requireSession:auth,requireAdministrator:auth,imageStorage:{read:async()=>image},now:()=>new Date('2026-03-02T00:00:00Z')});await service.start();
  app.use((error,req,res,next)=>res.status(500).json({error:error.message}));const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.once('listening',resolve));t.after(()=>{server.closeAllConnections();server.close()});
  const base='http://127.0.0.1:'+server.address().port;const post=(url,body={})=>fetch(base+url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
- const created=await post('/api/scan-backups');assert.equal(created.status,200,await created.clone().text());const {job}=await created.json();
+ const created=await post('/api/scan-backups',{destination:'Backup SSD'});assert.equal(created.status,200,await created.clone().text());const {job}=await created.json();
+ assert.equal(job.destination,'Backup SSD');
  const items=await (await fetch(base+'/api/scan-backups/'+job.id+'/items')).json();assert.deepEqual(items.items.map(item=>item.card_id),[cardId]);assert.deepEqual(items.items[0].metadata.savedLogbookData,{reading:123});
  assert.equal((await post('/api/scan-backups/'+job.id+'/complete',{destination:'SSD'})).status,409);
  assert.equal((await post('/api/scan-backups/'+job.id+'/verified',{cardId,sha256:'0'.repeat(64)})).status,409);
@@ -109,4 +110,20 @@ test('new uploads store verified Blob references, legacy images still open, and 
  assert.deepEqual(Buffer.from(await (await fetch(base+'/api/scan-cards/'+legacyId+'/image')).arrayBuffer()),image);
  assert.equal((await upload(cardId)).status,200);assert.equal(puts,1);
  fail=true;assert.equal((await upload(randomUUID())).status,500);assert.equal(rows.size,2);assert.deepEqual(rows.get(legacyId).image,image);
+});
+
+test('SSD backup resumes without downloading saved cards and keeps going past a card that keeps failing',async()=>{
+ const directory=memoryDirectory(),id=randomUUID(),job={id,window_start:'2026-01-01T00:00:00Z',window_end:'2026-01-31T00:00:00Z'};
+ const cards=await Promise.all([1,2,3].map(async n=>{const image=new Uint8Array([255,216,n,n]);return {card_id:randomUUID(),image,image_hash:await sha256(image),image_bytes:4,metadata:{n}}}));
+ const verified=new Set(),downloads=[],calls=[];let broken=cards[1].card_id,flaky=1;
+ const api=async(url,body)=>{calls.push(url);if(url.includes('/items'))return {items:cards.map(({image,...item})=>({...item,verified_at:verified.has(item.card_id)?'x':null})),next:null};if(url.endsWith('/verified'))verified.add(body.cardId);return {}};
+ const image=async url=>{const card=cards.find(card=>url.endsWith(card.card_id));downloads.push(card.card_id);if(card.card_id===broken)throw Error('Card download failed (503).');if(card===cards[2]&&flaky-->0)throw Error('Card download failed (502).');return card.image.slice().buffer};
+ const wait=async()=>{};
+ const first=await copyBackup({job,directory,api,image,wait});
+ assert.equal(first.complete,false);assert.equal(first.count,2);assert.deepEqual(first.failed.map(f=>f.cardId),[broken]);
+ assert.equal(calls.some(url=>url.endsWith('/complete')),false);assert.equal(verified.size,2);
+ broken=null;downloads.length=0;
+ const second=await copyBackup({job,directory,api,image,wait});
+ assert.equal(second.complete,true);assert.equal(second.count,3);assert.equal(second.reused,2);
+ assert.deepEqual(downloads,[cards[1].card_id]);assert.ok(calls.at(-1).endsWith('/complete'));
 });
