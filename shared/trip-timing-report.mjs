@@ -6,7 +6,7 @@ import {tripSerialNumber} from './log-book-labels.mjs';
 import {canonicalSiteName} from './site-location.mjs';
 import {equipmentGroupName} from './equipment-group.mjs';
 import {fleetDoorKey} from './scan-fleet-door.mjs';
-import {cardOnShiftClock,shiftWindowOf,shiftClockNote} from './shift-clock.mjs';
+import {cardOnShiftClock,shiftWindowOf,shiftClockNote,unloadsAfterNextLoading} from './shift-clock.mjs';
 
 // Owner's limit (11 Nov 2026): a time above 15 minutes is a delay. It was 10 at first; real cards showed a usual trip takes 10 to 20 minutes.
 export const DELAY_LIMIT=15;
@@ -36,15 +36,8 @@ const round1=n=>Math.round(n*10)/10;
 // `outside`: a time of the row fits the card's shift neither way (shared/shift-clock.mjs), so it is not judged.
 // `outOfOrder`: the row's unloading time falls after the loading time of the next trip on the card (see tripEntries).
 const timing=(counted,minutes,startsAt,outside=false,outOfOrder=false)=>{const band=outside||outOfOrder?null:bandOf(minutes);return {counted,minutes,band,rawMinutes:minutes,rawBand:band,excepted:0,start:minuteOfDay(startsAt),...(outside?{outside:true}:{}),...(outOfOrder?{outOfOrder:true}:{})};};
-// Times out of order (21 Nov 2026). A vehicle cannot load its next trip before it has unloaded this one, so when this
-// row's unloading time comes after the next row's loading time (counted forward from this row's loading), one of the
-// times was misread or wrongly written. On Gauri Pauni 20-11-26 Shift C card 157 the scan read "10:07" as 16:07, the
-// shift clock made that 04:07, and a 20-minute trip showed as 380 minutes in 30+. Such a trip is not judged.
-function unloadsAfterNextLoading(trip,next){
- if(!next?.loadingTime||!trip?.loadingTime||!trip.unloadingTime)return false;
- const taken=minutesBetween(trip.loadingTime,trip.unloadingTime),toNext=minutesBetween(trip.loadingTime,next.loadingTime);
- return taken!==null&&toNext!==null&&toNext<taken;
-}
+// A trip whose unloading comes after the next trip's loading on the same card (shared/shift-clock.mjs,
+// unloadsAfterNextLoading) has a misread or wrongly written time, so it is not judged.
 
 // Cards carry the site as it was typed or read ("Majri OB", "majri ob", "Dudhicua East OB"). All spellings of one site
 // are shown as one site, under the spelling used most among those that are not all in small letters.
