@@ -176,6 +176,7 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
  assert.equal((await call(batch+'/lock-lmv','POST',{},'bob')).status,403);
  const locked=await call(batch+'/lock-lmv','POST',{});
  assert.equal(locked.status,200,JSON.stringify(locked.data));
+ assert.deepEqual(locked.data.lmvRecords.map(row=>row.id),[savedLmv.data.id],'saved LMV cards remain visible after LMV is locked');
  assert.equal((await call(nextPath)).data.stageWait,'');
  const acceptedLmv=await call('/api/log-books/lmv','POST',nextLmv);
  assert.equal(acceptedLmv.status,201,JSON.stringify(acceptedLmv.data));

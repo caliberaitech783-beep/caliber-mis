@@ -259,7 +259,10 @@ test('Create Batch edits VLB and ELB from the selected row and respects their lo
  assert.ok(button(report(render()).rowAction(lmv),'Edit LMV-7'),'every login that may use batches gets Edit on an open stage');
  slots[14]={login:'admin',admin:true};
 
- slots[5]={...batch,stage:'closed',closed_at:'closed'};
+ slots[5]={...batch,stage:'closed',closed_at:'closed',lmvRecords:[lmv]};
+ const closedReports=nodes(render(),node=>node.type===Report);
+ assert.equal(closedReports.length,2,'closed batch shows separate VLB and LMV reports');
+ assert.equal(closedReports.find(node=>node.props.bookLabel==='LMV').props.batch.records[0],lmv);
  assert.equal(button(elbReport(render()).rowAction(equipment),'Edit ELB-1'),undefined);
  assert.equal(button(elbReport(render()).rowAction(equipment),'Delete ELB-1'),undefined);
  assert.match(renderToStaticMarkup(elbReport(render()).rowAction(equipment)),/Locked/);
