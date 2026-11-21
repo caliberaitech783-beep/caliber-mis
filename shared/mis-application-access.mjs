@@ -102,6 +102,7 @@ export function misRequestAllowed(session,req){
   if(/^\/api\/vlb-batches\/[0-9a-f-]{36}\/(?:fleet(?:\/|$)|close$)/i.test(route))return allowed('Equipment Log Book')||allowed('Vehicle Log Book');
   return allowed('Vehicle Log Book');
  }
+ if(/^\/api\/vehicle-transfers\/express(?:\/|$)/.test(route))return allowed('Vehicle Log Book')||allowed('Equipment Log Book');
  if(route.startsWith('/api/log-books/equipment'))return allowed('Equipment Log Book');
  if(route.startsWith('/api/scan')||route.startsWith('/api/bulk-card')){const kind=req.misResourceKind||req.params?.kind||req.query?.kind||req.body?.kind;return kind==='vehicle'?allowed('Trip Card Bulk Scan'):kind==='equipment'?allowed('Job Card Bulk Scan'):allowed('Trip Card Bulk Scan')||allowed('Job Card Bulk Scan');}
  if(route==='/api/tickets/resolve')return req.method==='PATCH'&&isMisAdministrator(session);

@@ -70,6 +70,18 @@ test('automatic trip verification follows assigned VLB, trip-card and sync menus
  assert.equal(misRequestAllowed(unrelated,{path:'/api/pulse-trip-verification',method:'GET'}),false);
  assert.equal(misRequestAllowed(unrelated,{path:'/api/pulse-trip-verification/12/retry',method:'POST'}),false);
 });
+test('express transfer OTP follows the assigned VLB or ELB workflow',()=>{
+ const request={path:'/api/vehicle-transfers/express',method:'POST'};
+ const verify={path:'/api/vehicle-transfers/express/12345678-1234-1234-1234-123456789abc/verify',method:'POST'};
+ for(const page of ['Vehicle Log Book','Equipment Log Book']){
+  const user={permissions:{separateMisCredentials:true,misDesktopAccess:[page]}};
+  assert.equal(misRequestAllowed(user,request),true);
+  assert.equal(misRequestAllowed(user,verify),true);
+ }
+ const unrelated={permissions:{separateMisCredentials:true,misDesktopAccess:['Dashboard']}};
+ assert.equal(misRequestAllowed(unrelated,request),false);
+ assert.equal(misRequestAllowed(unrelated,verify),false);
+});
 test('card batch permissions resolve actual database kind instead of trusting the supplied kind',async()=>{
  const pool={query:async()=>({rows:[{kind:'equipment'}]})};
  assert.equal(await authorizeMisRequest(session,{path:'/api/scan-batches/12345678-1234-1234-1234-123456789abc',method:'POST',body:{kind:'vehicle'}},pool),false);
