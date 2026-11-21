@@ -98,7 +98,13 @@ The production workflow re-checks on every run that the environment still has a 
 
 ### 1.2 A federated credential for approved production runs
 
-The live deployment identity today has one federated credential, for pushes to `main`. A job that references a GitHub environment presents a different subject, `repo:caliberaitech783-beep/caliber-mis:environment:production`, so the same identity needs one more credential. Cloud Shell:
+The live deployment identity today has one federated credential, for pushes to `main`. A job that references a GitHub environment presents a different subject, so the same identity needs one more credential. This repository uses GitHub's immutable subject format (`gh api repos/caliberaitech783-beep/caliber-mis/actions/oidc/customization/sub` shows `use_immutable_subject: true`), so every subject carries the owner and repository ids: the production subject is exactly
+
+```
+repo:caliberaitech783-beep@313449839/caliber-mis@1425843232:environment:production
+```
+
+Azure matches the subject character for character. The first release attempt on 2 November 2026 (tag `release-2026-11-03-1`) failed at **Login to Azure** with `AADSTS700213: No matching federated identity record found for presented assertion subject` because the credential had not been added; the failing run's log prints the exact subject it presented under "Federated token details", which is the value to use if the ids ever differ from the ones above. Cloud Shell:
 
 ```bash
 az ad app list --all --query "[].{displayName:displayName,appId:appId,objectId:id}" -o table
@@ -112,14 +118,14 @@ LIVE_APP_OBJECT_ID=$(az ad app show --id "$LIVE_APP_ID" --query id -o tsv)
 az ad app federated-credential list --id "$LIVE_APP_OBJECT_ID" --query "[].{name:name,subject:subject}" -o table
 ```
 
-Expected: a credential with subject `repo:caliberaitech783-beep/caliber-mis:ref:refs/heads/main`. Keep it: the `Diagnose MIS deployment` and `Recover stalled MIS App Service` workflows still sign in with it. Add the second one:
+Expected: a credential with subject `repo:caliberaitech783-beep@313449839/caliber-mis@1425843232:ref:refs/heads/main` (the same immutable format; it is what the releases from `main` signed in with until PR 50). Keep it: the `Diagnose MIS deployment` and `Recover stalled MIS App Service` workflows still sign in with it. Add the second one:
 
 ```bash
 cat > production-environment-credential.json <<'EOF'
 {
   "name": "github-production-environment",
   "issuer": "https://token.actions.githubusercontent.com",
-  "subject": "repo:caliberaitech783-beep/caliber-mis:environment:production",
+  "subject": "repo:caliberaitech783-beep@313449839/caliber-mis@1425843232:environment:production",
   "description": "Pulse-II production releases approved in the GitHub production environment",
   "audiences": ["api://AzureADTokenExchange"]
 }
@@ -127,7 +133,7 @@ EOF
 az ad app federated-credential create --id "$LIVE_APP_OBJECT_ID" --parameters production-environment-credential.json
 ```
 
-This adds a sign-in rule to the identity. It changes no role assignment, no app setting and nothing on `caliber-mis-783`.
+This adds a sign-in rule to the identity. It changes no role assignment, no app setting and nothing on `caliber-mis-783`. A release that failed at the Azure login before the credential existed can be re-run as it is, without a new tag: open the failed run under Actions → `Release Pulse-II to production - caliber-mis-783`, choose **Re-run failed jobs**, and approve the `production` deployment again when it pauses; `gh run rerun <run id> --failed` from the laptop does the same.
 
 Cost: nothing. Both items are free.
 
