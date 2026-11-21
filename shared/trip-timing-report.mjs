@@ -34,7 +34,17 @@ const round1=n=>Math.round(n*10)/10;
 // One timing of a trip row. `minutes` and `band` are what the report counts; `rawMinutes` and `rawBand` are the clock
 // times as written, and stay so when an exception time (below) takes minutes out. `start` is the minute of the day it begins.
 // `outside`: a time of the row fits the card's shift neither way (shared/shift-clock.mjs), so it is not judged.
-const timing=(counted,minutes,startsAt,outside=false)=>{const band=outside?null:bandOf(minutes);return {counted,minutes,band,rawMinutes:minutes,rawBand:band,excepted:0,start:minuteOfDay(startsAt),...(outside?{outside:true}:{})};};
+// `outOfOrder`: the row's unloading time falls after the loading time of the next trip on the card (see tripEntries).
+const timing=(counted,minutes,startsAt,outside=false,outOfOrder=false)=>{const band=outside||outOfOrder?null:bandOf(minutes);return {counted,minutes,band,rawMinutes:minutes,rawBand:band,excepted:0,start:minuteOfDay(startsAt),...(outside?{outside:true}:{}),...(outOfOrder?{outOfOrder:true}:{})};};
+// Times out of order (21 Nov 2026). A vehicle cannot load its next trip before it has unloaded this one, so when this
+// row's unloading time comes after the next row's loading time (counted forward from this row's loading), one of the
+// times was misread or wrongly written. On Gauri Pauni 20-11-26 Shift C card 157 the scan read "10:07" as 16:07, the
+// shift clock made that 04:07, and a 20-minute trip showed as 380 minutes in 30+. Such a trip is not judged.
+function unloadsAfterNextLoading(trip,next){
+ if(!next?.loadingTime||!trip?.loadingTime||!trip.unloadingTime)return false;
+ const taken=minutesBetween(trip.loadingTime,trip.unloadingTime),toNext=minutesBetween(trip.loadingTime,next.loadingTime);
+ return taken!==null&&toNext!==null&&toNext<taken;
+}
 
 // Cards carry the site as it was typed or read ("Majri OB", "majri ob", "Dudhicua East OB"). All spellings of one site
 // are shown as one site, under the spelling used most among those that are not all in small letters.
@@ -63,13 +73,14 @@ export function tripEntries(records,{assets=[]}={}){
   const timed=r.timeMode!=='without',trips=r.trips||[];
   const caliberId=text(r.caliberId),driver=text(r.employeeName),category=categoryOf(r);
   trips.forEach((t,i)=>{
-   const previous=i>0?trips[i-1]:null;
+   const previous=i>0?trips[i-1]:null,next=trips[i+1]||null,outOfOrder=timed&&unloadsAfterNextLoading(t,next);
    const taken=timed?minutesBetween(t.loadingTime,t.unloadingTime):null,gap=timed&&previous?minutesBetween(previous.unloadingTime,t.loadingTime):null;
    out.push({id:r.id+'-'+i,recordId:String(r.id),book:r.book,date:r.bookDate,site:siteName(r.location),shift:r.shiftName||'',door:text(r.door)||'Not recorded',category,caliberId,driver,
     driverKey:JSON.stringify([caliberId,driver]),sr:tripSerialNumber(t,i),machine:text(t.equipmentName)||'Not recorded',trips:t.tripCount??'',
     loadingTime:clock(t.loadingTime),unloadingTime:clock(t.unloadingTime),previousUnloadingTime:previous?clock(previous.unloadingTime):'',first:i===0,
     clockNote:shiftClockNote(t,r.shiftName,window),writtenLoading:t.writtenLoadingTime||'',writtenUnloading:t.writtenUnloadingTime||'',outsideShift:Boolean(t.outsideShift),
-    'load-unload':timing(true,taken,t.loadingTime,Boolean(t.outsideShift)),'unload-load':timing(i>0,gap,previous?.unloadingTime,Boolean(t.outsideShift||previous?.outsideShift))});
+    ...(outOfOrder?{nextLoadingTime:clock(next.loadingTime)}:{}),
+    'load-unload':timing(true,taken,t.loadingTime,Boolean(t.outsideShift),outOfOrder),'unload-load':timing(i>0,gap,previous?.unloadingTime,Boolean(t.outsideShift||previous?.outsideShift))});
   });
  }
  return out;
@@ -110,7 +121,8 @@ export function entryRemark(e){
  const notes=[];
  if(e.first)notes.push('First trip of the card: no gap before it');
  if(e.clockNote)notes.push(e.clockNote);
- if(!e['load-unload'].band&&!e['load-unload'].outside)notes.push(e['load-unload'].minutes===null?'Loading or unloading time not written: not judged':'Time is longer than a shift: check the times');
+ if(e['load-unload'].outOfOrder)notes.push(`Unloading ${e.unloadingTime} is after the next trip's loading ${e.nextLoadingTime}: a time on the card is misread or wrongly written, check the card, not judged`);
+ else if(!e['load-unload'].band&&!e['load-unload'].outside)notes.push(e['load-unload'].minutes===null?'Loading or unloading time not written: not judged':'Time is longer than a shift: check the times');
  if(!e.first&&!e['unload-load'].band)notes.push(e['unload-load'].outside?'Gap not judged: a time is outside the shift':e['unload-load'].minutes===null?'Gap not judged: a time is not written':'Gap is longer than a shift: check the times');
  for(const [mode,what] of [['load-unload','loading to unloading'],['unload-load','gap before this loading']]){const m=e[mode];if(m.excepted>0)notes.push(`Exception time: ${m.excepted} of ${m.rawMinutes} min not counted (${what})`);}
  return notes.join(' · ');
