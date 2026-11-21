@@ -6,18 +6,18 @@ import {createPulseSignInBridge} from '../server/services/pulse-signin-bridge.mj
 
 // "Remember me" on the Pulse MIS sign-in page keeps MIS signed in after the browser
 // (or the Claude app's browser pane) restarts; without it the cookies end with the browser.
-async function harness(t,remember){
+async function harness(t,remember,{login='owner',env={}}={}){
  const db=new PGlite();t.after(()=>db.close());
  await db.exec(`CREATE TABLE auth_sessions(token UUID PRIMARY KEY,login_name TEXT,permissions JSONB,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
   CREATE TABLE mis_credential_sessions(session_token UUID PRIMARY KEY REFERENCES auth_sessions(token) ON DELETE CASCADE,grant_token TEXT NOT NULL,remembered BOOLEAN NOT NULL DEFAULT false);`);
  const sessionStore={create:async s=>db.query('INSERT INTO auth_sessions(token,login_name,permissions) VALUES($1,$2,$3)',[s.token,s.login,JSON.stringify(s.permissions)]),get:async token=>(await db.query('SELECT login_name AS login,permissions FROM auth_sessions WHERE token=$1',[token])).rows[0]};
- const profile={login:'owner',permissions:{separateMisCredentials:true,misDesktopAccess:['Vehicle Log Book']}};
- const app=express();app.use(express.json());app.use(browserSessionMiddleware());
- const service=installMisLoginHandoff(app,{pool:db,sessionStore,credentialClient:{validateSession:async(_token,session)=>session},
+ const profile={login,permissions:{separateMisCredentials:true,misDesktopAccess:['Vehicle Log Book']}};
+ const app=express();app.use(express.json());app.use(browserSessionMiddleware({env}));
+ const service=installMisLoginHandoff(app,{pool:db,sessionStore,env,credentialClient:{validateSession:async(_token,session)=>session},
   fetcher:async()=>({ok:true,json:async()=>({grant:'g'.repeat(43),profile,...(remember===undefined?{}:{remember})})})});
  await service.initialize();
  // Stands in for /api/security/account, which renews the cookie each time MIS opens.
- app.get('/api/renew',(req,res)=>res.json({token:req.establishBrowserSession(String(req.headers.authorization).replace(/^Bearer /,'')),remembered:req.browserSessionRemembered}));
+ app.get('/api/renew',async(req,res)=>{const token=String(req.headers.authorization).replace(/^Bearer /,'');req.session=await sessionStore.get(token);res.json({token:req.establishBrowserSession(token),remembered:req.browserSessionRemembered});});
  app.post('/api/logout',(_req,res)=>res.status(204).end());
  const server=createServer(app);await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
  t.after(()=>new Promise(resolve=>{server.close(resolve);server.closeAllConnections();}));
@@ -38,9 +38,10 @@ async function harness(t,remember){
 }
 const lifetime=(set,prefix)=>set.find(line=>line.startsWith(prefix+'_'))?.match(/Max-Age=(\d+)/i)?.[1];
 
-test('Remember me keeps MIS cookies for 30 days and renews them on each visit',async t=>{
+test('Remember me keeps MIS cookies for 40 days and renews them on each visit',async t=>{
  const {db,jar,call,signIn}=await harness(t,true);
  const session=await signIn();assert.equal(session.response.status,200);assert.match(session.body.token,/^browser-session\.[A-Za-z0-9_-]{16}$/);
+ assert.equal(REMEMBER_DEVICE_MS,40*24*60*60*1000);
  const days=String(REMEMBER_DEVICE_MS/1000);
  assert.equal(lifetime(session.set,SESSION_COOKIE),days);assert.equal(lifetime(session.set,CSRF_COOKIE),days);assert.equal(lifetime(session.set,REMEMBER_COOKIE),days);
  assert.ok(session.set.find(line=>line.startsWith(SESSION_COOKIE+'_')).includes('HttpOnly'));
@@ -67,12 +68,47 @@ test('without Remember me (shared site PCs) the cookies still end when the brows
  }
 });
 
-test('a remembered sign-in keeps its Pulse link for 30 days, an ordinary one for 7',async t=>{
+test('the owner login is remembered for 40 days even without the Remember me tick',async t=>{
+ for(const remember of [undefined,false]){
+  const {db,call,signIn}=await harness(t,remember,{login:'MohitChadda'});
+  const session=await signIn();assert.equal(session.response.status,200);
+  const days=String(REMEMBER_DEVICE_MS/1000);
+  assert.equal(lifetime(session.set,SESSION_COOKIE),days);assert.equal(lifetime(session.set,REMEMBER_COOKIE),days);
+  assert.equal(session.body.rememberDevice,true);
+  assert.equal((await db.query('SELECT remembered FROM mis_credential_sessions')).rows[0].remembered,true,'the Pulse link is kept 40 days too');
+  const renewed=await call('/api/renew',{headers:{Authorization:'Bearer '+session.body.token}});
+  assert.equal(renewed.body.remembered,true);assert.equal(lifetime(renewed.set,SESSION_COOKIE),days);
+ }
+});
+
+test('an earlier ordinary owner sign-in becomes remembered the next time MIS opens',async t=>{
+ // Signed in before the list existed: an empty list behaves like the old rule.
+ const before=await harness(t,false,{login:'mohitchadda',env:{ALWAYS_REMEMBER_LOGINS:''}});
+ const session=await before.signIn();assert.equal(lifetime(session.set,SESSION_COOKIE),undefined);
+ // Same cookies, now read by a server that has the owner on the list (the default).
+ const app=express();app.use(browserSessionMiddleware({env:{}}));
+ app.get('/api/renew',(req,res)=>{req.session={login:'mohitchadda'};res.json({token:req.establishBrowserSession(String(req.headers.authorization).replace(/^Bearer /,'')),remembered:req.browserSessionRemembered});});
+ const server=createServer(app);await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+ t.after(()=>new Promise(resolve=>{server.close(resolve);server.closeAllConnections();}));
+ const response=await fetch('http://127.0.0.1:'+server.address().port+'/api/renew',{headers:{Authorization:'Bearer '+session.body.token,Cookie:[...before.jar].map(([k,v])=>k+'='+v).join('; ')}});
+ const body=await response.json(),set=response.headers.getSetCookie();
+ assert.equal(body.remembered,true);assert.equal(body.token,session.body.token,'same browser context');
+ assert.equal(lifetime(set,SESSION_COOKIE),String(REMEMBER_DEVICE_MS/1000));assert.equal(lifetime(set,REMEMBER_COOKIE),String(REMEMBER_DEVICE_MS/1000));
+});
+
+test('other logins on a shared PC are not remembered unless ticked',async t=>{
+ const {call,signIn}=await harness(t,false,{login:'site-operator'});
+ const session=await signIn();assert.equal(lifetime(session.set,SESSION_COOKIE),undefined);
+ const renewed=await call('/api/renew',{headers:{Authorization:'Bearer '+session.body.token}});
+ assert.equal(renewed.body.remembered,false);assert.equal(lifetime(renewed.set,SESSION_COOKIE),undefined);
+});
+
+test('a remembered sign-in keeps its Pulse link for 40 days, an ordinary one for 7',async t=>{
  const db=new PGlite();t.after(()=>db.close());
  await db.exec(`CREATE TABLE auth_sessions(token TEXT PRIMARY KEY,login_name TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),permissions JSONB);
   CREATE TABLE mis_credential_sessions(session_token TEXT,grant_token TEXT,remembered BOOLEAN NOT NULL DEFAULT false);`);
  const access=JSON.stringify({misDesktopAccess:['Vehicle Log Book']});
- await db.query("INSERT INTO auth_sessions VALUES('plain','plain-user',NOW()-INTERVAL '10 days',$1),('kept','kept-user',NOW()-INTERVAL '20 days',$1),('old','old-user',NOW()-INTERVAL '31 days',$1)",[access]);
+ await db.query("INSERT INTO auth_sessions VALUES('plain','plain-user',NOW()-INTERVAL '10 days',$1),('kept','kept-user',NOW()-INTERVAL '20 days',$1),('old','old-user',NOW()-INTERVAL '41 days',$1)",[access]);
  await db.query("INSERT INTO mis_credential_sessions VALUES('plain','plain-grant',false),('kept','kept-grant',true),('old','old-grant',true)");
  const used=[];const bridge=createPulseSignInBridge({pool:db,fetchImpl:async(_url,options)=>{used.push(JSON.parse(options.body).grant);return Response.json([]);}});
  await bridge.request('requests',{},'kept-user');assert.deepEqual(used,['kept-grant']);

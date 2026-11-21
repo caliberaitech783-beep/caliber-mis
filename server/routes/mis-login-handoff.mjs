@@ -1,4 +1,5 @@
 import {createHash,randomBytes,randomUUID} from 'node:crypto';
+import {alwaysRemembered} from '../rules/remember-device.mjs';
 const digest=value=>createHash('sha256').update(String(value)).digest('hex');
 const proof=value=>createHash('sha256').update(String(value)).digest('base64url');
 const valid=value=>typeof value==='string'&&/^[A-Za-z0-9_-]{43}$/.test(value);
@@ -20,7 +21,7 @@ function signInFailure(req,res,status,error){
 </main></body>
 </html>`);
 }
-export function installMisLoginHandoff(app,{pool,sessionStore,credentialClient,fetcher=fetch}){
+export function installMisLoginHandoff(app,{pool,sessionStore,credentialClient,fetcher=fetch,env=process.env}){
  const safe=(handler,onFailure=(req,res,status,error)=>res.status(status).json({error}))=>async(req,res)=>{
   req.audit=false;res.set({'Cache-Control':'no-store','Referrer-Policy':'no-referrer'});
   try{await handler(req,res);}catch{onFailure(req,res,503,'MIS sign-in is temporarily unavailable. Start again from Pulse.');}
@@ -47,12 +48,14 @@ export function installMisLoginHandoff(app,{pool,sessionStore,credentialClient,f
   const result=await response.json();
   if(!response.ok||!valid(result.grant)||!result.profile?.permissions?.separateMisCredentials)return signInFailure(req,res,401,'Pulse could not complete MIS sign-in. Please start again.');
   const token=randomUUID();await sessionStore.create({token,...result.profile});
-  if(result.remember===true)await pool.query('INSERT INTO mis_credential_sessions(session_token,grant_token,remembered) VALUES($1,$2,true)',[token,result.grant]);
+  // The owner (ALWAYS_REMEMBER_LOGINS) is remembered even when the box was not ticked.
+  const remember=result.remember===true||alwaysRemembered(result.profile?.login,env);
+  if(remember)await pool.query('INSERT INTO mis_credential_sessions(session_token,grant_token,remembered) VALUES($1,$2,true)',[token,result.grant]);
   else await pool.query('INSERT INTO mis_credential_sessions(session_token,grant_token) VALUES($1,$2)',[token,result.grant]);
   res.cookie(readyCookie+'_'+digest(state),token,{...options,maxAge:60000});
   // Pulse reports whether "Remember me" was ticked; the session read below turns it into
   // cookies that survive a browser restart (see browser-session-security.mjs).
-  if(result.remember===true)res.cookie(rememberCookie+'_'+digest(state),'1',{...options,maxAge:60000});
+  if(remember)res.cookie(rememberCookie+'_'+digest(state),'1',{...options,maxAge:60000});
   res.redirect(303,'/?misCredentialReady='+state);
  },signInFailure));
  app.get('/api/mis-credentials/session',safe(async(req,res)=>{

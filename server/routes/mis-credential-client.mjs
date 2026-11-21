@@ -47,7 +47,7 @@ export function installMisCredentialClient(app,{pool,sessionStore,fetcher=fetch}
   },
   async initialize(){
    await pool.query('CREATE TABLE IF NOT EXISTS mis_credential_sessions(session_token UUID PRIMARY KEY REFERENCES auth_sessions(token) ON DELETE CASCADE,grant_token TEXT NOT NULL)');
-   // "Remember me" sign-ins hold a 30-day Pulse grant instead of 7 days.
+   // "Remember me" sign-ins hold a 40-day Pulse grant instead of 7 days.
    await pool.query('ALTER TABLE mis_credential_sessions ADD COLUMN IF NOT EXISTS remembered BOOLEAN NOT NULL DEFAULT false');
   }
  };
