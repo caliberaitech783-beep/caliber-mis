@@ -244,3 +244,23 @@ test('over All sites a driver who worked at two sites is one line per site, with
  assert.match(screen,/column\('shift','Shift'\),\.\.\.\(manySites\?\[column\('site','Site'\)\]:\[\]\),column\('book','Book no\.'\)/);
  assert.match(screen,/categoryEntries\.filter\(e=>groupKey\(item\.group,e,manySites\)===item\.key\)/);
 });
+
+test('a trip whose unloading comes after the next trip\'s loading is a misread time, not a 30+ delay',()=>{
+ // Gauri Pauni 20-11-26 Shift C card 157 as first saved: the scan read unloading "10:07" and "10:39" as 16:07 and 16:39,
+ // and the Shift C clock made them 04:07 and 04:39, so trips of 20 and 18 minutes showed as 380 and 378 minutes.
+ const card=book(51,'Site A','SAMPLE DRIVER 51','V9051',[trip('V151','21:47','04:07'),trip('V20','22:21','04:39'),trip('T145','22:56','23:17'),trip('V151','23:34','23:56')],
+  {shiftName:'Shift C',cardShift:'III',masterShiftStart:'21:00:00'});
+ const rows=tripEntries(normalise([card]));
+ assert.deepEqual(rows.map(e=>[e['load-unload'].minutes,e['load-unload'].band,Boolean(e['load-unload'].outOfOrder)]),
+  [[380,null,true],[378,null,true],[21,'b2',false],[22,'b2',false]]);
+ assert.match(entryRemark(rows[0]),/Unloading 04:07 is after the next trip's loading 22:21: .*check the card, not judged/);
+ const line=summarise(rows,'load-unload','site').total;
+ assert.deepEqual([line.timed,line.b3,line.notJudged,line.longest],[2,0,2,22],'counted as not judged, never as 30+');
+ assert.equal(delayedEntries(rows,'load-unload','b3').length,0);
+ // A long trip with no trip after it, or one that ends before the next loading, is still judged.
+ const fine=tripEntries(normalise([book(52,'Site A','SAMPLE DRIVER 52','V9052',[trip('EX1','06:00','06:50'),trip('EX1','06:55','07:10'),trip('EX1','07:20','08:05')])]));
+ assert.deepEqual(fine.map(e=>e['load-unload'].band),['b3','ok','b3']);
+ // The same loading time on the next row, and an unloading-only row below, do not mark it.
+ const edge=tripEntries(normalise([book(53,'Site A','SAMPLE DRIVER 53','V9053',[trip('EX1','06:00','06:40'),trip('EX1','06:40','06:55'),trip('EX1','','07:30')])]));
+ assert.deepEqual(edge.map(e=>Boolean(e['load-unload'].outOfOrder)),[false,false,false]);
+});

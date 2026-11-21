@@ -71,6 +71,26 @@ export function cardOnShiftClock(card){
  return changed?{...card,trips,shiftWindow:window.label}:card;
 }
 
+// Times out of order (owner, 21 Nov 2026). A vehicle cannot load its next trip before it has unloaded this one, so when a
+// row's unloading time comes after the next row's loading time (both counted forward from this row's loading time), one
+// of the times was misread or wrongly written. Gauri Pauni 20-11-26 Shift C card 157: the scan read unloading "10:07" as
+// 16:07, the Shift C clock made that 04:07, and a 20-minute trip showed as 380 minutes in the Trip Timing 30+ list.
+const clockMinute=value=>{const m=String(value??'').trim().match(/^(\d{1,2})\s*[:.]\s*(\d{2})/);return m&&Number(m[1])<24&&Number(m[2])<60?Number(m[1])*60+Number(m[2]):null;};
+const forward=(from,to)=>{const a=clockMinute(from),b=clockMinute(to);return a===null||b===null?null:(b-a+DAY)%DAY;};
+export function unloadsAfterNextLoading(trip,next){
+ if(!trip||!next||!trip.loadingTime||!trip.unloadingTime||!next.loadingTime)return false;
+ const taken=forward(trip.loadingTime,trip.unloadingTime),toNext=forward(trip.loadingTime,next.loadingTime);
+ return taken!==null&&toNext!==null&&toNext<taken;
+}
+// The rows of a card (index i) whose unloading comes after row i + 1's loading, judged on the card's shift clock so that
+// a 12-hour "10:21" and a 24-hour "22:07" on a Shift C card are compared as the same evening.
+export function tripTimesOutOfOrder(card){
+ if(!card||card.timeMode==='without'||!Array.isArray(card.trips))return [];
+ const trips=(cardOnShiftClock(card)||card).trips||[],out=[];
+ for(let i=0;i<trips.length-1;i++)if(unloadsAfterNextLoading(trips[i],trips[i+1]))out.push(i);
+ return out;
+}
+
 // Remark for one trip row: what was read differently, or that a time is outside the shift.
 export function shiftClockNote(trip,shiftName,windowLabel){
  if(!trip)return '';

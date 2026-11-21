@@ -29,3 +29,22 @@ test('handover cards allow one blank time but require the recorded time to be va
  const issues=scanFieldIssues({...valid,trips:[{...valid.trips[0],loadingTime:'',unloadingTime:''}]});
  assert.ok(issues['trips.0.loadingTime']);assert.ok(issues['trips.0.unloadingTime']);
 });
+
+test('a trip whose unloading comes after the next trip\'s loading is held for review (owner, 21 Nov 2026)',()=>{
+ // Gauri Pauni 20-11-26 Shift C card 157 as the scan read it: unloading 10:07 and 10:39 read as 16:07 and 16:39.
+ const trips=[['V151','09:47','16:07'],['V20','10:21','16:39'],['T145','10:56','11:17'],['V151','11:34','11:56']].map(([equipmentName,loadingTime,unloadingTime])=>({equipmentName,loadingTime,unloadingTime,tripCount:1}));
+ const card={...valid,cardShift:'III',shiftName:'Shift C',trips};
+ const issues=scanFieldIssues(card,'vehicle');
+ assert.match(issues['trips.0.unloadingTime'],/^Unloading 16:07 comes after the next trip's loading 10:21\. .*check both times against the card\.$/);
+ assert.match(issues['trips.1.unloadingTime'],/16:39 comes after the next trip's loading 10:56/);
+ assert.deepEqual(Object.keys(issues).filter(k=>k.startsWith('trips.')),['trips.0.unloadingTime','trips.1.unloadingTime']);
+ // The same card read right: 12-hour times on a Shift C card, and a mix of 12- and 24-hour times, raise nothing.
+ const right=trips.map((t,i)=>({...t,unloadingTime:['10:07','10:39','11:17','11:56'][i]}));
+ assert.deepEqual(Object.keys(scanFieldIssues({...card,trips:right},'vehicle')).filter(k=>k.startsWith('trips.')),[]);
+ const mixed=right.map((t,i)=>i===0?{...t,unloadingTime:'22:07'}:t);
+ assert.deepEqual(Object.keys(scanFieldIssues({...card,trips:mixed},'vehicle')).filter(k=>k.startsWith('trips.')),[]);
+ // Across midnight on Shift C, and a card saved without times, raise nothing.
+ const night=[['V151','11:50','12:10'],['V151','12:20','12:40'],['V151','01:05','01:25']].map(([equipmentName,loadingTime,unloadingTime])=>({equipmentName,loadingTime,unloadingTime,tripCount:1}));
+ assert.deepEqual(Object.keys(scanFieldIssues({...card,trips:night},'vehicle')).filter(k=>k.startsWith('trips.')),[]);
+ assert.deepEqual(Object.keys(scanFieldIssues({...card,timeMode:'without'},'vehicle')).filter(k=>k.startsWith('trips.')),[]);
+});
