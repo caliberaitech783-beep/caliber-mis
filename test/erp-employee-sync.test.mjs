@@ -102,7 +102,7 @@ test('Employee Master is in Sync all masters and the ERP timer copies it after t
  }finally{await db.close();}
 });
 
-test('Employee Master page refuses edits to ERP fields but saves Pulse-II fields',async()=>{
+test('Employee Master saves edits to ERP-sourced and Pulse-II fields',async()=>{
  const {db,pool}=await fixture();let server;
  try{
   const id=await add(db,{...erp('CMPL8','8','EIGHT'),erpSyncedAt:'2026-11-19T00:00:00Z',employeeSyncSource:'ERP',employeeMasterRevision:1});
@@ -110,9 +110,9 @@ test('Employee Master page refuses edits to ERP fields but saves Pulse-II fields
   server=app.listen(0);const url=`http://127.0.0.1:${server.address().port}/api/employee-master/${id}`;
   const saved=(await get(db,id)).record_data;
   const put=body=>fetch(url,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-  const refused=await put({...saved,name:'CHANGED'});
-  assert.equal(refused.status,409);assert.match((await refused.json()).error,/Employee Name comes from the ERP/);
-  const ok=await put({...saved,status:'On leave',resignationStatus:'Pending'});
-  assert.equal(ok.status,200);assert.equal((await get(db,id)).record_data.status,'On leave');
+  const ok=await put({...saved,name:'CHANGED',status:'On leave',resignationStatus:'Pending'});
+  assert.equal(ok.status,200);
+  const changed=(await get(db,id)).record_data;
+  assert.equal(changed.name,'CHANGED');assert.equal(changed.status,'On leave');
  }finally{server?.close();await db.close();}
 });
