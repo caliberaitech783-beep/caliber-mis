@@ -13,6 +13,7 @@ import {employeeReferenceKeys,employeeReferenceVariants} from './employee-identi
 import {employeeAtLocation,employeeOnHrList} from './log-book-access.mjs';
 import {isDummyEmployeeId} from './dummy-employee-ids.mjs';
 import {displaySiteSelection} from './region-scope.mjs';
+import {employeeSiteOn} from './employee-site-moves.mjs';
 import {canonicalSiteName} from './site-location.mjs';
 import {aFormLinks,aFormNumbersAt,cardAFormKeys} from './a-form-master.mjs';
 
@@ -60,7 +61,8 @@ export const employeeLeft=record=>record?.hrLeft===true?'hr':LEFT_STATUS.test(te
 
 const employeeIdOf=record=>text(record?.caliberId||record?.employeeId).toUpperCase();
 const nameOf=record=>text(record?.name||record?.employee);
-const siteOf=record=>displaySiteSelection(record?.site||record?.location||record?.currentLocation).join(' / ');
+// The worker's site on the card's date: a worker moved by an approved move keeps the old site for earlier cards.
+const siteOf=(record,date)=>displaySiteSelection(employeeSiteOn(record,date)).join(' / ');
 
 // Master rows are copied for every caller, but each record object stays the same until the lists are read
 // again, so what is worked out from a record is kept with it.
@@ -85,8 +87,8 @@ function ownersOf(index,value){
  return [...found];
 }
 // One employee at the site: Employee Master first, the other lists only when it has nobody.
-function atSite(owners,location){
- const here=owners.filter(row=>employeeAtLocation(row.record_data,location));
+function atSite(owners,location,date){
+ const here=owners.filter(row=>employeeAtLocation(row.record_data,location,date));
  const imported=here.filter(row=>row.master_name==='Employee master');
  const pool=imported.length?imported:here;
  return pool.length===1?pool[0]:pool.length?'several':null;
@@ -106,10 +108,10 @@ export function lookAlikeNumbers(number){
  return [...found].filter(value=>/^[1-9]\d*$/.test(value));
 }
 // The people at this site whose number is one digit away: drivers and operators first, then by number.
-function lookAlikes(index,number,location){
+function lookAlikes(index,number,location,date){
  const people=new Map();
  for(const candidate of lookAlikeNumbers(number)){
-  const row=atSite(ownersOf(index,candidate),location);
+  const row=atSite(ownersOf(index,candidate),location,date);
   if(!row||row==='several'||employeeLeft(row.record_data)||isDummyEmployeeId(employeeIdOf(row.record_data)))continue;
   people.set(candidate,{id:candidate,name:nameOf(row.record_data),drives:drivesOrOperates(row.record_data)});
  }
@@ -117,7 +119,7 @@ function lookAlikes(index,number,location){
  return {lookAlikes:sorted.slice(0,LOOK_ALIKE_LIMIT).map(({id,name})=>({id,name})),...(sorted.length>LOOK_ALIKE_LIMIT?{more:sorted.length-LOOK_ALIKE_LIMIT}:{})};
 }
 // A person with no designation is described by the department he was judged on.
-const about=row=>({name:nameOf(row.record_data),designation:employeeDesignation(row.record_data)||(employeeDepartment(row.record_data)?employeeDepartment(row.record_data)+' department':''),site:siteOf(row.record_data)});
+const about=(row,date)=>({name:nameOf(row.record_data),designation:employeeDesignation(row.record_data)||(employeeDepartment(row.record_data)?employeeDepartment(row.record_data)+' department':''),site:siteOf(row.record_data,date)});
 
 // The FORM A box of a trip card (owner, 23 Nov 2026). A Form Master links an A Form no., a CMLL id and a site
 // (shared/a-form-master.mjs), so the box is a second proof of who drove, written by the driver in another box of
@@ -125,12 +127,12 @@ const about=row=>({name:nameOf(row.record_data),designation:employeeDesignation(
 // written against two people of the site, or against someone who is not at this site, names nobody.
 // Measured on live cards before this was built: the box is filled on 76% to 100% of saved trip cards and agrees
 // with HR's A Form no. of the saved driver on 97% of 461 cards.
-function namedByAForm(masters,index,aForm,location){
+function namedByAForm(masters,index,aForm,location,date){
  const keys=cardAFormKeys(aForm);
  if(!keys.length)return null;
  const numbers=aFormNumbersAt(aFormLinks(masters),location,keys);
  if(numbers.length!==1)return null;
- const row=atSite(ownersOf(index,numbers[0]),location);
+ const row=atSite(ownersOf(index,numbers[0]),location,date);
  if(!row||row==='several')return null;
  const record=row.record_data;
  if(isDummyEmployeeId(employeeIdOf(record))||employeeLeft(record)||needsDriverConfirm(record))return null;
@@ -151,9 +153,11 @@ function namedByAForm(masters,index,aForm,location){
 //    away: the card waits ('a-form-differs'). This is the misread that lands on a colleague (4400 for 4401).
 //  - A box that merely differs stops no card: it is misread about as often as the Caliber ID itself.
 //  - A held card says whom the box names, so the person checking has it in front of him.
-export function judgeCaliberId(masters,{read='',readings=null,location='',aForm=''}={}){
+// date: the card's book date, so that a worker moved to another site by an approved move is judged by the site of
+// that date (shared/employee-site-moves.mjs).
+export function judgeCaliberId(masters,{read='',readings=null,location='',aForm='',date=''}={}){
  if(!canonicalSiteName(location))return {employee:null,check:null};
- const index=employeeIndex(masters),named=namedByAForm(masters,index,aForm,location);
+ const index=employeeIndex(masters),named=namedByAForm(masters,index,aForm,location,date);
  const says=()=>named?{aForm:{no:named.no,id:named.number,name:named.name}}:{};
  const held=(reason,details={})=>({employee:null,check:{version:1,reason,at:text(location),...details,...says()}});
  const taken=readAs=>({employee:named.row,check:null,aForm:{read:readAs,no:named.no,id:named.number}});
@@ -161,26 +165,26 @@ export function judgeCaliberId(masters,{read='',readings=null,location='',aForm=
  if(first&&second&&first!==second)return named&&(named.number===first||named.number===second)?taken(first+' and '+second):held('readings-differ',{read:first,second});
  const code=text(read||readings?.first||readings?.second).toUpperCase();
  if(!code)return held('unreadable');
- const number=caliberNumber(code),shown=number||code.slice(0,40),owners=ownersOf(index,code),chosen=atSite(owners,location);
+ const number=caliberNumber(code),shown=number||code.slice(0,40),owners=ownersOf(index,code),chosen=atSite(owners,location,date);
  if(chosen==='several')return held('several',{read:shown});
- const alike=()=>number?lookAlikes(index,code,location):{};
+ const alike=()=>number?lookAlikes(index,code,location,date):{};
  // The box names a driver here one digit away from the number read.
  const oneDigitAway=Boolean(named&&number&&named.number!==number&&lookAlikeNumbers(number).includes(named.number));
  const stop=(reason,details)=>oneDigitAway?taken(shown):held(reason,details);
  if(chosen){
   const record=chosen.record_data;
   if(isDummyEmployeeId(employeeIdOf(record)))return {employee:chosen,check:null};
-  if(employeeLeft(record))return stop('left',{read:shown,...about(chosen),left:employeeLeft(record),...alike()});
-  if(needsDriverConfirm(record))return stop('not-driver',{read:shown,...about(chosen),...alike()});
-  if(oneDigitAway)return held('a-form-differs',{read:shown,...about(chosen)});
+  if(employeeLeft(record))return stop('left',{read:shown,...about(chosen,date),left:employeeLeft(record),...alike()});
+  if(needsDriverConfirm(record))return stop('not-driver',{read:shown,...about(chosen,date),...alike()});
+  if(oneDigitAway)return held('a-form-differs',{read:shown,...about(chosen,date)});
   return {employee:chosen,check:null};
  }
  if(!owners.length)return stop('unknown',{read:shown,...alike()});
  const prefer=rows=>rows.find(row=>row.master_name==='Employee master')||rows[0];
- const elsewhere=owners.filter(row=>employeeOnHrList(row.record_data)&&!employeeLeft(row.record_data)&&siteOf(row.record_data));
- if(elsewhere.length)return stop('other-site',{read:shown,...about(prefer(elsewhere)),...alike()});
+ const elsewhere=owners.filter(row=>employeeOnHrList(row.record_data)&&!employeeLeft(row.record_data)&&siteOf(row.record_data,date));
+ if(elsewhere.length)return stop('other-site',{read:shown,...about(prefer(elsewhere),date),...alike()});
  const owner=prefer(owners),left=employeeLeft(owner.record_data);
- return stop(left?'left':'not-listed',{read:shown,...about(owner),...(left?{left}:{}),...alike()});
+ return stop(left?'left':'not-listed',{read:shown,...about(owner,date),...(left?{left}:{}),...alike()});
 }
 
 const person=check=>[check.name,check.designation].filter(Boolean).join(', ')||'an employee';
@@ -202,7 +206,7 @@ export function caliberCheckMessage(check,kind='vehicle'){
   case 'unreadable':return 'Caliber ID could not be read. Type the number from the card.'+box;
   case 'readings-differ':return 'The number was read as '+check.read+' and '+check.second+'. Type the number from the card.'+box;
   case 'unknown':return read+'No employee has this number. Check the card.'+box+lookAlikeLine(check);
-  case 'other-site':return read+'This is '+[person(check),check.site].filter(Boolean).join(', ')+'. The number may be misread.'+box+lookAlikeLine(check);
+  case 'other-site':return read+'This is '+[person(check),check.site].filter(Boolean).join(', ')+'. The number may be misread.'+box+lookAlikeLine(check)+' If the number is right, press Fetch to move this person here with OTP.';
   case 'not-listed':return read+'This is '+person(check)+", who is not in HR's list for any site. Check the number on the card."+box+lookAlikeLine(check);
   case 'left':return read+'This is '+person(check)+'. '+(check.left==='hr'?"HR's list says this person has left.":'Employee Master says this person has resigned.')+' Check the number on the card.'+box+lookAlikeLine(check);
   case 'not-driver':return read+'This is '+person(check)+'. Confirm '+(check.name||'this person')+' '+did+', or correct the number.'+box+lookAlikeLine(check);
@@ -212,8 +216,8 @@ export function caliberCheckMessage(check,kind='vehicle'){
  }
 }
 // What the Fetch box says about a number a person typed.
-export function fetchRefusal(record,location){
- const who=[nameOf(record),employeeDesignation(record)].filter(Boolean).join(', ')||'an employee',site=siteOf(record);
+export function fetchRefusal(record,location,date){
+ const who=[nameOf(record),employeeDesignation(record)].filter(Boolean).join(', ')||'an employee',site=siteOf(record,date);
  if(!employeeOnHrList(record))return 'This is '+who+(record?.hrLeft===true?". HR's list says this person has left.":", who is not in HR's list for any site.")+' Check the number on the card.';
  return 'This is '+who+(site?', '+site:'')+(text(location)?'. This number is not at '+text(location)+'.':'.')+' Check the number on the card.';
 }

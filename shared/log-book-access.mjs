@@ -1,6 +1,7 @@
 import {isMisAdministrator} from './mis-admin-access.mjs';
 import {canonicalSiteName} from './site-location.mjs';
 import {managerReportScope,userSiteScope,userSiteSelection,reportScopeIncludesSite,displaySiteSelection} from './region-scope.mjs';
+import {employeeSiteOn} from './employee-site-moves.mjs';
 
 export function logBookSiteScope(session={},user={}) {
   const profile={...(session.permissions||{}),...session,...user};
@@ -21,7 +22,10 @@ export const scanDeletionAllowed=(scope,batch)=>Boolean(batch?.expected_context?
 // never matched on a card and never offered in a list. A line HR's import has not touched (the staff directory,
 // a dummy ID, an employee added by hand) carries neither mark and is judged by its site alone.
 export const employeeOnHrList=employee=>employee?.hrListed!==false&&employee?.hrLeft!==true;
-export const employeeAtLocation=(employee,location)=>Boolean(employeeOnHrList(employee)&&canonicalSiteName(location)&&displaySiteSelection(employee.site||employee.location||employee.currentLocation).some(site=>canonicalSiteName(site)===canonicalSiteName(location)));
+// date (a card's book date, YYYY-MM-DD): a worker moved to another site by an approved move belongs to the old
+// site for cards dated before the move and to the new site from its date (shared/employee-site-moves.mjs).
+// Without a date the site held today is used.
+export const employeeAtLocation=(employee,location,date)=>Boolean(employeeOnHrList(employee)&&canonicalSiteName(location)&&displaySiteSelection(employeeSiteOn(employee,date)).some(site=>canonicalSiteName(site)===canonicalSiteName(location)));
 export function requireLogBookSite(scope,site){
   if(!siteAllowed(scope,site))throw Object.assign(new Error('This location is not assigned to your login.'),{status:403});
 }

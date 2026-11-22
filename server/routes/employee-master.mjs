@@ -2,8 +2,20 @@ import {employeeIdentity,employeeReferenceVariants} from '../../shared/employee-
 import {EMPLOYEE_FIELDS} from '../../shared/employee-master-fields.mjs';
 import {displaySiteName} from '../../shared/region-scope.mjs';
 import {canonicalSiteName} from '../../shared/site-location.mjs';
+import {currentSite,sameSite,changesSite,SITE_CHANGE_REFUSAL} from '../../shared/employee-site-moves.mjs';
 
 const employeeSiteKey=site=>canonicalSiteName(site)||site.trim().toLowerCase();
+const refuseSiteChange=()=>{throw Object.assign(new Error(SITE_CHANGE_REFUSAL),{status:409})};
+// A worker's site is not changed by an edit (owner, 22 Nov 2026; shared/employee-site-moves.mjs). An edit that
+// asks for another Current Location is refused; every other edit keeps the site exactly as it is held, whatever
+// the form sends back for it. A worker with no site yet can be given one.
+export function keepEmployeeSite(prior,data){
+ if(!currentSite(prior))return data;
+ if(String(data.currentLocation??'').trim()!==String(prior.currentLocation??'').trim()&&!sameSite(data.currentLocation,currentSite(prior)))refuseSiteChange();
+ data.currentLocation=prior.currentLocation??'';
+ data.site=prior.site??currentSite(prior);
+ return data;
+}
 
 export function normalizeEmployee(input){if(!input||typeof input!=='object'||Array.isArray(input))throw Object.assign(new Error('Invalid employee record.'),{status:400});const data=employeeIdentity(Object.fromEntries(EMPLOYEE_FIELDS.map(([k])=>[k,String(input[k]??(k==='caliberId'?input.employeeId:'')??'').trim().slice(0,4000)])));data.caliberId=data.caliberId.toUpperCase();if(!data.caliberId||!data.name)throw Object.assign(new Error('Employee ID and Employee Name are required.'),{status:400});data.employeeId=data.caliberId;data.site=data.currentLocation||data.locationName;return data;}
 export async function importEmployees(pool,records){const normalized=records.map(normalizeEmployee),ids=new Set();for(const r of normalized){if(ids.has(r.caliberId))throw new Error('Duplicate Employee ID: '+r.caliberId);ids.add(r.caliberId)}const c=await pool.connect();let added=0,updated=0;try{await c.query('BEGIN');await c.query('SELECT pg_advisory_xact_lock(709224109)');const existing=(await c.query("SELECT id,master_name,record_data FROM master_records WHERE master_name IN('Employee master','ERP Employee master')")).rows;const byId=new Map(existing.map(r=>[String(r.record_data.caliberId||r.record_data.employeeId||'').toUpperCase(),r]));for(const d of normalized){const prev=byId.get(d.caliberId);
@@ -41,6 +53,9 @@ export function registerEmployeeMaster(app,{pool,requireSession,requireAdministr
    try{
      await client.query('BEGIN');
      await client.query('SELECT pg_advisory_xact_lock(709224109)');
+     // This screen places a worker who has no site yet. It never moves a worker from one site to another.
+     const prior=(await client.query("SELECT record_data FROM master_records WHERE id=$1 AND master_name='Employee master' FOR UPDATE",[req.params.id])).rows[0]?.record_data;
+     if(prior&&changesSite(prior,{site:location}))refuseSiteChange();
      ({rows:[row]}=await client.query(`
        UPDATE master_records SET record_data=record_data||jsonb_build_object(
          'currentLocation',$2::text,'site',COALESCE(NULLIF($2::text,''),record_data->>'locationName',''),
@@ -97,7 +112,7 @@ export function registerEmployeeMaster(app,{pool,requireSession,requireAdministr
      total:Number(n),page,sites
    });
  }));
- const save=async(req,res)=>{const data=normalizeEmployee(req.body);const c=await pool.connect();try{await c.query('BEGIN');await c.query('SELECT pg_advisory_xact_lock(709224109)');const duplicate=await c.query("SELECT id FROM master_records WHERE master_name='Employee master' AND upper(record_data->>'caliberId')=$1 AND id<>COALESCE($2::bigint,0)",[data.caliberId,req.params.id||null]);if(duplicate.rowCount)throw Object.assign(new Error('Employee ID already exists.'),{status:409});let row;if(req.params.id){const prior=(await c.query("SELECT record_data FROM master_records WHERE id=$1 AND master_name='Employee master' FOR UPDATE",[req.params.id])).rows[0]?.record_data;if(!prior||prior.employeeMasterRevision!==req.body.employeeMasterRevision)throw Object.assign(new Error('Employee changed. Reload before editing.'),{status:409});row=(await c.query('UPDATE master_records SET record_data=$1::jsonb WHERE id=$2 RETURNING id,record_data',[JSON.stringify({...prior,...data,employeeMasterRevision:prior.employeeMasterRevision+1,updatedAt:new Date().toISOString()}),req.params.id])).rows[0]}else row=(await c.query("INSERT INTO master_records(master_name,record_data) VALUES('Employee master',$1::jsonb) RETURNING id,record_data",[JSON.stringify({...data,source:'Local entry',employeeMasterRevision:1})])).rows[0];await c.query('COMMIT');res.json({...employeeIdentity(row.record_data),id:String(row.id)})}catch(e){await c.query('ROLLBACK');throw e}finally{c.release()}};
+ const save=async(req,res)=>{const data=normalizeEmployee(req.body);const c=await pool.connect();try{await c.query('BEGIN');await c.query('SELECT pg_advisory_xact_lock(709224109)');const duplicate=await c.query("SELECT id FROM master_records WHERE master_name='Employee master' AND upper(record_data->>'caliberId')=$1 AND id<>COALESCE($2::bigint,0)",[data.caliberId,req.params.id||null]);if(duplicate.rowCount)throw Object.assign(new Error('Employee ID already exists.'),{status:409});let row;if(req.params.id){const prior=(await c.query("SELECT record_data FROM master_records WHERE id=$1 AND master_name='Employee master' FOR UPDATE",[req.params.id])).rows[0]?.record_data;if(!prior||prior.employeeMasterRevision!==req.body.employeeMasterRevision)throw Object.assign(new Error('Employee changed. Reload before editing.'),{status:409});keepEmployeeSite(prior,data);row=(await c.query('UPDATE master_records SET record_data=$1::jsonb WHERE id=$2 RETURNING id,record_data',[JSON.stringify({...prior,...data,employeeMasterRevision:prior.employeeMasterRevision+1,updatedAt:new Date().toISOString()}),req.params.id])).rows[0]}else row=(await c.query("INSERT INTO master_records(master_name,record_data) VALUES('Employee master',$1::jsonb) RETURNING id,record_data",[JSON.stringify({...data,source:'Local entry',employeeMasterRevision:1})])).rows[0];await c.query('COMMIT');res.json({...employeeIdentity(row.record_data),id:String(row.id)})}catch(e){await c.query('ROLLBACK');throw e}finally{c.release()}};
  app.post('/api/employee-master',...protect,wrap(save));app.put('/api/employee-master/:id',...protect,wrap(async(req,res)=>{if(!/^\d+$/.test(req.params.id))return res.status(400).json({error:'Invalid employee.'});await save(req,res)}));
  app.post('/api/employee-master/import',...protect,wrap(async(req,res)=>{if(!Array.isArray(req.body.records)||!req.body.records.length||req.body.records.length>25000)return res.status(400).json({error:'Import 1–25,000 employee records.'});res.json(await importEmployees(pool,req.body.records))}));
  app.use('/api/masters/:master',(req,res,next)=>req.params.master==='Employee master'&&!['GET','HEAD'].includes(req.method)?res.status(409).json({error:'Use the Employee Master page to edit employees.'}):next());

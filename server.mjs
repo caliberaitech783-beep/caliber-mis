@@ -48,6 +48,7 @@ import {registerEmployeeMaster} from './server/routes/employee-master.mjs';
 import {registerHrMasterImport} from './server/routes/hr-master-import.mjs';
 import {registerAFormMaster} from './server/routes/a-form-master.mjs';
 import {registerErpEmployees} from './server/routes/erp-employee-source.mjs';
+import {registerEmployeeSiteMoves} from './server/routes/employee-site-move.mjs';
 import {registerLocalDocumentScanning} from './server/routes/local-document-scanning.mjs';
 import {createLocalCardArchive,scanArchiveConfig} from './server/services/scan-card-archive.mjs';
 import {registerBulkCardScanning} from './server/routes/bulk-card-scanning.mjs';
@@ -8104,6 +8105,9 @@ app.put('/api/pulse-transfer-write',requireSession,requireAdministrator,async(re
   res.json({...saved,mode:await pulseMasterWriter.transferMode(),waiting:await transferPulseQueue.waiting()});
 }catch(error){next(error)}});
 const expressOtpDeps={pool,requireSession,accessContext:vehicleTransferAccessContext,pmLogins:vehicleTransferPmLogins,deliver:request=>approvalOtpDelivery.send(request),pulseWriter:pulseMasterWriter,ensureSchema:()=>logBooks.initialize()};
+// Fetch from Pulse-II with OTP: the one way a worker's site changes (owner, 22 Nov 2026). The OTP goes to the
+// Project Manager of the site the worker is leaving, by the same delivery as a vehicle transfer.
+registerEmployeeSiteMoves(app,{pool,requireSession,requireAdministrator,getSiteScope:logBookScope,pmLogins:vehicleTransferPmLogins,deliver:request=>approvalOtpDelivery.send(request)});
 registerVehicleTransferExpress(app,{...expressOtpDeps,auditEvent:(req,{action,reference,details})=>{req.audit={eventType:'Vehicle transfer',module:'Vehicle transfers',action,targetType:'Vehicle transfer',targetReference:reference,changedFields:details?.changedFields||[],details};},
   notify:async(client,transfer)=>{const recipients=await vehicleTransferPmLogins(client,transfer.destination);await addTicketNotificationsBestEffort(client,recipients,transfer.transferNo,`Express transfer ${transfer.transferNo}: ${transfer.equipment} joined ${transfer.destination} from ${transfer.source} with source-site PM OTP approval.`,null,{whatsapp:false});}});
 // Written-machine aliases (card "L21" = Pulse DEMO21-00179) learned once in scan review and applied to every later card.
