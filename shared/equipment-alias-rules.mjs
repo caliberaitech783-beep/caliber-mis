@@ -19,24 +19,24 @@ export const assetIdentifiers=row=>[row.door,row.doorNo,equipmentDoorNumber(row)
 // TPC65, T52 chosen as TPC57) the reviewer corrected one reading; saved for ever, that
 // correction would send every later misread of the same digits to this machine without
 // review. So the number written must be the number of one of the machine's real doors.
-// A record with no numbered door (Pulse knows it only by its registration) has nothing to
-// contradict and may still take an alias.
+// A numbered door is a fleet door: letters, then the machine number (VPC150-86636 is VPC150,
+// "M2-MH34BZ 5062" is M2). The label decides, not the field it sits in: on 303 of 1,804 live
+// records Pulse repeats the door in the registration field, and those doors count like any
+// other (PR 484 skipped them, so 127 of the 914 mappings with a different number were not
+// listed and the rule did not hold on those machines). A record known only by a road
+// registration (MH34BZ8707) has no fleet number to contradict and may still take an alias.
 const numberOfKey=key=>(String(key||'').match(/(\d+)$/)||[])[1]?.replace(/^0+(?=\d)/,'')||'';
-const plain=value=>text(value).toUpperCase().replace(/[^A-Z0-9]/g,'');
-const numberedDoors=asset=>{
- const registrations=new Set([asset?.reg,asset?.registration,asset?.registrationNumber].map(plain).filter(Boolean));
- return realDoorLabels(asset).filter(label=>!registrations.has(plain(label)));
-};
+const numberedDoors=(asset,kind)=>realDoorLabels(asset).filter(label=>/^[A-Z]+\d+$/.test(cardMachineKey(label,kind)));
 export function aliasNumberMatches(written,asset,kind='equipment'){
  const number=numberOfKey(aliasWrittenKey(written,kind));if(!number||!asset)return false;
- const doors=numberedDoors(asset);if(!doors.length)return true;
+ const doors=numberedDoors(asset,kind);if(!doors.length)return true;
  return doors.some(door=>numberOfKey(cardMachineKey(door,kind))===number);
 }
 // One sentence for the reviewer when a pair is not kept as a permanent mapping, else ''.
 export function aliasNumberNote(written,asset,kind='equipment'){
  const writtenText=aliasWrittenText(written),number=numberOfKey(aliasWrittenKey(writtenText,kind));
  if(!number||!asset||aliasNumberMatches(writtenText,asset,kind))return '';
- const door=numberedDoors(asset)[0],doorNumber=numberOfKey(cardMachineKey(door,kind));
+ const door=numberedDoors(asset,kind)[0],doorNumber=numberOfKey(cardMachineKey(door,kind));
  return `Applied here only, not saved as a permanent mapping: the card says ${writtenText} (number ${number}) and ${text(door)} is number ${doorNumber}. A mapping is saved only when the number is the same.`;
 }
 

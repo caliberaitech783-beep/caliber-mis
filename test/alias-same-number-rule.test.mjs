@@ -131,3 +131,40 @@ test('only an MIS administrator reaches the list and the removal',()=>{
  assert.equal(misRequestAllowed(admin(['Equipment master']),{...remove,method:'GET'}),false);
  assert.equal(misRequestAllowed(admin(['Reports']),remove),false,'an administrator without a scan, log book or Equipment master menu');
 });
+
+// Found on live after PR 484 (23 Nov 2026): on 303 of 1,804 Equipment master records Pulse repeats
+// the door in the registration field. PR 484 took such a door for a registration, so the rule
+// did not hold on those machines and 127 of the 914 mappings were missing from the cleanup list.
+const repeated={id:'24313',door:'VPC150-86636',equipmentName:'VPC150-86636',reg:'VPC150-86636',chassisNo:'VCEC480DA00286636',kind:'equipment',site};
+test('a door that Pulse repeats in the registration field is still the machine\'s door',()=>{
+ assert.equal(aliasNumberMatches('S277',repeated),false,'277 is not 150');
+ assert.equal(aliasNumberMatches('V105',repeated),false);
+ assert.equal(aliasNumberMatches('T150',repeated),true,'another letter, the same number');
+ assert.equal(aliasForSelection('S277',repeated),null);
+ assert.deepEqual(aliasForSelection('T150',repeated),{equipmentId:'24313',kind:'equipment',writtenText:'T150',writtenKey:'TPC150'});
+ assert.match(aliasNumberNote('S277',repeated),/the card says S277 \(number 277\) and VPC150-86636 is number 150/);
+ const spaced={id:'1869',door:'TPC15 - 01046',equipmentName:'TPC15 - 01046',reg:'TPC15 - 01046'};
+ assert.equal(aliasNumberMatches('T45',spaced),false);assert.equal(aliasNumberMatches('T99',spaced),false);assert.equal(aliasNumberMatches('V15',spaced),true);
+ const tipper={id:'77',door:'M2-MH34BZ 5062',reg:'M2-MH34BZ 5062',kind:'vehicle'};
+ assert.equal(aliasNumberMatches('M5',tipper,'vehicle'),false,'the fleet door is M2, whatever follows it');
+});
+
+test('a machine known only by a road registration has no fleet number, in any field',()=>{
+ for(const record of [{id:'5',door:'MH34BZ8707',reg:'MH34BZ8707'},{id:'6',door:'UP64AT9857',registration:'UP64AT9857'},{id:'7',reg:'UP64CT4878',equipmentName:'Water tanker'}]){
+  assert.equal(aliasNumberMatches('E105',record,'vehicle'),true,JSON.stringify(record));
+  assert.equal(aliasNumberNote('E105',record,'vehicle'),'');
+ }
+});
+
+test('the server applies the rule to a door repeated in the registration field: refused when new, listed when old',async t=>{
+ const {db,pool}=await database();t.after(()=>db.close());
+ await db.query("INSERT INTO master_records(master_name,record_data) VALUES('Equipment master',$1),('Equipment master',$2)",[{door:'VPC150-86636',equipmentName:'VPC150-86636',reg:'VPC150-86636',category:'Equipment',currentLocation:site},{door:'MH34BZ8707',reg:'MH34BZ8707',category:'Equipment',currentLocation:site}]);
+ assert.deepEqual(await createEquipmentAlias(pool,{equipmentId:'4',writtenText:'S277',site,requestedBy:'mohit',otp:false}),{alias:null,numberDiffers:true});
+ assert.equal((await createEquipmentAlias(pool,{equipmentId:'4',writtenText:'T150',site,requestedBy:'mohit',otp:false})).alias.status,'active');
+ assert.equal((await createEquipmentAlias(pool,{equipmentId:'5',writtenText:'L9',site,requestedBy:'mohit',otp:false})).alias.status,'active','a road registration has no number to contradict');
+ await legacy(db,'55555555-5555-4555-8555-555555555555',4,'SPC277','S277');
+ await legacy(db,'66666666-6666-4666-8666-666666666666',4,'VPC105','V105');
+ assert.deepEqual((await numberMismatchAliases(pool)).map(row=>[row.written_text,row.equipment_door]).sort(),[['S277','VPC150-86636'],['V105','VPC150-86636']]);
+ assert.equal((await revokeNumberMismatchAliases(pool,'mohit',{expected:2})).length,2);
+ assert.deepEqual((await loadEquipmentAliases(pool)).map(row=>row.written_text).sort(),['L9','T150']);
+});

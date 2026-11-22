@@ -83,10 +83,11 @@ function NumberMismatchCleanup({session,otpEnabled,shown,onList,onRemoved}){
  return <div className="equipment-alias-number-cleanup"><h3>Mappings where the number differs</h3>
   <p className="scan-alias-note">A mapping is another name for the same machine number (card L21, Pulse DEMO21). A pair with a different number (card T658, machine TPC65) is a corrected reading: from 23 Nov 2026 it applies to that card only and is not saved. Mappings of that kind saved earlier can be listed and removed here.</p>
   <div className="equipment-alias-filters"><button type="button" disabled={busy} onClick={load}>{busy&&!list?'Checking…':list?'Check again':'Show these mappings'}</button>
-   {shown&&<button type="button" disabled={busy} onClick={()=>onList?.(null)}>Show all mappings</button>}
+   {/* One button that changes its words, so Remove never slides under the pointer after a click. */}
+   {list&&list.count>0&&<button type="button" disabled={busy} aria-pressed={shown} onClick={()=>onList?.(shown?null:new Set(list.aliases.map(a=>a.id)))}>{shown?'Show all mappings':'Show only these '+list.count}</button>}
    {list&&list.count>0&&!sure&&<button type="button" disabled={busy||otpEnabled} title={otpEnabled?'While the OTP rule is on, each mapping is revoked by OTP.':undefined} onClick={()=>setSure(true)}>Remove these {list.count} mappings…</button>}
    {list&&list.count>0&&sure&&<><strong>Remove {list.count} mappings? They stop working at once.</strong><button type="button" className="vlb-approval-primary" disabled={busy} onClick={remove}>{busy?'Removing…':'Yes, remove '+list.count}</button><button type="button" disabled={busy} onClick={()=>setSure(false)}>Cancel</button></>}</div>
-  {list&&list.count>0&&<p role="status">{list.count} mapping(s) have a different number. They are shown in the list below.</p>}
+  {list&&list.count>0&&<p role="status">{list.count} mapping(s) have a different number. {shown?'Only they are shown in the list below.':'The list below shows all mappings.'}</p>}
   {list&&!list.count&&!notice&&<p role="status">No mapping has a different number.</p>}
   {error&&<p role="alert" className="logbook-message error">{error}</p>}{notice&&<p role="status" className="vlb-approval-feedback">{notice}</p>}
  </div>;

@@ -16,3 +16,24 @@ test('typing filters the site list and arrow/Enter chooses the master ID rather 
  value='';tree=render();find(tree,n=>n.type==='input')[0].props.onChange({target:{value:'1'}});tree=render();const exactEnter={key:'Enter',currentTarget:{dataset:{}},preventDefault(){this.defaultPrevented=true}};find(tree,n=>n.type==='input')[0].props.onKeyDown(exactEnter);assert.equal(value,'v1');assert.equal(exactEnter.currentTarget.dataset.enterCommitted,'true');
  assert.equal(find(render(''),n=>n.type==='input')[0].props.disabled,true);
 });
+
+// The button asked for a small letter "d" (/d/) instead of a digit (/\d/) from 2 Nov to 23 Nov 2026,
+// so "V9999" never offered the pairing dialog and "dozer" (no number at all) did.
+test('a typed door with a number and no match offers to map it to a Pulse record',async()=>{
+ const source=fs.readFileSync(new URL('../src/door-combobox.jsx',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace('export default function','function');
+ const {code}=await transformWithOxc(source,'door-combobox.jsx',{jsx:{runtime:'classic'}});
+ const state=[];let cursor=0;const asked=[];const scope={React,ChevronDown:()=>null,searchSiteDoors,doorLabel,exactTypedOption,useId:()=> 'door-map',useRef:()=>({current:{focus(){},setCustomValidity(){},querySelector(){return null}}}),useEffect:()=>{},useState:initial=>{const i=cursor++;if(!(i in state))state[i]=initial;return [state[i],next=>{state[i]=typeof next==='function'?next(state[i]):next}];}};
+ const Component=new Function(...Object.keys(scope),code+';return DoorCombobox;')(...Object.values(scope));
+ const records=[{id:'v1',door:'V1',kind:'vehicle',site:'Dhoptala OC'}];
+ const render=(onUnmatched=written=>asked.push(written))=>{cursor=0;return Component({records,kind:'vehicle',location:'Dhoptala OC',value:'',onSelect(){},onUnmatched})};
+ const find=(node,predicate)=>{if(!React.isValidElement(node))return [];return [...(predicate(node)?[node]:[]),...React.Children.toArray(node.props.children).flatMap(child=>find(child,predicate))];};
+ const type=value=>{find(render(),n=>n.type==='input')[0].props.onChange({target:{value}});return find(render(),n=>n.props.className==='equipment-combobox-map');};
+ const offered=type('V9999');
+ assert.equal(offered.length,1,'a number, no match: offer the pairing');
+ offered[0].props.onClick();assert.deepEqual(asked,['V9999']);
+ assert.equal(type('dozer').length,0,'no number written, nothing to pair');
+ assert.equal(type('V').length,0);
+ assert.equal(type('V1').length,0,'a real door at the site needs no pairing');
+ find(render(null),n=>n.type==='input')[0].props.onChange({target:{value:'V9999'}});
+ assert.equal(find(render(null),n=>n.props.className==='equipment-combobox-map').length,0,'only where the form can pair');
+});
