@@ -15,3 +15,7 @@
 .am-page .am-orange,.am-page .am-chips button.am-orange,.am-page .dsg-box.am-orange{background:#d46a00;color:#fff;border-color:#a85400}
 .am-page .am-brown,.am-page .am-chips button.am-brown,.am-page .dsg-box.am-brown{background:#8a5a2b;color:#fff;border-color:#6d4520}
 .am-page .am-purple,.am-page .am-chips button.am-purple,.am-page .dsg-box.am-purple{background:#6a3fa0;color:#fff;border-color:#4e2d78}
+
+/* Biometric integration: what the code column of the device file is (CMLL id or A Form no.). */
+.am-page .am-code-kind{display:inline-flex;align-items:center;gap:8px;align-self:flex-start;font-weight:600}
+.am-page .am-code-kind select{padding:7px 10px;border:1px solid #d5c8e5;border-radius:6px;background:#fff}

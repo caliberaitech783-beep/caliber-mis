@@ -4,6 +4,8 @@ import fs from 'node:fs';
 import {compareAttendance,parseBiometricSheet,readDate,readTime,shiftOfPunch,mismatchSites,mismatchShifts,MISMATCH_TYPES,employeeCode} from '../shared/attendance-mismatch.mjs';
 import {biometricLine} from '../server/routes/biometric-attendance.mjs';
 import {misPageAllowed} from '../shared/mis-application-access.mjs';
+import {resolveBiometricCodes} from '../shared/biometric-a-form.mjs';
+import {buildAFormPeople} from '../shared/a-form-people.mjs';
 
 const duty=(o={})=>({date:'2026-11-18',shift:'S1',site:'Sasti OC',caliberCode:'5311',employeeName:'Ram',equipment:'Tipper',doors:'T-12',books:'CAL/VLB/1',...o});
 const punch=(o={})=>({caliberCode:'5311',date:'2026-11-18',inTime:'05:05',outTime:'13:02',site:'Sasti OC',...o});
@@ -100,6 +102,45 @@ test('the attendance pages follow the Reports right and sit in their own main me
  assert.match(main,/\{name:'Attendance Regularization',pages:\['Late come \/ early going','Miss punch'\]/);
 });
 
+// Owner, 23 Nov 2026: a biometric device can give the A Form no.; A Form Master links it to the CMLL id of that site.
+const listRow=(id,master,data)=>({id,master_name:master,record_data:data});
+const worker=(id,number,name,site)=>listRow(id,'Employee master',{caliberId:'CMPL'+number,employeeId:'CMPL'+number,name,site,currentDesignationName:'VOLVO DRIVER'});
+const aForm=(id,aFormNo,number,site)=>listRow(id,'A Form master',{aFormNo,employeeId:'CMLL'+number,site});
+const A_FORM_LISTS=[worker(1,91005,'RAM','Jayant OC'),worker(2,1769,'SHYAM','Jayant OC'),worker(3,91004,'ANIL','Jayant OC'),worker(4,5311,'MOHAN','Sasti OC'),worker(5,6000,'TWO FORMS','Jayant OC'),
+ aForm(11,'1769',91005,'Jayant OC'),aForm(12,'D68',91004,'Jayant OC'),aForm(13,'1769',5311,'Sasti OC'),aForm(14,'300/301',6000,'Jayant OC'),aForm(15,'77',91005,'Jayant OC'),aForm(16,'77',1769,'Jayant OC')];
+
+test('a code that is an A Form no. is changed to the CMLL number of that site, found per site of the file',()=>{
+ const index=buildAFormPeople(A_FORM_LISTS);
+ const at=(caliberCode,site,o={})=>punch({caliberCode,site,...o});
+ // Jayant's device gives A Form numbers; 1769 is also the CMLL number of another Jayant man, so the file as a whole decides.
+ const jayant=resolveBiometricCodes([at('1769','Jayant OB'),at('D68','Jayant OB')],index);
+ assert.deepEqual(jayant.lines.map(l=>[l.caliberCode,l.aFormNo]),[['91005','1769'],['91004','D68']]);
+ assert.deepEqual(jayant.sites,[{site:'Jayant OB',lines:2,kind:'aform',converted:2,matchCaliber:1,matchAForm:2}]);
+ // The same number at Sasti is another person; a file of CMLL numbers is left as it is.
+ assert.deepEqual(resolveBiometricCodes([at('1769','Sasti OC')],index,'aform').lines.map(l=>l.caliberCode),['5311']);
+ const ids=resolveBiometricCodes([at('91005','Jayant OB'),at('91004','Jayant OB'),at('1769','Jayant OB')],index);
+ assert.deepEqual(ids.lines.map(l=>[l.caliberCode,l.aFormNo]),[['91005',''],['91004',''],['1769','']]);assert.equal(ids.sites[0].kind,'caliber');
+ // Two sites in one file are judged one by one.
+ const mixed=resolveBiometricCodes([at('1769','Jayant OB'),at('D68','Jayant OB'),at('5311','Sasti OC')],index);
+ assert.deepEqual(mixed.sites.map(s=>[s.site,s.kind]),[['Jayant OB','aform'],['Sasti OC','caliber']]);
+ // An A Form no. on two people of the site, or on nobody, is left out and named; it is never saved as a CMLL number.
+ const doubtful=resolveBiometricCodes([at('77','Jayant OB'),at('999','Jayant OB'),at('D68','Jayant OB')],index,'aform');
+ assert.deepEqual(doubtful.lines.map(l=>l.caliberCode),['91004']);
+ assert.deepEqual(doubtful.leftOut.map(l=>[l.code,/two people/.test(l.reason)]),[['77',true],['999',false]]);
+ // A person with two A Form numbers punching under both is one day's attendance: first In, last Out.
+ const both=resolveBiometricCodes([at('300','Jayant OB',{inTime:'05:10',outTime:''}),at('301','Jayant OB',{inTime:'',outTime:'13:20'})],index,'aform');
+ assert.deepEqual(both.lines.map(l=>[l.caliberCode,l.inTime,l.outTime]),[['6000','05:10','13:20']]);
+ // Without a site an A Form no. cannot be read: the line is kept as it stands.
+ assert.deepEqual(resolveBiometricCodes([at('1769','')],index).lines.map(l=>[l.caliberCode,l.aFormNo]),[['1769','']]);
+});
+
+test('the punch of CMLL5311 meets the trip card of 5311: the device gives the bare number, the card the Caliber ID',()=>{
+ for(const written of ['CMLL5311','cmpl5311','CMLL-5311','05311',' 5311 '])assert.equal(employeeCode(written),'5311',written);
+ assert.equal(employeeCode('D68'),'D68');
+ const r=compareAttendance({punches:[punch()],duties:[duty({caliberCode:'CMLL5311'})],lockedDays:locked,from:'2026-11-18',to:'2026-11-18'});
+ assert.deepEqual(types(r),[],'one person on both sides, nothing to report');
+});
+
 test('biometric punches are saved, replaced on a second upload and read back inside the login sites',async t=>{
  const [{PGlite},{default:express},{createServer}]=await Promise.all([import('@electric-sql/pglite'),import('express'),import('node:http')]);
  const {registerBiometricAttendance}=await import('../server/routes/biometric-attendance.mjs');
@@ -107,11 +148,21 @@ test('biometric punches are saved, replaced on a second upload and read back ins
  const pool={query:(...a)=>db.query(...a),connect:async()=>({query:(...a)=>db.query(...a),release(){}})};
  let scope={sites:null};
  const app=express();app.use(express.json());
- registerBiometricAttendance(app,{pool,protect:[(req,_res,next)=>{req.session={login:'tester'};req.logBookScope=scope;next();}]});
+ // The employee lists and A Form Master the upload reads codes against.
+ const index=buildAFormPeople(A_FORM_LISTS);
+ registerBiometricAttendance(app,{pool,readIndex:async()=>index,protect:[(req,_res,next)=>{req.session={login:'tester'};req.logBookScope=scope;next();}]});
  app.use((error,_req,res,_next)=>res.status(500).json({error:error.message}));
  const server=createServer(app);await new Promise(r=>server.listen(0,'127.0.0.1',r));t.after(()=>new Promise(r=>{server.close(r);server.closeAllConnections();}));
  const base='http://127.0.0.1:'+server.address().port;
  const call=async(path,body)=>{const r=await fetch(base+path,body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{});return {status:r.status,body:await r.json()};};
+ // A device that gives the A Form no.: the punch is kept under the CMLL number of that site, with the A Form no. beside it.
+ const jayant=await call('/api/reports/biometric-punches',{fileName:'jayant.xlsx',rows:[punch({caliberCode:'1769',site:'Jayant OB',date:'2026-11-17'}),punch({caliberCode:'D68',site:'Jayant OB',date:'2026-11-17'}),punch({caliberCode:'4040',site:'Jayant OB',date:'2026-11-17'})]});
+ assert.equal(jayant.body.saved,2);assert.equal(jayant.body.leftOut,1);assert.match(jayant.body.leftOutLines[0],/Jayant OB, 2026-11-17, code 4040: this A Form no\. is not in A Form Master for the site/);
+ assert.deepEqual(jayant.body.sites,[{site:'Jayant OB',lines:3,kind:'aform',converted:2,matchCaliber:1,matchAForm:2}]);
+ assert.deepEqual((await call('/api/reports/biometric-punches?from=2026-11-17&to=2026-11-17')).body.punches.map(p=>[p.caliberCode,p.aFormNo,p.site]),[['91004','D68','Jayant OB'],['91005','1769','Jayant OB']]);
+ // Told that the file holds CMLL ids, nothing is changed.
+ assert.deepEqual((await call('/api/reports/biometric-punches',{fileName:'ids.xlsx',codeKind:'caliber',rows:[punch({caliberCode:'1769',site:'Jayant OB',date:'2026-11-16'})]})).body.sites.map(s=>[s.kind,s.converted]),[['caliber',0]]);
+ assert.equal((await call('/api/reports/biometric-punches',{fileName:'none.xlsx',codeKind:'aform',rows:[punch({caliberCode:'4040',site:'Jayant OB'})]})).status,400,'nothing is saved under a code that names nobody');
  assert.equal((await call('/api/reports/biometric-punches',{fileName:'a.xlsx',rows:[punch(),punch({caliberCode:'7',site:'Majri OC'}),punch({caliberCode:'8',site:''})]})).body.saved,3);
  assert.equal((await call('/api/reports/biometric-punches',{fileName:'b.xlsx',rows:[punch({inTime:'05:20'})]})).body.saved,1);
  let read=await call('/api/reports/biometric-punches?from=2026-11-18&to=2026-11-18');

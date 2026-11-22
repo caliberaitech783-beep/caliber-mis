@@ -193,22 +193,49 @@ test("preview writes nothing; apply replaces Employee Master in place and makes 
  }finally{await f.close();}
 });
 
-test("once HR's master is applied the ERP copy writes nothing to Employee Master, and Master Sync shows the new source",async()=>{
+// Owner, 23 Nov 2026: the ERP copy is off for good, whether or not HR's master has been applied yet.
+test("the ERP copy writes nothing to Employee Master, before and after HR's master, and Sync all masters has no Employee Master line",async()=>{
  const f=await fixture();
  try{
   let read=0;
   const erpRow={tno:'1',employeeCode:'100',caliberId:'CMPL100',employeeId:'CMPL100',name:'RAM FROM ERP',locationName:'MAJRI OB'};
   const erp=registerErpMasters(express(),{pool:f.pool,config:{},requireSession:(q,s,n)=>n(),requireAdministrator:(q,s,n)=>n(),readEmployees:async()=>{read++;return [erpRow];}});
-  await erp.syncEmployees();
-  assert.equal(read,1);assert.equal((await f.all())[0].record_data.name,'RAM FROM ERP','before HR\'s master the ERP copy still writes');
+  assert.equal((await erp.syncEmployees()).skipped,true);
+  assert.equal(read,0,'the ERP is not even read');assert.equal((await f.all())[0].record_data.name,'RAM OLD','Employee Master is as Pulse-II holds it');
   const preview=await f.call('/api/employee-master/hr-import/preview',{rows:rows()});
   assert.equal((await f.call('/api/employee-master/hr-import/apply',{rows:rows(),planKey:preview.body.planKey})).status,200);
-  const result=await erp.syncEmployees();
-  assert.equal(result.skipped,true);assert.equal(read,1,'the ERP is not even read');
-  assert.equal((await f.all())[0].record_data.name,'RAM');
+  assert.equal((await erp.syncEmployees()).skipped,true);
+  assert.equal(read,0);assert.equal((await f.all())[0].record_data.name,'RAM');
   await f.db.exec('CREATE TABLE pulse_master_links(master_name TEXT,source_key TEXT,local_id BIGINT)');
   const sync=registerMasterSync(express(),{pool:f.pool,pulse:{status:()=>({connected:true,busy:false})},erp,requireSession:(q,s,n)=>n(),requireAdministrator:(q,s,n)=>n()});
-  const employeeRow=(await sync.status()).masters.find(m=>m.name==='Employee master');
-  assert.equal(employeeRow.source,'HR master');assert.equal(employeeRow.error,'');assert.ok(employeeRow.lastSuccess);
+  const status=await sync.status();
+  assert.equal(status.masters.some(m=>m.name==='Employee master'),false);
+  assert.deepEqual(status.notSynced.map(m=>m.label),['Employee Master']);assert.match(status.notSynced[0].note,/not copied from Oracle \/ ERP/);
+ }finally{await f.close();}
+});
+
+// Owner, 23 Nov 2026: "make it active". Three numbers stayed on two lines in HR's file and held the whole master back.
+test("HR's master can be applied without the lines that cannot be placed; the people named on them stay exactly as they are",async()=>{
+ const file=()=>sheetOf(line('CMLL100','RAM','Majri OB'),line('CMLL200','SHYAM','Majri OB'),line('CMLL400','NOT ON LIST','Majri OB'),line('CMLL400','NOT ON LIST','Sasti OB'),line('LEFT','NOBODY','Majri OB'));
+ const read=readHrMasterSheet(file(),{leaveOut:true});
+ assert.deepEqual(read.records.map(r=>r.number),['100','200']);assert.deepEqual(read.leftAsIs,['400']);assert.equal(read.problems.length,3);
+ assert.equal(readHrMasterSheet(file()).records.length,0,'without the tick the file is still refused as a whole');
+ const plan=planHrMaster(existing(),read.records,{leftAsIs:read.leftAsIs});
+ assert.ok(!plan.notListedIds.includes('4'),'CMPL400 is on a line that was left out: he is not marked "not on HR\'s list"');
+ assert.ok(!plan.updates.some(u=>u.id==='4'));
+ assert.deepEqual([plan.summary.leftAsIsNumbers,plan.summary.leftAsIsPeople],[1,1]);
+ assert.ok(plan.notListedIds.includes('3'),'someone HR does not list at all is still marked');
+ const f=await fixture();
+ try{
+  const refused=await f.call('/api/employee-master/hr-import/preview',{rows:file()});
+  assert.equal(refused.status,422);assert.equal(refused.body.problemCount,3);assert.match(refused.body.error,/or apply the rest without these lines/);
+  const preview=await f.call('/api/employee-master/hr-import/preview',{rows:file(),leaveOutProblemLines:true});
+  assert.equal(preview.status,200);assert.equal(preview.body.leftOut.lines,3);assert.equal(preview.body.summary.leftAsIsPeople,1);
+  assert.equal((await f.call('/api/employee-master/hr-import/apply',{rows:file(),planKey:preview.body.planKey})).status,422,'Apply needs the same tick as the preview');
+  const before=(await f.all()).find(r=>r.record_data.caliberId==='CMPL400').record_data;
+  assert.equal((await f.call('/api/employee-master/hr-import/apply',{rows:file(),planKey:preview.body.planKey,leaveOutProblemLines:true})).status,200);
+  const after=await f.all(),byId=id=>after.find(r=>r.record_data.caliberId===id).record_data;
+  assert.deepEqual(byId('CMPL400'),before,'left exactly as he was');
+  assert.equal(byId('CMPL100').hrListed,true);assert.equal(byId('CMPL300').hrListed,false);
  }finally{await f.close();}
 });
