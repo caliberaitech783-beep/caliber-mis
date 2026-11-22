@@ -16,7 +16,12 @@ export function logBookSiteScope(session={},user={}) {
 }
 export const siteAllowed=(scope,site)=>scope?.sites===null||reportScopeIncludesSite(scope,site);
 export const scanDeletionAllowed=(scope,batch)=>Boolean(batch?.expected_context?.location&&siteAllowed(scope,batch.expected_context.location));
-export const employeeAtLocation=(employee,location)=>Boolean(canonicalSiteName(location)&&displaySiteSelection(employee.site||employee.location||employee.currentLocation).some(site=>canonicalSiteName(site)===canonicalSiteName(location)));
+// Since HR's master became the Employee Master (shared/hr-employee-master.mjs): a person HR marks LEFT, and anyone
+// who is not on HR's list, is kept in the master for the cards already saved but is at no site. Such a person is
+// never matched on a card and never offered in a list. A line HR's import has not touched (the staff directory,
+// a dummy ID, an employee added by hand) carries neither mark and is judged by its site alone.
+export const employeeOnHrList=employee=>employee?.hrListed!==false&&employee?.hrLeft!==true;
+export const employeeAtLocation=(employee,location)=>Boolean(employeeOnHrList(employee)&&canonicalSiteName(location)&&displaySiteSelection(employee.site||employee.location||employee.currentLocation).some(site=>canonicalSiteName(site)===canonicalSiteName(location)));
 export function requireLogBookSite(scope,site){
   if(!siteAllowed(scope,site))throw Object.assign(new Error('This location is not assigned to your login.'),{status:403});
 }

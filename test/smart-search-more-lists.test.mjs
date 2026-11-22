@@ -71,7 +71,7 @@ test('Caliber Directory lists: profile link, badges and View team kept on the sh
 
 test('Employee Master: the page of 50 on the shared table with View details; search, location and paging stay',async()=>{
  const h=hooks();
- const {EmployeeMaster}=await compile('employee-master.jsx',{React,useState:h.useState,useEffect:()=>{},useRef:value=>({current:value}),SmartSelect:'select',StepBackButton:()=>null,SortableHeader,sortRowsBlanksLast,EMPLOYEE_FIELDS,ERP_EMPLOYEE_FIELDS,isErpEmployee,suggestedCaliberId,fetch:async()=>({ok:true,json:async()=>({})})},['EmployeeMaster']);
+ const {EmployeeMaster}=await compile('employee-master.jsx',{React,useState:h.useState,useEffect:()=>{},useRef:value=>({current:value}),SmartSelect:'select',StepBackButton:()=>null,HrMasterImport:()=>null,SortableHeader,sortRowsBlanksLast,EMPLOYEE_FIELDS,ERP_EMPLOYEE_FIELDS,isErpEmployee,suggestedCaliberId,fetch:async()=>({ok:true,json:async()=>({})})},['EmployeeMaster']);
  const render=props=>{h.reset();return EmployeeMaster({session:{token:'t'},ExportMenu:()=>null,PrintButton:()=>null,parseCsv:()=>[],...props})};
  render({ReportSection});
  const dataSlot=h.slots.findIndex(value=>value&&Array.isArray(value.records)&&Array.isArray(value.sites));
