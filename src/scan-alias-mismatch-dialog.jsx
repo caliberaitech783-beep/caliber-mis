@@ -2,12 +2,15 @@ import React,{useEffect,useMemo,useRef,useState} from 'react';
 import EquipmentAliasOtpPanel from './equipment-alias-otp-panel.jsx';
 import {nextMismatchPair,mismatchPairCount} from './scan-alias-mismatch.mjs';
 import {matchesSmartSearch} from '../shared/smart-search.mjs';
+import {aliasNumberNote} from '../shared/equipment-alias-rules.mjs';
 
 // Equipment mismatch · cards vs Pulse. Opens by itself when extraction finishes, before
 // card 1. Works category by category (tipper headers, trip body equipment, ELB headers) and
 // pair by pair: one pair on screen, pair it, OTP, it vanishes, the next appears. Left:
 // Pulse equipment at this site not found on any card. Right: card machines not found in
 // Pulse. Suggestions are ranked by the written number and never applied automatically.
+// A pair is saved as a permanent alias only when the written number is the machine's own
+// number; a different number is a corrected reading and applies to this batch only.
 export default function ScanAliasMismatchDialog({session,batchLabel,data,busy,error,approver,approverTelegramLinked,onPair,onApproved,onSkipPair,onSkipCategory,onClose,onRefresh,skippedPairs,skippedCategories}){
  const dialog=useRef(null),[choiceState,setChoiceState]=useState(null),[aliasOverride,setAliasOverride]=useState(null);
  useEffect(()=>{const node=dialog.current;if(node&&!node.open)node.showModal();return()=>{if(node?.open)node.close()}},[]);
@@ -26,6 +29,7 @@ export default function ScanAliasMismatchDialog({session,batchLabel,data,busy,er
  const total=mismatchPairCount(data,skippedPairs,skippedCategories);
  const pairing=current&&!alias;
  const chosen=current?.category.left.find(a=>a.id===choice);
+ const numberNote=chosen&&current?aliasNumberNote(current.pair.written,chosen,current.category.kind):'';
  const counts=current?{rows:current.pair.rows,cards:current.pair.cards,batch:data?.batchName||'',context:data?.context?[data.context.bookDate,data.context.location,'Shift '+data.context.cardShift].filter(Boolean).join(', '):''}:null;
  return <dialog ref={dialog} className="scan-equipment-dialog scan-alias-dialog" aria-labelledby="scan-alias-title" onCancel={event=>{event.preventDefault();onClose()}}>
   <header className="scan-alias-sticky-header"><button type="button" className="scan-alias-top-close" onClick={onClose} aria-label="Close equipment mismatch window">× Close</button>
@@ -49,7 +53,8 @@ export default function ScanAliasMismatchDialog({session,batchLabel,data,busy,er
     </section>
    </div>
    <p className="scan-alias-pair">Pair: <strong>{chosen?chosen.door:'(choose a Pulse record)'}</strong> ⇄ <strong>{current.pair.written}</strong> ({current.pair.rows} row(s)){alias?' · applied to this batch'+(alias.status==='active'?' · approved':''):''}</p>
-   {pairing&&<div className="vlb-batch-actions"><button type="button" className="vlb-approval-primary" disabled={busy||!chosen} onClick={async()=>{const result=await onPair(current.category,current.pair,chosen);if(result?.alias)setAlias(result.alias);}}>{busy?'Applying…':data?.otpEnabled?'Pair and continue to OTP':'Pair and save alias'}</button></div>}
+   {pairing&&numberNote&&<p className="scan-alias-note" role="note">The number differs, so this pair applies to the rows of this batch only. It is not saved as a permanent mapping.</p>}
+   {pairing&&<div className="vlb-batch-actions"><button type="button" className="vlb-approval-primary" disabled={busy||!chosen} onClick={async()=>{const result=await onPair(current.category,current.pair,chosen);if(result?.alias)setAlias(result.alias);}}>{busy?'Applying…':numberNote?'Pair for this batch only':data?.otpEnabled?'Pair and continue to OTP':'Pair and save alias'}</button></div>}
    {alias&&alias.status!=='active'&&data?.otpEnabled&&<EquipmentAliasOtpPanel session={session} alias={alias} site={data.site} counts={counts} approver={approver} approverTelegramLinked={approverTelegramLinked} onAlias={setAlias} onApproved={async result=>{await onApproved?.(result);setAlias(null);}}/>}
    {alias&&alias.status==='active'&&<p role="status" className="vlb-approval-feedback">Approved. {current.pair.written} now maps to {chosen?.door||'the Pulse record'} on every card and batch.</p>}
    {error&&<p role="alert" className="scan-error">{error}</p>}

@@ -73,6 +73,25 @@ function aliasSortValue(a={},key){
  return '';
 }
 
+// Mappings saved before the same-number rule (23 Nov 2026) whose written number is not the
+// machine's own number. An administrator sees them in the list below (search, sort, print and
+// Excel work as for any other mapping) and removes them in one action.
+function NumberMismatchCleanup({session,otpEnabled,shown,onList,onRemoved}){
+ const [list,setList]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[sure,setSure]=useState(false);
+ const load=async()=>{setBusy(true);setError('');setNotice('');setSure(false);try{const data=await aliasApi(session)('/api/equipment-aliases/number-mismatch');setList(data);onList?.(new Set((data.aliases||[]).map(a=>a.id)));}catch(e){setError(e.message)}finally{setBusy(false)}};
+ const remove=async()=>{if(!list?.count||busy)return;setBusy(true);setError('');try{const result=await aliasApi(session)('/api/equipment-aliases/number-mismatch/revoke',{expected:list.count});setNotice(result.revoked+' mapping(s) removed. Cards already saved are not changed.');setList({count:0,aliases:[]});setSure(false);onList?.(null);await onRemoved?.();}catch(e){setError(e.message)}finally{setBusy(false)}};
+ return <div className="equipment-alias-number-cleanup"><h3>Mappings where the number differs</h3>
+  <p className="scan-alias-note">A mapping is another name for the same machine number (card L21, Pulse DEMO21). A pair with a different number (card T658, machine TPC65) is a corrected reading: from 23 Nov 2026 it applies to that card only and is not saved. Mappings of that kind saved earlier can be listed and removed here.</p>
+  <div className="equipment-alias-filters"><button type="button" disabled={busy} onClick={load}>{busy&&!list?'Checking…':list?'Check again':'Show these mappings'}</button>
+   {shown&&<button type="button" disabled={busy} onClick={()=>onList?.(null)}>Show all mappings</button>}
+   {list&&list.count>0&&!sure&&<button type="button" disabled={busy||otpEnabled} title={otpEnabled?'While the OTP rule is on, each mapping is revoked by OTP.':undefined} onClick={()=>setSure(true)}>Remove these {list.count} mappings…</button>}
+   {list&&list.count>0&&sure&&<><strong>Remove {list.count} mappings? They stop working at once.</strong><button type="button" className="vlb-approval-primary" disabled={busy} onClick={remove}>{busy?'Removing…':'Yes, remove '+list.count}</button><button type="button" disabled={busy} onClick={()=>setSure(false)}>Cancel</button></>}</div>
+  {list&&list.count>0&&<p role="status">{list.count} mapping(s) have a different number. They are shown in the list below.</p>}
+  {list&&!list.count&&!notice&&<p role="status">No mapping has a different number.</p>}
+  {error&&<p role="alert" className="logbook-message error">{error}</p>}{notice&&<p role="status" className="vlb-approval-feedback">{notice}</p>}
+ </div>;
+}
+
 export default function EquipmentAliasAdminPanel({session,isAdmin,ReportSection}){
  const {aliases,letterRules=[],otpEnabled,approver,approverTelegramLinked,error,refresh}=useEquipmentAliases(session?.token,{all:true});
  const [ruleError,setRuleError]=useState('');
@@ -83,18 +102,20 @@ export default function EquipmentAliasAdminPanel({session,isAdmin,ReportSection}
  const sites=siteChoices(aliases.map(a=>a.equipmentSite||a.site));
  const aliasActions=a=>isAdmin&&['pending','active','suspended'].includes(a.status)&&<><button type="button" onClick={()=>setRevoke(a)}>Revoke…</button>{a.allSites===false?<button type="button" onClick={()=>setAllSites(a,true)} title="Let this mapping teach its letter rule to every site again">Use at all sites</button>:<button type="button" onClick={()=>setAllSites(a,false)} title="Keep this machine's alias but stop its letter rule at the other sites">This machine only</button>}</>;
  const historyList=a=><ul>{(a.history||[]).map(h=><li key={h.id}>{formatDisplayDateTime(h.at)} · {h.action} · {h.actor}{h.detail&&Object.keys(h.detail).length?' · '+Object.entries(h.detail).filter(([k,v])=>v!==null&&v!==''&&k!=='otpId').map(([k,v])=>k+': '+(Array.isArray(v)?v.join(', '):typeof v==='object'?JSON.stringify(v):v)).join(' · '):''}</li>)}</ul>;
- const rows=aliases.filter(a=>(!site||sameSite(a.equipmentSite||a.site,site))&&(!status||a.status===status));
+ const [mismatch,setMismatch]=useState(null);
+ const rows=aliases.filter(a=>(!site||sameSite(a.equipmentSite||a.site,site))&&(!status||a.status===status)&&(!mismatch||mismatch.has(a.id)));
  const saveApprover=async event=>{event.preventDefault();setSaveError('');setNotice('');try{await aliasApi(session)('/api/equipment-aliases/settings',{approver:{login}},'PUT');await refresh();setNotice('Equipment mapping approver saved.');}catch(e){setSaveError(e.message)}};
  return <section className="panel equipment-alias-admin"><h2>Equipment aliases</h2>
   <p className="scan-alias-note">Written card labels mapped to Pulse records. Approval by OTP is {otpEnabled?'ON':'OFF'} on this server{approver?.login?' · approver '+approver.login.toUpperCase()+(approverTelegramLinked?' (Telegram linked)':' (Telegram NOT linked: only the emergency PM route works)'):''}.</p>
   {error&&<p role="alert" className="logbook-message error">{error}</p>}
   {isAdmin&&<form className="equipment-alias-approver" onSubmit={saveApprover}><label>Equipment mapping approver (MIS login)<input value={login} onChange={e=>setLogin(e.target.value)} aria-label="Equipment mapping approver login"/></label><button type="submit">Save approver</button>{notice&&<span role="status">{notice}</span>}{saveError&&<span role="alert">{saveError}</span>}</form>}
   <EquipmentLetterRules rules={letterRules}/>
+  {isAdmin&&<NumberMismatchCleanup session={session} otpEnabled={otpEnabled} shown={Boolean(mismatch)} onList={setMismatch} onRemoved={refresh}/>}
   {ruleError&&<p role="alert" className="logbook-message error">{ruleError}</p>}
   <div className="equipment-alias-filters"><label>Site<select value={site} onChange={e=>setSite(e.target.value)}><option value="">All sites</option>{sites.map(s=><option key={s}>{s}</option>)}</select></label><label>Status<select value={status} onChange={e=>setStatus(e.target.value)}><option value="">All</option>{Object.entries(aliasStatusLabel).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label><button type="button" onClick={refresh}>Refresh</button></div>
-  {ReportSection?<SmartSearchReport ReportSection={ReportSection} title={'Equipment aliases · '+(site||'All sites')+(status?' · '+aliasStatusLabel[status]:'')} category="equipment-aliases" description={rows.length+' alias'+(rows.length===1?'':'es')} searchLabel="Smart Search equipment aliases" placeholder="Written label, door, site, status or person" rows={rows} rowKey={a=>a.id} emptyMessage={'No aliases'+(site||status?' match these filters':' yet')+'.'}
+  {ReportSection?<SmartSearchReport ReportSection={ReportSection} title={'Equipment aliases · '+(site||'All sites')+(status?' · '+aliasStatusLabel[status]:'')+(mismatch?' · number differs':'')} category="equipment-aliases" description={rows.length+' alias'+(rows.length===1?'':'es')} searchLabel="Smart Search equipment aliases" placeholder="Written label, door, site, status or person" rows={rows} rowKey={a=>a.id} emptyMessage={'No aliases'+(site||status?' match these filters':' yet')+'.'}
    columns={aliasReportColumns({open,setOpen,aliasActions})} rowEditor={(a,colSpan)=>open===a.id&&<tr className="equipment-alias-history"><td colSpan={colSpan}>{historyList(a)}</td></tr>}/>:<>
-  {rows.length>0&&<TableSmartPrint row title={'Equipment aliases · '+(site||'All sites')+(status?' · '+aliasStatusLabel[status]:'')}/>}
+  {rows.length>0&&<TableSmartPrint row title={'Equipment aliases · '+(site||'All sites')+(status?' · '+aliasStatusLabel[status]:'')+(mismatch?' · number differs':'')}/>}
   <table className="equipment-alias-table"><thead><tr>{aliasColumns.map(([key,label])=><SortableHeader key={key} label={label} sortKey={key} sort={aliasSort} onSort={changeAliasSort} filterIcon={false}/>)}<th>History</th><th></th></tr></thead>
    <tbody>{rows.length?sortRowsBlanksLast(rows,aliasSort,aliasSortValue).map(a=><React.Fragment key={a.id}><tr><td>{a.writtenText}<br/><small>{a.writtenKey}</small></td><td>{a.equipmentDoor||a.equipmentId}{a.equipmentName&&a.equipmentName!==a.equipmentDoor?<><br/><small>{a.equipmentName}</small></>:null}</td><td>{a.equipmentSite||a.site}</td><td title={aliasHover(a)}>{aliasStatusLabel[a.status]||a.status}{a.suspendedReason?<><br/><small>{a.suspendedReason}</small></>:null}</td><td>{aliasRouteLabel(a)}{a.approvedBy?<><br/><small>{a.approvedBy}</small></>:null}</td><td>{a.requestedBy}</td><td>{formatDisplayDateTime(a.approvedAt||a.createdAt)}</td><td><button type="button" aria-expanded={open===a.id} onClick={()=>setOpen(open===a.id?null:a.id)}>{(a.history||[]).length} event(s)</button></td><td>{aliasActions(a)}</td></tr>
     {open===a.id&&<tr className="equipment-alias-history"><td colSpan="9">{historyList(a)}</td></tr>}</React.Fragment>):<tr><td colSpan="9" className="empty-state">No aliases{site||status?' match these filters':' yet'}.</td></tr>}</tbody></table></>}

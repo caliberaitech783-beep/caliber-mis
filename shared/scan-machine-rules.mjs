@@ -3,6 +3,7 @@ import {resolveTripEquipment} from './trip-equipment-validation.mjs';
 import {canonicalSiteName} from './site-location.mjs';
 import {equipmentDoorNumber} from './equipment-door.mjs';
 import {tripEquipmentRequired} from './trip-card-rules.mjs';
+import {normalizeScannedTime} from './scan-clock.mjs';
 
 export const VEHICLE_MACHINE_RULES=[
  {code:'V',label:'Volvo',aliases:['V','VOLVO','VOLVO TIPPER','VOLVO TIPPERS']},
@@ -165,6 +166,64 @@ export function normalizeScanEquipmentRows(input={},assets=[]){
  const normalize=rows=>(rows||[]).map(row=>scannedTripEquipmentRow(row,assets,input.location,input.tripBodyRuleVersion||1));
  return {...input,trips:normalize(input.trips),scanMachineSummary:normalize(input.scanMachineSummary)};
 }
+// The loading hour read twice (rule of 23 Nov 2026). On the trip card the hour is written
+// right against the machine number in the narrow NO column, and the reader sometimes counts
+// it twice: "T | 65 | 8:38" comes back as T658 loaded at 08:38, "T | 65 | 10:08" as T6510.
+// A row is put back to the real machine only when all of this holds:
+//  - the number as read is no machine at the card's site (no door, alias or other rule),
+//  - it ends in that row's own loading hour,
+//  - without those digits it is exactly one real door at the site (never an alias), and
+//  - the card itself confirms the machine: its machine-wise summary lists it, or a second
+//    row loaded in another hour comes down to the same machine.
+// Anything less is left as read for the reviewer. The written text is kept in the notation.
+const hourDigitForms=time=>{
+ const clock=String(normalizeScannedTime(typeof time==='string'?time:'')||'').match(/^(\d{2}):\d{2}$/);if(!clock)return [];
+ const hour=Number(clock[1]),twelve=hour%12||12;
+ return [...new Set([String(hour),String(twelve),String(hour).padStart(2,'0'),String(twelve).padStart(2,'0')])].map(digits=>({digits,hour}));
+};
+const machineLabelParts=value=>{const parts=text(value).toUpperCase().replace(/[\s._/-]/g,'').match(/^([A-Z]+)(\d+)$/);return parts?{prefix:parts[1],digits:parts[2]}:null;};
+const realDoorMatch=(assets,label,site)=>{const result=matchCardMachine(assets,label,site,'equipment');return result.status==='matched'&&!resolvedByAlias(result.match,label)?result.match:null;};
+function hourGluedCandidate(row,assets,site,version){
+ if(!row||row.equipmentSource==='master-selection')return null;
+ const value=text(row.equipmentName);if(!value)return null;
+ const lookup=tripBodyEquipmentReference(value,version);
+ // A label that already answers to one machine, or to several, is never rewritten.
+ const literal=matchCardMachine(assets,lookup,site,'equipment');if(literal.match||literal.matches.length)return null;
+ const parts=machineLabelParts(lookup);if(!parts)return null;
+ const found=new Map();
+ for(const time of [row.writtenLoadingTime,row.loadingTime])for(const form of hourDigitForms(time)){
+  if(parts.digits.length<=form.digits.length||!parts.digits.endsWith(form.digits))continue;
+  const asset=realDoorMatch(assets,parts.prefix+parts.digits.slice(0,-form.digits.length),site);
+  if(asset)found.set(String(asset.id),{asset,hour:form.hour,digits:form.digits,original:row.equipmentNotation?.original||value});
+ }
+ return found.size===1?[...found.values()][0]:null;
+}
+export function correctHourGluedMachines(input={},assets=[]){
+ if(input.machineNotationRuleVersion!==1||!text(input.location)||!Array.isArray(input.trips)||input.timeMode==='without')return input;
+ const site=input.location,version=input.tripBodyRuleVersion||1;
+ const candidates=input.trips.map(row=>hourGluedCandidate(row,assets,site,version));
+ if(!candidates.some(Boolean))return input;
+ const inSummary=new Set((input.scanMachineSummary||[]).map(row=>{
+  if(row?.equipmentSource==='master-selection'&&row.equipmentId)return String(row.equipmentId);
+  const value=text(row?.equipmentName);if(!value)return '';
+  const asset=realDoorMatch(assets,tripBodyEquipmentReference(value,version),site);
+  return asset?String(asset.id):'';
+ }).filter(Boolean));
+ const hours=new Map();
+ for(const candidate of candidates)if(candidate){const id=String(candidate.asset.id);if(!hours.has(id))hours.set(id,new Set());hours.get(id).add(candidate.hour);}
+ let changed=false;
+ const trips=input.trips.map((row,index)=>{
+  const candidate=candidates[index];if(!candidate)return row;
+  const id=String(candidate.asset.id);if(!inSummary.has(id)&&hours.get(id).size<2)return row;
+  changed=true;
+  const resolved=resolvedMachineName(candidate.asset);
+  return {...row,equipmentName:resolved,equipmentNotation:{original:candidate.original,resolved,hourGlued:candidate.digits}};
+ });
+ return changed?{...input,trips}:input;
+}
+// The label a trip row still has to be matched by: nothing for an explicit dropdown choice,
+// the corrected machine for a row put back by the loading-hour rule, else the text as read.
+export const tripRowWrittenMachine=row=>row?.equipmentSource==='master-selection'?'':row?.equipmentNotation?.hourGlued?text(row.equipmentName):text(row?.equipmentNotation?.original||row?.equipmentName);
 export function scannedTripEquipmentRow(row={},assets=[],site='',version=2){
  const value=text(row.equipmentName),prior=row.equipmentNotation;
  const locationMatch=resolveTripEquipment(row,assets,site);
@@ -215,7 +274,9 @@ export function cardMachineHint(value,kind){
 }
 // Review line for a loading row that resolved through an approved alias instead of a real door.
 export function aliasMachineHint(row={}){
- const notation=row.equipmentNotation;if(!notation?.alias||!notation.original)return '';
+ const notation=row.equipmentNotation;
+ if(notation?.hourGlued&&notation.original)return `Written: ${notation.original} · read as ${notation.resolved}: the ${notation.hourGlued} on the end is the loading hour`;
+ if(!notation?.alias||!notation.original)return '';
  const machine=identifyCardMachine(notation.original,'trip-body',{allowSuffix:true});
  return `Written: ${notation.original}${machine?' · Identified: '+machine.label+(machine.number?' · No. '+machine.number:''):''} · mapped by ${notation.letterRule?'all-site letter rule':'saved alias'}`;
 }

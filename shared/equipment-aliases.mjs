@@ -1,12 +1,12 @@
 import {randomUUID} from 'node:crypto';
-import {cardMachineKey,identifyCardMachine,matchCardMachine} from './scan-machine-rules.mjs';
+import {cardMachineKey,identifyCardMachine,matchCardMachine,tripRowWrittenMachine} from './scan-machine-rules.mjs';
 import {canonicalSiteName} from './site-location.mjs';
 import {displaySiteName} from './region-scope.mjs';
 import {assetBookKind} from './equipment-kind.mjs';
 import {equipmentDoorNumber} from './equipment-door.mjs';
 import {generateOtp,hashOtp,otpExpiresAt,checkOtpAttempt,resendTooSoon,otpFail,OTP_TTL_MINUTES} from './otp-approval.mjs';
-import {aliasWrittenText,aliasWrittenKey,assetIdentifiers,attachEquipmentAliases,deriveLetterRules,attachLetterRules} from './equipment-alias-rules.mjs';
-export {aliasWrittenText,aliasWrittenKey,assetIdentifiers,aliasForSelection,attachEquipmentAliases,deriveLetterRules,attachLetterRules,letterRuleForAlias} from './equipment-alias-rules.mjs';
+import {aliasWrittenText,aliasWrittenKey,assetIdentifiers,attachEquipmentAliases,deriveLetterRules,attachLetterRules,aliasNumberMatches} from './equipment-alias-rules.mjs';
+export {aliasWrittenText,aliasWrittenKey,assetIdentifiers,aliasForSelection,attachEquipmentAliases,deriveLetterRules,attachLetterRules,letterRuleForAlias,aliasNumberMatches,aliasNumberNote} from './equipment-alias-rules.mjs';
 
 // A written machine on a card (body "L21") that Pulse calls something else (DEMO21-00179).
 // A reviewer maps the written text to the Pulse record once. With EQUIPMENT_ALIAS_OTP on,
@@ -161,6 +161,9 @@ export async function createEquipmentAlias(pool,{equipmentId,kind='equipment',wr
  if(shadow)fail(`${written} is already a real door (${assetIdentifiers(shadow)[0]}) at ${asset.currentLocation||asset.site||'this site'}. It cannot also be an alias.`,409);
  const existing=(await pool.query("SELECT * FROM mis_equipment_aliases WHERE kind=$1 AND written_key=$2 AND equipment_id=$3 AND status IN ('pending','active','suspended')",[kind,key,Number(equipmentId)])).rows[0];
  if(existing)return {alias:existing,created:false};
+ // Rule of 23 Nov 2026: a different number is a corrected reading, not another name for the
+ // machine. The pair still applies where the reviewer made it; nothing permanent is saved.
+ if(!aliasNumberMatches(written,asset,kind))return {alias:null,numberDiffers:true};
  const status=otp?'pending':'active';
  const row=(await pool.query('INSERT INTO mis_equipment_aliases(id,equipment_id,kind,written_key,written_text,status,site,book,batch_id,requested_by,approval_route,approved_by,approved_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *',[randomUUID(),Number(equipmentId),kind,key,written,status,text(site).slice(0,120),text(book).slice(0,20),text(batchId).slice(0,80),login(requestedBy).slice(0,120)||'unknown',otp?null:'reviewer',otp?null:login(requestedBy)||'unknown',otp?null:new Date().toISOString()])).rows[0];
  await aliasHistory(pool,row.id,otp?'created_pending':'created_active',requestedBy,{writtenText:written,writtenKey:key,equipmentId:String(equipmentId),site,book,batchId});
@@ -266,6 +269,28 @@ export async function revokeEquipmentAlias(pool,id,revokedBy,reason=''){
  return row;
 }
 
+// Mappings saved before the same-number rule (23 Nov 2026) whose written number is not the
+// number of the machine's own door: corrected readings that were kept as permanent rules.
+// They are only listed here; an administrator removes them in one action after seeing the list.
+export const NUMBER_MISMATCH_REVOKE_REASON='Written number is not the machine number (rule of 23 Nov 2026)';
+export async function numberMismatchAliases(pool){
+ await ensureEquipmentAliases(pool);
+ const rows=(await pool.query("SELECT a.*,m.record_data FROM mis_equipment_aliases a JOIN master_records m ON m.master_name='Equipment master' AND m.id=a.equipment_id WHERE a.status IN ('pending','active','suspended') ORDER BY a.created_at,a.id")).rows;
+ return rows.filter(row=>row.record_data&&!row.record_data.sourceMissing&&!aliasNumberMatches(row.written_text,row.record_data,row.kind))
+  .map(({record_data:record,...row})=>({...row,equipment_door:assetIdentifiers(record)[0]||'',equipment_name:text(record.equipmentName||record.name),equipment_site:text(record.currentLocation||record.site||record.location)}));
+}
+// expected: the count the administrator saw. A list that changed meanwhile is refused, so
+// exactly the mappings that were shown are removed. One statement: all or none.
+export async function revokeNumberMismatchAliases(pool,actor,{expected}={}){
+ const listed=await numberMismatchAliases(pool);
+ if(expected!==undefined&&expected!==null&&Number(expected)!==listed.length)fail(`The list has changed: ${listed.length} mapping(s) now have a different number. Open the list again before removing.`,409);
+ if(!listed.length)return [];
+ const by=login(actor).slice(0,120)||'unknown';
+ return (await pool.query(`WITH gone AS (UPDATE mis_equipment_aliases SET status='revoked',revoked_by=$2,revoked_at=NOW(),revoke_route='direct',revoke_reason=$3 WHERE id=ANY($1::uuid[]) AND status IN ('pending','active','suspended') RETURNING *),
+  logged AS (INSERT INTO mis_equipment_alias_history(alias_id,action,actor,detail) SELECT id,'revoked',$2,$4::jsonb FROM gone)
+  SELECT * FROM gone`,[listed.map(row=>row.id),by,NUMBER_MISMATCH_REVOKE_REASON,JSON.stringify({route:'direct',reason:NUMBER_MISMATCH_REVOKE_REASON})])).rows;
+}
+
 // An administrator can keep a machine's alias but stop it teaching the other sites (or turn
 // it back on). The alias itself, its approval and its history are unchanged.
 export async function setAliasAllSites(pool,id,allSites,actor,reason=''){
@@ -348,7 +373,7 @@ export function scanBatchMismatches({cards=[],assets=[],site='',kind='vehicle',a
  const categories=[];
  if(kind==='vehicle'){
   categories.push(category('tipper','Tippers (trip card header)',live.map(card=>({written:card.draft?.doorText||card.raw_fields?.door||'',card,field:'doorText'})),vehicles,'vehicle'));
-  categories.push(category('body','Trip body equipment',live.flatMap(card=>[...(card.draft?.trips||[]).map((row,i)=>({written:row.equipmentSource==='master-selection'?'':row.equipmentNotation?.original||row.equipmentName||'',card,field:'trips.'+i+'.equipmentName'})),...(card.draft?.scanMachineSummary||[]).map((row,i)=>({written:row.equipmentNotation?.original||row.equipmentName||'',card,field:'scanMachineSummary.'+i+'.equipmentName'}))]),equipment,'equipment'));
+  categories.push(category('body','Trip body equipment',live.flatMap(card=>[...(card.draft?.trips||[]).map((row,i)=>({written:tripRowWrittenMachine(row),card,field:'trips.'+i+'.equipmentName'})),...(card.draft?.scanMachineSummary||[]).map((row,i)=>({written:row.equipmentNotation?.original||row.equipmentName||'',card,field:'scanMachineSummary.'+i+'.equipmentName'}))]),equipment,'equipment'));
  }else categories.push(category('elb','Job card equipment (header)',live.map(card=>({written:card.draft?.doorText||card.raw_fields?.door||'',card,field:'doorText'})),equipment,'equipment'));
  const open=categories.filter(c=>c.right.length);
  return {site,kind,categories,pending:open.reduce((n,c)=>n+c.right.length,0),current:open[0]?{category:open[0].id,pair:open[0].right[0]}:null};
@@ -412,6 +437,14 @@ export function registerEquipmentAliases(app,{pool,protect=[],requireAdministrat
   res.json({...(await settings()),aliases:await detailed(rows,actorOf(req)),letterRules:await loadLetterRules(pool)});
  }));
  app.get('/api/equipment-aliases/letter-rules',...guard,handle(async(req,res)=>res.json({letterRules:await loadLetterRules(pool)})));
+ // Mappings whose written number is not the machine's number: the list, then one removal by an administrator.
+ app.get('/api/equipment-aliases/number-mismatch',...guard,...admin,handle(async(req,res)=>{const rows=await numberMismatchAliases(pool);res.json({count:rows.length,aliases:rows.map(publicAlias)});}));
+ app.post('/api/equipment-aliases/number-mismatch/revoke',...guard,...admin,handle(async(req,res)=>{
+  if(otpEnabled())fail('Removing a mapping needs an OTP while the OTP rule is on: request one from the Equipment master ALIAS column.',409);
+  const revoked=await revokeNumberMismatchAliases(pool,actorOf(req),{expected:req.body?.expected});
+  if(revoked.length){audit(req,{action:'Equipment aliases with a different number removed',reference:revoked.length+' mapping(s)',details:{count:revoked.length,reason:NUMBER_MISMATCH_REVOKE_REASON,ids:revoked.map(row=>row.id)}});await onChange(revoked[0]);}
+  res.json({revoked:revoked.length});
+ }));
  app.put('/api/equipment-aliases/:id/all-sites',...guard,...admin,handle(async(req,res)=>{
   const allSites=req.body?.allSites===true;
   const row=await setAliasAllSites(pool,req.params.id,allSites,actorOf(req),req.body?.reason||'');
@@ -422,7 +455,7 @@ export function registerEquipmentAliases(app,{pool,protect=[],requireAdministrat
  app.post('/api/equipment-aliases',...guard,handle(async(req,res)=>{
   const result=await createEquipmentAlias(pool,{...req.body,requestedBy:actorOf(req),otp:otpEnabled()});
   if(result.alias&&result.created){audit(req,{action:result.alias.status==='active'?'Equipment alias created':'Equipment alias requested',reference:result.alias.written_text+' → equipment '+result.alias.equipment_id,details:publicAlias(result.alias)});if(result.alias.status==='active')await onChange(result.alias);}
-  res.status(result.created?201:200).json({alias:result.alias?(await detailed([result.alias],actorOf(req)))[0]:null,created:Boolean(result.created),redundant:Boolean(result.redundant),otpRequired:Boolean(result.alias&&result.alias.status==='pending')});
+  res.status(result.created?201:200).json({alias:result.alias?(await detailed([result.alias],actorOf(req)))[0]:null,created:Boolean(result.created),redundant:Boolean(result.redundant),numberDiffers:Boolean(result.numberDiffers),otpRequired:Boolean(result.alias&&result.alias.status==='pending')});
  }));
  app.post('/api/equipment-aliases/:id/otp',...guard,handle(async(req,res)=>{
   if(!otpEnabled())fail('Mapping approval by OTP is switched off on this server.',409);
