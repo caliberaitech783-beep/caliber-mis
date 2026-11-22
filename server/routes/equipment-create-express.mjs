@@ -75,6 +75,8 @@ export function registerEquipmentCreateExpress(app,{pool,requireSession,accessCo
   res.status(201).json(result);
  }));
 
+ // Enter the OTP. A wrong code is counted and kept: the transaction hands the refusal back instead of throwing,
+ // so the count (and "cancelled" after five wrong codes, or "expired") is saved before the answer goes out.
  app.post('/api/equipment/express/:id/verify',requireSession,wrap(async(req,res)=>{
   if(!uuid(req.params.id))otpFail('Invalid request reference.');
   const context=await accessContext(req.session,pool);
@@ -83,8 +85,8 @@ export function registerEquipmentCreateExpress(app,{pool,requireSession,accessCo
    const row=(await client.query('SELECT * FROM mis_equipment_create_requests WHERE id=$1 FOR UPDATE',[req.params.id])).rows[0];
    const check=checkOtpAttempt(row,req.body?.otp);
    if(!check.ok){
-    if(row&&(check.status!==row.status||check.attempts!==undefined&&check.attempts!==row.attempts))await client.query('UPDATE mis_equipment_create_requests SET status=$2,attempts=$3 WHERE id=$1',[row.id,check.status==='missing'?row.status:check.status,check.attempts??row.attempts]);
-    otpFail(check.message,400);
+    if(row&&check.status!=='missing'&&(check.status!==row.status||(check.attempts??row.attempts)!==row.attempts))await client.query('UPDATE mis_equipment_create_requests SET status=$2,attempts=$3 WHERE id=$1',[row.id,check.status,check.attempts??row.attempts]);
+    return {refused:check.message};
    }
    const assets=(await client.query("SELECT id,record_data FROM master_records WHERE master_name='Equipment master'")).rows.map(r=>({id:String(r.id),...r.record_data}));
    const existing=findExistingEquipment(row.draft,assets);
@@ -98,6 +100,7 @@ export function registerEquipmentCreateExpress(app,{pool,requireSession,accessCo
    auditEvent(req,{action:'Create equipment by OTP',reference:record.door,details:{site:record.site,approvedBy,equipmentId:inserted.id,pulseWrite:pulse}});
    return {equipment:{id:String(inserted.id),...record},cardDraft:row.card_draft||null,batchId:row.batch_id};
   });
+  if(result.refused)otpFail(result.refused,400);
   res.json(result);
  }));
 }

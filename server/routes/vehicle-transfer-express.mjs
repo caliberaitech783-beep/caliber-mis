@@ -100,6 +100,9 @@ export function registerVehicleTransferExpress(app,{pool,requireSession,accessCo
   res.status(201).json(result);
  }));
 
+ // Enter the OTP. A wrong code is counted and kept: the transaction hands the refusal back instead of throwing,
+ // so the count (and "cancelled" after five wrong codes, or "expired") is saved before the answer goes out.
+ // A throw in here would undo the count with the rest of the transaction.
  app.post('/api/vehicle-transfers/express/:otpId/verify',requireSession,wrap(async(req,res)=>{
   if(!uuid(req.params.otpId))otpFail('Invalid OTP reference.');
   const context=await accessContext(req.session,pool);
@@ -108,8 +111,8 @@ export function registerVehicleTransferExpress(app,{pool,requireSession,accessCo
    const row=(await client.query('SELECT * FROM mis_vehicle_transfer_otps WHERE id=$1 FOR UPDATE',[req.params.otpId])).rows[0];
    const check=checkOtpAttempt(row,req.body?.otp);
    if(!check.ok){
-    if(row&&check.status!==row.status||row&&check.attempts!==undefined&&check.attempts!==row.attempts)await client.query('UPDATE mis_vehicle_transfer_otps SET status=$2,attempts=$3 WHERE id=$1',[row.id,check.status==='missing'?row.status:check.status,check.attempts??row.attempts]);
-    otpFail(check.message,400);
+    if(row&&check.status!=='missing'&&(check.status!==row.status||(check.attempts??row.attempts)!==row.attempts))await client.query('UPDATE mis_vehicle_transfer_otps SET status=$2,attempts=$3 WHERE id=$1',[row.id,check.status,check.attempts??row.attempts]);
+    return {refused:check.message};
    }
    const outcome=await completeExpressTransfer(client,{transferId:row.transfer_id,approvedBy:row.sent_to,requester:login(req),pulseWriter});
    await client.query("UPDATE mis_vehicle_transfer_otps SET status='used',used_at=NOW(),approved_by=$2 WHERE id=$1",[row.id,row.sent_to.join(', ')]);
@@ -118,6 +121,7 @@ export function registerVehicleTransferExpress(app,{pool,requireSession,accessCo
    auditEvent(req,{action:'Complete express transfer by OTP',reference:outcome.updated.transferNo,details:audit});
    return {transfer:publicTransfer(row.transfer_id,outcome.updated),equipment:{id:outcome.equipment.id,door:outcome.equipment.door,currentLocation:outcome.equipment.currentLocation},completed:true,pulseWrite:outcome.updated.pulseWrite};
   });
+  if(result.refused)otpFail(result.refused,400);
   void notify(pool,result.transfer).catch(()=>{});
   res.json(result);
  }));

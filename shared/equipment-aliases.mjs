@@ -231,14 +231,17 @@ export async function issueAliasOtp(client,{aliasId,purpose='map_equipment',rout
 
 // Entering the code is the approver's decision. Either route makes the pair permanent and
 // cancels the live code on the other route, so a pair is never approved twice.
+// A code that is refused (wrong, expired, cancelled, already used) comes back as {refused:message}
+// and is never thrown: the caller's transaction must commit the wrong-try count first, then
+// answer 400. A throw here would roll the count back, and the five-tries limit would never end.
 export async function verifyAliasOtp(client,{aliasId,otpId,otp,login:actor,requeue=async()=>{}}){
  const alias=await lockAlias(client,aliasId);
  const row=uuid(otpId)?(await client.query('SELECT * FROM mis_equipment_alias_otps WHERE id=$1 AND alias_id=$2 FOR UPDATE',[otpId,alias.id])).rows[0]:null;
  if(!row||row.requested_by!==login(actor))fail('This approval request is no longer available. Request a new OTP.',404);
  const check=checkOtpAttempt(row,otp);
  if(!check.ok){
-  if(check.status!=='missing'&&(check.status!==row.status||check.attempts!==undefined&&check.attempts!==row.attempts))await client.query('UPDATE mis_equipment_alias_otps SET status=$2,attempts=$3 WHERE id=$1',[row.id,check.status,check.attempts??row.attempts]);
-  fail(check.message,400);
+  if(check.status!=='missing'&&(check.status!==row.status||(check.attempts??row.attempts)!==row.attempts))await client.query('UPDATE mis_equipment_alias_otps SET status=$2,attempts=$3 WHERE id=$1',[row.id,check.status,check.attempts??row.attempts]);
+  return {refused:check.message};
  }
  const used=(await client.query("UPDATE mis_equipment_alias_otps SET status='used',used_at=NOW(),approved_by=$2 WHERE id=$1 RETURNING *",[row.id,row.sent_to.join(', ')])).rows[0];
  await cancelLive(client,alias.id,row.purpose,row.id);
@@ -467,6 +470,8 @@ export function registerEquipmentAliases(app,{pool,protect=[],requireAdministrat
  }));
  app.post('/api/equipment-aliases/:id/otp/:otpId/verify',...guard,handle(async(req,res)=>{
   const result=await inTransaction(client=>verifyAliasOtp(client,{aliasId:req.params.id,otpId:req.params.otpId,otp:req.body?.otp,login:actorOf(req)}));
+  // Refused after the commit, so the wrong-try count is kept.
+  if(result.refused)fail(result.refused,400);
   await onChange(result.alias);
   audit(req,{action:result.alias.status==='revoked'?'Equipment alias revoked':'Equipment alias approved',reference:result.alias.written_text+' → equipment '+result.alias.equipment_id,details:publicAlias(result.alias)});
   res.json({alias:(await detailed([result.alias],actorOf(req)))[0],approved:result.alias.status==='active',revoked:result.alias.status==='revoked'});
