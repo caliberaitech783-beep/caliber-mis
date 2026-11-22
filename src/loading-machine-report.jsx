@@ -1,6 +1,6 @@
 import React,{useLayoutEffect,useMemo,useRef,useState} from 'react';
 import {StepBackButton} from './step-back.jsx';
-import {DateShiftGrid,dateShiftGrid,dateShiftExport,dateLine} from './date-shift-grid.jsx';
+import {DateShiftGrid,dateShiftGrid,dateShiftExport,dateLine,siteDateLine} from './date-shift-grid.jsx';
 import {BANDS,BAND_LABELS,IDLE_LIMIT,RED_AFTER,WAIT_LIMIT,STATES,TONE_LABELS,machineShifts,summarise,loadingLines,shiftTimeline,clockTags,shiftsNotWorked,idleText,groupKey,clockAt,breakdownText} from '../shared/loading-machine-report.mjs';
 import {tripEntries} from '../shared/trip-timing-report.mjs';
 import {formatDisplayDateTime} from '../shared/date-time-format.mjs';
@@ -327,7 +327,7 @@ export default function LoadingMachineReport({records=[],assets=[],fleet=[],batc
  // The share worked counts only the machine shifts whose ELB gives both hours, as on the lines themselves.
  const manySites=site===EVERY;
  const shiftGrid=dateShiftGrid(shiftsListed.map(r=>({...r,judgedHours:r.percent===null?0:r.percent*r.shiftHours/100})),{sumKeys:['machineShifts','running','breakdown','nohours','trips','judgedHours','shiftHours','stops','idleMinutes',...BANDS.map(b=>b.key)],
-  lineOf:r=>manySites?{...dateLine(r),key:r.date+'|'+r.site,label:dateLine(r).label+' · '+r.site}:dateLine(r)});
+  lineOf:r=>manySites?siteDateLine(r):dateLine(r)});
  const shiftDay=[{key:'machines',label:'Machine shifts',value:t=>t.machineShifts},{key:'trips',label:'Trips loaded',value:t=>t.trips},
   {key:'percent',label:'% of shift worked',value:t=>t.shiftHours?Math.round(t.judgedHours/t.shiftHours*1000)/10+'%':'—'},{key:'stops',label:'Idle stops',value:t=>t.stops}];
  const shiftExport=dateShiftExport(shiftGrid,{count:r=>r.machineShifts,countLabel:'machines',boxes:gridBoxes,dayColumns:shiftDay});

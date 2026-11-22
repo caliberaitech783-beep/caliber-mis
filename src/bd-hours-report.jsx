@@ -1,6 +1,6 @@
 import React,{useState} from 'react';
 import {StepBackButton} from './step-back.jsx';
-import {DateShiftGrid,dateShiftGrid,dateShiftExport,dateLine} from './date-shift-grid.jsx';
+import {DateShiftGrid,dateShiftGrid,dateShiftExport,dateLine,siteDateLine} from './date-shift-grid.jsx';
 import {groupKey} from '../shared/loading-machine-report.mjs';
 import {bdLines,summariseBd,machineShiftLines,MISMATCH_KINDS,KIND_LABELS,BD_TOLERANCE_MINUTES,hoursText,differenceText} from '../shared/bd-hours-report.mjs';
 import './bd-hours-report.css';
@@ -82,7 +82,7 @@ export default function BdHoursReport({entries=[],mode='bd',period='',ReportSect
  const gridBoxes=mismatch?MISMATCH_KINDS.filter(k=>k.key!=='match').map(k=>({key:k.key,label:k.label,className:'bd-count bd-'+k.tone})):[{key:'elbTenths',label:'ELB BD hours',className:'bd-count bd-elbbox'}];
  const gridRows=shifts.rows.map(r=>({...r,elbTenths:Math.round(r.elbMinutes/6)/10}));
  const grid=dateShiftGrid(gridRows,{sumKeys:['machineShifts','pulseMinutes','elbMinutes','elbTenths','mismatches',...MISMATCH_KINDS.map(k=>k.key)],
-  lineOf:r=>manySites?{...dateLine(r),key:r.date+'|'+r.site,label:dateLine(r).label+' · '+r.site}:dateLine(r)});
+  lineOf:r=>manySites?siteDateLine(r):dateLine(r)});
  const count=mismatch?r=>r.mismatches:r=>hoursText(r.pulseMinutes);
  const countLabel=mismatch?'Mismatches':'Pulse BD h';
  const dayColumns=[{key:'pulse',label:'Pulse BD h',value:t=>hoursText(t.pulseMinutes)},{key:'elb',label:'ELB BD h',value:t=>hoursText(t.elbMinutes)},{key:'diff',label:'Difference (h)',value:t=>differenceText(round1(t.elbMinutes-t.pulseMinutes))},{key:'mismatches',label:'Mismatches',value:t=>t.mismatches}];

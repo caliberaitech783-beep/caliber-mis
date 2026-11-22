@@ -1,4 +1,6 @@
 import React from 'react';
+import {canonicalSiteName} from '../shared/site-location.mjs';
+import {displaySiteName} from '../shared/region-scope.mjs';
 
 // Step 2 of the owner's report pattern (15 Nov 2026, the OT Multiple Duties "date by shift" table): one line per date, the
 // shifts side by side, and in each shift box the count followed by a coloured box for every colour found there. Pressing
@@ -10,6 +12,11 @@ const weekday=d=>/^\d{4}-\d{2}-\d{2}$/.test(String(d))?WEEKDAYS[new Date(d+'T00:
 const sum=(list,keys)=>Object.fromEntries(keys.map(k=>[k,list.reduce((n,r)=>n+(Number(r[k])||0),0)]));
 const byText=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true});
 export const dateLine=r=>({key:String(r.date||''),label:dmy(r.date),sub:weekday(r.date)});
+// All sites: one line per date and site (owner, 22 Nov 2026: Jayant OB showed twice on 01-11-26, once with its Day / Night
+// log books and once with Shift A / B / C, because each shift box kept the site as its first log book spelt it). The line
+// is the site's one identity, named once by its OC name, so every shift of that site and date sits on one line.
+export const siteKeyOf=site=>canonicalSiteName(site)||String(site||'').trim();
+export const siteDateLine=r=>({...dateLine(r),key:String(r.date||'')+'|'+siteKeyOf(r.site),label:dmy(r.date)+' · '+(displaySiteName(r.site)||r.site)});
 
 // `rows`: one row per date and shift (a report's own shift lines). `sumKeys`: the counts added up for a whole day, a whole
 // shift and every date. `lineOf` groups rows into lines (the date by default; All sites adds the site).
