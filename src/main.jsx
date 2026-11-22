@@ -4072,7 +4072,7 @@ function ExportMenu({ title, columns = [], rows = [], smartPrintColumns = column
       recordUserActivity({module:"Reports",action:"Download Excel report",targetReference:title,reason:sheets ? `${sheets.length} sheets` : `${model.rows.length} records`});
       const highlightedRows = sheets ? undefined : new Set(model.rows.flatMap((row, index) => highlightRow?.(row) ? [index] : []));
       const workbook = sheets
-        ? buildXlsxSheetsWorkbook(title, prepareXlsxExportSheets({title, sheets, formatCell:exportCellText}))
+        ? buildXlsxSheetsWorkbook(title, prepareXlsxExportSheets({ title, sheets, formatCell: exportCellText }))
         : buildXlsxWorkbook(title, model.columns, [], highlightedRows, model.rows);
       downloadExportFile(workbook, fileName);
       return {name:fileName, saved:false};
