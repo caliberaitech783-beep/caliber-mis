@@ -26,6 +26,7 @@ import {readHrMasterSheet,planHrMaster} from '../shared/hr-employee-master.mjs';
 import {automationForEventKey} from '../server/services/automation-switches.mjs';
 import {AUTOMATIONS} from '../server/rules/automation-catalogue.mjs';
 import {OTP_MAX_ATTEMPTS} from '../shared/otp-approval.mjs';
+import {misRequestAllowed} from '../shared/mis-application-access.mjs';
 import {siteMoveSheets} from '../src/employee-site-move-sheet.mjs';
 
 const MAJRI='Majri OC',SASTI='Sasti OC';
@@ -287,6 +288,23 @@ test('the move in one transaction: the employee and the register line are writte
  }finally{await f.close();}
 });
 
+// New actions fail closed for MIS logins until they are on the list in shared/mis-application-access.mjs. PR 486 went
+// live without these two, so the site logins that scan the cards could not use Fetch from Pulse-II with OTP.
+test('a site MIS login that can scan or enter cards may ask for and confirm the move; other MIS logins may not',()=>{
+ const login=pages=>({permissions:{separateMisCredentials:true,misDesktopAccess:pages,misMobileAccess:[]}});
+ const ask={path:'/api/log-books/employee-site-move',method:'POST'},confirm={path:'/api/log-books/employee-site-move/3f2b8c1e-0000-4000-8000-000000000000/verify',method:'POST'};
+ for(const page of ['Trip Card Bulk Scan','Job Card Bulk Scan','Vehicle Log Book','Equipment Log Book'])for(const request of [ask,confirm])assert.equal(misRequestAllowed(login([page]),request),true,page+' '+request.path);
+ for(const request of [ask,confirm]){
+  assert.equal(misRequestAllowed(login(['Reports','Dashboard','Tickets']),request),false,'a login with no card menu');
+  assert.equal(misRequestAllowed(login(['Trip Card Bulk Scan']),{...request,method:'GET'}),false,'POST only');
+ }
+ assert.equal(misRequestAllowed(login(['Trip Card Bulk Scan']),{path:'/api/log-books/employee-site-move/not-an-id/verify',method:'POST'}),false);
+ assert.equal(misRequestAllowed(login(['Trip Card Bulk Scan']),{path:'/api/log-books/employee-lookup',method:'POST'}),true,'the lookup beside it was already allowed');
+ // The register is part of Employee Master, and a login that is not a separate MIS login is not limited by this list.
+ assert.equal(misRequestAllowed(login(['Employee master']),{path:'/api/employee-master/site-moves',method:'GET'}),true);
+ assert.equal(misRequestAllowed(login(['Trip Card Bulk Scan']),{path:'/api/employee-master/site-moves',method:'GET'}),false);
+ assert.equal(misRequestAllowed({permissions:{}},ask),true);
+});
 test('the OTP message has its own line in the Automation Centre',()=>{
  assert.equal(automationForEventKey('employee-move-otp:3f2b8c1e-0000-4000-8000-000000000000'),'employee-move-otp');
  const entry=AUTOMATIONS.find(row=>row.key==='employee-move-otp');
