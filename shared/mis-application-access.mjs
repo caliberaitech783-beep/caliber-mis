@@ -93,6 +93,10 @@ export function misRequestAllowed(session,req){
  if(route.startsWith('/api/log-book-deletions'))return allowed('Deletion');
  if(route.startsWith('/api/scan-backups'))return allowed('Scan Backup');
  if(route.startsWith('/api/log-books/options')||route==='/api/log-books/hours'||route==='/api/log-books/employee-lookup')return ['Vehicle Log Book','Equipment Log Book','Trip Card Bulk Scan','Job Card Bulk Scan'].some(allowed);
+ // Fetch from Pulse-II with OTP on a card (server/routes/employee-site-move.mjs): asked and confirmed from the same
+ // Fetch box as the lookup above, so the same menus. 23 Nov 2026: PR 486 left these two off this list, so a site
+ // MIS login pressing the button got "This MIS menu is not assigned to your login".
+ if(route==='/api/log-books/employee-site-move'||/^\/api\/log-books\/employee-site-move\/[0-9a-f-]{36}\/verify$/i.test(route))return req.method==='POST'&&['Vehicle Log Book','Equipment Log Book','Trip Card Bulk Scan','Job Card Bulk Scan'].some(allowed);
  if(route.startsWith('/api/log-books/vehicle'))return allowed('Vehicle Log Book');
  if(/^\/api\/log-books\/lmv(?:\/|$)/.test(route))return allowed('Vehicle Log Book');
  if(route==='/api/shift-attendance'){
