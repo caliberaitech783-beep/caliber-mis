@@ -2,6 +2,7 @@
 // is missing"): Step 1 one line per site, Step 2 date by shift, Step 3 by equipment category, Step 4 the report's own
 // table for what was opened. One rule for all of them, so each report keeps its own columns and only gains the steps.
 import {canonicalSiteName} from '../shared/site-location.mjs';
+import {siteDisplayName} from './operations-report-model.mjs';
 import {equipmentGroupName} from '../shared/equipment-group.mjs';
 import {fleetDoorKey} from '../shared/scan-fleet-door.mjs';
 import {shiftDisplayName} from '../shared/shift-master.mjs';
@@ -58,7 +59,7 @@ export function cardShiftOf(shifts=[]){
 
 export function stepItems(id,{records=[],cards=[],report={rows:[]},assets=[],shifts=[]}){
  const categoryOf=assetCategoryOf(assets);
- const item=(fields,source)=>{const site=text(fields.site)||'Site not recorded';return {...fields,site,siteKey:canonicalSiteName(site)||site,shift:text(fields.shift)||'Shift not recorded',date:text(fields.date),category:categoryOf(fields),source};};
+ const item=(fields,source)=>{const site=text(siteDisplayName(fields.site))||'Site not recorded';return {...fields,site,siteKey:canonicalSiteName(site)||site,shift:text(fields.shift)||'Shift not recorded',date:text(fields.date),category:categoryOf(fields),source};};
  const at=LINE_REPORTS[id];
  if(at)return report.rows.map(row=>item({date:row[at.date],site:row[at.site],door:row[at.door],shift:row[at.shift],assetId:null},row));
  if(id==='scans'){const shiftOf=cardShiftOf(shifts);return cards.map(c=>{const d=c.draft||{};return item({date:d.bookDate||c.scanned_date,site:d.location,door:d.door,shift:shiftOf(c),assetId:d.assetId},c);});}

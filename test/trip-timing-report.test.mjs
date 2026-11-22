@@ -66,7 +66,7 @@ test('one site written in several spellings on the cards is counted as one site'
  const mixed=tripEntries(normalise([book(11,'majri ob','SAMPLE DRIVER 11','V9011',one),book(12,'majri ob','SAMPLE DRIVER 12','V9012',one),book(13,'Majri OB','SAMPLE DRIVER 13','V9013',one),
   book(14,'Dudhicua East OB','SAMPLE DRIVER 14','V9014',one),book(15,'Dudhichua East OB','SAMPLE DRIVER 15','V9015',one),book(16,'Dudhichua East OB','SAMPLE DRIVER 16','V9016',one),book(17,'sasti ob','SAMPLE DRIVER 17','V9017',one)]));
  const sites=summarise(mixed,'load-unload','site');
- assert.deepEqual(sites.rows.map(r=>[r.site,r.timed,r.driversLate]),[['Dudhichua East OB',3,3],['Majri OB',3,3],['sasti ob',1,1]]);
+ assert.deepEqual(sites.rows.map(r=>[r.site,r.timed,r.driversLate]),[['Dudhichua East OC',3,3],['Majri OC',3,3],['Sasti OC',1,1]]);
 });
 
 test('a site opens date by date and shift by shift, and a driver line carries his delays from both views',()=>{
