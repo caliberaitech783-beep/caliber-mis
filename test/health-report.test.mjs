@@ -187,7 +187,9 @@ test('it runs only on the live slot and is the Automation Centre line A25 with i
  assert.equal(isLiveSlot({WEBSITE_SLOT_NAME:'staging'}),false);
  assert.equal(automationForEventKey('health-report:2026-11-16 10:00 IST:owner'),'health-report');
  const line=AUTOMATIONS.find(item=>item.key==='health-report');
- assert.equal(line.code,'A25');assert.equal(AUTOMATIONS.at(-1),line);
+ // It was the last line until A26 (the site change OTP) was added on 23 Nov 2026: the codes still run in order with no gap.
+ assert.equal(line.code,'A25');assert.equal(AUTOMATIONS.indexOf(line),24);
+ assert.deepEqual(AUTOMATIONS.map(item=>item.code),AUTOMATIONS.map((item,index)=>'A'+String(index+1).padStart(2,'0')));
  assert.match(line.trigger,/10:00, 16:00 and 21:00 IST/);
  const source=readFileSync(new URL('../src/automation-centre.jsx',import.meta.url),'utf8');
  assert.match(source,/row\.key==='health-report'&&<><button[^>]*onClick=\{\(\)=>void sendHealthSample\(row\)\}>Send sample to Telegram<\/button><button[^>]*onClick=\{\(\)=>setTab\('Speed report people'\)\}>Change people<\/button><\/>/);

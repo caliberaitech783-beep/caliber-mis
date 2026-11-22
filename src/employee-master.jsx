@@ -7,6 +7,7 @@ import {EMPLOYEE_FIELDS} from '../shared/employee-master-fields.mjs';
 import {isErpEmployee} from '../shared/erp-employee-fields.mjs';
 import {employeeSiteSheets} from './employee-site-export.mjs';
 import HrMasterImport from './hr-master-import.jsx';
+import EmployeeSiteMoves from './employee-site-moves.jsx';
 import './employee-master.css';
 const labelGroups={Identity:['caliberId','caliberCode','employeeCode','name','employeeShortName','gender','dateOfBirth','fatherName','spouseName','maritalStatus','bloodGroup'],Employment:['departmentName','designationName','employeeGrade','currentDepartmentName','currentDesignationName','dateOfAppointment','dateOfJoining','shiftName','staffType','employeeType','locationName','currentLocation','currentStaffType','status','companyName','skills','workCentre','resignationStatus','resignationAcceptenceDate'],Contact:['presentAddress','presentCity','presentState','presentPhoneNo','permanentAddress','permanentCity','permanentState','officeMobileNo','officeEmailId','personalMobileNo','personalEmailId']};
 // The register's headings sort the page on screen (the server sends 50 at a time); View details does not sort.
@@ -32,6 +33,8 @@ export default function EmployeeMaster({session,ExportMenu,PrintButton,parseCsv,
  return <section className="employee-master"><header className="employee-master-hero"><div><small>MASTERS / EMPLOYEES</small><h1>Employee Master</h1><p>Employee profiles · Separate Employee ID and Caliber ID</p></div><div className="employee-actions"><button onClick={()=>{setDraft({});setSelected(null);setTab('Identity');}} disabled={busy}>New employee</button><button onClick={load}>Refresh</button><button onClick={()=>file.current.click()} disabled={busy}>Import CSV / JSON</button><button onClick={async()=>{try{setBusy(true);setExportRows((await api(query+'&export=1')).records)}catch(e){setError(e.message)}finally{setBusy(false)}}} disabled={busy}>Prepare filtered export</button>{exportRows&&<ExportMenu title="Employee Master" columns={columns} rows={exportRows}/>}<button onClick={prepareSiteExport} disabled={busy}>Prepare site-wise download</button>{siteExportRows&&<ExportMenu title="Employee Master site-wise" label="Site-wise download" columns={columns} rows={siteExportRows} excelSheets={()=>employeeSiteSheets(siteExportRows,columns,'Employee Master')}/>}</div></header><input hidden type="file" ref={file} accept=".csv,.json" onChange={importFile}/>
  {/* HR's all-sites Excel as the Employee Master: preview, then apply (src/hr-master-import.jsx). */}
  <HrMasterImport session={session} onApplied={load}/>
+ {/* The register of site moves approved by OTP, for HR (src/employee-site-moves.jsx). */}
+ <EmployeeSiteMoves session={session}/>
  {error&&<p className="employee-error" role="alert">{error}</p>}{notice&&<p role="status">{notice}</p>}
  <div className="employee-search"><label>Search employees<input placeholder="Employee ID, Caliber ID, name or department" value={q} onChange={e=>{setQ(e.target.value);setPage(0)}}/></label><label>Location<SmartSelect value={site} onChange={e=>{setSite(e.target.value);setPage(0)}}><option value="">All locations</option>{data.sites.map(s=><option key={s}>{s}</option>)}</SmartSelect></label><strong>{data.total.toLocaleString('en-IN')} employees</strong></div>
  {/* The page of 50 employees on the shared report table: a filter and sort menu on every heading (VLB look). The search
@@ -73,6 +76,7 @@ export function EmployeeCurrentLocation({session}){
  }
  return <section className="employee-master">
    <h1>Employee Current Location</h1>
+   <p className="employee-site-rule">This screen gives a site to a worker who has none. A worker's site changes only by Fetch from Pulse-II with OTP on a card, or from HR's master Excel.</p>
    <form className="employee-search" onSubmit={search}>
      <label>Employee ID<input required maxLength={100} value={employeeId} disabled={busy} onChange={event=>{setEmployeeId(event.target.value);setEmployee(null);setNotice('');}}/></label>
      <button disabled={busy}>Find employee</button>

@@ -89,7 +89,7 @@ test('the six stops: each holds the card and says why in one plain line',()=>{
  const other=held('1610');
  assert.deepEqual([other.reason,other.read,other.name,other.designation,other.site,other.at],['other-site','1610','SASTI MAN','TIPPER DRIVER','Sasti OC','Majri OC']);
  assert.deepEqual(other.lookAlikes,[{id:'1618',name:'LOOK ALIKE'},{id:'1619',name:'HELPER MAN'}],'drivers and operators first, then by number');
- assert.equal(caliberCheckMessage(other),'Scan read 1610. This is SASTI MAN, TIPPER DRIVER, Sasti OC. The number may be misread. Look-alike IDs at Majri OC: 1618 (LOOK ALIKE), 1619 (HELPER MAN).');
+ assert.equal(caliberCheckMessage(other),'Scan read 1610. This is SASTI MAN, TIPPER DRIVER, Sasti OC. The number may be misread. Look-alike IDs at Majri OC: 1618 (LOOK ALIKE), 1619 (HELPER MAN). If the number is right, press Fetch to move this person here with OTP.');
 
  assert.equal(say('2000'),"Scan read 2000. This is NOT LISTED, VOLVO DRIVER, who is not in HR's list for any site. Check the number on the card. No look-alike ID at Majri OC.");
  assert.equal(say('2100'),"Scan read 2100. This is LEFT MAN, DRIVER. HR's list says this person has left. Check the number on the card. No look-alike ID at Majri OC.");
@@ -117,7 +117,7 @@ test('look-alike IDs: only working people of this site, never the dummy ID, at m
  assert.equal(check.reason,'other-site');assert.equal(check.lookAlikes.length,LOOK_ALIKE_LIMIT);
  assert.deepEqual(check.lookAlikes.map(row=>row.id),['5001','5002','5003','5004','5005','5006','5007','5008']);
  assert.equal(check.more,2,'50000 and the helper 5009 are counted, not named');
- assert.match(caliberCheckMessage(check),/5008 \(MAN 8\) and 2 more\.$/);
+ assert.match(caliberCheckMessage(check),/5008 \(MAN 8\) and 2 more\. If the number is right, press Fetch/);
  const dummy=judgeCaliberId([...people(),person(40,12228,'SOMEONE','DRIVER',{site:'Sasti OC'})],{read:'12228',location:MAJRI}).check;
  assert.deepEqual(dummy.lookAlikes,[],'the dummy ID 12227 is not offered as a look-alike');
 });
@@ -170,7 +170,7 @@ test('both readings of the Caliber ID are kept, whatever else the second read se
 test('a held card shows the line on the driver field and is never saved by itself',()=>{
  const masters=people(),options={assets:[],employees:masters.filter(row=>row.master_name!=='Equipment master').map(row=>({id:String(row.id)})),shifts:[{id:'3'}]};
  const check=judge('1610').check,draft={location:MAJRI,employeeId:''};
- const line='Scan read 1610. This is SASTI MAN, TIPPER DRIVER, Sasti OC. The number may be misread. Look-alike IDs at Majri OC: 1618 (LOOK ALIKE), 1619 (HELPER MAN).';
+ const line='Scan read 1610. This is SASTI MAN, TIPPER DRIVER, Sasti OC. The number may be misread. Look-alike IDs at Majri OC: 1618 (LOOK ALIKE), 1619 (HELPER MAN). If the number is right, press Fetch to move this person here with OTP.';
  assert.equal(scanFieldIssues(draft,'vehicle',{employeeCode:'1610',caliberCheck:check},options).employeeId,line);
  assert.equal(scanFieldIssues(draft,'vehicle',{employeeCode:'1610',caliberCheck:check}).employeeId,line,'the same line without the master lists');
  assert.equal(manualScanIssues(draft,'vehicle',{employeeCode:'1610',caliberCheck:check},options).employeeId,line);
@@ -286,5 +286,5 @@ test('the Fetch box asks once about a helper and sends the yes',async()=>{
 test('the review screen leaves the Fetch box empty when the two readings differ',()=>{
  const source=readFileSync(new URL('../src/bulk-card-scanning.jsx',import.meta.url),'utf8');
  assert.ok(source.includes("suggestedId={card?.raw_fields?.caliberCheck?.reason==='readings-differ'?'':card?.raw_fields?.employeeCode||''}"));
- assert.ok(readFileSync(new URL('../server/routes/bulk-card-scanning.mjs',import.meta.url),'utf8').includes('applyCaliberCheck(extracted,masters,batch.expected_context?.location||extracted.draft.location)'),'the verdict is made at the batch site when the card is read');
+ assert.ok(readFileSync(new URL('../server/routes/bulk-card-scanning.mjs',import.meta.url),'utf8').includes('applyCaliberCheck(extracted,masters,batch.expected_context?.location||extracted.draft.location,batch.expected_context?.bookDate||extracted.draft.bookDate)'),'the verdict is made at the batch site when the card is read');
 });

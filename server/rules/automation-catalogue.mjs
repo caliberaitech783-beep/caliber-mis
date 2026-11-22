@@ -137,6 +137,10 @@ export const AUTOMATIONS=[
   controlledIn:'App setting MIS_HEALTH_REPORT (on unless off); live server only',
   telegram:context=>state(context.healthReportRunning!==false&&misBot(context)),whatsapp:()=>null,popup:()=>null,count:{outbox:['health-report']},
   why:context=>[need(context.healthReportRunning!==false,'app setting MIS_HEALTH_REPORT is off, or this is not the live server'),misBotWhy(context)]},
+ {code:'A26',key:'employee-move-otp',name:'Driver / operator site change approval code',category:'Approvals',rule:'A card at one site carries a driver or operator of another site, and Fetch from Pulse-II is pressed',
+  trigger:'At once, on request',people:'Project Manager of the site the worker is leaving',format:'6-digit code with the worker, both sites, the card date and the vehicle',controlledIn:'This page',
+  telegram:context=>state(misBot(context)),whatsapp:context=>state(context.whatsappConfigured),popup:()=>null,count:{outbox:['employee-move-otp']},
+  why:context=>[misBotWhy(context),whatsappWhy(context)],offWarning:CODE_WARNING},
 ];
 export const AUTOMATION_KEYS=new Set(AUTOMATIONS.map(item=>item.key));
 

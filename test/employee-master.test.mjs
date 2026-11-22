@@ -7,7 +7,9 @@ const newEmployee=(await db.query('SELECT record_data FROM master_records WHERE 
 assert.equal(newEmployee.currentLocation,'MAJRI');
 assert.equal(newEmployee.site,'MAJRI');assert.equal((await db.query("SELECT record_data FROM master_records WHERE master_name='Users & employees'")).rows[0].record_data.login,'unchanged');await assert.rejects(()=>importEmployees(pool,[rows[0],rows[0]]),/Duplicate/);assert.throws(()=>normalizeEmployee({caliberId:'A'}),/required/);}finally{await db.close()}});
 
-test('signed-in users can update only employee current location',async()=>{
+// Since 23 Nov 2026 (owner's rule of 22 Nov) this screen only gives a site to a worker who has none: a worker's site
+// changes by Fetch from Pulse-II with OTP on a card, or from HR's master Excel (shared/employee-site-moves.mjs).
+test('signed-in users can place an employee who has no site, and cannot move one from site to site',async()=>{
  const db=new PGlite();
  const app=express();
  app.use(express.json());
@@ -21,7 +23,7 @@ test('signed-in users can update only employee current location',async()=>{
  try{
    await db.exec("CREATE TABLE master_records(id BIGSERIAL PRIMARY KEY,master_name TEXT,record_data JSONB)");
    await db.query("INSERT INTO master_records(master_name,record_data) VALUES('Employee master',$1)",[
-     JSON.stringify({caliberId:'CMPL4179',name:'Test employee',currentLocation:'SASTI',panNo:'private',employeeMasterRevision:1})
+     JSON.stringify({caliberId:'CMPL4179',name:'Test employee',currentLocation:'',panNo:'private',employeeMasterRevision:1})
    ]);
    const base='http://127.0.0.1:'+server.address().port+'/api/employee-master';
    const headers={Authorization:'Bearer user','Content-Type':'application/json'};
@@ -29,12 +31,16 @@ test('signed-in users can update only employee current location',async()=>{
    assert.equal((await fetch(base+'/location/1',{...update,headers:{'Content-Type':'application/json'}})).status,401);
    assert.equal((await fetch(base+'/1',update)).status,403);
    const lookup=await fetch(base+'/location?employeeId=4179',{headers});
-   assert.deepEqual(await lookup.json(),{id:'1',employeeId:'CMPL4179',name:'Test employee',currentLocation:'SASTI',revision:1});
+   assert.deepEqual(await lookup.json(),{id:'1',employeeId:'CMPL4179',name:'Test employee',currentLocation:'',revision:1});
    const saved=await fetch(base+'/location/1',update);
    assert.deepEqual(await saved.json(),{id:'1',employeeId:'CMPL4179',name:'Test employee',currentLocation:'MAJRI',revision:2});
    assert.equal((await fetch(base+'/location/1',update)).status,409);
+   const moved=await fetch(base+'/location/1',{method:'PUT',headers,body:JSON.stringify({currentLocation:'SASTI',revision:2})});
+   assert.equal(moved.status,409);
+   assert.equal((await moved.json()).error,"A worker's site changes only by Fetch from Pulse-II with OTP on a card, or from HR's master Excel. The site was not changed.");
+   assert.equal((await fetch(base+'/location/1',{method:'PUT',headers,body:JSON.stringify({currentLocation:'',revision:2})})).status,409,'the site cannot be cleared either');
    const {rows:[{record_data:record}]}=await db.query('SELECT record_data FROM master_records');
-   assert.equal(record.site,'MAJRI');
+   assert.equal(record.site,'MAJRI');assert.equal(record.currentLocation,'MAJRI');assert.equal(record.employeeMasterRevision,2);
    assert.equal(record.panNo,'private');
  }finally{
    await new Promise(resolve=>server.close(resolve));

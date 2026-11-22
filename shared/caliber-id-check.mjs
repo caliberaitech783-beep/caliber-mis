@@ -13,6 +13,7 @@ import {employeeReferenceKeys,employeeReferenceVariants} from './employee-identi
 import {employeeAtLocation,employeeOnHrList} from './log-book-access.mjs';
 import {isDummyEmployeeId} from './dummy-employee-ids.mjs';
 import {displaySiteSelection} from './region-scope.mjs';
+import {employeeSiteOn} from './employee-site-moves.mjs';
 import {canonicalSiteName} from './site-location.mjs';
 
 export const EMPLOYEE_LISTS=['Employee master','ERP Employee master','C-Dir Employee master'];
@@ -50,7 +51,8 @@ export const employeeLeft=record=>record?.hrLeft===true?'hr':LEFT_STATUS.test(te
 
 const employeeIdOf=record=>text(record?.caliberId||record?.employeeId).toUpperCase();
 const nameOf=record=>text(record?.name||record?.employee);
-const siteOf=record=>displaySiteSelection(record?.site||record?.location||record?.currentLocation).join(' / ');
+// The worker's site on the card's date: a worker moved by an approved move keeps the old site for earlier cards.
+const siteOf=(record,date)=>displaySiteSelection(employeeSiteOn(record,date)).join(' / ');
 
 // Master rows are copied for every caller, but each record object stays the same until the lists are read
 // again, so what is worked out from a record is kept with it.
@@ -75,8 +77,8 @@ function ownersOf(index,value){
  return [...found];
 }
 // One employee at the site: Employee Master first, the other lists only when it has nobody.
-function atSite(owners,location){
- const here=owners.filter(row=>employeeAtLocation(row.record_data,location));
+function atSite(owners,location,date){
+ const here=owners.filter(row=>employeeAtLocation(row.record_data,location,date));
  const imported=here.filter(row=>row.master_name==='Employee master');
  const pool=imported.length?imported:here;
  return pool.length===1?pool[0]:pool.length?'several':null;
@@ -96,44 +98,45 @@ export function lookAlikeNumbers(number){
  return [...found].filter(value=>/^[1-9]\d*$/.test(value));
 }
 // The people at this site whose number is one digit away: drivers and operators first, then by number.
-function lookAlikes(index,number,location){
+function lookAlikes(index,number,location,date){
  const people=new Map();
  for(const candidate of lookAlikeNumbers(number)){
-  const row=atSite(ownersOf(index,candidate),location);
+  const row=atSite(ownersOf(index,candidate),location,date);
   if(!row||row==='several'||employeeLeft(row.record_data)||isDummyEmployeeId(employeeIdOf(row.record_data)))continue;
   people.set(candidate,{id:candidate,name:nameOf(row.record_data),drives:drivesOrOperates(row.record_data)});
  }
  const sorted=[...people.values()].sort((a,b)=>Number(b.drives)-Number(a.drives)||Number(a.id)-Number(b.id));
  return {lookAlikes:sorted.slice(0,LOOK_ALIKE_LIMIT).map(({id,name})=>({id,name})),...(sorted.length>LOOK_ALIKE_LIMIT?{more:sorted.length-LOOK_ALIKE_LIMIT}:{})};
 }
-const about=row=>({name:nameOf(row.record_data),designation:employeeDesignation(row.record_data),site:siteOf(row.record_data)});
+const about=(row,date)=>({name:nameOf(row.record_data),designation:employeeDesignation(row.record_data),site:siteOf(row.record_data,date)});
 
 // read: the Caliber ID on the card as the scan gives it now. readings: {first, second} when the card was read
 // twice (server/services/scan-first-field-recovery.mjs). Returns the employee row to put on the card, or the
 // reason the card waits for a person ({employee:null, check}). A card with no site yet is not judged.
-export function judgeCaliberId(masters,{read='',readings=null,location=''}={}){
+// date: the card's book date, so that a worker moved to another site is judged by the site of that date.
+export function judgeCaliberId(masters,{read='',readings=null,location='',date=''}={}){
  if(!canonicalSiteName(location))return {employee:null,check:null};
  const held=(reason,details={})=>({employee:null,check:{version:1,reason,at:text(location),...details}});
  const first=caliberNumber(readings?.first),second=caliberNumber(readings?.second);
  if(first&&second&&first!==second)return held('readings-differ',{read:first,second});
  const code=text(read||readings?.first||readings?.second).toUpperCase();
  if(!code)return held('unreadable');
- const shown=caliberNumber(code)||code.slice(0,40),index=employeeIndex(masters),owners=ownersOf(index,code),chosen=atSite(owners,location);
+ const shown=caliberNumber(code)||code.slice(0,40),index=employeeIndex(masters),owners=ownersOf(index,code),chosen=atSite(owners,location,date);
  if(chosen==='several')return held('several',{read:shown});
- const alike=()=>caliberNumber(code)?lookAlikes(index,code,location):{};
+ const alike=()=>caliberNumber(code)?lookAlikes(index,code,location,date):{};
  if(chosen){
   const record=chosen.record_data;
   if(isDummyEmployeeId(employeeIdOf(record)))return {employee:chosen,check:null};
-  if(employeeLeft(record))return held('left',{read:shown,...about(chosen),left:employeeLeft(record),...alike()});
-  if(needsDriverConfirm(record))return held('not-driver',{read:shown,...about(chosen),...alike()});
+  if(employeeLeft(record))return held('left',{read:shown,...about(chosen,date),left:employeeLeft(record),...alike()});
+  if(needsDriverConfirm(record))return held('not-driver',{read:shown,...about(chosen,date),...alike()});
   return {employee:chosen,check:null};
  }
  if(!owners.length)return held('unknown',{read:shown,...alike()});
  const prefer=rows=>rows.find(row=>row.master_name==='Employee master')||rows[0];
- const elsewhere=owners.filter(row=>employeeOnHrList(row.record_data)&&!employeeLeft(row.record_data)&&siteOf(row.record_data));
- if(elsewhere.length)return held('other-site',{read:shown,...about(prefer(elsewhere)),...alike()});
+ const elsewhere=owners.filter(row=>employeeOnHrList(row.record_data)&&!employeeLeft(row.record_data)&&siteOf(row.record_data,date));
+ if(elsewhere.length)return held('other-site',{read:shown,...about(prefer(elsewhere),date),...alike()});
  const owner=prefer(owners),left=employeeLeft(owner.record_data);
- return held(left?'left':'not-listed',{read:shown,...about(owner),...(left?{left}:{}),...alike()});
+ return held(left?'left':'not-listed',{read:shown,...about(owner,date),...(left?{left}:{}),...alike()});
 }
 
 const person=check=>[check.name,check.designation].filter(Boolean).join(', ')||'an employee';
@@ -150,7 +153,7 @@ export function caliberCheckMessage(check,kind='vehicle'){
   case 'unreadable':return 'Caliber ID could not be read. Type the number from the card.';
   case 'readings-differ':return 'The number was read as '+check.read+' and '+check.second+'. Type the number from the card.';
   case 'unknown':return read+'No employee has this number. Check the card.'+lookAlikeLine(check);
-  case 'other-site':return read+'This is '+[person(check),check.site].filter(Boolean).join(', ')+'. The number may be misread.'+lookAlikeLine(check);
+  case 'other-site':return read+'This is '+[person(check),check.site].filter(Boolean).join(', ')+'. The number may be misread.'+lookAlikeLine(check)+' If the number is right, press Fetch to move this person here with OTP.';
   case 'not-listed':return read+'This is '+person(check)+", who is not in HR's list for any site. Check the number on the card."+lookAlikeLine(check);
   case 'left':return read+'This is '+person(check)+'. '+(check.left==='hr'?"HR's list says this person has left.":'Employee Master says this person has resigned.')+' Check the number on the card.'+lookAlikeLine(check);
   case 'not-driver':return read+'This is '+person(check)+'. Confirm '+(check.name||'this person')+' '+did+', or correct the number.'+lookAlikeLine(check);
@@ -158,8 +161,8 @@ export function caliberCheckMessage(check,kind='vehicle'){
  }
 }
 // What the Fetch box says about a number a person typed.
-export function fetchRefusal(record,location){
- const who=[nameOf(record),employeeDesignation(record)].filter(Boolean).join(', ')||'an employee',site=siteOf(record);
+export function fetchRefusal(record,location,date){
+ const who=[nameOf(record),employeeDesignation(record)].filter(Boolean).join(', ')||'an employee',site=siteOf(record,date);
  if(!employeeOnHrList(record))return 'This is '+who+(record?.hrLeft===true?". HR's list says this person has left.":", who is not in HR's list for any site.")+' Check the number on the card.';
  return 'This is '+who+(site?', '+site:'')+(text(location)?'. This number is not at '+text(location)+'.':'.')+' Check the number on the card.';
 }

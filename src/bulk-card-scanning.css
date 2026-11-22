@@ -412,6 +412,16 @@
 .scan-page .employee-id-confirm{display:block;margin-top:6px;padding:6px 10px;border:1px solid #1f7a4d;border-radius:6px;background:#eaf7f0;color:#14532d;font:600 12px/1.35 inherit;text-align:left;cursor:pointer;max-width:100%}
 .scan-page .employee-id-confirm:hover:not(:disabled),.scan-page .employee-id-confirm:focus-visible{background:#d5f0e1;outline:2px solid #1f7a4d;outline-offset:1px}
 .scan-page .employee-id-confirm:disabled{opacity:.55;cursor:default}
+/* A number of another site's worker: correct the number first; the approved move with OTP comes second (owner, 22 Nov 2026). */
+.scan-page .employee-site-move{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px;padding:8px;border:1px solid #d9c9a3;border-radius:6px;background:#fff9ec}
+.scan-page .employee-site-move small{flex:1 1 100%;color:#5b4a1f;font-size:11px;line-height:1.4;font-weight:400}
+.scan-page .employee-site-move input{flex:1 1 110px;min-width:0}
+.scan-page .employee-id-correct,.scan-page .employee-id-move{padding:6px 10px;border-radius:6px;font:600 12px/1.35 inherit;cursor:pointer}
+.scan-page .employee-id-correct{border:1px solid #1f7a4d;background:#eaf7f0;color:#14532d}
+.scan-page .employee-id-move{border:1px solid #92400e;background:#fff;color:#92400e}
+.scan-page .employee-id-correct:disabled,.scan-page .employee-id-move:disabled{opacity:.55;cursor:default}
+.scan-page .employee-id-resend{padding:4px 8px;border:1px solid #c9c2d6;border-radius:6px;background:#fff;color:#4b3a63;font:500 11px/1.35 inherit;cursor:pointer}
+.scan-page .employee-id-resend:disabled{opacity:.55;cursor:default}
 .scan-page .scan-time-window{display:block;margin-top:3px;color:#455868;font-size:11px;line-height:1.4}
 
 /* Side-by-side review (desktop, heading shown): the original card fills the screen height.
