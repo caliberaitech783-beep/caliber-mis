@@ -6,7 +6,7 @@ import {aliasForSelection,aliasNumberMatches,aliasNumberNote} from '../shared/eq
 import {createEquipmentAlias,ensureEquipmentAliases,loadEquipmentAliases,numberMismatchAliases,revokeNumberMismatchAliases,registerEquipmentAliases,NUMBER_MISMATCH_REVOKE_REASON} from '../shared/equipment-aliases.mjs';
 import {misRequestAllowed} from '../shared/mis-application-access.mjs';
 
-// Rule of 23 Nov 2026. On live, 911 of 964 saved mappings changed the machine number
+// Rule of 23 Nov 2026. On live, 914 of 964 saved mappings changed the machine number
 // (T658 -> TPC65, T52 -> TPC57): corrected readings kept as permanent rules. A mapping is now
 // saved only when the written number is the machine's own number.
 const site='Jayant OB';

@@ -83,7 +83,7 @@ machine's real doors; leading zeros and the separators after the letters do not
 count, and a machine Pulse knows only by registration has no number to
 contradict. The rule holds with the OTP flag on or off.
 
-On 23 Nov 2026 the live table held 964 mappings, 911 of them with a different
+On 23 Nov 2026 the live table held 964 mappings, 914 of them with a different
 number. They are not removed by a release. An MIS administrator opens
 "Mappings where the number differs" under the Equipment master, sees them in
 the alias list (search, print and Excel as usual) and removes them in one

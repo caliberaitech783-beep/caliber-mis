@@ -8,7 +8,7 @@ import {completeScanTripDetails} from '../shared/scan-trip-completion.mjs';
 
 // The loading hour read twice (rule of 23 Nov 2026). On the trip card the hour is written
 // right against the machine number in the narrow NO column; the reader returned
-// "T | 65 | 8:38" as T658 at 08:38. 429 saved mappings on live had this shape.
+// "T | 65 | 8:38" as T658 at 08:38. 423 saved mappings on live had this shape.
 const site='Jayant OB';
 const tpc65={id:'2634',door:'TPC65 - 05018',name:'TPC65 - 05018',kind:'equipment',category:'Equipment',site};
 const tpc50={id:'2600',door:'TPC50- 05008',name:'TPC50- 05008',kind:'equipment',category:'Equipment',site};
