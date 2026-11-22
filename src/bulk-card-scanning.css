@@ -408,6 +408,10 @@
 .scan-page .scan-suggestion small{font-weight:400;color:#2f6b4a}
 .scan-page .scan-suggestion:hover:not(:disabled),.scan-page .scan-suggestion:focus-visible{background:#d5f0e1;outline:2px solid #1f7a4d;outline-offset:1px}
 .scan-page .scan-suggestion:disabled{opacity:.55;cursor:default}
+/* The one-time answer on the Fetch box: a helper, mechanic or supervisor read on a card did drive (owner, 22 Nov 2026). */
+.scan-page .employee-id-confirm{display:block;margin-top:6px;padding:6px 10px;border:1px solid #1f7a4d;border-radius:6px;background:#eaf7f0;color:#14532d;font:600 12px/1.35 inherit;text-align:left;cursor:pointer;max-width:100%}
+.scan-page .employee-id-confirm:hover:not(:disabled),.scan-page .employee-id-confirm:focus-visible{background:#d5f0e1;outline:2px solid #1f7a4d;outline-offset:1px}
+.scan-page .employee-id-confirm:disabled{opacity:.55;cursor:default}
 .scan-page .scan-time-window{display:block;margin-top:3px;color:#455868;font-size:11px;line-height:1.4}
 
 /* Side-by-side review (desktop, heading shown): the original card fills the screen height.

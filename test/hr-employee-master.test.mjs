@@ -187,8 +187,8 @@ test("preview writes nothing; apply replaces Employee Master in place and makes 
   // The Fetch box on a card: a working person of the site is found, the others are not.
   const fetchEmployee=(caliberId,location)=>f.call('/api/log-books/employee-lookup',{caliberId,location});
   assert.equal((await fetchEmployee('200','Majri OC')).body.name,'SHYAM');
-  const unlisted=await fetchEmployee('400','Majri OC');assert.equal(unlisted.status,403);assert.match(unlisted.body.error,/not on HR's employee list/);
-  const left=await fetchEmployee('500','Dudhichua East OC');assert.equal(left.status,403);assert.match(left.body.error,/not on HR's employee list/);
+  const unlisted=await fetchEmployee('400','Majri OC');assert.equal(unlisted.status,403);assert.match(unlisted.body.error,/not in HR's list for any site\. Check the number on the card\.$/);
+  const left=await fetchEmployee('500','Dudhichua East OC');assert.equal(left.status,403);assert.match(left.body.error,/HR's list says this person has left\. Check the number on the card\.$/);
   assert.equal((await fetchEmployee('CMLL12227','Majri OC')).body.name,'ABC','the dummy ID is still fetched');
  }finally{await f.close();}
 });

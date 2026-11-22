@@ -45,6 +45,9 @@ export async function recoverFirstScanFields({kind,extracted,context={},allowMis
  try{
   if(await onProgress?.('retrying',{reason:'Rechecking '+recoveryGroups.join(', ')+' against the original card',attempt:2,maxAttempts:2})===false)return extracted;
   const result=await readAgain({forceRead:true,recoveryFields:recoveryGroups,...(model?{model}:{})}),candidate=await extract(result);
+  // Both readings of the Caliber ID, as read. Two numbers that differ are a doubt no reading can settle, so
+  // the card then waits for a person (applyCaliberCheck), whichever reading is kept below.
+  extracted.raw.caliberReadings={first:extracted.raw.employeeCode||'',second:candidate.raw.employeeCode||''};
   const remaining=firstScanProblems(candidate,kind,context),site=canonicalSiteName(context.location||extracted.draft.location);
   if(!candidate.draft.location||site&&canonicalSiteName(candidate.draft.location)!==site){if(verifyDoor)extracted.raw.doorVerification={...extracted.raw.doorVerification,status:'conflict',second:candidate.draft.doorText||''};return extracted;}
   if(verifyDoor){
