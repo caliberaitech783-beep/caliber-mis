@@ -3,6 +3,7 @@ import {scanTripsOptional} from '../../shared/scan-trip-requirement.mjs';
 import {attachTransferHistory,assetForSiteOnDate} from '../../shared/equipment-transfer-history.mjs';
 import {fleetDoorKey} from '../../shared/scan-fleet-door.mjs';
 import {readScanMasters} from '../services/scan-master-cache.mjs';
+import {SCAN_MASTER_NAMES} from '../services/a-form-people-index.mjs';
 import {recoverFirstScanFields,readScanWithRecovery} from '../services/scan-first-field-recovery.mjs';
 import {SCAN_DELETION_OTP_SCHEMA,issueScanDeletionOtp,consumeScanDeletionOtp} from '../services/scan-deletion-otp-store.mjs';
 import {registerSelectedScanAbort} from './scan-card-abort.mjs';
@@ -126,7 +127,10 @@ export async function applyBatchContext(client,context,draft){
 // card costs two Gemini answers of about 6 s each plus its finish, so five workers moved a queue
 // at about 20 cards a minute; eight, the figure the engines already used, lifts that by three fifths.
 export const DEFAULT_GEMINI_WORKERS=8;
-const MASTER_NAMES=['Equipment master','C-Dir Employee master','ERP Employee master','Employee master','Shift Master','Work Order master'];
+// The lists card matching reads. A Form Master is one of them since 23 Nov 2026: the FORM A box of a trip card is
+// the second proof of the Caliber ID (shared/caliber-id-check.mjs). The A Form Master page and the biometric upload
+// read the same in-memory copy (server/services/a-form-people-index.mjs).
+const MASTER_NAMES=SCAN_MASTER_NAMES;
 const isLmvScan=batch=>batch.kind==='vehicle'&&batch.expected_context?.logBookKind==='lmv';
 const scanBookKind=batch=>isLmvScan(batch)?'lmv':batch.kind;
 function scanMastersForBook(masters,batch){

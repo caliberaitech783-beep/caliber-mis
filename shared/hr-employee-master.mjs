@@ -21,7 +21,8 @@ import {DUMMY_EMPLOYEE_IDS} from './dummy-employee-ids.mjs';
 
 export const HR_MASTER_SHEET='ALL SITES MASTER';
 export const HR_MASTER_MAX_LINES=30000;
-// app_settings key: who maintains Employee Master. Once HR's file has been applied the ERP copy stops.
+// app_settings key: who maintains Employee Master. It records when HR's file was applied and by whom.
+// The copy from Oracle / ERP is switched off whether or not it is set (owner, 23 Nov 2026; server/routes/erp-master-sync.mjs).
 export const EMPLOYEE_MASTER_OWNER_KEY='employee_master_owner';
 export const HR_MASTER_OWNER='hr-master';
 
@@ -51,7 +52,11 @@ export const hrSiteName=value=>SITES.get(canonicalSiteName(value))||'';
 export const isDummyNumber=number=>DUMMY_NUMBERS.has(String(number));
 
 // Reads the rows of the sheet (the first rows may be titles). Every line is either a record or a problem.
-export function readHrMasterSheet(rows){
+// A file with a problem line gives no records, so nothing can be applied from it, unless leaveOut is asked
+// (owner, 23 Nov 2026: three numbers stayed on two lines in HR's file and held the whole master back). Then the
+// problem lines are left out, and leftAsIs names the people on them: planHrMaster keeps those people exactly as
+// they are in Pulse-II instead of marking them "not on HR's list".
+export function readHrMasterSheet(rows,{leaveOut=false}={}){
  const sheet=Array.isArray(rows)?rows:[];
  const columnsOf=row=>{const cells=(Array.isArray(row)?row:[]).map(heading),at={};for(const [field,names] of Object.entries(HEADINGS)){const index=cells.findIndex(cell=>names.includes(cell));if(index>=0)at[field]=index;}return at;};
  const headerAt=sheet.slice(0,15).findIndex(row=>{const at=columnsOf(row);return at.employeeId!==undefined&&at.name!==undefined&&at.site!==undefined;});
@@ -78,7 +83,8 @@ export function readHrMasterSheet(rows){
   for(const line of lines)problems.push({line:line.line,employeeId:line.employeeId,name:line.name,site:line.site,problem:`CMLL${number} is on ${lines.length} lines (${where}). Keep it on one line.`});
  }
  problems.sort((a,b)=>a.line-b.line);
- return {records:problems.length?[]:records,problems,lines};
+ const bad=new Set(problems.map(problem=>problem.line)),leftAsIs=[...new Set(problems.map(problem=>employeeNumber(problem.employeeId)).filter(Boolean))];
+ return {records:!problems.length?records:leaveOut?records.filter(record=>!bad.has(record.line)):[],problems,lines,leftAsIs:leaveOut?leftAsIs:[]};
 }
 
 const same=(a,b)=>String(a??'')===String(b??'');
@@ -96,7 +102,9 @@ export const HR_MASTER_EXISTING_FIELDS=['caliberId','employeeId','caliberCode','
 // applySites: HR's site replaces the site held for a person who is already on HR's list. It is always so
 // on the first import; a later import keeps the site Pulse-II holds unless it is asked for. A person whose
 // site was set by an approved move (siteLockedAt) keeps it either way.
-export function planHrMaster(existing,records,{applySites=true,now=new Date().toISOString(),fileName=''}={}){
+// leftAsIs: the numbers named on lines of the file that were left out; those people are not touched at all.
+export function planHrMaster(existing,records,{applySites=true,now=new Date().toISOString(),fileName='',leftAsIs=[]}={}){
+ const untouched=new Set(leftAsIs.map(String));
  const byNumber=new Map();
  for(const row of existing){const number=recordNumber(row.record_data);if(number)(byNumber.get(number)||byNumber.set(number,[]).get(number)).push(row);}
  // Two old lines can hold one number (CMPL21327 and 21327): the line written as CMPL is the person, the other steps aside.
@@ -134,11 +142,12 @@ export function planHrMaster(existing,records,{applySites=true,now=new Date().to
  // A site of ours that has no line at all in the file is not covered by it (HR's first file has no Lalpeth):
  // its people are left as they are, and the preview says so.
  const covered=new Set(records.map(record=>record.siteKey)),sitesNotInFile={};
- let dummyKept=0,alreadyNotListed=0;
+ let dummyKept=0,alreadyNotListed=0,leftAsIsPeople=0;
  for(const row of existing){
   if(used.has(String(row.id)))continue;
   const number=recordNumber(row.record_data);
   if(number&&isDummyNumber(number)){dummyKept++;continue;}
+  if(number&&untouched.has(number)){leftAsIsPeople++;continue;}
   if(row.record_data.hrListed===false){alreadyNotListed++;continue;}
   const before=person(row,number),key=canonicalSiteName(before.site);
   if(SITES.has(key)&&!covered.has(key)){sitesNotInFile[SITES.get(key)]=(sitesNotInFile[SITES.get(key)]||0)+1;continue;}
@@ -148,7 +157,7 @@ export function planHrMaster(existing,records,{applySites=true,now=new Date().to
  }
  const active=lists.notListed.filter(row=>working(row)).length;
  const summary={lines:records.length,updated:updates.length,added:inserts.length,unchanged,siteChanged:lists.siteChanged.length,siteKept:lists.siteKept.length,nameChanged:lists.nameChanged.length,workingAgain:lists.workingAgain.length,left:lists.left.length,
-  notListed:notListedIds.length,notListedAtSites:Object.values(bySite).reduce((sum,row)=>sum+row.notListed,0),notListedWorking:active,notListedResigned:notListedIds.length-active,alreadyNotListed,dummyKept,
+  notListed:notListedIds.length,notListedAtSites:Object.values(bySite).reduce((sum,row)=>sum+row.notListed,0),notListedWorking:active,notListedResigned:notListedIds.length-active,alreadyNotListed,dummyKept,leftAsIsNumbers:untouched.size,leftAsIsPeople,
   sitesNotInFile:Object.entries(sitesNotInFile).map(([site,people])=>({site,people})),
   sites:[...SITES.values()].filter(site=>bySite[site]).map(site=>bySite[site])};
  return {updates,inserts,notListedIds,summary,lists};

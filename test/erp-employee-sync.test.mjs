@@ -84,22 +84,36 @@ test('ERP sync refuses empty, duplicate and mostly-missing lists without changin
  }finally{await db.close();}
 });
 
-test('Employee Master is in Sync all masters and the ERP timer copies it after the other masters',async()=>{
- assert.deepEqual(MASTER_SYNC_ROWS.find(r=>r.name==='Employee master'),{name:'Employee master',label:'Employee Master',source:'Oracle'});
+// Owner, 23 Nov 2026: "stop sync for my employee master. It should not sync from oracle / erp from now onwards."
+test('Employee Master is not in Sync all masters and nothing copies it from the ERP: not the timer, not a start, not Sync',async()=>{
+ assert.equal(MASTER_SYNC_ROWS.some(r=>r.name==='Employee master'),false);
  const {db,pool}=await fixture();
  try{
+  const kept=await add(db,{caliberId:'CMPL7',employeeId:'CMPL7',name:'SEVEN AS KEPT IN PULSE-II',site:'Majri OC'});
   const app={get(){},post(){},use(){}};const order=[];
   const erpMasters=registerErpMasters(app,{pool,config:{user:'x'},requireSession:()=>{},requireAdministrator:()=>{},
    readSource:async()=>{order.push('masters');throw new Error('masters down')},
-   readEmployees:async()=>{order.push('employees');return [erp('CMPL7','7','SEVEN')]}});
+   // The reader an older version took. It must never be called again.
+   readEmployees:async()=>{order.push('employees');return [erp('CMPL7','7','SEVEN FROM ERP')]}});
   await erpMasters.initialize();
-  assert.deepEqual(await erpMasters.sync('Employee master'),{total:1,added:1,updated:0,unchanged:0,notInErp:0});
-  const state=(await db.query("SELECT last_success,error FROM mis_master_sync_state WHERE master_name='Employee master'")).rows[0];
-  assert.ok(state.last_success);assert.equal(state.error,'');
+  assert.deepEqual(await erpMasters.sync('Employee master'),{skipped:true,reason:'Employee Master is kept in Pulse-II. It is not copied from Oracle / ERP.'});
+  assert.equal((await erpMasters.syncEmployees()).skipped,true);
   await erpMasters.start();erpMasters.stop();
   await new Promise(r=>setTimeout(r,50));
-  assert.deepEqual(order,['employees','masters','employees'],'a failed master copy does not stop the employee copy');
+  assert.deepEqual(order,['masters'],'the timed run copies the other ERP masters only');
+  assert.equal((await get(db,kept)).record_data.name,'SEVEN AS KEPT IN PULSE-II');
+  assert.equal(Number((await db.query("SELECT count(*) n FROM master_records WHERE master_name='Employee master'")).rows[0].n),1,'no employee is added');
+  assert.equal((await db.query("SELECT count(*) n FROM mis_master_sync_state WHERE master_name='Employee master'")).rows[0].n,0,'no sync is recorded for it');
  }finally{await db.close();}
+});
+
+test('no server code calls the old ERP copy of Employee Master',async()=>{
+ const fs=await import('node:fs');const path=await import('node:path');const {fileURLToPath}=await import('node:url');
+ const root=fileURLToPath(new URL('..',import.meta.url));
+ const files=[path.join(root,'server.mjs'),...['server/routes','server/services','server/rules','server/middleware'].flatMap(dir=>fs.existsSync(path.join(root,dir))?fs.readdirSync(path.join(root,dir)).filter(name=>name.endsWith('.mjs')).map(name=>path.join(root,dir,name)):[])];
+ // An import of the module or a call of its two functions; a comment that only names the file is not a caller.
+ const callers=files.filter(file=>!file.endsWith('erp-employee-sync.mjs')&&/from\s+['"][^'"]*erp-employee-sync\.mjs['"]|import\(['"][^'"]*erp-employee-sync\.mjs['"]\)|applyErpEmployees\s*\(|readErpEmployees\s*\(/.test(fs.readFileSync(file,'utf8'))).map(file=>path.relative(root,file));
+ assert.deepEqual(callers,[]);
 });
 
 test('Employee Master saves edits to ERP-sourced and Pulse-II fields',async()=>{

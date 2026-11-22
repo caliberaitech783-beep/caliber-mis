@@ -7,6 +7,8 @@ export function misPageAllowed(session,page,view){
  if(!session?.permissions?.separateMisCredentials)return false;
  if(['Fleet Capacity','Equipment Deployment',...ATTENDANCE_PAGE_NAMES].includes(page))return misPageAllowed(session,'Reports',view);
  if(page==='Capacity master')return isMisAdministrator(session)&&misPageAllowed(session,'Equipment master',view);
+ // A Form Master (src/a-form-master.jsx) is part of the employee lists and follows the Employee master right.
+ if(page==='A Form Master')return misPageAllowed(session,'Employee master',view);
  if(page==='Batch reopening approvals')return session.role==='super'&&session.permissions.adminLevel==='Manager'&&managerRoleSelection(session.permissions.managerRoles?.length?session.permissions.managerRoles:session.permissions.managerRole).includes('Project Manager');
  if(['Tickets','Telegram Integration'].includes(page))return true;
  if(MIS_ADMIN_PAGES.includes(page)||page==='Automation Centre')return isMisAdministrator(session);

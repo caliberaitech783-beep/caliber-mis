@@ -225,6 +225,7 @@ const VlbEntryWorkspace=createLazyFeature(()=>import("./vlb-entry-workspace.jsx"
 const SavedLogBooks=createLazyFeature(()=>import("./saved-log-books.jsx"),undefined,{loadingLabel:"Loading saved log books…"});
 const EmployeeMaster=createLazyFeature(()=>import("./employee-master.jsx"),undefined,{loadingLabel:"Loading employee master…"});
 const EmployeeCurrentLocation=createLazyFeature(()=>import("./employee-master.jsx"),module=>module.EmployeeCurrentLocation,{loadingLabel:"Loading employee locations…"});
+const AFormMaster=createLazyFeature(()=>import("./a-form-master.jsx"),undefined,{loadingLabel:"Loading A Form Master…"});
 const BulkCardScanning=createLazyFeature(()=>import("./bulk-card-scanning.jsx"),undefined,{loadingLabel:"Loading card scanning…"});
 const FleetReconciliation=createLazyFeature(()=>import("./fleet-reconciliation.jsx"),undefined,{loadingLabel:"Loading fleet reconciliation…"});
 const LogBookForm=createLazyFeature(()=>import("./log-book-form.jsx"),undefined,{loadingLabel:"Loading log book form…"});
@@ -11641,6 +11642,8 @@ function App() {
   const adminOnlyPages=new Set([...adminNav.map(([name])=>name),'Admin locks','Full Backup','Database']);
   const canOpenAdminPage = (name) => {
     if(name==='Employee Current Location')return Boolean(session?.token);
+    // A Form Master is part of the employee lists: whoever may open Employee Master may open it.
+    if(name==='A Form Master')return canOpenAdminPage('Employee master');
     if(['Fleet Capacity','Equipment Deployment'].includes(name)||ATTENDANCE_PAGES[name])return canOpenAdminPage('Reports');
     if(name==='Fleet reconciliation')return canOpenAdminPage('Dashboard');
     if(name==='Capacity master')return isMisAdministrator(session)&&canOpenAdminPage('Equipment master');
@@ -11993,7 +11996,7 @@ function App() {
   // renders so opening navigation cannot rebuild a large dashboard or table.
   const adminPageContent = useMemo(() => renderedActive === "Dashboard" ? (
     requestsLoaded ? <MisDashboard goto={selectMenu} gotoEquipment={gotoEquipment} gotoBreakdownFleet={gotoBreakdownFleet} requests={requests} requestsError={requestsError} requestsUpdatedAt={requestState.updatedAt} onRefreshRequests={loadRequests} theme={theme} session={session} ReportSection={ReportSection} printDashboard={printDashboardReport} /> : <RequestDataState error={requestsError} retry={loadRequests} />
-  ) : renderedActive==='Fleet reconciliation' ? (<details open className="scan-fleet-reconciliation"><summary>Site fleet · VLB / LMV / ELB, breakdown and idle details</summary><FleetReconciliation session={session}/></details>) : renderedActive==='Employee Current Location' ? (<EmployeeCurrentLocation session={session}/>) : renderedActive==='Employee master' ? (<EmployeeMaster session={session} ExportMenu={ExportMenu} PrintButton={PrintButton} parseCsv={parseCsv} ReportSection={ReportSection}/>) : ['Work Order master','Financial Year master','Company master'].includes(renderedActive) ? (
+  ) : renderedActive==='Fleet reconciliation' ? (<details open className="scan-fleet-reconciliation"><summary>Site fleet · VLB / LMV / ELB, breakdown and idle details</summary><FleetReconciliation session={session}/></details>) : renderedActive==='Employee Current Location' ? (<EmployeeCurrentLocation session={session}/>) : renderedActive==='Employee master' ? (<EmployeeMaster session={session} ExportMenu={ExportMenu} PrintButton={PrintButton} parseCsv={parseCsv} ReportSection={ReportSection}/>) : renderedActive==='A Form Master' ? (<AFormMaster session={session}/>) : ['Work Order master','Financial Year master','Company master'].includes(renderedActive) ? (
     <ErpMasters key={renderedActive} name={renderedActive} session={session} ExportMenu={ExportMenu} PrintButton={PrintButton} parseCsv={parseCsv}/>
   ) : renderedActive==='Pulse Master Sync' ? (
     <><PulseMasterSync session={session} ReportSection={ReportSection}/><PendingInPulse session={session}/></>
@@ -12145,7 +12148,7 @@ function App() {
         onPointerInside={inside=>{if(sidebarAuto&&(inside||document.activeElement?.getAttribute("aria-label")!=="Search menu"))setSidebarPeek(inside);}}
         onHide={()=>{if(sidebarAuto)setSidebarPeek(false);else changeSidebarHidden(true);requestAnimationFrame(()=>document.getElementById("erp-sidebar-toggle")?.focus());}}
         groups={[
-          {name:'Masters',pages:[...['Users & employees','Employee master','Employee Current Location','Equipment master','Capacity master','Region master','Shift Master'].filter(canOpenAdminPage).map(page=>page==='Users & employees'?{label:'Login Details',page}:page==='Region master'?{label:regionMasterTitle,page}:page),...['Work Order master','Financial Year master','Company master'].filter(canOpenAdminPage).map(page=>({label:page==='Work Order master'?'Work Contract master':page,page})),...(canOpenAdminPage('Pulse Master Sync')?[{label:'Sync all masters',page:'Pulse Master Sync'}]:[])]},
+          {name:'Masters',pages:[...['Users & employees','Employee master','A Form Master','Employee Current Location','Equipment master','Capacity master','Region master','Shift Master'].filter(canOpenAdminPage).map(page=>page==='Users & employees'?{label:'Login Details',page}:page==='Region master'?{label:regionMasterTitle,page}:page),...['Work Order master','Financial Year master','Company master'].filter(canOpenAdminPage).map(page=>({label:page==='Work Order master'?'Work Contract master':page,page})),...(canOpenAdminPage('Pulse Master Sync')?[{label:'Sync all masters',page:'Pulse Master Sync'}]:[])]},
           {name:'WhatsApp Integration',pages:whatsappNav.map(([name])=>name).filter(canOpenAdminPage)},
           {name:'MIS',pages:[...(canOpenAdminPage('Batch reopening approvals')?[{label:'Batch reopening approvals',page:'Batch reopening approvals'}]:[]),{label:'Create Batch',page:'Create VLB Batch'},{label:'Vehicle Log Book (VLB)',page:'Vehicle Log Book Options',activePages:['Vehicle Log Book','Trip Card Bulk Scan','Saved VLB']},{label:'LMV Log Book (LMV)',page:'LMV Log Book',activePages:['LMV Manual','LMV Scan']},{label:'Equipment Log Book (ELB)',page:'Equipment Log Book Options',activePages:['Equipment Log Book','Job Card Bulk Scan','Create VLB Batch']}].filter(item=>canOpenAdminPage(item.page))},
           {name:'Reports',pages:[...['VLB Reports','ELB Reports','Fleet Capacity','Equipment Deployment'].filter(canOpenAdminPage),...(canOpenAdminPage('Reports')?[...new Set(operationReports.map(r=>r.group))].map(group=>({label:group,children:operationReports.filter(r=>r.group===group).map(r=>({label:r.title,page:'Reports',reportCategory:'operations-'+r.id}))})):[])],keepEmpty:canOpenAdminPage('Reports')},

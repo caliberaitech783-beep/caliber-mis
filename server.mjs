@@ -46,6 +46,7 @@ import {sharedMisDashboardIdentity} from './server/rules/mis-dashboard-identity.
 import {registerMasterSync} from './server/routes/master-sync.mjs';
 import {registerEmployeeMaster} from './server/routes/employee-master.mjs';
 import {registerHrMasterImport} from './server/routes/hr-master-import.mjs';
+import {registerAFormMaster} from './server/routes/a-form-master.mjs';
 import {registerErpEmployees} from './server/routes/erp-employee-source.mjs';
 import {registerLocalDocumentScanning} from './server/routes/local-document-scanning.mjs';
 import {createLocalCardArchive,scanArchiveConfig} from './server/services/scan-card-archive.mjs';
@@ -8073,6 +8074,8 @@ registerErpEmployees(app,{pool,requireSession,requireAdministrator,getSiteScope:
 registerEmployeeMaster(app,{pool,requireSession,requireAdministrator});
 // HR's all-sites Excel as the Employee Master: preview and apply (shared/hr-employee-master.mjs).
 registerHrMasterImport(app,{pool,requireSession,requireAdministrator});
+// A Form Master: A Form no., CMLL id and site linked for scanned cards and biometric files (shared/a-form-master.mjs).
+registerAFormMaster(app,{pool,requireSession,requireAdministrator});
 const scanImageStorage=createScanBlobStorage(scanBlobConfig());
 pulseBreakdownMirror=String(process.env.PULSE_BREAKDOWN_MIRROR||'').trim().toLowerCase()==='off'?null:createPulseBreakdownMirror({pool,readFeed:()=>pulseMasterSync.readFullBreakdownFeed()});
 const logBooks=registerLogBooks(app,{imageStorage:scanImageStorage,pool,requireSession,requireAdministrator,pulseMasterSync,breakdownMirror:pulseBreakdownMirror,getSiteScope:logBookScope,sendDeletionOtp:request=>sendScopedDeletionOtp({pool,...request}),approvalOtp:{pmLogins:vehicleTransferPmLogins,deliver:request=>approvalOtpDelivery.send(request)}});

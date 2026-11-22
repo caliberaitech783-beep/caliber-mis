@@ -14,16 +14,20 @@ const one=(rows,predicate)=>{const found=rows.filter(predicate);return found.len
 // The driver or operator the scan may put on a card by itself, or null when the Caliber ID is in doubt
 // (shared/caliber-id-check.mjs). Only the number is used: a card whose number could not be read is never
 // matched on the name written on it (owner, 22 Nov 2026).
-function matchScanEmployee(masters,raw,location){
- return judgeCaliberId(masters,{read:raw.employeeCode,readings:raw.caliberReadings,location}).employee;
+// aForm: the FORM A box of a trip card, the second proof of the Caliber ID through A Form Master (owner, 23 Nov 2026).
+function matchScanEmployee(masters,raw,location,aForm=''){
+ return judgeCaliberId(masters,{read:raw.employeeCode,readings:raw.caliberReadings,location,aForm}).employee;
 }
 // The verdict on a card's Caliber ID once the card has been read (twice where it is). location is the site the
 // card is saved under: the batch's site when the batch has one. Sets or clears the driver on the draft and keeps
 // the reason a held card waits for a person in raw.caliberCheck, which the review screen turns into its message.
+// A trip card's FORM A box (draft.aFormNo; a job card has none) is read with it. When that box gave the driver, what
+// the scan read and the A Form no. are kept in raw.caliberAForm, so it can always be seen why this person is on the card.
 export function applyCaliberCheck(extracted,masters,location=extracted.draft.location){
- const verdict=judgeCaliberId(masters,{read:extracted.raw.employeeCode,readings:extracted.raw.caliberReadings,location});
+ const verdict=judgeCaliberId(masters,{read:extracted.raw.employeeCode,readings:extracted.raw.caliberReadings,location,aForm:extracted.draft.aFormNo});
  extracted.draft.employeeId=verdict.employee?String(verdict.employee.id):'';
  if(verdict.check)extracted.raw.caliberCheck=verdict.check;else delete extracted.raw.caliberCheck;
+ if(verdict.aForm)extracted.raw.caliberAForm=verdict.aForm;else delete extracted.raw.caliberAForm;
  return extracted;
 }
 
@@ -37,7 +41,7 @@ export function matchScanDraft(draft,raw,kind,masters){
   if(asset)Object.assign(changes,{assetId:asset.id},separatorDoorFields(asset,draft.doorText,kind));
  }
  if(!draft.employeeId){
-  const employee=matchScanEmployee(masters,raw,draft.location);
+  const employee=matchScanEmployee(masters,raw,draft.location,kind==='vehicle'?draft.aFormNo:'');
   if(employee)changes.employeeId=String(employee.id);
  }
  if(draft.bookDate){
@@ -96,7 +100,7 @@ export function extractCard(text,kind,masters=[],hints={},{lmv=false}={}){
  const doorAssets=locationNeedsReview?[]:raw.location?assets.filter(r=>{const site=r.record_data.currentLocation||r.record_data.site||r.record_data.location;return !site||canonicalSiteName(site)===canonicalSiteName(raw.location)}):assets;
  const linked=linkedScanEquipment(doorAssets.map(r=>({...r.record_data,id:r.id,kind,site:r.record_data.currentLocation||r.record_data.site||r.record_data.location||''})),raw.door,'',kind);const asset=linked?doorAssets.find(r=>r.id===linked.id):null;
  const assetSite=asset?.record_data.currentLocation||asset?.record_data.site||asset?.record_data.location||'';const knownSite=masters.map(r=>r.record_data.currentLocation||r.record_data.site||r.record_data.location||'').find(s=>raw.location&&canonicalSiteName(s)===canonicalSiteName(raw.location));const location=locationNeedsReview?'':raw.location?(assetSite&&canonicalSiteName(assetSite)===canonicalSiteName(raw.location)?assetSite:knownSite||raw.location):assetSite;
- const employee=matchScanEmployee(masters,raw,location);
+ const employee=matchScanEmployee(masters,raw,location,kind==='vehicle'?raw.cardNo:'');
  const shiftEvidence=markedShiftEvidence(text),textShift=shiftEvidence.value,hintShift=normalizeCardShift(hints.cardShift),shiftUnclear=(kind==='vehicle'&&(shiftEvidence.status==='unclear'||(hints.shiftSelectionStatus&&hints.shiftSelectionStatus!=='clear')))||Boolean(hintShift&&textShift&&hintShift!==textShift),cardShift=shiftUnclear?'':hintShift||textShift,mapped=selectedMasterShift(masters.filter(r=>r.master_name==='Shift Master').map(r=>({...r.record_data,id:r.id})),location,cardShift,bookDate);
  const shift=mapped?mapped:!cardShift&&raw.shift?one(masters,r=>r.master_name==='Shift Master'&&canonicalSiteName(r.record_data.site||r.record_data.siteName)===canonicalSiteName(location)&&key(r.record_data.shiftName||r.record_data.name||r.record_data.shift)===key(raw.shift)):null;
  const orders=masters.filter(r=>['Work Order master','Work order master','Work Order Master','WO master'].includes(r.master_name)).map(r=>({...r.record_data,id:r.id}));const eligible=matchingWorkOrders(orders,location,bookDate),wo=raw.workOrder?one(eligible,r=>key(r.workOrderNo)===key(raw.workOrder)):latestWorkOrder(orders,location,bookDate);

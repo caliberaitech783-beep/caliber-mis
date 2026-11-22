@@ -70,7 +70,8 @@ const stampParts=value=>{
  if(value instanceof Date&&!Number.isNaN(value.getTime()))return {date:readDate(value),time:readTime(value)};
  const s=String(value??'').trim();return {date:readDate(s),time:readTime(s.replace(/^\S+\s+/,''))};
 };
-export const employeeCode=value=>{const s=String(value??'').trim().toUpperCase().replace(/\s+/g,'');return /^\d+$/.test(s)?String(Number(s)):s;};
+// CMLL5311, CMPL5311 and 5311 are one person: the device gives the bare number, a trip card gives the Caliber ID.
+export const employeeCode=value=>{const s=String(value??'').trim().toUpperCase().replace(/\s+/g,''),m=s.match(/^(?:CMLL|CMPL)?[-/]?(\d+)$/);return m?String(Number(m[1])):s;};
 
 // Turns the device export (rows of cells, the first rows may be titles) into one punch line per employee and date.
 // Two layouts are read: In / Out columns, or one line per punch (a Punch time column): first punch In, last punch Out.

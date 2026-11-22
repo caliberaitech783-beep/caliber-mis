@@ -26,9 +26,11 @@ function readSheet(body){
  const rows=body?.rows;
  if(!Array.isArray(rows)||!rows.length)throw fail(400,"Choose HR's master Excel.");
  if(rows.length>HR_MASTER_MAX_LINES+100)throw fail(400,`HR's master holds more than ${HR_MASTER_MAX_LINES.toLocaleString('en-IN')} lines.`);
- const sheet=readHrMasterSheet(rows);
+ // leaveOutProblemLines: the administrator has seen the lines that cannot be placed and applies the rest.
+ const leaveOut=body?.leaveOutProblemLines===true,sheet=readHrMasterSheet(rows,{leaveOut});
  if(!sheet.lines)throw fail(400,"HR's master has no employee lines.");
- if(sheet.problems.length)throw fail(422,`${sheet.problems.length.toLocaleString('en-IN')} line(s) in HR's master cannot be placed. Nothing was changed. Correct the file and choose it again.`,{problems:sheet.problems.slice(0,500),problemCount:sheet.problems.length,lines:sheet.lines});
+ if(sheet.problems.length&&!leaveOut)throw fail(422,`${sheet.problems.length.toLocaleString('en-IN')} line(s) in HR's master cannot be placed. Nothing was changed. Correct the file and choose it again, or apply the rest without these lines.`,{problems:sheet.problems.slice(0,500),problemCount:sheet.problems.length,lines:sheet.lines});
+ if(!sheet.records.length)throw fail(422,"No line of HR's master can be placed. Nothing was changed.",{problems:sheet.problems.slice(0,500),problemCount:sheet.problems.length,lines:sheet.lines});
  return sheet;
 }
 
@@ -36,7 +38,7 @@ function readSheet(body){
 async function planFor(db,sheet,body,owner){
  const first=!owner,applySites=first||body?.applySites===true;
  const existing=(await db.query(HR_MASTER_EXISTING_SQL)).rows;
- return {first,applySites,plan:planHrMaster(existing,sheet.records,{applySites,fileName:fileNameOf(body)})};
+ return {first,applySites,plan:planHrMaster(existing,sheet.records,{applySites,fileName:fileNameOf(body),leftAsIs:sheet.leftAsIs})};
 }
 
 export async function applyHrMaster(pool,sheet,body,{by=''}={}){
@@ -73,13 +75,14 @@ export function registerHrMasterImport(app,{pool,requireSession,requireAdministr
  app.post('/api/employee-master/hr-import/preview',...protect,wrap(async(req,res)=>{
   const sheet=readSheet(req.body),owner=await employeeMasterOwner(pool);
   const {first,applySites,plan}=await planFor(pool,sheet,req.body,owner);
-  res.set('Cache-Control','no-store').json({lines:sheet.lines,first,applySites,owner,summary:plan.summary,lists:plan.lists,planKey:hrMasterPlanKey(plan,applySites)});
+  res.set('Cache-Control','no-store').json({lines:sheet.lines,first,applySites,owner,summary:plan.summary,lists:plan.lists,planKey:hrMasterPlanKey(plan,applySites),
+   leftOut:{lines:sheet.problems.length,problems:sheet.problems.slice(0,500)}});
  }));
  app.post('/api/employee-master/hr-import/apply',...protect,wrap(async(req,res)=>{
   const sheet=readSheet(req.body);
   const result=await applyHrMaster(pool,sheet,req.body,{by:req.session?.login||req.session?.name||''});
   req.audit={eventType:'Master data',module:'Employee master',action:'Apply HR master',targetType:'Employee master',targetReference:fileNameOf(req.body)||'HR master',
-   details:{lines:result.summary.lines,updated:result.summary.updated,added:result.summary.added,siteChanged:result.summary.siteChanged,notListed:result.summary.notListed,left:result.summary.left}};
+   details:{lines:result.summary.lines,updated:result.summary.updated,added:result.summary.added,siteChanged:result.summary.siteChanged,notListed:result.summary.notListed,left:result.summary.left,linesLeftOut:sheet.problems.length,peopleLeftAsTheyAre:result.summary.leftAsIsPeople}};
   res.json(result);
  }));
 }
