@@ -9,6 +9,9 @@ export function misPageAllowed(session,page,view){
  if(page==='Capacity master')return isMisAdministrator(session)&&misPageAllowed(session,'Equipment master',view);
  // A Form Master (src/a-form-master.jsx) is part of the employee lists and follows the Employee master right.
  if(page==='A Form Master')return misPageAllowed(session,'Employee master',view);
+ // Caliber ID Re-check (src/caliber-recheck.jsx): the people who scan and enter the cards choose the right driver, and so
+ // may whoever keeps Employee Master. The correction run itself is an administrator's action (server/routes/caliber-recheck.mjs).
+ if(page==='Caliber ID Re-check')return ['Vehicle Log Book','Equipment Log Book','Trip Card Bulk Scan','Job Card Bulk Scan','Employee master'].some(name=>misPageAllowed(session,name,view));
  if(page==='Batch reopening approvals')return session.role==='super'&&session.permissions.adminLevel==='Manager'&&managerRoleSelection(session.permissions.managerRoles?.length?session.permissions.managerRoles:session.permissions.managerRole).includes('Project Manager');
  if(['Tickets','Telegram Integration'].includes(page))return true;
  if(MIS_ADMIN_PAGES.includes(page)||page==='Automation Centre')return isMisAdministrator(session);
@@ -84,6 +87,16 @@ export function misRequestAllowed(session,req){
  if(route==='/api/employee-master/location')return req.method==='GET';
  if(/^\/api\/employee-master\/location\/\d{1,18}$/.test(route))return req.method==='PUT';
  if(route.startsWith('/api/employee-master')||route.startsWith('/api/erp-employees'))return allowed('Employee master');
+ // The re-check of saved cards against Employee Master. Reading and choosing the right driver follow the page above;
+ // the correction run is for MIS administrators only. Listed route by route: anything else under it fails closed.
+ if(route==='/api/caliber-recheck'||route.startsWith('/api/caliber-recheck/')){
+  if(!allowed('Caliber ID Re-check'))return false;
+  if(route==='/api/caliber-recheck'||route==='/api/caliber-recheck/record')return read;
+  if(route==='/api/caliber-recheck/pick')return req.method==='POST';
+  if(/^\/api\/caliber-recheck\/pick\/\d{1,18}$/.test(route))return req.method==='DELETE';
+  if(route==='/api/caliber-recheck/apply')return req.method==='POST'&&isMisAdministrator(session);
+  return false;
+ }
  if(route==='/api/erp-masters/status')return read&&['Work Order master','Financial Year master','Company master','Pulse Master Sync'].some(allowed);
  if(route==='/api/erp-masters/sync')return allowed('Pulse Master Sync');
  if(route.startsWith('/api/erp-masters/attachments'))return allowed('Work Order master');
