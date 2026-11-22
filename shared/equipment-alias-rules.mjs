@@ -14,8 +14,35 @@ export const aliasWrittenText=value=>text(value).replace(/\s+/g,' ').slice(0,40)
 export const aliasWrittenKey=(value,kind='equipment')=>cardMachineKey(aliasWrittenText(value),kind);
 export const assetIdentifiers=row=>[row.door,row.doorNo,equipmentDoorNumber(row),row.registration,row.reg,row.name,row.equipmentName].filter(value=>text(value));
 
+// Rule of 23 Nov 2026. A permanent alias is another NAME for the same machine number: the
+// card says L21 and Pulse calls it DEMO21. When the number itself differs (T658 chosen as
+// TPC65, T52 chosen as TPC57) the reviewer corrected one reading; saved for ever, that
+// correction would send every later misread of the same digits to this machine without
+// review. So the number written must be the number of one of the machine's real doors.
+// A record with no numbered door (Pulse knows it only by its registration) has nothing to
+// contradict and may still take an alias.
+const numberOfKey=key=>(String(key||'').match(/(\d+)$/)||[])[1]?.replace(/^0+(?=\d)/,'')||'';
+const plain=value=>text(value).toUpperCase().replace(/[^A-Z0-9]/g,'');
+const numberedDoors=asset=>{
+ const registrations=new Set([asset?.reg,asset?.registration,asset?.registrationNumber].map(plain).filter(Boolean));
+ return realDoorLabels(asset).filter(label=>!registrations.has(plain(label)));
+};
+export function aliasNumberMatches(written,asset,kind='equipment'){
+ const number=numberOfKey(aliasWrittenKey(written,kind));if(!number||!asset)return false;
+ const doors=numberedDoors(asset);if(!doors.length)return true;
+ return doors.some(door=>numberOfKey(cardMachineKey(door,kind))===number);
+}
+// One sentence for the reviewer when a pair is not kept as a permanent mapping, else ''.
+export function aliasNumberNote(written,asset,kind='equipment'){
+ const writtenText=aliasWrittenText(written),number=numberOfKey(aliasWrittenKey(writtenText,kind));
+ if(!number||!asset||aliasNumberMatches(writtenText,asset,kind))return '';
+ const door=numberedDoors(asset)[0],doorNumber=numberOfKey(cardMachineKey(door,kind));
+ return `Applied here only, not saved as a permanent mapping: the card says ${writtenText} (number ${number}) and ${text(door)} is number ${doorNumber}. A mapping is saved only when the number is the same.`;
+}
+
 // Decide whether an explicit dropdown choice taught the system something new: the written
-// text has a usable machine key and that key is not already one of the asset's own labels.
+// text has a usable machine key, that key is not already one of the asset's own labels and
+// the written number is the machine's own number.
 export function aliasForSelection(written,asset,kind='equipment'){
  const writtenText=aliasWrittenText(written);if(!writtenText||!asset)return null;
  const machine=identifyCardMachine(writtenText,kind==='vehicle'?'vehicle':'trip-body',{allowSuffix:true});
@@ -23,6 +50,7 @@ export function aliasForSelection(written,asset,kind='equipment'){
  const key=aliasWrittenKey(writtenText,kind);if(!key)return null;
  if(assetIdentifiers(asset).some(label=>cardMachineKey(label,kind)===key))return null;
  if((asset.cardAliases||[]).some(label=>cardMachineKey(label,kind)===key))return null;
+ if(!aliasNumberMatches(writtenText,asset,kind))return null;
  return {equipmentId:String(asset.id),kind,writtenText,writtenKey:key};
 }
 

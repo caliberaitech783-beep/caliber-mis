@@ -176,7 +176,7 @@ test('no file behind Trip Timing & Gap or Loading Equipment-wise reads a field t
  assert.ok(files.has('shared/trip-card-rules.mjs')&&files.has('shared/scan-machine-rules.mjs'),'imports are followed');
  // Scan review functions that rewrite or check a scan draft's machine rows. Their files are loaded for door matching
  // (Loading Equipment-wise: fleetDoorKey -> identifyCardMachine), but nothing behind the reports calls these functions.
- const scanDraftOnly=new Set(['correctMatchingTripEquipment','normalizeScanEquipmentRows','scanEquipmentMatchIssues','validateTripEquipment']);
+ const scanDraftOnly=new Set(['correctMatchingTripEquipment','correctHourGluedMachines','normalizeScanEquipmentRows','scanEquipmentMatchIssues','validateTripEquipment']);
  const lines=Object.fromEntries([...files].map(file=>[file,fs.readFileSync(new URL(file,root),'utf8').split(/\r?\n/)]));
  const enclosing=(file,index)=>{for(let i=index;i>=0;i--){const found=lines[file][i].match(/^(?:export\s+)?function\s+(\w+)/);if(found)return found[1];}return '';};
  for(const name of scanDraftOnly)for(const file of files)lines[file].forEach((line,index)=>{

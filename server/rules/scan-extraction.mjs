@@ -1,5 +1,5 @@
 import {normalizeScannedMeter,recoverScannedMeterDecimals} from './scan-meter-text.mjs';
-import {identifyCardMachine,normalizeScanEquipmentRows,compactScanEquipmentReferences} from '../../shared/scan-machine-rules.mjs';
+import {identifyCardMachine,normalizeScanEquipmentRows,correctHourGluedMachines,compactScanEquipmentReferences} from '../../shared/scan-machine-rules.mjs';
 import {judgeCaliberId} from '../../shared/caliber-id-check.mjs';
 import {linkedScanEquipment,separatorDoorFields} from '../../shared/scan-fleet-door.mjs';
 import {resolveTripGrid} from '../services/trip-row-vision.mjs';
@@ -58,6 +58,8 @@ export function matchScanDraft(draft,raw,kind,masters){
  return Object.keys(changes).length?{...draft,...changes}:draft;
 }
 
+// Trip rows as read: first put back a machine number that swallowed its loading hour, then match every row to the master.
+export const readTripMachines=(draft,masters)=>{const equipment=scanEquipmentMasters(masters);return normalizeScanEquipmentRows(correctHourGluedMachines(draft,equipment),equipment);};
 export const scanEquipmentMasters=masters=>masters.filter(r=>r.master_name==='Equipment master'&&assetBookKind(r.record_data)==='equipment').map(r=>({...r.record_data,id:String(r.id),kind:'equipment',site:r.record_data.currentLocation||r.record_data.site||r.record_data.location||''}));
 export function extractScanResult(result,kind,masters,{lmv=false}={}){
  const extracted=extractCard(result.text,kind,masters,result,{lmv}),data=result.extraction||result.hybrid;
@@ -70,7 +72,7 @@ export function extractScanResult(result,kind,masters,{lmv=false}={}){
   extracted.draft.timeMode=data.rows.some(row=>row.loadingTime||row.unloadingTime)?'with':'without';
   if(kind==='vehicle'){
    extracted.draft.extractionReviewFields.push('trips','scanMachineSummary');
-   extracted.draft=normalizeScanEquipmentRows(extracted.draft,scanEquipmentMasters(masters));
+   extracted.draft=readTripMachines(extracted.draft,masters);
   }else{
    extracted.draft.openingKmr='';extracted.draft.closingKmr='';
    extracted.draft.shiftHours=result.handwrittenFields?.shiftHours||'';
@@ -129,7 +131,7 @@ export function extractCard(text,kind,masters=[],hints={},{lmv=false}={}){
  out.draft.machineNotationRuleVersion=1;
  if(kind==='vehicle'){out.draft.tripBodyRuleVersion=2;out.raw.tripBodyRuleVersion=2;}
  if(kind==='vehicle'){
-  out.draft=normalizeScanEquipmentRows(out.draft,scanEquipmentMasters(masters));
+  out.draft=readTripMachines(out.draft,masters);
   out.draft.location=tripCardLocation(out.draft.location);
   out.draft.tripLocationRuleVersion=1;
   out.raw.shiftRuleVersion=1;

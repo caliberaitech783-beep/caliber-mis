@@ -73,6 +73,8 @@ export function misRequestAllowed(session,req){
   const menu=['Trip Card Bulk Scan','Job Card Bulk Scan','Vehicle Log Book','Equipment Log Book','Equipment master'].some(allowed);
   if(route==='/api/equipment-aliases/settings')return menu&&(read||req.method==='PUT'&&isMisAdministrator(session));
   if(route==='/api/equipment-aliases')return menu&&(read||req.method==='POST');
+  if(route==='/api/equipment-aliases/number-mismatch')return menu&&read&&isMisAdministrator(session);
+  if(route==='/api/equipment-aliases/number-mismatch/revoke')return menu&&req.method==='POST'&&isMisAdministrator(session);
   if(/^\/api\/equipment-aliases\/[0-9a-f-]{36}\/otp(?:\/[0-9a-f-]{36}\/verify)?$/i.test(route))return menu&&req.method==='POST';
   if(/^\/api\/equipment-aliases\/[0-9a-f-]{36}$/i.test(route))return menu&&req.method==='DELETE'&&isMisAdministrator(session);
   return false;
