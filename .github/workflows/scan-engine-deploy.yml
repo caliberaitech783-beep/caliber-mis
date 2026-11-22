@@ -92,7 +92,10 @@ jobs:
         run: |
           runtime="$RUNNER_TEMP/scan-runtime"
           mkdir -p "$runtime"
-          cp -a server shared assets public scripts src package.json package-lock.json DEPLOYMENT_SHA "$runtime/"
+          # .npmrc goes with the lock file: it holds onnxruntime-node-install-cuda=skip. Without it this
+          # npm ci tried the GPU add-on download, got 404 and failed every night from 17 to 22 Nov 2026,
+          # so the engines kept running the code of 17 Nov.
+          cp -a server shared assets public scripts src package.json package-lock.json .npmrc DEPLOYMENT_SHA "$runtime/"
           npm ci --prefix "$runtime" --omit=dev --no-audit --no-fund
           cd "$runtime"
           node --input-type=module -e "await import('./server/scan-engine.mjs'); await import('./server/routes/bulk-card-scanning.mjs')"
