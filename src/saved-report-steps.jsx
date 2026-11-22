@@ -1,6 +1,6 @@
 import React from 'react';
 import {StepBackButton} from './step-back.jsx';
-import {DateShiftGrid,dateShiftGrid,dateShiftExport,dateLine} from './date-shift-grid.jsx';
+import {DateShiftGrid,dateShiftGrid,dateShiftExport,dateLine,siteDateLine} from './date-shift-grid.jsx';
 import {EVERY,countLabel} from './saved-report-steps-model.mjs';
 
 // The Operations reports that were one long table, drawn in the owner's steps (17 Nov 2026): Step 1 one line per site;
@@ -39,7 +39,7 @@ export default function SavedReportSteps({id,title,period,levels,answered=CLOSED
   {key:'count',label,value:r=>r.count},{key:'assets',label:'Vehicles / equipment',value:r=>r.assets},{key:'dates',label:'Dates',value:r=>r.dates}];
 
  // Step 2: the dates down the side and the shifts across, the count of the report in each box.
- const grid=dateShiftGrid(slots.rows,{sumKeys:['count'],lineOf:r=>manySites?{...dateLine(r),key:r.date+'|'+r.site,label:dateLine(r).label+' · '+r.site}:dateLine(r)});
+ const grid=dateShiftGrid(slots.rows,{sumKeys:['count'],lineOf:r=>manySites?siteDateLine(r):dateLine(r)});
  const dayColumns=[{key:'count',label:'Day '+noun,value:t=>t.count}];
  const gridExport=dateShiftExport(grid,{count:r=>r.count,countLabel:noun,dayColumns});
  const slotWhere=siteLabel+' · '+(slot?slot.label:'');

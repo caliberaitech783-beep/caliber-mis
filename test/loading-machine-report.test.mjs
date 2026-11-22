@@ -302,7 +302,7 @@ test('pressing a machine opens its shift time-line: the strip, then every loadin
  assert.match(screen,/\{band&&<ReportSection key=\{'lm-bandstops-'[^\n]*\n[^\n]*rows=\{bandStops\} columns=\{tripColumns\(true,manySites\)\}/);
  // Owner, 16 Nov 2026: every list opened from All sites names the site; Step 2 keeps one line per date and site.
  assert.match(screen,/const manySites=site===EVERY;/);
- assert.match(screen,/lineOf:r=>manySites\?\{\.\.\.dateLine\(r\),key:r\.date\+'\|'\+r\.site,label:dateLine\(r\)\.label\+' · '\+r\.site\}:dateLine\(r\)/);
+ assert.match(screen,/lineOf:r=>manySites\?siteDateLine\(r\):dateLine\(r\)/);
  assert.match(screen,/columns=\{machineColumns\(openItem,allShifts,manySites\)\}/);
  assert.match(screen,/columns=\{notWorkedColumns\(manySites,openBd\)\}/);
  const {isDurationColumn}=await import('../src/duration-sort.mjs');

@@ -1,7 +1,8 @@
 import React,{useEffect,useMemo,useState} from 'react';
 import {StepBackButton} from './step-back.jsx';
-import {DateShiftGrid,dateShiftGrid,dateLine} from './date-shift-grid.jsx';
+import {DateShiftGrid,dateShiftGrid,dateLine,siteDateLine} from './date-shift-grid.jsx';
 import {OPERATIONAL_START} from '../shared/operational-start.mjs';
+import {displaySiteName} from '../shared/region-scope.mjs';
 import {STAGE_LABELS,PENDING_STAGES,TARGET_HOURS,GOOD_PERCENT,POOR_PERCENT,MAX_DAYS,displayDate,sitesInsights,shiftsInsight} from '../shared/batch-status-report.mjs';
 import {startVisiblePoll} from './visible-poll.mjs';
 import {LIVE_REFRESH_MS,siteLiveCells,siteLockCells,lastLockLabel,batchLiveCell,liveSummary,agoLabel} from '../shared/batch-status-live.mjs';
@@ -97,7 +98,7 @@ export default function BatchStatusReport({session,ReportSection,embedded=false,
  const shiftList=listed.map(r=>({...r,workingNow:batchLiveCell(live,r.batchId)}));
  const shiftNames=Object.fromEntries(shiftList.map(r=>[r.shift,r.shiftLabel]));
  const shiftGrid=dateShiftGrid(shiftList.map(r=>({...r,lockedCount:r.stage==='locked'?1:0,shiftCount:1})),{sumKeys:['shiftCount','lockedCount','cards'],
-  lineOf:r=>siteKey===EVERY?{key:r.date+'|'+r.site,label:r.site,sub:displayDate(r.date)}:dateLine(r)});
+  lineOf:r=>siteKey===EVERY?{key:siteDateLine(r).key,label:displaySiteName(r.site)||r.site,sub:displayDate(r.date)}:dateLine(r)});
  const shiftDay=[{key:'shifts',label:'Shifts',value:t=>t.shiftCount},{key:'locked',label:'Locked',value:t=>t.lockedCount},{key:'cards',label:'Trip cards saved',value:t=>t.cards}];
  const batchCell=list=><span className="dsg-cell dsg-stack">{list.map(r=>{
   const hours=r.stage==='locked'?r.lockHours:r.pendingHours,late=!blank(hours)&&hours>TARGET_HOURS;

@@ -91,6 +91,27 @@ test('the date by shift table puts the dates down the side, the shifts across an
  assert.deepEqual(flat.columns.map(c=>c.value(flat.rows.at(-1))),['All dates',14,1,10,2,24],'the printed table ends with the All dates line');
 });
 
+test('All sites: one line per date and site, whatever spelling each shift box kept (owner, 22 Nov 2026)',async()=>{
+ const {canonicalSiteName}=await import('../shared/site-location.mjs');
+ const {displaySiteName}=await import('../shared/region-scope.mjs');
+ const source=read('src/date-shift-grid.jsx');
+ const {code}=await transformWithOxc(source.replace(/^import .*;\r?\n/gm,'').replace(/^export /gm,''),'date-shift-grid.jsx',{jsx:{runtime:'classic'}});
+ const {dateShiftGrid,siteDateLine}=new Function('React','canonicalSiteName','displaySiteName',code+';return {dateShiftGrid,siteDateLine};')({createElement:()=>null,Fragment:'f'},canonicalSiteName,displaySiteName);
+ // The live picture: Jayant OB on 01-11-26 split into a Day / Night line (23) and a Shift A / B / C line (736).
+ const rows=[['Day',14,'JAYANT OB'],['Night',3,'JAYANT OB'],['Shift not recorded',6,'Jayant OB 2nd'],['Shift A',256,'Jayant OB'],['Shift B',231,'Jayant OB'],['Shift C',249,'Jayant OC'],['Shift A',40,'Sasti OB']]
+  .map(([shift,count,site])=>({date:'2026-11-01',shift,count,site}));
+ const grid=dateShiftGrid(rows,{sumKeys:['count'],lineOf:siteDateLine});
+ assert.deepEqual(grid.lines.map(l=>[l.label,l.day.count]),[['01-11-26 · Jayant OC',759],['01-11-26 · Sasti OC',40]]);
+ const jayant=grid.lines[0];
+ assert.deepEqual(['Day','Night','Shift A','Shift B','Shift C','Shift not recorded'].map(s=>jayant.cells[s]?.[0]?.count),[14,3,256,231,249,6]);
+ assert.equal(jayant.sub,'SUN');
+ for(const file of ['src/saved-report-steps.jsx','src/bd-hours-report.jsx','src/loading-machine-report.jsx','src/batch-status-report.jsx']){
+  const screen=read(file);
+  assert.match(screen,/siteDateLine/,file+' keys All sites lines by the site, not its spelling');
+  assert.doesNotMatch(screen,/key:r\.date\+'\|'\+r\.site/,file);
+ }
+});
+
 test('the drill-down reports keep every step on screen, one below the other',()=>{
  for(const file of ['src/trip-timing-report.jsx','src/loading-machine-report.jsx','src/batch-status-report.jsx']){
   const screen=read(file);
