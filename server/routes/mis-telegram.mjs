@@ -178,7 +178,23 @@ export function registerMisTelegram(app,{pool,store,requireSession,fetchImpl=tel
  async function ensureWebhook(){
   try{const config=await read();if(config.enabled&&config.webhookReady&&config.botToken)await call(config,'setWebhook',{url:webhook,secret_token:config.webhookSecret,allowed_updates:MIS_TELEGRAM_UPDATES,drop_pending_updates:false});}catch{}
  }
+ // Channel members, remembered 10 minutes so a report to six people asks Telegram once per person. A failed
+ // question is not remembered: the person gets the personal copy and the next message asks again.
+ const members=new Map();
+ const MEMBER_MS=10*60000;
+ async function inChannel(channelId,personChatId){
+  const key=String(channelId)+'|'+String(personChatId),held=members.get(key);
+  if(held&&Date.now()-held.at<MEMBER_MS)return held.member;
+  const config=await read();if(!config.enabled||!config.webhookReady||!config.botToken)return false;
+  let member=false;
+  try{const result=await call(config,'getChatMember',{chat_id:String(channelId),user_id:Number(personChatId)});
+   const status=String(result?.status||'');member=['creator','administrator','member'].includes(status)||status==='restricted'&&result?.is_member===true;}
+  catch{return false;}
+  members.set(key,{member,at:Date.now()});
+  return member;
+ }
  return {
+  inChannel,
   async initialize(){await pool.query(MIS_TELEGRAM_SCHEMA);await pool.query(AUTOMATION_CHANNELS_SCHEMA);},
   // The bot's name and state, for the Automation Centre channel steps. No token.
   async botInfo(){const config=await read();return {ready:Boolean(config.enabled&&config.webhookReady&&config.botToken),botUsername:config.botUsername||''};},

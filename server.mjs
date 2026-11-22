@@ -8035,7 +8035,7 @@ const pulseSignInBridge=createPulseSignInBridge({pool});
 // Pulse-II's stored copy of Pulse's breakdown list, read once a minute, so BD hours never wait on Pulse.
 // PULSE_BREAKDOWN_MIRROR=off switches it off; BD hours then read Pulse live per user as before.
 let pulseBreakdownMirror=null;
-const pulseMasterSync=registerPulseMasterSync(app,{pool,stateFile:process.env.PULSE_SYNC_STATE_FILE,credentialStore:integrationSecrets,sharedSignIn:pulseSignInBridge,requireSession,requireAdministrator,onSnapshot:()=>reconcileEquipmentAliases(pool,{telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain()}),notifyLogins:aliasAlertLogins})});
+const pulseMasterSync=registerPulseMasterSync(app,{pool,stateFile:process.env.PULSE_SYNC_STATE_FILE,credentialStore:integrationSecrets,sharedSignIn:pulseSignInBridge,requireSession,requireAdministrator,onSnapshot:()=>reconcileEquipmentAliases(pool,{telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain(),inChannel:(channel,person)=>misTelegram.inChannel(channel,person)}),notifyLogins:aliasAlertLogins})});
 // Equipment master is two-way with Pulse: changes made here reach Pulse after one shared OTP.
 registerEquipmentMasterOtp(app,{pool,pulse:pulseMasterSync,sharedSignIn:pulseSignInBridge,requireSuper,
  audit:(req,{action,reference,details})=>{req.audit={eventType:'Master data',module:'Equipment master',action,targetType:'Equipment master',targetReference:reference,details};}});
@@ -8047,14 +8047,14 @@ const releaseAudit=(req,{action,reference,details})=>{req.audit={eventType:'Rele
 const releaseOtp=registerReleaseOtp(app,{pool,
  sendApproval:createReleaseApprovalDelivery({pool,sendButtons:(chatId,text,buttons,options)=>misTelegram.sendButtons(chatId,text,buttons,options)}),
  isApprover:async login=>(await releaseApproverLogins(pool)).includes(String(login||'').toLowerCase()),
- sendOtp:createReleaseOtpDelivery({pool,telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain()}),whatsapp:sendReleaseOtp}),
+ sendOtp:createReleaseOtpDelivery({pool,telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain(),inChannel:(channel,person)=>misTelegram.inChannel(channel,person)}),whatsapp:sendReleaseOtp}),
  verifyIdentity:releaseIdentity,audit:releaseAudit,
  // Approve / Reject may also be asked for by "Merge a PR and make it live" (merge-and-release.yml).
  verifyApprovalIdentity:releaseApprovalIdentity});
 telegramCallbacks.handle=input=>releaseOtp.handleTelegramCallback(input);
 // After every production release the workflow reports what it deployed; the owner gets it on Telegram.
 registerReleaseReport(app,{verifyIdentity:releaseIdentity,ownerLogins:()=>ownerTelegramLogins(pool),
- telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain()}),audit:releaseAudit});
+ telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain(),inChannel:(channel,person)=>misTelegram.inChannel(channel,person)}),audit:releaseAudit});
 // One request asks for its site scope more than once (row security, then the route). Answer the
 // later asks from the first read of the user's record instead of reading it again.
 const readLogBookScope=async session=>logBookSiteScope(session,await currentUserRecord(session));
@@ -8077,7 +8077,7 @@ const logBooks=registerLogBooks(app,{imageStorage:scanImageStorage,pool,requireS
 // Telegram first, WhatsApp fallback. Pulse is the only Equipment master: vehicle transfers are
 // completed in Pulse through its MIS bridge (switch on the Pulse Master Sync page); new assets are
 // still refused until Pulse can create them from here.
-const approvalOtpDelivery=createOtpDelivery({pool,telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain()}),whatsapp:{async send(to,otp){const result=await sendMetaWhatsAppTemplate({to,templateKey:'passwordResetOtp',purpose:'pmApprovalOtp',parameters:[otp]});return Boolean(result?.sent??result?.messageId??result);}}});
+const approvalOtpDelivery=createOtpDelivery({pool,telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain(),inChannel:(channel,person)=>misTelegram.inChannel(channel,person)}),whatsapp:{async send(to,otp){const result=await sendMetaWhatsAppTemplate({to,templateKey:'passwordResetOtp',purpose:'pmApprovalOtp',parameters:[otp]});return Boolean(result?.sent??result?.messageId??result);}}});
 const pulseTransferSwitch=createPulseTransferSwitch({pool});
 const pulseMasterWriter=createPulseWriter({env:process.env,sharedSignIn:pulseSignInBridge,transferSwitch:pulseTransferSwitch,pool});
 // Acceptances Pulse could not take at once (no answer, sign-in) are finished here when Pulse answers.
@@ -8101,11 +8101,11 @@ const expressOtpDeps={pool,requireSession,accessContext:vehicleTransferAccessCon
 registerVehicleTransferExpress(app,{...expressOtpDeps,auditEvent:(req,{action,reference,details})=>{req.audit={eventType:'Vehicle transfer',module:'Vehicle transfers',action,targetType:'Vehicle transfer',targetReference:reference,changedFields:details?.changedFields||[],details};},
   notify:async(client,transfer)=>{const recipients=await vehicleTransferPmLogins(client,transfer.destination);await addTicketNotificationsBestEffort(client,recipients,transfer.transferNo,`Express transfer ${transfer.transferNo}: ${transfer.equipment} joined ${transfer.destination} from ${transfer.source} with source-site PM OTP approval.`,null,{whatsapp:false});}});
 // Written-machine aliases (card "L21" = Pulse DEMO21-00179) learned once in scan review and applied to every later card.
-registerEquipmentAliases(app,{pool,protect:requireSession,requireAdministrator,telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain()}),pmLogins:vehicleTransferPmLogins,deliver:request=>approvalOtpDelivery.send(request),audit:(req,{action,reference,details})=>{req.audit={eventType:'Master data',module:'Equipment master',action,targetType:'Equipment alias',targetReference:reference,changedFields:[],details};}});
+registerEquipmentAliases(app,{pool,protect:requireSession,requireAdministrator,telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain(),inChannel:(channel,person)=>misTelegram.inChannel(channel,person)}),pmLogins:vehicleTransferPmLogins,deliver:request=>approvalOtpDelivery.send(request),audit:(req,{action,reference,details})=>{req.audit={eventType:'Master data',module:'Equipment master',action,targetType:'Equipment alias',targetReference:reference,changedFields:[],details};}});
 registerEquipmentCreateExpress(app,{...expressOtpDeps,auditEvent:(req,{action,reference,details})=>{req.audit={eventType:'Master data',module:'Equipment master',action,targetType:'Equipment',targetReference:reference,changedFields:[],details};}});
 // Late VLB batch alerts: Telegram to the site Project Managers and the production head when a
 // shift's batch is not created, or still open, hours after the shift ended (MIS admin settings).
-const vlbBatchAlerts=createVlbBatchAlertWorker({pool,telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain()}),pmLogins:vehicleTransferPmLogins,ensureSchema:()=>logBooks.initialize(),pendingReminder:remindPendingPulse});
+const vlbBatchAlerts=createVlbBatchAlertWorker({pool,telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain(),inChannel:(channel,person)=>misTelegram.inChannel(channel,person)}),pmLogins:vehicleTransferPmLogins,ensureSchema:()=>logBooks.initialize(),pendingReminder:remindPendingPulse});
 registerVlbBatchAlertSettings(app,{pool,requireSession,requireAdministrator:requireMisAdministrator,worker:vlbBatchAlerts});
 // Express changes approved by OTP that still have to be applied in Pulse by hand (Pulse Master Sync page).
 registerPulsePending(app,{pool,requireSession,requireAdministrator,writer:pulseMasterWriter});
@@ -8126,7 +8126,7 @@ const equipmentMismatchWhatsApp={async send(login,message){
  await sendMetaWhatsAppText({to:phone,message,purpose:'equipmentMismatch'},{env:await metaWhatsAppRuntimeEnv()});
  return true;
 }};
-const equipmentMismatch=createEquipmentMismatchWorker({pool,pulse:pulseMasterSync,telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain()}),whatsapp:equipmentMismatchWhatsApp,defaultLogins:()=>misManagerLogins(pool),ensureSchema:()=>logBooks.initialize()});
+const equipmentMismatch=createEquipmentMismatchWorker({pool,pulse:pulseMasterSync,telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain(),inChannel:(channel,person)=>misTelegram.inChannel(channel,person)}),whatsapp:equipmentMismatchWhatsApp,defaultLogins:()=>misManagerLogins(pool),ensureSchema:()=>logBooks.initialize()});
 registerEquipmentMismatch(app,{pool,worker:equipmentMismatch,protect:[requireSession,requireAdministrator,async(req,res,next)=>{try{req.logBookScope=await logBookScope(req.session);next()}catch(error){if(error.status)return res.status(error.status).json({error:error.message});next(error)}}]});
 // Like the VLB batch alerts, this runs on the live server whatever the scheduled-jobs switch says; the slot key stops a second server repeating a check.
 if(process.env.EQUIPMENT_MISMATCH_CHECK!=='0')scheduleBackgroundStart(()=>equipmentMismatch.start(),150000);
@@ -8140,10 +8140,10 @@ const automationCentre=createAutomationCentre({pool,ensureSchema:()=>logBooks.in
 }});
 // Site-wise batch completion report on Telegram to the owner: one message per VLB batch when it is closed (MIS_SCAN_BATCH_REPORT=off stops it).
 // The Automation Centre sends a sample of it on request.
-const scanBatchReporter=createScanBatchReporter({pool,telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain()})});
+const scanBatchReporter=createScanBatchReporter({pool,telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain(),inChannel:(channel,person)=>misTelegram.inChannel(channel,person)})});
 // Speed report on Telegram to the owner at 10:00, 16:00 and 21:00 IST (A25): slow or not, batches closed, the longest batch.
 // Live slot only; MIS_HEALTH_REPORT=off stops it. The live figures are read when a report is made (bulkScanning starts below).
-const healthReporter=createHealthReporter({pool,telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain()}),live:()=>({
+const healthReporter=createHealthReporter({pool,telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain(),inChannel:(channel,person)=>misTelegram.inChannel(channel,person)}),live:()=>({
  performance:performanceMonitor.snapshot(),pool:{idle:pool.idleCount,waiting:pool.waitingCount},
  scanning:(()=>{try{return bulkScanning.status();}catch{return null;}})(),
  pulseCopy:pulseBreakdownMirror?pulseBreakdownMirror.status():{enabled:false}})});
@@ -8156,7 +8156,7 @@ registerAutomationCentre(app,{pool,requireSession,requireAdministrator:requireMi
 scheduleBackgroundStart(()=>automationCentre.start(),180000);
 // Equipment alias OTP rule (EQUIPMENT_ALIAS_OTP): aliases saved on a reviewer's choice alone go back to pending once the rule is on; weekly mapping summary to the approver and the MIS managers.
 if(aliasOtpEnabled())scheduleBackgroundStart(()=>demoteUnapprovedAliases(pool).catch(e=>console.error('Alias demotion failed:',e?.message||e)),60000);
-if(process.env.VLB_BATCH_ALERTS!=='0')scheduleBackgroundStart(()=>{const tick=()=>sendAliasWeeklySummary(pool,{telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain()}),recipients:aliasAlertLogins}).catch(e=>console.error('Alias weekly summary failed:',e?.message||e));void tick();const timer=setInterval(tick,30*60000);timer.unref?.();},120000);
+if(process.env.VLB_BATCH_ALERTS!=='0')scheduleBackgroundStart(()=>{const tick=()=>sendAliasWeeklySummary(pool,{telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain(),inChannel:(channel,person)=>misTelegram.inChannel(channel,person)}),recipients:aliasAlertLogins}).catch(e=>console.error('Alias weekly summary failed:',e?.message||e));void tick();const timer=setInterval(tick,30*60000);timer.unref?.();},120000);
 if(scanBatchReportEnabled())scheduleBackgroundStart(()=>scanBatchReporter.start(),90000);
 if(healthReportEnabled()&&isLiveSlot())scheduleBackgroundStart(()=>healthReporter.start(),100000);
 const pulseTripVerification=registerTripVerification(app,{pool,pulse:pulseMasterSync,requireSession,requireAdministrator,getSiteScope:logBookScope,enabled:false});

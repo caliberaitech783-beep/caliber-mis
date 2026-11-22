@@ -1,8 +1,8 @@
 // Delivers a PM approval OTP: Telegram when the PM has linked a chat, otherwise WhatsApp
 // to the registered mobile. Senders are injected so tests and the test platform can
 // swap them without touching real chats.
-import {automationOnForEventKey} from './automation-switches.mjs';
-import {queueChannelCopy} from './automation-channels.mjs';
+import {automationForEventKey,automationOnForEventKey} from './automation-switches.mjs';
+import {automationChannelFor,queueChannelCopy} from './automation-channels.mjs';
 const text=value=>String(value??'').trim();
 export function createOtpDelivery({pool,telegram=null,whatsapp=null}={}){
  const userRecord=async login=>(await pool.query("SELECT record_data FROM master_records WHERE master_name='Users & employees' AND lower(trim(record_data->>'login'))=$1 ORDER BY id DESC LIMIT 1",[text(login).toLowerCase()])).rows[0]?.record_data||{};
@@ -26,7 +26,8 @@ export function createOtpDelivery({pool,telegram=null,whatsapp=null}={}){
 }
 
 // Telegram sender backed by the MIS Telegram outbox created by registerMisTelegram.
-export function telegramOutboxSender(pool,{drain=()=>{}}={}){
+// inChannel(channelChatId, personChatId): whether that person is a member of the channel (Telegram getChatMember).
+export function telegramOutboxSender(pool,{drain=()=>{},inChannel=async()=>false}={}){
  return {
   // html: the message is Telegram HTML (for a bold line). photo {site,kind}: a site picture is sent with the message as its caption.
   async send(login,message,eventKey,{html=false,photo=null}={}){
@@ -37,6 +38,14 @@ export function telegramOutboxSender(pool,{drain=()=>{}}={}){
    try{channel=await queueChannelCopy(pool,{eventKey,login,message,parseMode:html?'HTML':'',photo});}catch{/* the personal message still goes */}
    const {rows}=await pool.query('SELECT chat_id FROM mis_telegram_links WHERE login_name=$1',[login]);
    if(!rows[0]){if(channel)void Promise.resolve().then(()=>drain()).catch(()=>{});return false;}
+   // One message per person (owner, 22 Nov 2026: the A25 speed report came twice, in the bot chat and in the
+   // channel): a person who has joined the automation's channel reads it there, so the personal copy is not sent.
+   // Not a member, or Telegram cannot say: the personal copy still goes.
+   if(channel){
+    let member=false;
+    try{const linked=await automationChannelFor(pool,automationForEventKey(eventKey));member=Boolean(linked&&await inChannel(linked.chatId,rows[0].chat_id));}catch{member=false;}
+    if(member){void Promise.resolve().then(()=>drain()).catch(()=>{});return true;}
+   }
    await pool.query('INSERT INTO mis_telegram_outbox(event_key,chat_id,message,parse_mode,photo) VALUES($1,$2,$3,$4,$5) ON CONFLICT(event_key) DO NOTHING',
     [eventKey||`otp:${login}:${Date.now()}`,rows[0].chat_id,String(message).slice(0,4000),html?'HTML':'',photo?JSON.stringify(photo):null]);
    void Promise.resolve().then(()=>drain()).catch(()=>{});
