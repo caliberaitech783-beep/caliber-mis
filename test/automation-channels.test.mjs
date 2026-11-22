@@ -69,6 +69,23 @@ test('a posted code links the channel; messages then go to it once; removal stop
  assert.deepEqual(Object.keys(await channelPostCounts(pool)),['health-report']);
  assert.equal((await channelPostCounts(pool))['health-report'].sent,1);
 
+ // One message per person (owner, 22 Nov 2026): a member of the channel gets only the channel post; someone not in
+ // it, or when Telegram cannot say, still gets the personal chat.
+ await db.query("INSERT INTO mis_telegram_links(login_name,chat_id) VALUES('mohit','222'),('sunil','333')");
+ const asked=[];
+ const members=telegramOutboxSender(pool,{inChannel:async(channel,person)=>{asked.push([channel,person]);if(person==='333')throw Error('Telegram down');return person==='222';}});
+ assert.equal(await members.send('mohit','Speed report','health-report:r9:mohit'),true);
+ assert.equal(await members.send('anil','Speed report','health-report:r9:anil'),true);
+ assert.equal(await members.send('sunil','Speed report','health-report:r9:sunil'),true);
+ assert.deepEqual(asked,[[CHANNEL,'222'],[CHANNEL,'111'],[CHANNEL,'333']]);
+ assert.deepEqual((await db.query("SELECT event_key FROM mis_telegram_outbox WHERE event_key LIKE '%r9%' ORDER BY id")).rows.map(row=>row.event_key),
+  ['channel:health-report:r9','health-report:r9:anil','health-report:r9:sunil']);
+ // An approval code never asks: it has no channel, so it always goes to the personal chat.
+ asked.length=0;
+ assert.equal(await members.send('mohit','123456','transfer-otp:9:mohit'),true);
+ assert.deepEqual(asked,[]);
+ await db.query("DELETE FROM mis_telegram_outbox WHERE event_key LIKE '%r9%' OR event_key LIKE 'transfer-otp:%'");
+
  // The bot removed from the channel: nothing more is posted there until it is an administrator again.
  assert.equal(await noteChannelMembership(pool,{chat:{id:Number(CHANNEL),type:'channel',title:'Pulse-II A25 Speed report'},new_chat_member:{status:'left'}}),true);
  assert.ok((await readAutomationChannels(pool))['health-report'].lostAt);
@@ -111,6 +128,29 @@ test('webhook and Automation Centre routes: code, link by channel post, test pos
  assert.equal(removed.body.linked,null);
  assert.equal((await call('/api/automation-centre/channel/test','POST',{key:'scan-batch-report'})).status,409);
  void db;
+});
+
+test('channel membership: asked of Telegram once, remembered, failures not remembered',async t=>{
+ const {pool}=await database(t);
+ const config={botToken:'123456:synthetic_token_abcdefghijklmnopqrstuvwxyz',enabled:true,webhookReady:true,webhookSecret:'s'};
+ const asked=[];let down=false;
+ const status={'222':'member','333':'left','444':'administrator','555':'restricted'};
+ const fetchImpl=async(url,options)=>{const body=JSON.parse(options.body);asked.push([url.split('/').at(-1),body.chat_id,body.user_id]);
+  if(down)throw Object.assign(Error('down'),{code:'ECONNRESET'});
+  return {ok:true,json:async()=>({ok:true,result:{status:status[String(body.user_id)],is_member:false}})};};
+ const misTelegram=registerMisTelegram(express(),{pool,store:{read:async()=>config,write:async()=>{}},requireSession:(req,res,next)=>next(),fetchImpl});
+ t.after(()=>misTelegram.stop());
+ assert.equal(await misTelegram.inChannel(CHANNEL,'222'),true);
+ assert.equal(await misTelegram.inChannel(CHANNEL,'333'),false);
+ assert.equal(await misTelegram.inChannel(CHANNEL,'444'),true);
+ assert.equal(await misTelegram.inChannel(CHANNEL,'555'),false);
+ assert.deepEqual(asked[0],['getChatMember',CHANNEL,222]);
+ assert.equal(await misTelegram.inChannel(CHANNEL,'222'),true);
+ assert.equal(asked.length,4);
+ down=true;
+ assert.equal(await misTelegram.inChannel(CHANNEL,'666'),false);
+ down=false;status['666']='member';
+ assert.equal(await misTelegram.inChannel(CHANNEL,'666'),true);
 });
 
 test('catalogue keys used for channels all exist',()=>{
