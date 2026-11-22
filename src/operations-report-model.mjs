@@ -2,6 +2,12 @@ import {compactLogBookLabel,tripSerialNumber} from '../shared/log-book-labels.mj
 export function buildOperationReport(...args){const report=buildOperationReportData(...args);return {...report,columns:report.columns.map(compactLogBookLabel)};}
 import {operationalDate} from '../shared/operational-start.mjs';
 import {shiftDisplayName} from '../shared/shift-master.mjs';
+import {displaySiteName} from '../shared/region-scope.mjs';
+import {canonicalSiteName} from '../shared/site-location.mjs';
+// Every date reads the site by its OC name (owner, 22 Nov 2026: old log books still said "dhoptala ob 2nd" after the site was
+// renamed Dhoptala OC (2nd)). Only the reading changes: the saved log book keeps what was written. A value without a letter
+// ("-") stays as it is.
+export const siteDisplayName=value=>/[a-z]/i.test(String(value??''))?displaySiteName(value):value;
 import {sameShift,sameSite,shiftChoices,siteChoices} from '../shared/report-filter-options.mjs';
 export const operationReports=[
  ['door-production','Day-wise Door Number Report','Trips & Productivity'],['machine-production','Day-wise Machine Number Report','Trips & Productivity'],['meter-continuity','Meter Continuity Report','Trips & Productivity'],
@@ -11,7 +17,7 @@ export const requirements={tonnage:'Actual load weights or approved capacity and
 const num=v=>v===null||v===undefined||v===''||!Number.isFinite(Number(v))?null:Number(v);
 const delta=(a,b)=>num(a)===null||num(b)===null?null:Number(b)-Number(a);
 const round=v=>num(v)===null?null:Math.round(Number(v)*1000)/1000;
-export function normalise(records){return records.filter(r=>operationalDate(r.data?.bookDate)).map(r=>({...r.data,shiftName:shiftDisplayName(r.data.shiftName),id:r.id,book:r.book_no,kind:r.book_type,km:num(r.data.replacementKmr)??delta(r.data.openingKmr,r.data.closingKmr),hours:delta(r.data.openingHmr,r.data.closingHmr),tripsTotal:num(r.data.completedTrips)??num(r.data.totalTrips)??(r.data.trips||[]).reduce((s,t)=>s+(num(t.completedTrips)??num(t.tripCount)??0),0)}));}
+export function normalise(records){return records.filter(r=>operationalDate(r.data?.bookDate)).map(r=>({...r.data,location:siteDisplayName(r.data.location),shiftName:shiftDisplayName(r.data.shiftName),id:r.id,book:r.book_no,kind:r.book_type,km:num(r.data.replacementKmr)??delta(r.data.openingKmr,r.data.closingKmr),hours:delta(r.data.openingHmr,r.data.closingHmr),tripsTotal:num(r.data.completedTrips)??num(r.data.totalTrips)??(r.data.trips||[]).reduce((s,t)=>s+(num(t.completedTrips)??num(t.tripCount)??0),0)}));}
 export function filterRecords(rows,f){return rows.filter(r=>operationalDate(r.bookDate)&&(!f.from||r.bookDate>=f.from)&&(!f.to||r.bookDate<=f.to)&&(!f.site||sameSite(r.location,f.site))&&(!f.shift||sameShift(r.shiftName,f.shift))&&(!f.asset||String(r.assetId)===f.asset)&&(!f.employee||String(r.employeeId)===f.employee)&&(!f.workOrder||r.workOrderContract===f.workOrder));}
 // The filters a report uses: Missing / Duplicate Logbooks ignores the employee and work-order filters.
 export const effectiveOperationFilters=(id,filters)=>id==='missing'?{...filters,employee:'',workOrder:''}:filters;
@@ -45,11 +51,12 @@ function buildOperationReportData(id,rows,{assets=[],shifts=[],cards=[],filters=
   const out=[],groups=new Map();for(const r of rows){const key=JSON.stringify([r.bookDate,r.location,r.assetId,r.shiftId]);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(r);}for(const g of groups.values())if(g.length>1)out.push([g[0].bookDate,g[0].location,g[0].door,g[0].shiftName,...people(g),'Duplicate',g.map(r=>r.book).join(', ')]);
   // Every saved date, site, asset and shift is looked up in one set: searching all log books for each of them froze
   // the screen for minutes over 18 days (about 100,000 asset shifts against 67,000 log books).
-  const seenKey=(day,site,asset,shift)=>[day,site,String(asset),String(shift)].join('\u0001');
+  // Sites by their one identity, so a log book and a master written in two spellings of one site still meet.
+  const seenKey=(day,site,asset,shift)=>[day,canonicalSiteName(site),String(asset),String(shift)].join('\u0001');
   const seen=new Set(rows.map(r=>seenKey(r.bookDate,r.location,r.assetId,r.shiftId)));
   const wanted=assets.filter(a=>(!filters.site||sameSite(a.site,filters.site))&&(!filters.asset||a.id===filters.asset));
-  const shiftsAt=new Map();for(const s of shifts)if(!filters.shift||sameShift(s.name??s.shiftName,filters.shift)){if(!shiftsAt.has(s.site))shiftsAt.set(s.site,[]);shiftsAt.get(s.site).push(s);}
-  if(filters.from&&filters.to)for(let d=new Date(filters.from+'T00:00:00Z');d<=new Date(filters.to+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+1)){const day=d.toISOString().slice(0,10);for(const a of wanted)for(const s of shiftsAt.get(a.site)||[]){if(!seen.has(seenKey(day,a.site,a.id,s.id))&&!seen.has(seenKey(day,a.site,Number(a.id),Number(s.id))))out.push([day,a.site,a.door,s.name,'','','Potential missing','Verify operating roster']);}}
+  const shiftsAt=new Map();for(const s of shifts)if(!filters.shift||sameShift(s.name??s.shiftName,filters.shift)){const at=canonicalSiteName(s.site);if(!shiftsAt.has(at))shiftsAt.set(at,[]);shiftsAt.get(at).push(s);}
+  if(filters.from&&filters.to)for(let d=new Date(filters.from+'T00:00:00Z');d<=new Date(filters.to+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+1)){const day=d.toISOString().slice(0,10);for(const a of wanted)for(const s of shiftsAt.get(canonicalSiteName(a.site))||[]){if(!seen.has(seenKey(day,a.site,a.id,s.id))&&!seen.has(seenKey(day,a.site,Number(a.id),Number(s.id))))out.push([day,siteDisplayName(a.site),a.door,s.name,'','','Potential missing','Verify operating roster']);}}
   return {columns:['Date','Site','Door no.','Shift','Caliber ID','Employee','Finding','Details'],rows:out,note:'A potential missing logbook has no card, so no employee can be shown for it. Potential missing assumes every current asset should report on every current site shift, including non-working days. Historical transfers and operating rosters are unavailable. Employee and work-order filters do not apply to this report.'};
  }
  if(id==='scans')return {columns:['Card ID','File','Date','Site','Caliber ID','Employee','Status','Saved book','Error'],rows:cards.filter(c=>filterRecords([{...c.draft,bookDate:c.draft?.bookDate||c.scanned_date}],filters).length).map(c=>[c.id,c.filename,c.draft?.bookDate||c.scanned_date,c.draft?.location,c.draft?.caliberId,c.draft?.employeeName,c.status,c.book_no,c.error]),note:'Includes pending, approved, posted, rejected and failed cards. Cards without a book date use the scan date (India time). Employee, shift, asset and site filters exclude cards whose corresponding fields are unreadable.'};

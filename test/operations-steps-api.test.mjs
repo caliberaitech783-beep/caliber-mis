@@ -75,7 +75,8 @@ test('each press gets the same step lines the screen worked out from every card,
  assert.equal(all.body.totals.logbooks,5);
  // A filter narrows the same reading.
  const filtered=await get({id:'daily',site:OTHER});
- assert.deepEqual(filtered.body.levels.sites.rows.map(r=>r.site),[OTHER]);
+ // The filter is written Majri OB; the line reads by the OC name (owner, 22 Nov 2026).
+ assert.deepEqual(filtered.body.levels.sites.rows.map(r=>r.site),['Majri OC']);
  // Refresh reads again.
  await get({id:'daily',fresh:'1'});assert.equal(masterReads(),2);
 });
