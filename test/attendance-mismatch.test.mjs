@@ -106,26 +106,26 @@ test('the attendance pages follow the Reports right and sit in their own main me
 const listRow=(id,master,data)=>({id,master_name:master,record_data:data});
 const worker=(id,number,name,site)=>listRow(id,'Employee master',{caliberId:'CMPL'+number,employeeId:'CMPL'+number,name,site,currentDesignationName:'VOLVO DRIVER'});
 const aForm=(id,aFormNo,number,site)=>listRow(id,'A Form master',{aFormNo,employeeId:'CMLL'+number,site});
-const A_FORM_LISTS=[worker(1,8431,'RAM','Jayant OC'),worker(2,1769,'SHYAM','Jayant OC'),worker(3,19846,'ANIL','Jayant OC'),worker(4,5311,'MOHAN','Sasti OC'),worker(5,6000,'TWO FORMS','Jayant OC'),
- aForm(11,'1769',8431,'Jayant OC'),aForm(12,'D68',19846,'Jayant OC'),aForm(13,'1769',5311,'Sasti OC'),aForm(14,'300/301',6000,'Jayant OC'),aForm(15,'77',8431,'Jayant OC'),aForm(16,'77',1769,'Jayant OC')];
+const A_FORM_LISTS=[worker(1,91005,'RAM','Jayant OC'),worker(2,1769,'SHYAM','Jayant OC'),worker(3,91004,'ANIL','Jayant OC'),worker(4,5311,'MOHAN','Sasti OC'),worker(5,6000,'TWO FORMS','Jayant OC'),
+ aForm(11,'1769',91005,'Jayant OC'),aForm(12,'D68',91004,'Jayant OC'),aForm(13,'1769',5311,'Sasti OC'),aForm(14,'300/301',6000,'Jayant OC'),aForm(15,'77',91005,'Jayant OC'),aForm(16,'77',1769,'Jayant OC')];
 
 test('a code that is an A Form no. is changed to the CMLL number of that site, found per site of the file',()=>{
  const index=buildAFormPeople(A_FORM_LISTS);
  const at=(caliberCode,site,o={})=>punch({caliberCode,site,...o});
  // Jayant's device gives A Form numbers; 1769 is also the CMLL number of another Jayant man, so the file as a whole decides.
  const jayant=resolveBiometricCodes([at('1769','Jayant OB'),at('D68','Jayant OB')],index);
- assert.deepEqual(jayant.lines.map(l=>[l.caliberCode,l.aFormNo]),[['8431','1769'],['19846','D68']]);
+ assert.deepEqual(jayant.lines.map(l=>[l.caliberCode,l.aFormNo]),[['91005','1769'],['91004','D68']]);
  assert.deepEqual(jayant.sites,[{site:'Jayant OB',lines:2,kind:'aform',converted:2,matchCaliber:1,matchAForm:2}]);
  // The same number at Sasti is another person; a file of CMLL numbers is left as it is.
  assert.deepEqual(resolveBiometricCodes([at('1769','Sasti OC')],index,'aform').lines.map(l=>l.caliberCode),['5311']);
- const ids=resolveBiometricCodes([at('8431','Jayant OB'),at('19846','Jayant OB'),at('1769','Jayant OB')],index);
- assert.deepEqual(ids.lines.map(l=>[l.caliberCode,l.aFormNo]),[['8431',''],['19846',''],['1769','']]);assert.equal(ids.sites[0].kind,'caliber');
+ const ids=resolveBiometricCodes([at('91005','Jayant OB'),at('91004','Jayant OB'),at('1769','Jayant OB')],index);
+ assert.deepEqual(ids.lines.map(l=>[l.caliberCode,l.aFormNo]),[['91005',''],['91004',''],['1769','']]);assert.equal(ids.sites[0].kind,'caliber');
  // Two sites in one file are judged one by one.
  const mixed=resolveBiometricCodes([at('1769','Jayant OB'),at('D68','Jayant OB'),at('5311','Sasti OC')],index);
  assert.deepEqual(mixed.sites.map(s=>[s.site,s.kind]),[['Jayant OB','aform'],['Sasti OC','caliber']]);
  // An A Form no. on two people of the site, or on nobody, is left out and named; it is never saved as a CMLL number.
  const doubtful=resolveBiometricCodes([at('77','Jayant OB'),at('999','Jayant OB'),at('D68','Jayant OB')],index,'aform');
- assert.deepEqual(doubtful.lines.map(l=>l.caliberCode),['19846']);
+ assert.deepEqual(doubtful.lines.map(l=>l.caliberCode),['91004']);
  assert.deepEqual(doubtful.leftOut.map(l=>[l.code,/two people/.test(l.reason)]),[['77',true],['999',false]]);
  // A person with two A Form numbers punching under both is one day's attendance: first In, last Out.
  const both=resolveBiometricCodes([at('300','Jayant OB',{inTime:'05:10',outTime:''}),at('301','Jayant OB',{inTime:'',outTime:'13:20'})],index,'aform');
@@ -159,7 +159,7 @@ test('biometric punches are saved, replaced on a second upload and read back ins
  const jayant=await call('/api/reports/biometric-punches',{fileName:'jayant.xlsx',rows:[punch({caliberCode:'1769',site:'Jayant OB',date:'2026-11-17'}),punch({caliberCode:'D68',site:'Jayant OB',date:'2026-11-17'}),punch({caliberCode:'4040',site:'Jayant OB',date:'2026-11-17'})]});
  assert.equal(jayant.body.saved,2);assert.equal(jayant.body.leftOut,1);assert.match(jayant.body.leftOutLines[0],/Jayant OB, 2026-11-17, code 4040: this A Form no\. is not in A Form Master for the site/);
  assert.deepEqual(jayant.body.sites,[{site:'Jayant OB',lines:3,kind:'aform',converted:2,matchCaliber:1,matchAForm:2}]);
- assert.deepEqual((await call('/api/reports/biometric-punches?from=2026-11-17&to=2026-11-17')).body.punches.map(p=>[p.caliberCode,p.aFormNo,p.site]),[['19846','D68','Jayant OB'],['8431','1769','Jayant OB']]);
+ assert.deepEqual((await call('/api/reports/biometric-punches?from=2026-11-17&to=2026-11-17')).body.punches.map(p=>[p.caliberCode,p.aFormNo,p.site]),[['91004','D68','Jayant OB'],['91005','1769','Jayant OB']]);
  // Told that the file holds CMLL ids, nothing is changed.
  assert.deepEqual((await call('/api/reports/biometric-punches',{fileName:'ids.xlsx',codeKind:'caliber',rows:[punch({caliberCode:'1769',site:'Jayant OB',date:'2026-11-16'})]})).body.sites.map(s=>[s.kind,s.converted]),[['caliber',0]]);
  assert.equal((await call('/api/reports/biometric-punches',{fileName:'none.xlsx',codeKind:'aform',rows:[punch({caliberCode:'4040',site:'Jayant OB'})]})).status,400,'nothing is saved under a code that names nobody');

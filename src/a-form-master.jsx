@@ -113,7 +113,7 @@ export default function AFormMaster({session}){
   </section>}
   <form className="employee-search a-form-line" onSubmit={saveLine} aria-label="Add or correct one line">
    <label>A Form no.<input value={line.aFormNo} maxLength={60} onChange={e=>setLine(v=>({...v,aFormNo:e.target.value}))} placeholder="for example 467" required/></label>
-   <label>CMLL id<input value={line.employeeId} maxLength={20} onChange={e=>setLine(v=>({...v,employeeId:e.target.value}))} placeholder="for example CMLL17939" required/></label>
+   <label>CMLL id<input value={line.employeeId} maxLength={20} onChange={e=>setLine(v=>({...v,employeeId:e.target.value}))} placeholder="for example CMLL12345" required/></label>
    <label>Site<select value={line.site} onChange={e=>setLine(v=>({...v,site:e.target.value}))} required><option value="">Choose the site</option>{SITES.map(name=><option key={name}>{name}</option>)}</select></label>
    <button type="submit" disabled={Boolean(busy)}>Add or correct this line</button>
   </form>

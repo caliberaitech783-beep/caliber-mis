@@ -139,7 +139,7 @@ export function planAFormMaster(existing,records,{now=new Date().toISOString(),f
 // One line typed on the page: the same checks as a line of the file.
 export function aFormLine(input={}){
  const number=employeeNumber(input.employeeId),siteName=hrSiteName(input.site),aFormNo=text(input.aFormNo).slice(0,60);
- if(!number)throw Object.assign(new Error('Enter the CMLL id, for example CMLL17939.'),{status:400});
+ if(!number)throw Object.assign(new Error('Enter the CMLL id, for example CMLL12345.'),{status:400});
  if(!siteName)throw Object.assign(new Error('Choose the site.'),{status:400});
  if(!aFormKeys(aFormNo).length)throw Object.assign(new Error('Enter the A Form no.'),{status:400});
  return {number,siteKey:canonicalSiteName(siteName),data:{aFormNo,employeeId:aFormEmployeeId(number),site:siteName}};
