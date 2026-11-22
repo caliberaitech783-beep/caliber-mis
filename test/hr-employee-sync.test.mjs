@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {PGlite} from '@electric-sql/pglite';
 import express from 'express';
 import {createHrEmployeeSync,hrEmployeeSheet,planHrTransfers,HR_SYNC_LIMITS} from '../server/services/hr-employee-sync.mjs';
-import {registerMasterSync,MASTER_SYNC_ROWS,HR_SYNC_ACTOR} from '../server/routes/master-sync.mjs';
+import {registerMasterSync,MASTER_SYNC_ROWS,HR_SYNC_ACTOR,hrMasterPaused} from '../server/routes/master-sync.mjs';
 import {EMPLOYEE_MASTER_OWNER_KEY,HR_MASTER_OWNER} from '../shared/hr-employee-master.mjs';
 
 const KEY='s'.repeat(40);
@@ -117,7 +117,7 @@ test('the hourly run syncs both HR masters, records the result, and leaves a cop
  const f=await fixture();
  try{
   const hr={configured:()=>true,count:async()=>7,preview:async()=>({}),sync:async(name,options)=>{synced.push([name,options.by]);if(name==='Employee transfer')throw Object.assign(new Error('HR did not answer. Existing data retained.'),{status:502});return {summary:{added:1}};}};
-  const sync=registerMasterSync(express(),{pool:f.pool,pulse:{status:()=>({connected:true,busy:false})},erp:{status:async()=>({configured:false})},hr,requireSession:(q,s,n)=>n(),requireAdministrator:(q,s,n)=>n()});
+  const sync=registerMasterSync(express(),{pool:f.pool,pulse:{status:()=>({connected:true,busy:false})},erp:{status:async()=>({configured:false})},hr,env:{HR_EMPLOYEE_MASTER_SYNC:'on'},requireSession:(q,s,n)=>n(),requireAdministrator:(q,s,n)=>n()});
   assert.deepEqual((await sync.hourly()).map(r=>[r.name,r.ok]),[['Employee master',true],['Employee transfer',false]]);
   assert.deepEqual(synced,[['Employee master',HR_SYNC_ACTOR],['Employee transfer',HR_SYNC_ACTOR]]);
   const status=await sync.status(),rows=status.masters.filter(m=>m.source==='HR');
@@ -137,4 +137,28 @@ test('the page shows the HR source, a Preview button, and Apply sends the key of
  const server=fs.readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
  assert.match(server,/hr:createHrEmployeeSync\(\{pool\}\)/);
  assert.match(server,/masterSync\.start\(\)/);
+});
+
+test('Employee Master sync is paused by default: the hour, Sync and Sync all copy only Employee Transfer, Preview still works',async()=>{
+ assert.equal(hrMasterPaused('Employee master',{}),true);assert.equal(hrMasterPaused('Employee master',{HR_EMPLOYEE_MASTER_SYNC:'on'}),false);assert.equal(hrMasterPaused('Employee transfer',{}),false);
+ const synced=[],f=await fixture();
+ try{
+  const hr={configured:()=>true,count:async()=>0,preview:async name=>({master:name}),sync:async name=>{synced.push(name);return {summary:{}};}};
+  const app=express();app.use(express.json());
+  const sync=registerMasterSync(app,{pool:f.pool,pulse:{status:()=>({connected:true,busy:false}),sync:async()=>{}},erp:{status:async()=>({configured:false}),sync:async()=>{}},hr,env:{},requireSession:(q,s,n)=>{q.session={login:'owner'};n();},requireAdministrator:(q,s,n)=>n()});
+  await sync.hourly();
+  assert.deepEqual(synced,['Employee transfer']);
+  const row=(await sync.status()).masters.find(m=>m.name==='Employee master');
+  assert.deepEqual([row.paused,row.nextSync],[true,null]);
+  const server=app.listen(0),base='http://127.0.0.1:'+server.address().port;
+  try{
+   const post=body=>fetch(base+'/api/master-sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+   const refused=await post({master:'Employee master',planKey:'x'});
+   assert.equal(refused.status,409);assert.match((await refused.json()).error,/paused/);
+   synced.length=0;
+   assert.equal((await post({master:'all'})).status,200);
+   assert.deepEqual(synced,['Employee transfer'],'Sync all leaves Employee Master alone');
+   assert.equal((await fetch(base+'/api/master-sync/preview?master=Employee%20master')).status,200);
+  }finally{server.close();}
+ }finally{await f.close();}
 });
