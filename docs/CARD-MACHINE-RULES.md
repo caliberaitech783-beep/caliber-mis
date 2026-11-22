@@ -70,6 +70,42 @@ machine at the site always wins, and a label that two machines answer goes to
 review. Revoking, suspending or limiting the alias to "This machine only"
 switches the rule off at every site. Details: `equipment-alias-otp-spec.md` §14.
 
+### Same number only (23 Nov 2026)
+
+A saved alias is another name for the same machine number: the card says `L21`
+and Pulse calls it `DEMO21`. A pair whose number differs (`T658` chosen as
+`TPC65`, `T52` chosen as `TPC57`) is a corrected reading. Saved for ever it
+would send every later misread of those digits to that machine without review,
+so it is never saved: the choice applies where the reviewer made it (the card
+from the review dropdown or manual entry, the open batch from the mismatch box)
+and the screen says so. The written number must equal the number of one of the
+machine's real doors; leading zeros and the separators after the letters do not
+count, and a machine Pulse knows only by registration has no number to
+contradict. The rule holds with the OTP flag on or off.
+
+On 23 Nov 2026 the live table held 964 mappings, 914 of them with a different
+number. They are not removed by a release. An MIS administrator opens
+"Mappings where the number differs" under the Equipment master, sees them in
+the alias list (search, print and Excel as usual) and removes them in one
+action; each removal is written to the alias history and the audit trail, and
+cards already saved are not changed.
+
+### The loading hour read twice (23 Nov 2026)
+
+On the trip card the loading hour is written right against the machine number
+in the narrow NO column, and the reader sometimes counts it twice:
+`T | 65 | 8:38` comes back as `T658` at 08:38, `T | 65 | 10:08` as `T6510`.
+When a card is read, a trip row is put back to the real machine only if all of
+this holds: the number as read is no machine at the card's site; it ends in
+that row's own loading hour; without those digits it is exactly one real door
+at the site (never an alias); and the card itself confirms the machine, either
+in its machine-wise summary or through a second row loaded in another hour
+that comes down to the same machine. The review screen shows
+"Written: T658 · read as TPC65 - 05018: the 8 on the end is the loading hour".
+Anything less is left as read for the reviewer. Measured on 28 live batches
+(about 9,100 trip rows): 42 of 46 such rows corrected, none wrongly. The rule
+runs in the scan engines, so it starts with the engines' next update.
+
 ### The mismatch box and the OTP rule (EQUIPMENT_ALIAS_OTP)
 
 With `EQUIPMENT_ALIAS_OTP=1` every card-versus-Pulse mismatch is resolved
