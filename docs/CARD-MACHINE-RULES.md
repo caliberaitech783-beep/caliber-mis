@@ -80,8 +80,11 @@ so it is never saved: the choice applies where the reviewer made it (the card
 from the review dropdown or manual entry, the open batch from the mismatch box)
 and the screen says so. The written number must equal the number of one of the
 machine's real doors; leading zeros and the separators after the letters do not
-count, and a machine Pulse knows only by registration has no number to
-contradict. The rule holds with the OTP flag on or off.
+count. A door is judged by its label, letters then the machine number
+(`VPC150-86636` is VPC150), wherever Pulse keeps it: on 303 of 1,804 live
+records Pulse repeats the door in the registration field, and those doors
+count like any other. Only a record known by nothing but a road registration
+(`MH34BZ8707`) has no fleet number to contradict. The rule holds with the OTP flag on or off.
 
 On 23 Nov 2026 the live table held 964 mappings, 914 of them with a different
 number. They are not removed by a release. An MIS administrator opens

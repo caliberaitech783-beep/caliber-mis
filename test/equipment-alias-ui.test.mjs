@@ -102,3 +102,30 @@ test('the Equipment master ALIAS cell lists live aliases with status and the rev
  assert.match(html,/L21/);assert.match(html,/HL21 \(Pending approval\)/);assert.doesNotMatch(html,/>X</);assert.match(html,/aria-label="Revoke alias L21"/);
  assert.match(aliasHover(aliases[0]),/Active · approved by the mapping approver · by nitish/);
 });
+
+// Seen on live, 23 Nov 2026: after "Show all mappings" the Remove button slid into its place under
+// the pointer, and the line under the buttons still said the list showed only these mappings.
+test('the cleanup buttons keep their places and the line under them says what the list shows',async()=>{
+ const h=hooks();const calls=[];let shown=false,lists=[];
+ const aliasApi=()=>async(path,body)=>{calls.push([path,body]);return path.endsWith('/revoke')?{revoked:2}:{count:2,aliases:[{id:'a1',writtenText:'T658'},{id:'a2',writtenText:'T52'}]}};
+ const {NumberMismatchCleanup}=await compile('equipment-alias-admin.jsx',{React,useState:h.useState,useEffect:h.useEffect,useRef:h.useRef,EquipmentAliasOtpPanel(){},aliasApi,formatDisplayDateTime},['NumberMismatchCleanup']);
+ const render=()=>{h.reset();return NumberMismatchCleanup({session,otpEnabled:false,shown,onList:ids=>{shown=Boolean(ids);lists.push(ids?[...ids]:null)},onRemoved:async()=>{calls.push(['refresh'])}})};
+ const buttons=tree=>{const out=[];const walk=node=>{if(!React.isValidElement(node))return;if(node.type==='button')out.push(node);React.Children.toArray(node.props.children).forEach(walk)};walk(tree);return out};
+ const words=node=>React.Children.toArray(node.props.children).join('');
+ let tree=render();assert.deepEqual(buttons(tree).map(words),['Show these mappings']);
+ await buttons(tree)[0].props.onClick();tree=render();
+ assert.deepEqual(lists,[['a1','a2']],'listing them also shows only them');
+ assert.deepEqual(buttons(tree).map(words),['Check again','Show all mappings','Remove these 2 mappings…']);
+ assert.match(renderToStaticMarkup(tree),/2 mapping\(s\) have a different number\. Only they are shown in the list below\./);
+ buttons(tree)[1].props.onClick();tree=render();
+ assert.equal(lists.at(-1),null);
+ assert.deepEqual(buttons(tree).map(words),['Check again','Show only these 2','Remove these 2 mappings…'],'the second button changes its words; Remove stays third');
+ assert.match(renderToStaticMarkup(tree),/2 mapping\(s\) have a different number\. The list below shows all mappings\./);
+ buttons(tree)[1].props.onClick();assert.deepEqual(lists.at(-1),['a1','a2']);tree=render();
+ buttons(tree)[2].props.onClick();tree=render();
+ assert.deepEqual(buttons(tree).map(words),['Check again','Show all mappings','Yes, remove 2','Cancel'],'removal needs a second, separate button');
+ assert.equal(calls.filter(([path])=>String(path).endsWith('/revoke')).length,0);
+ buttons(tree)[3].props.onClick();tree=render();
+ assert.deepEqual(buttons(tree).map(words),['Check again','Show all mappings','Remove these 2 mappings…'],'Cancel removes nothing');
+ assert.equal(calls.filter(([path])=>String(path).endsWith('/revoke')).length,0);
+});
