@@ -56,3 +56,12 @@ Set by the owner on 15 November 2026.
 - Whenever a VLB, LMV or ELB scan card is open for processing ("Review all card values", review page or batch page), the left sidebar runs in auto-hide: it stays closed and opens only while the pointer is at the left edge or inside it.
 - Leaving the card (no card selected, back to card status, another page) returns the sidebar to the user's own setting; the forced auto-hide is never saved as the user's setting.
 - `src/scan-card-sidebar.mjs` holds the rule; `test/scan-card-sidebar.test.mjs` checks it. Do not remove it.
+
+# Employee Master and Employee Transfer from HR
+
+Set by the owner on 23 November 2026 (replaces the same day's "Employee Master is not a synced master").
+
+- Sync all masters has two HR lines, Employee Master and Employee Transfer, copied from HR (hrpulse.cmll.in) every hour and on Sync, each with a Preview that writes nothing (`server/services/hr-employee-sync.mjs`, `server/routes/master-sync.mjs`). Employee Master is still never copied from Oracle / ERP.
+- HR serves them read only at `/api/integrations/mis/employees` and `/transfers` (caliber-hr repo, `server/mis-employee-sync.mjs`). Pulse-II's Azure setting `HR_SYNC_KEY` must equal HR's `MIS_SYNC_KEY` (32+ characters); without it both lines show "Connection required". `HR_SYNC_SCHEDULE=0` stops the hourly run.
+- Employee Master uses the rules of HR's master Excel (`shared/hr-employee-master.mjs`), keeps the site Pulse-II holds, leaves out HR lines that cannot be placed, and stops by itself when it would take more than 200 people off HR's list or mark more than 300 LEFT; then only Preview and Apply write it.
+- An HR-approved transfer moves the worker from the transfer date as an approved move (`applyEmployeeSiteMove`), once per HR transfer (`hr_transfer_sync`). `test/hr-employee-sync.test.mjs` checks this.
