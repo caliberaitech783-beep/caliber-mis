@@ -1,6 +1,6 @@
 import React,{useEffect,useRef,useState} from 'react';
 import EquipmentAliasOtpPanel,{aliasApi} from './equipment-alias-otp-panel.jsx';
-import {aliasForSelection} from '../shared/equipment-alias-rules.mjs';
+import {aliasForSelection,aliasNumberNote} from '../shared/equipment-alias-rules.mjs';
 import {searchSiteDoors,doorLabel} from './door-search.mjs';
 import {canonicalSiteName} from '../shared/site-location.mjs';
 
@@ -18,6 +18,8 @@ export default function ManualAliasDialog({session,kind,written,site,assets=[],o
  const pair=async()=>{
   if(!chosen||busy)return;setBusy(true);setError('');
   try{
+   // A different number is a corrected entry, not another name: this card only, nothing saved.
+   if(aliasNumberNote(written,chosen,kind)){await onPaired?.(chosen);return;}
    const request=aliasForSelection(written,chosen,kind);
    if(!request){setError(written+' already matches '+doorLabel(chosen)+'. Select it from the list instead.');return;}
    const result=await aliasApi(session)('/api/equipment-aliases',{...request,site,book:kind==='vehicle'?'vlb':'elb'});
@@ -28,9 +30,9 @@ export default function ManualAliasDialog({session,kind,written,site,assets=[],o
  };
  return <dialog ref={dialog} className="scan-equipment-dialog scan-alias-dialog" aria-labelledby="manual-alias-title" onCancel={event=>{event.preventDefault();onDismiss?.()}}><div className="mis-popup-close-bar"><button type="button" className="mis-popup-close" onClick={()=>onDismiss?.()} disabled={busy} aria-label="Close window">× Close</button></div>
   <h2 id="manual-alias-title">Written machine not in Pulse</h2>
-  <p><strong>{written}</strong> is not a door of any {kind==='vehicle'?'tipper':'machine'} at {site||'the selected site'}. Pair it with the Pulse record it stands for. The card continues with that record now; the pair becomes a permanent alias {otpEnabled?'after the OTP':'at once'}.</p>
+  <p><strong>{written}</strong> is not a door of any {kind==='vehicle'?'tipper':'machine'} at {site||'the selected site'}. Pair it with the Pulse record it stands for. The card continues with that record now; the pair becomes a permanent alias {otpEnabled?'after the OTP':'at once'} when the machine number is the same. A different number is used for this card only.</p>
   {!alias&&<><ul className="scan-alias-list">{ranked.map((a,i)=><li key={a.id} className={i===0?'scan-alias-suggested':''}><label><input type="radio" name="manual-alias-choice" disabled={busy} checked={choice===String(a.id)} onChange={()=>setChoice(String(a.id))}/> <strong>{doorLabel(a)}</strong>{i===0?<em> suggested by number</em>:null}</label></li>)}{!ranked.length&&<li>No Pulse {kind==='vehicle'?'tippers':'machines'} at this site.</li>}</ul>
-   <div className="vlb-batch-actions"><button type="button" className="vlb-approval-primary" disabled={busy||!chosen} onClick={pair}>{busy?'Pairing…':otpEnabled?'Pair and continue to OTP':'Pair and save alias'}</button></div></>}
+   <div className="vlb-batch-actions"><button type="button" className="vlb-approval-primary" disabled={busy||!chosen} onClick={pair}>{busy?'Pairing…':chosen&&aliasNumberNote(written,chosen,kind)?'Use for this card only':otpEnabled?'Pair and continue to OTP':'Pair and save alias'}</button></div></>}
   {alias&&alias.status!=='active'&&otpEnabled&&<><p className="scan-alias-pair">Pair: <strong>{doorLabel(chosen)}</strong> ⇄ <strong>{written}</strong> · applied to this card</p><EquipmentAliasOtpPanel session={session} alias={alias} site={site} approver={settings?.approver||null} approverTelegramLinked={settings?settings.approverTelegramLinked:true} onAlias={setAlias} onApproved={async()=>{await onPaired?.(chosen);}}/></>}
   {alias&&alias.status==='active'&&<p role="status" className="vlb-approval-feedback">Approved. {written} now maps to {doorLabel(chosen)}.</p>}
   {error&&<p role="alert" className="logbook-message error">{error}</p>}

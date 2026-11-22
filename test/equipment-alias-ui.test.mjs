@@ -5,7 +5,7 @@ import {readFileSync} from 'node:fs';
 import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {transformWithOxc} from 'vite';
-import {aliasForSelection} from '../shared/equipment-alias-rules.mjs';
+import {aliasForSelection,aliasNumberNote} from '../shared/equipment-alias-rules.mjs';
 import {formatDisplayDateTime} from '../shared/date-time-format.mjs';
 import {canonicalSiteName} from '../shared/site-location.mjs';
 import {searchSiteDoors,doorLabel} from '../src/door-search.mjs';
@@ -31,7 +31,7 @@ test('equipment search filters normalized details, clears, preserves the chosen 
 });
 
 async function compile(file,scope,names){
- scope={TableSmartPrint,...scope};
+ scope={TableSmartPrint,aliasNumberNote,...scope};
  const source=readFileSync(new URL('../src/'+file,import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function').replaceAll('export const','const');
  const {code}=await transformWithOxc(source,file,{jsx:{runtime:'classic'}});
  return new Function(...Object.keys(scope),code+';return {'+names.join(',')+'}')(...Object.values(scope));

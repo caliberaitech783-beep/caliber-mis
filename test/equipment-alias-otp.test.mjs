@@ -75,7 +75,8 @@ test('switching the rule on demotes reviewer-saved aliases to pending; the appro
 test('every Pulse snapshot retires redundant aliases, suspends shadowed ones with a Telegram line, and restores them when the collision goes',async t=>{
  const {db,pool}=await database();t.after(()=>db.close());
  const alias=(await createEquipmentAlias(pool,{equipmentId:'1',writtenText:'L21',site,requestedBy:'mohit',otp:false})).alias;
- const dozer=(await createEquipmentAlias(pool,{equipmentId:'2',writtenText:'D7',site,requestedBy:'mohit',otp:false})).alias;
+ // A permanent alias keeps the machine's own number (rule of 23 Nov 2026): written D131 for door VPC131.
+ const dozer=(await createEquipmentAlias(pool,{equipmentId:'2',writtenText:'D131',site,requestedBy:'mohit',otp:false})).alias;
  const telegram=telegramStub(['nitish','pm1']);
  assert.deepEqual(await reconcileEquipmentAliases(pool,{telegram,notifyLogins:async()=>['nitish','pm1']}),{retired:0,suspended:0,restored:0});
  // A new arrival at the site carries the written key as its real door: shadowing.
@@ -97,7 +98,7 @@ test('every Pulse snapshot retires redundant aliases, suspends shadowed ones wit
  assert.equal((await reconcileEquipmentAliases(pool,{telegram})).restored,1);
  assert.equal((await db.query('SELECT status FROM mis_equipment_aliases WHERE id=$1',[alias.id])).rows[0].status,'active');
  // Pulse renames the aliased asset itself to the written key: redundant, retire silently.
- await db.query("UPDATE master_records SET record_data=record_data||'{\"door\":\"D7\"}' WHERE id=2");
+ await db.query("UPDATE master_records SET record_data=record_data||'{\"door\":\"D131\"}' WHERE id=2");
  const retired=await reconcileEquipmentAliases(pool,{telegram});
  assert.equal(retired.retired,1);assert.equal((await db.query('SELECT status FROM mis_equipment_aliases WHERE id=$1',[dozer.id])).rows[0].status,'retired');
  assert.equal(telegram.sent.length,2,'retirement sends no message');
