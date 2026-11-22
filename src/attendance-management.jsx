@@ -44,12 +44,14 @@ function DateRange({filters,setFilters,busy,onRefresh}){
  </div>;
 }
 
-const punchColumns=[column('date','Date',r=>dmy(r.date)),column('caliberCode','Employee code'),column('employeeName','Name'),column('site','Site'),column('inTime','In'),column('outTime','Out'),column('sourceFile','File'),column('uploadedBy','Uploaded by')];
+const punchColumns=[column('date','Date',r=>dmy(r.date)),column('caliberCode','Employee code'),column('aFormNo','A Form no.'),column('employeeName','Name'),column('site','Site'),column('inTime','In'),column('outTime','Out'),column('sourceFile','File'),column('uploadedBy','Uploaded by')];
 
 export function BiometricIntegration({session,ReportSection}){
  const [filters,setFilters]=useState(()=>({from:monthStart(todayIst()),to:todayIst()}));
  const [state,setState]=useState({rows:null,error:'',busy:false}),[refresh,setRefresh]=useState(0);
  const [upload,setUpload]=useState({busy:false,notice:'',error:'',refused:[]});
+ // What the code column of the device file is. 'auto' lets the server find it per site from Employee Master and A Form Master.
+ const [codeKind,setCodeKind]=useState('auto');
  useEffect(()=>{
   if(!rangeValid(filters))return;
   let live=true;setState(s=>({...s,busy:true,error:''}));
@@ -65,17 +67,19 @@ export function BiometricIntegration({session,ReportSection}){
    else{const {default:readXlsxFile}=await import('read-excel-file');sheet=await readXlsxFile(file);}
    const {punches,errors}=parseBiometricSheet(sheet);
    if(!punches.length)throw Error('No punch line was found in '+file.name+'.');
-   const saved=await readJson('/api/reports/biometric-punches',session,{method:'POST',body:JSON.stringify({fileName:file.name,rows:punches})});
+   const saved=await readJson('/api/reports/biometric-punches',session,{method:'POST',body:JSON.stringify({fileName:file.name,rows:punches,codeKind})});
    const dates=punches.map(p=>p.date).sort();
-   setUpload({busy:false,error:'',refused:errors.slice(0,20),notice:`${saved.saved} punch line(s) saved from ${file.name} (${dmy(dates[0])} to ${dmy(dates.at(-1))}).`+(errors.length?` ${errors.length} line(s) skipped.`:'')});
+   const changed=(saved.sites||[]).filter(row=>row.kind==='aform').map(row=>`${row.site}: ${row.converted} A Form no. changed to the CMLL id`).join('; ');
+   setUpload({busy:false,error:'',refused:[...errors.slice(0,20),...(saved.leftOutLines||[])],notice:`${saved.saved} punch line(s) saved from ${file.name} (${dmy(dates[0])} to ${dmy(dates.at(-1))}).`+(changed?` ${changed}.`:'')+(saved.leftOut?` ${saved.leftOut} line(s) left out: their A Form no. is not one person in A Form Master.`:'')+(errors.length?` ${errors.length} line(s) skipped.`:'')});
    setRefresh(n=>n+1);
   }catch(error){setUpload({busy:false,notice:'',error:error.message,refused:error.payload?.refused||[]});}
  };
  return <section className="production-reports am-page">
   <header><small>ATTENDANCE MANAGEMENT / ATTENDANCE FETCH</small><h1>Biometric integration</h1>
-   <p>Upload the attendance export of the biometric device (Excel or CSV). Columns read: Employee code, Date, In time, Out time, Site and Name; or one line per punch with Employee code and Punch time (first punch In, last punch Out). Uploading the same employee and date again replaces the earlier punch.</p></header>
+   <p>Upload the attendance export of the biometric device (Excel or CSV). Columns read: Employee code, Date, In time, Out time, Site and Name; or one line per punch with Employee code and Punch time (first punch In, last punch Out). Uploading the same employee and date again replaces the earlier punch. If the device gives the A Form no. instead of the CMLL id, it is changed to the CMLL id of that site from A Form Master; the file then needs the Site column.</p></header>
   <div className="am-upload">
    <label className={'am-upload-button'+(upload.busy?' busy':'')}><Upload size={16}/>{upload.busy?'Uploading…':'Upload biometric file'}<input type="file" accept=".xlsx,.csv" disabled={upload.busy} onChange={choose}/></label>
+   <label className="am-code-kind">Employee code in the file<select value={codeKind} disabled={upload.busy} onChange={e=>setCodeKind(e.target.value)}><option value="auto">Find by itself</option><option value="caliber">CMLL id (Caliber ID)</option><option value="aform">A Form no.</option></select></label>
    {upload.notice&&<p className="am-notice" role="status">{upload.notice}</p>}
    {upload.error&&<p className="am-error" role="alert">{upload.error}</p>}
    {upload.refused.length>0&&<ul className="am-refused">{upload.refused.map(l=><li key={l}>{l}</li>)}</ul>}
