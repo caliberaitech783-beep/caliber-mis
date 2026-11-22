@@ -23,6 +23,9 @@ export const SITE_ALIASES = new Map([
   ["dudhichua east", "dudhichua east ob"],
   ["dudhicua east", "dudhichua east ob"],
   ["dudhicua east ob", "dudhichua east ob"],
+  // HR's master writes the two Dudhichua sites as "Dudhichua OB East" and "Dudhichua OB West".
+  ["dudhichua ob east", "dudhichua east ob"],
+  ["dudhichua ob west", "dudhichua ob"],
 ]);
 
 export function canonicalSiteName(value = "") {
