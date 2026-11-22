@@ -194,7 +194,7 @@ test("preview writes nothing; apply replaces Employee Master in place and makes 
 });
 
 // Owner, 23 Nov 2026: the ERP copy is off for good, whether or not HR's master has been applied yet.
-test("the ERP copy writes nothing to Employee Master, before and after HR's master, and Sync all masters takes it from HR only",async()=>{
+test("the ERP copy writes nothing to Employee Master, before and after HR's master, and Sync all masters has no Employee Master line",async()=>{
  const f=await fixture();
  try{
   let read=0;
@@ -209,9 +209,8 @@ test("the ERP copy writes nothing to Employee Master, before and after HR's mast
   await f.db.exec('CREATE TABLE pulse_master_links(master_name TEXT,source_key TEXT,local_id BIGINT)');
   const sync=registerMasterSync(express(),{pool:f.pool,pulse:{status:()=>({connected:true,busy:false})},erp,requireSession:(q,s,n)=>n(),requireAdministrator:(q,s,n)=>n()});
   const status=await sync.status();
-  // Owner, 23 Nov 2026 (later): Employee Master is synced from HR, never from Oracle / ERP.
-  assert.deepEqual(status.masters.filter(m=>m.name==='Employee master').map(m=>[m.label,m.source,m.connected]),[['Employee Master','HR',false]]);
-  assert.deepEqual(status.notSynced,[]);
+  assert.equal(status.masters.some(m=>m.name==='Employee master'),false);
+  assert.deepEqual(status.notSynced.map(m=>m.label),['Employee Master']);assert.match(status.notSynced[0].note,/not copied from Oracle \/ ERP/);
  }finally{await f.close();}
 });
 

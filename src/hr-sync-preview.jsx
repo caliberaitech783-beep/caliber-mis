@@ -29,12 +29,12 @@ function TransferChanges({data}){
  </>;
 }
 
-export default function HrSyncPreview({preview,label,working,paused=false,onApply,onClose}){
+export default function HrSyncPreview({preview,label,working,onApply,onClose}){
  const employees=preview.master==='Employee master';
  return <section className="hr-sync-preview" aria-label={`Preview of ${label} from HR`}>
   <header><h2>Preview · {label} from HR</h2><span>Nothing changed yet</span></header>
-  {paused&&<p className="master-sync-note" role="status"><strong>Employee Master sync is paused by the owner.</strong> This preview only shows what HR holds; nothing is written.</p>}{!paused&&preview.stop&&<p className="master-sync-error" role="alert">{preview.stop.replace('Nothing was changed. Open Preview, check and apply.','The hourly sync waits for this preview to be applied.')}</p>}
+  {preview.stop&&<p className="master-sync-error" role="alert">{preview.stop.replace('Nothing was changed. Open Preview, check and apply.','The hourly sync waits for this preview to be applied.')}</p>}
   {employees?<EmployeeChanges data={preview}/>:<TransferChanges data={preview}/>}
-  <footer><button type="button" onClick={onClose} disabled={working}>Close</button>{!paused&&<button type="button" className="primary" onClick={onApply} disabled={working}>{working?'Applying…':'Apply these changes'}</button>}</footer>
+  <footer><button type="button" onClick={onClose} disabled={working}>Close</button><button type="button" className="primary" onClick={onApply} disabled={working}>{working?'Applying…':'Apply these changes'}</button></footer>
  </section>;
 }

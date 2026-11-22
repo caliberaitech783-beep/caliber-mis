@@ -85,8 +85,8 @@ test('ERP sync refuses empty, duplicate and mostly-missing lists without changin
 });
 
 // Owner, 23 Nov 2026: "stop sync for my employee master. It should not sync from oracle / erp from now onwards."
-test('nothing copies Employee Master from the ERP: not the timer, not a start, not Sync; Sync all masters takes it from HR',async()=>{
- assert.deepEqual(MASTER_SYNC_ROWS.filter(r=>r.name==='Employee master').map(r=>r.source),['HR']);
+test('Employee Master is not in Sync all masters and nothing copies it from the ERP: not the timer, not a start, not Sync',async()=>{
+ assert.equal(MASTER_SYNC_ROWS.some(r=>r.name==='Employee master'),false);
  const {db,pool}=await fixture();
  try{
   const kept=await add(db,{caliberId:'CMPL7',employeeId:'CMPL7',name:'SEVEN AS KEPT IN PULSE-II',site:'Majri OC'});

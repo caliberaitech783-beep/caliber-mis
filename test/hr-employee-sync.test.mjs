@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {PGlite} from '@electric-sql/pglite';
 import express from 'express';
 import {createHrEmployeeSync,hrEmployeeSheet,planHrTransfers,HR_SYNC_LIMITS} from '../server/services/hr-employee-sync.mjs';
-import {registerMasterSync,MASTER_SYNC_ROWS,HR_SYNC_ACTOR,hrMasterPaused} from '../server/routes/master-sync.mjs';
+import {registerMasterSync,MASTER_SYNC_ROWS,HR_SYNC_ACTOR} from '../server/routes/master-sync.mjs';
 import {EMPLOYEE_MASTER_OWNER_KEY,HR_MASTER_OWNER} from '../shared/hr-employee-master.mjs';
 
 const KEY='s'.repeat(40);
@@ -25,9 +25,10 @@ async function fixture({employees=[],transfers=[],people=[],owner=true}={}){
  return {db,pool,sync,hr,calls,all,close:()=>db.close()};
 }
 
-test('Sync all masters lists Employee Master and Employee Transfer from HR, with a Preview, Employee Master first',()=>{
+test('Sync all masters takes only Employee Transfer from HR; Employee Master has no line (owner: do not sync it)',()=>{
  const rows=MASTER_SYNC_ROWS.filter(row=>row.source==='HR');
- assert.deepEqual(rows.map(row=>[row.name,row.label,row.preview]),[['Employee master','Employee Master',true],['Employee transfer','Employee Transfer',true]]);
+ assert.deepEqual(rows.map(row=>[row.name,row.label,row.preview]),[['Employee transfer','Employee Transfer',true]]);
+ assert.equal(MASTER_SYNC_ROWS.some(row=>row.name==='Employee master'),false);
 });
 
 test("HR's lines become the rows of HR's master Excel",()=>{
@@ -112,19 +113,24 @@ test('HR refusing or not answering changes nothing and says so',async()=>{
  await assert.rejects(down.sync('Employee master'),{status:502});
 });
 
-test('the hourly run syncs both HR masters, records the result, and leaves a copy another instance made minutes ago',async()=>{
+test('the hourly run syncs Employee Transfer only, records the result, and leaves a copy another instance made minutes ago',async()=>{
  const synced=[];
  const f=await fixture();
  try{
   const hr={configured:()=>true,count:async()=>7,preview:async()=>({}),sync:async(name,options)=>{synced.push([name,options.by]);if(name==='Employee transfer')throw Object.assign(new Error('HR did not answer. Existing data retained.'),{status:502});return {summary:{added:1}};}};
-  const sync=registerMasterSync(express(),{pool:f.pool,pulse:{status:()=>({connected:true,busy:false})},erp:{status:async()=>({configured:false})},hr,env:{HR_EMPLOYEE_MASTER_SYNC:'on'},requireSession:(q,s,n)=>n(),requireAdministrator:(q,s,n)=>n()});
-  assert.deepEqual((await sync.hourly()).map(r=>[r.name,r.ok]),[['Employee master',true],['Employee transfer',false]]);
-  assert.deepEqual(synced,[['Employee master',HR_SYNC_ACTOR],['Employee transfer',HR_SYNC_ACTOR]]);
-  const status=await sync.status(),rows=status.masters.filter(m=>m.source==='HR');
-  assert.deepEqual(rows.map(m=>[m.label,m.count,m.connected,Boolean(m.lastSuccess),Boolean(m.nextSync),m.error]),[['Employee Master',0,true,true,true,''],['Employee Transfer',7,true,false,false,'HR did not answer. Existing data retained.']]);
+  const sync=registerMasterSync(express(),{pool:f.pool,pulse:{status:()=>({connected:true,busy:false})},erp:{status:async()=>({configured:false})},hr,requireSession:(q,s,n)=>n(),requireAdministrator:(q,s,n)=>n()});
+  assert.deepEqual((await sync.hourly()).map(r=>[r.name,r.ok]),[['Employee transfer',false]]);
+  assert.deepEqual(synced,[['Employee transfer',HR_SYNC_ACTOR]]);
+  let rows=(await sync.status()).masters.filter(m=>m.source==='HR');
+  assert.deepEqual(rows.map(m=>[m.label,m.count,m.connected,Boolean(m.lastSuccess),m.error]),[['Employee Transfer',7,true,false,'HR did not answer. Existing data retained.']]);
+  hr.sync=async name=>{synced.push([name]);return {summary:{moved:1}};};
+  synced.length=0;
+  assert.deepEqual((await sync.hourly()).map(r=>[r.name,r.ok]),[['Employee transfer',true]]);
+  rows=(await sync.status()).masters.filter(m=>m.source==='HR');
+  assert.deepEqual([rows[0].error,Boolean(rows[0].lastSuccess),Boolean(rows[0].nextSync)],['',true,true]);
   synced.length=0;
   await sync.hourly();
-  assert.deepEqual(synced.map(s=>s[0]),['Employee transfer'],'a master synced minutes ago is left alone');
+  assert.deepEqual(synced,[],'a sync from minutes ago is left alone');
  }finally{await f.close();}
 });
 
@@ -139,26 +145,26 @@ test('the page shows the HR source, a Preview button, and Apply sends the key of
  assert.match(server,/masterSync\.start\(\)/);
 });
 
-test('Employee Master sync is paused by default: the hour, Sync and Sync all copy only Employee Transfer, Preview still works',async()=>{
- assert.equal(hrMasterPaused('Employee master',{}),true);assert.equal(hrMasterPaused('Employee master',{HR_EMPLOYEE_MASTER_SYNC:'on'}),false);assert.equal(hrMasterPaused('Employee transfer',{}),false);
+test('Employee Master is never synced: the hour and Sync all leave it, a Sync or Preview of it is refused',async()=>{
  const synced=[],f=await fixture();
  try{
   const hr={configured:()=>true,count:async()=>0,preview:async name=>({master:name}),sync:async name=>{synced.push(name);return {summary:{}};}};
   const app=express();app.use(express.json());
-  const sync=registerMasterSync(app,{pool:f.pool,pulse:{status:()=>({connected:true,busy:false}),sync:async()=>{}},erp:{status:async()=>({configured:false}),sync:async()=>{}},hr,env:{},requireSession:(q,s,n)=>{q.session={login:'owner'};n();},requireAdministrator:(q,s,n)=>n()});
+  const sync=registerMasterSync(app,{pool:f.pool,pulse:{status:()=>({connected:true,busy:false}),sync:async()=>{}},erp:{status:async()=>({configured:false}),sync:async()=>{}},hr,requireSession:(q,s,n)=>{q.session={login:'owner'};n();},requireAdministrator:(q,s,n)=>n()});
   await sync.hourly();
   assert.deepEqual(synced,['Employee transfer']);
-  const row=(await sync.status()).masters.find(m=>m.name==='Employee master');
-  assert.deepEqual([row.paused,row.nextSync],[true,null]);
+  const status=await sync.status();
+  assert.equal(status.masters.some(m=>m.name==='Employee master'),false);
+  assert.deepEqual(status.notSynced.map(m=>m.label),['Employee Master']);
   const server=app.listen(0),base='http://127.0.0.1:'+server.address().port;
   try{
    const post=body=>fetch(base+'/api/master-sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-   const refused=await post({master:'Employee master',planKey:'x'});
-   assert.equal(refused.status,409);assert.match((await refused.json()).error,/paused/);
+   assert.equal((await post({master:'Employee master',planKey:'x'})).status,400);
    synced.length=0;
    assert.equal((await post({master:'all'})).status,200);
    assert.deepEqual(synced,['Employee transfer'],'Sync all leaves Employee Master alone');
-   assert.equal((await fetch(base+'/api/master-sync/preview?master=Employee%20master')).status,200);
+   assert.equal((await fetch(base+'/api/master-sync/preview?master=Employee%20master')).status,400);
+   assert.equal((await fetch(base+'/api/master-sync/preview?master=Employee%20transfer')).status,200);
   }finally{server.close();}
  }finally{await f.close();}
 });

@@ -57,12 +57,11 @@ Set by the owner on 15 November 2026.
 - Leaving the card (no card selected, back to card status, another page) returns the sidebar to the user's own setting; the forced auto-hide is never saved as the user's setting.
 - `src/scan-card-sidebar.mjs` holds the rule; `test/scan-card-sidebar.test.mjs` checks it. Do not remove it.
 
-# Employee Master and Employee Transfer from HR
+# Employee Transfer from HR (Employee Master is not synced)
 
-Set by the owner on 23 November 2026 (replaces the same day's "Employee Master is not a synced master").
+Set by the owner on 23 November 2026: "do not sync Employee Master, sync only Employee Transfer".
 
-- Sync all masters has two HR lines, Employee Master and Employee Transfer, copied from HR (hrpulse.cmll.in) every hour and on Sync, each with a Preview that writes nothing (`server/services/hr-employee-sync.mjs`, `server/routes/master-sync.mjs`). Employee Master is still never copied from Oracle / ERP.
-- HR serves them read only at `/api/integrations/mis/employees` and `/transfers` (caliber-hr repo, `server/mis-employee-sync.mjs`). Pulse-II's Azure setting `HR_SYNC_KEY` must equal HR's `MIS_SYNC_KEY` (32+ characters); without it both lines show "Connection required". `HR_SYNC_SCHEDULE=0` stops the hourly run.
-- Employee Master uses the rules of HR's master Excel (`shared/hr-employee-master.mjs`), keeps the site Pulse-II holds, leaves out HR lines that cannot be placed, and stops by itself when it would take more than 200 people off HR's list or mark more than 300 LEFT; then only Preview and Apply write it.
-- An HR-approved transfer moves the worker from the transfer date as an approved move (`applyEmployeeSiteMove`), once per HR transfer (`hr_transfer_sync`). `test/hr-employee-sync.test.mjs` checks this.
-- Owner, 23 Nov 2026: Employee Master sync from HR is paused for now; only Employee Transfer syncs. Its line shows "Paused" with Preview only, the hourly run and Sync all leave it, and a Sync or Apply of it is refused. The Azure setting `HR_EMPLOYEE_MASTER_SYNC=on` starts it; do not turn it on unless the owner asks.
+- Sync all masters has one HR line, Employee Transfer, copied from HR (hrpulse.cmll.in) every hour and on Sync, with a Preview that writes nothing (`server/services/hr-employee-sync.mjs`, `server/routes/master-sync.mjs`). An HR-approved transfer moves the worker from the transfer date as an approved move (`applyEmployeeSiteMove`), once per HR transfer (`hr_transfer_sync`). A transfer whose person is not in Employee Master, or whose site is not ours, waits and is retried.
+- Employee Master has no line and is not synced from HR or copied from Oracle / ERP; it is kept from HR's master Excel on the Employee Master page. Do not add it back to Sync all masters unless the owner asks. The service still holds the Employee Master copy from HR (unused) for that day.
+- HR serves the data read only at `/api/integrations/mis/transfers` (and `/employees`), caliber-hr repo `server/mis-employee-sync.mjs`. Pulse-II's Azure setting `HR_SYNC_KEY` must equal HR's `MIS_SYNC_KEY` (set 23 Nov 2026, on both Pulse-II slots, not slot-sticky). `HR_SYNC_SCHEDULE=0` stops the hourly run.
+- `test/hr-employee-sync.test.mjs` checks this.

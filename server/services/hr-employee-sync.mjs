@@ -1,4 +1,6 @@
 // Employee Master and Employee Transfer, copied from HR (hrpulse.cmll.in) every hour (owner, 23 Nov 2026).
+// Owner, same day: "do not sync Employee Master, sync only Employee Transfer". Sync all masters has only the
+// Employee Transfer line (server/routes/master-sync.mjs); the Employee Master copy below is kept but not wired to any line.
 //
 // HR serves both, read only, at /api/integrations/mis/employees and /transfers (caliber-hr repo,
 // server/mis-employee-sync.mjs). Pulse-II signs in with HR_SYNC_KEY, the same value as HR's MIS_SYNC_KEY.
