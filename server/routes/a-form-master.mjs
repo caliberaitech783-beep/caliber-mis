@@ -8,7 +8,7 @@ import {A_FORM_MASTER,A_FORM_MAX_LINES,readAFormSheet,planAFormMaster,aFormLine,
 import {employeeNumber,hrSiteName} from '../../shared/hr-employee-master.mjs';
 import {canonicalSiteName} from '../../shared/site-location.mjs';
 import {readAFormPeople} from '../services/a-form-people-index.mjs';
-import {preferredPeople,aFormSharedAt} from '../../shared/a-form-people.mjs';
+import {aFormPerson,aFormLineState,A_FORM_SETTLED_STATES} from '../../shared/a-form-people.mjs';
 
 const LINES_SQL='SELECT id,record_data FROM master_records WHERE master_name=$1 ORDER BY id';
 const INSERT_SQL='INSERT INTO master_records(master_name,record_data) SELECT $1,d FROM jsonb_array_elements($2::jsonb) AS d';
@@ -30,8 +30,8 @@ function readSheet(body){
  return sheet;
 }
 // Who Employee Master holds where, only to tell how many lines have no effect yet.
-const employeesOf=people=>[...people.byNumber.values()].flat().filter(person=>person.master==='Employee master').flatMap(person=>person.siteKeys.map(siteKey=>({number:person.number,siteKey,listed:person.listed})));
-const personAt=(people,number)=>preferredPeople((people.byNumber.get(number)||[]).filter(person=>person.listed))[0]||null;
+// A person HR marks LEFT, or does not list, is still given (listed:false): he is in Employee Master, only not working.
+const employeesOf=people=>[...people.byNumber.values()].flat().filter(person=>person.master==='Employee master').flatMap(person=>(person.siteKeys.length?person.siteKeys:['']).map(siteKey=>({number:person.number,siteKey,listed:person.listed})));
 
 export async function applyAFormMaster(pool,sheet,body){
  // The employee lists are read before the transaction: the shared copy's revision check must not run inside it.
@@ -62,14 +62,15 @@ export function registerAFormMaster(app,{pool,requireSession,requireAdministrato
   const people=await readAFormPeople(pool),rows=(await pool.query(LINES_SQL,[A_FORM_MASTER])).rows;
   const wantSite=canonicalSiteName(hrSiteName(req.query.site)||req.query.site||''),q=String(req.query.q||'').trim().toUpperCase().slice(0,60),only=String(req.query.only||'');
   const lines=rows.map(row=>{
-   const data=row.record_data||{},number=employeeNumber(data.employeeId),siteKey=canonicalSiteName(data.site),person=personAt(people,number),keys=aFormKeys(data.aFormNo);
-   const shared=aFormSharedAt(people,siteKey,keys);
-   const state=!person?'Not in Employee Master':!person.siteKeys.includes(siteKey)?'Employee Master holds '+(person.siteLabel||'another site'):!keys.length?'No A Form no.':shared?'A Form no. is on two people':'Linked';
+   const data=row.record_data||{},number=employeeNumber(data.employeeId),siteKey=canonicalSiteName(data.site),person=aFormPerson(people,number).known,keys=aFormKeys(data.aFormNo);
+   // "HR marks LEFT" and "Not on HR's list" are people Employee Master holds but who are not working; only a number
+   // nobody holds is "Not in Employee Master" (shared/a-form-people.mjs).
+   const state=aFormLineState(people,number,siteKey,keys);
    return {id:String(row.id),aFormNo:String(data.aFormNo||''),employeeId:number?aFormEmployeeId(number):String(data.employeeId||''),site:String(data.site||''),siteKey,name:person?.name||'',designation:person?.designation||'',state};
   });
   const sites=[...new Map(lines.map(line=>[line.siteKey,line.site])).values()].sort((a,b)=>a.localeCompare(b));
-  const counts={lines:lines.length,withForm:lines.filter(line=>line.aFormNo&&line.state!=='No A Form no.').length,linked:lines.filter(line=>line.state==='Linked').length,noForm:lines.filter(line=>line.state==='No A Form no.').length,toCheck:lines.filter(line=>!['Linked','No A Form no.'].includes(line.state)).length};
-  const shown=lines.filter(line=>(!wantSite||line.siteKey===wantSite)&&(!q||line.aFormNo.toUpperCase().includes(q)||line.employeeId.includes(q)||line.name.toUpperCase().includes(q))&&(only==='check'?!['Linked','No A Form no.'].includes(line.state):only==='blank'?line.state==='No A Form no.':true))
+  const counts={lines:lines.length,withForm:lines.filter(line=>line.aFormNo&&line.state!=='No A Form no.').length,linked:lines.filter(line=>line.state==='Linked').length,noForm:lines.filter(line=>line.state==='No A Form no.').length,left:lines.filter(line=>line.state==='HR marks LEFT').length,toCheck:lines.filter(line=>!A_FORM_SETTLED_STATES.includes(line.state)).length};
+  const shown=lines.filter(line=>(!wantSite||line.siteKey===wantSite)&&(!q||line.aFormNo.toUpperCase().includes(q)||line.employeeId.includes(q)||line.name.toUpperCase().includes(q))&&(only==='check'?!A_FORM_SETTLED_STATES.includes(line.state):only==='blank'?line.state==='No A Form no.':only==='left'?line.state==='HR marks LEFT':true))
    .sort((a,b)=>a.site.localeCompare(b.site)||Number(employeeNumber(a.employeeId))-Number(employeeNumber(b.employeeId)));
   const all=req.query.export==='1',page=Math.max(0,Math.min(100000,parseInt(req.query.page)||0));
   res.set('Cache-Control','no-store').json({lines:(all?shown:shown.slice(page*PAGE,page*PAGE+PAGE)).map(({siteKey,...line})=>line),total:shown.length,page,pageSize:PAGE,sites,counts});

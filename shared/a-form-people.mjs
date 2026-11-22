@@ -24,13 +24,30 @@ export function buildAFormPeople(rows=[]){
   if(!number)continue;
   const sites=displaySiteSelection(record.site||record.location||record.currentLocation);
   const person={id:String(row.id),master:row.master_name,number,name:text(record.name||record.employee),designation:text(record.currentDesignationName||record.designationName||record.designation),
-   siteLabel:sites.join(', '),siteKeys:sites.map(site=>canonicalSiteName(site)).filter(Boolean),listed:employeeOnHrList(record)};
+   siteLabel:sites.join(', '),siteKeys:sites.map(site=>canonicalSiteName(site)).filter(Boolean),listed:employeeOnHrList(record),left:record.hrLeft===true};
   const held=byNumber.get(number);if(held)held.push(person);else byNumber.set(number,[person]);
  }
  return {byNumber,links:aFormLinks(rows)};
 }
 // Employee Master's line for a number when it has one, the other lists only when it has none.
 export const preferredPeople=people=>{const main=people.filter(person=>person.master==='Employee master');return main.length?main:people;};
+// What Employee Master says about a CMLL number: `working` is the person on HR's list; `known` is that person or,
+// failing that, whoever holds the number although HR marks him LEFT or does not list him. A person HR marks LEFT
+// is in Employee Master, so a line for him must say "HR marks LEFT" and not "Not in Employee Master".
+export function aFormPerson(people,number){
+ const everyone=people.byNumber.get(number)||[],working=preferredPeople(everyone.filter(person=>person.listed))[0]||null;
+ return {working,known:working||preferredPeople(everyone)[0]||null};
+}
+// The state of one A Form Master line (siteKey of the line, keys of its A Form no.).
+export const A_FORM_SETTLED_STATES=['Linked','No A Form no.','HR marks LEFT'];
+export function aFormLineState(people,number,siteKey,keys){
+ const {working,known}=aFormPerson(people,number);
+ if(!known)return 'Not in Employee Master';
+ if(!working)return known.left?'HR marks LEFT':"Not on HR's list";
+ if(!working.siteKeys.includes(siteKey))return 'Employee Master holds '+(working.siteLabel||'another site');
+ if(!keys.length)return 'No A Form no.';
+ return aFormSharedAt(people,siteKey,keys)?'A Form no. is on two people':'Linked';
+}
 // The people of this site whom these A Form numbers name. siteKey: canonicalSiteName of the site.
 export function aFormOwners(people,siteKey,keys){
  const numbers=new Set();

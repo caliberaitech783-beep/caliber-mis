@@ -57,9 +57,10 @@ test('the file replaces the lines of the sites it names and leaves every other s
  assert.deepEqual(plan.inserts[0],{aFormNo:'463/478',employeeId:'CMLL91003',site:'Dhoptala OC (2nd)',siteAsWritten:'Dhoptala OB 2nd',importedAt:'2026-11-23T00:00:00.000Z',importFile:'A FORM NO.xlsx'});
  assert.deepEqual(plan.summary.sites.map(s=>[s.site,s.lines,s.withForm,s.added,s.changed,s.removed,s.unchanged]),[['Dhoptala OC (2nd)',3,2,1,1,1,1],['Dudhichua East OC',1,1,1,0,0,0],['Jayant OC',2,2,2,0,0,0]]);
  assert.deepEqual([plan.summary.lines,plan.summary.withForm,plan.summary.added,plan.summary.changed,plan.summary.removed,plan.summary.unchanged],[6,5,4,1,1,1]);
- // Majri is not in the file: its line stays. Three people are not on the Employee Master list, one is at another site there.
+ // Majri is not in the file: its line stays. One person is at another site in Employee Master, three are not in it at all,
+ // and one is in it but not working (HR marks LEFT, or not on HR's list): he is counted apart, not as "not in Employee Master".
  assert.ok(!plan.deleteIds.includes('4'));
- assert.deepEqual([plan.summary.otherSite,plan.summary.notInEmployeeMaster],[1,4]);
+ assert.deepEqual([plan.summary.otherSite,plan.summary.notInEmployeeMaster,plan.summary.notWorking],[1,3,1]);
  // The same file again changes nothing.
  const again=planAFormMaster([...existing.filter(r=>r.id!=='3').map(r=>r.id==='2'?held(2,'',91002,'Dhoptala OC (2nd)'):r),...plan.inserts.map((data,i)=>({id:String(10+i),record_data:data}))],records);
  assert.deepEqual([again.inserts.length,again.updates.length,again.deleteIds.length,again.summary.unchanged],[0,0,0,6]);
@@ -91,8 +92,10 @@ test('the A Form Excel is previewed, applied, listed with the Employee Master na
  const {registerAFormMaster}=await import('../server/routes/a-form-master.mjs');
  const db=new PGlite();t.after(()=>db.close());
  await db.exec('CREATE TABLE master_records(id BIGSERIAL PRIMARY KEY,master_name TEXT,record_data JSONB)');
- const employee=(number,name,site,designation)=>db.query("INSERT INTO master_records(master_name,record_data) VALUES('Employee master',$1)",[JSON.stringify({caliberId:'CMPL'+number,employeeId:'CMPL'+number,name,site,currentDesignationName:designation})]);
+ const employee=(number,name,site,designation,extra={})=>db.query("INSERT INTO master_records(master_name,record_data) VALUES('Employee master',$1)",[JSON.stringify({caliberId:'CMPL'+number,employeeId:'CMPL'+number,name,site,currentDesignationName:designation,...extra})]);
  await employee(91001,'RAM','Dhoptala OC (2nd)','VOLVO DRIVER');await employee(91003,'SHYAM','Dhoptala OC (2nd)','TIPPER DRIVER');await employee(91004,'ANIL','Majri OC','PC OPERATOR');
+ // In Employee Master, but not working: HR marks one LEFT, and does not list the other.
+ await employee(91002,'GONE','Dhoptala OC (2nd)','VOLVO DRIVER',{hrListed:true,hrLeft:true,status:'Left'});await employee(91006,'UNLISTED','Dudhichua East OC','VOLVO DRIVER',{hrListed:false});
  const query=(sql,args)=>sql.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):db.query(sql,args);
  const pool={query,connect:async()=>({query,release(){}})};
  const app=express();app.use(express.json({limit:'5mb'}));
@@ -106,17 +109,19 @@ test('the A Form Excel is previewed, applied, listed with the Employee Master na
 
  const preview=await call('/preview',{rows:FILE,fileName:'A FORM NO.xlsx'});
  assert.equal(preview.status,200);assert.equal(preview.body.summary.added,6);
- assert.deepEqual([preview.body.summary.otherSite,preview.body.summary.notInEmployeeMaster],[1,3],'CMLL91004 is at Majri in Employee Master; three are not on its list');
+ assert.deepEqual([preview.body.summary.otherSite,preview.body.summary.notInEmployeeMaster,preview.body.summary.notWorking],[1,1,2],'CMLL91004 is at Majri in Employee Master; one is not in it; two are in it but LEFT or not listed');
  assert.equal((await stored()).length,0,'the preview writes nothing');
  assert.equal((await call('/apply',{rows:FILE,fileName:'A FORM NO.xlsx',planKey:'stale'})).status,409);
  const applied=await call('/apply',{rows:FILE,fileName:'A FORM NO.xlsx',planKey:preview.body.planKey});
  assert.equal(applied.status,200);assert.equal(applied.body.summary.added,6);assert.equal((await stored()).length,6);
 
  const list=await call('?site='+encodeURIComponent('Dhoptala OC (2nd)'));
- assert.deepEqual(list.body.lines.map(l=>[l.aFormNo,l.employeeId,l.site,l.name,l.state]),[['467','CMLL91001','Dhoptala OC (2nd)','RAM','Linked'],['','CMLL91002','Dhoptala OC (2nd)','','Not in Employee Master'],['463/478','CMLL91003','Dhoptala OC (2nd)','SHYAM','Linked']]);
- assert.deepEqual(list.body.counts,{lines:6,withForm:5,linked:2,noForm:0,toCheck:4});
+ assert.deepEqual(list.body.lines.map(l=>[l.aFormNo,l.employeeId,l.site,l.name,l.state]),[['467','CMLL91001','Dhoptala OC (2nd)','RAM','Linked'],['','CMLL91002','Dhoptala OC (2nd)','GONE','HR marks LEFT'],['463/478','CMLL91003','Dhoptala OC (2nd)','SHYAM','Linked']]);
+ // A person HR marks LEFT is settled, not something to check; a number nobody holds, another site and "not on HR's list" are.
+ assert.deepEqual(list.body.counts,{lines:6,withForm:5,linked:2,noForm:0,left:1,toCheck:3});
  assert.deepEqual((await call('?q=d68')).body.lines.map(l=>[l.employeeId,l.state]),[['CMLL91004','Employee Master holds Majri OC']]);
- assert.equal((await call('?only=check')).body.total,4);
+ assert.deepEqual((await call('?only=check')).body.lines.map(l=>[l.employeeId,l.name,l.state]),[['CMLL91006','UNLISTED',"Not on HR's list"],['CMLL91004','ANIL','Employee Master holds Majri OC'],['CMLL91005','','Not in Employee Master']]);
+ assert.deepEqual((await call('?only=left')).body.lines.map(l=>l.employeeId),['CMLL91002']);
 
  // The A Form no. of a line is corrected, a new line is typed, and a line is removed.
  assert.deepEqual((await call('/line',{aFormNo:'468',employeeId:'CMLL91001',site:'Dhoptala OB 2nd'})).body,{saved:true,changed:true});
