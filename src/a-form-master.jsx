@@ -15,7 +15,9 @@ const STATE_HELP={
  'Linked':'Used on scanned cards and biometric files.',
  'No A Form no.':'HR has not given an A Form no. for this person.',
  'A Form no. is on two people':'The same A Form no. is written against two people of this site, so it cannot name either of them. Correct one line.',
- 'Not in Employee Master':'This CMLL id is not on the Employee Master list, so the line is not used.',
+ 'Not in Employee Master':'No employee has this CMLL id in Employee Master, so the line is not used.',
+ 'HR marks LEFT':"HR's master marks this person LEFT. The line is kept but not used; nothing needs correcting.",
+ "Not on HR's list":"Employee Master holds this person, but HR's master does not list him, so the line is not used. Check with HR.",
 };
 const stateHelp=state=>STATE_HELP[state]||'The line is used only at the site Employee Master holds for this person.';
 
@@ -89,7 +91,7 @@ export default function AFormMaster({session}){
     <li><strong>Biometric file:</strong> when the device gives the A Form no., it is changed to the CMLL id of that site.</li>
     <li>The site a person works at is the one Employee Master holds. A line for another site is kept but not used.</li>
    </ul>
-   {c&&<p><strong>{count(c.lines)}</strong> lines · <strong>{count(c.linked)}</strong> linked · <strong>{count(c.noForm)}</strong> without an A Form no. · <strong>{count(c.toCheck)}</strong> to check</p>}
+   {c&&<p><strong>{count(c.lines)}</strong> lines · <strong>{count(c.linked)}</strong> linked · <strong>{count(c.noForm)}</strong> without an A Form no. · <strong>{count(c.left)}</strong> HR marks LEFT · <strong>{count(c.toCheck)}</strong> to check</p>}
   </section>
   {busy&&<p role="status">{busy}</p>}
   {error&&<p className="employee-error" role="alert">{error}</p>}
@@ -104,7 +106,8 @@ export default function AFormMaster({session}){
     {preview.problemCount>0&&<li><strong>{count(preview.problemCount)}</strong> line(s) cannot be placed and are left out: {preview.problems.slice(0,8).map(row=>`line ${row.line} ${row.employeeId} (${row.problem})`).join('; ')}{preview.problemCount>8?' …':''}</li>}
     {s.sharedNumbers>0&&<li><strong>{count(s.sharedNumbers)}</strong> A Form no. are written against two people of one site and cannot name either until corrected: {preview.lists.shared.slice(0,8).map(row=>`${row.site} ${row.aFormNo} (${row.employeeIds.join(', ')})`).join('; ')}{s.sharedNumbers>8?' …':''}</li>}
     {s.employeesChecked&&s.otherSite>0&&<li><strong>{count(s.otherSite)}</strong> people are at another site in Employee Master today. Their lines start working when Employee Master holds the same site (apply HR's master Excel on the Employee Master page).</li>}
-    {s.employeesChecked&&s.notInEmployeeMaster>0&&<li><strong>{count(s.notInEmployeeMaster)}</strong> CMLL ids are not on the Employee Master list today; their lines are kept but not used.</li>}
+    {s.employeesChecked&&s.notWorking>0&&<li><strong>{count(s.notWorking)}</strong> people are marked LEFT by HR, or are not on HR's list, in Employee Master today; their lines are kept but not used.</li>}
+    {s.employeesChecked&&s.notInEmployeeMaster>0&&<li><strong>{count(s.notInEmployeeMaster)}</strong> CMLL ids are not in Employee Master at all today; their lines are kept but not used.</li>}
    </ul>
    <div className="employee-actions">
     {!sure?<button type="button" onClick={()=>setSure(true)} disabled={Boolean(busy)}>Apply to A Form Master</button>
@@ -120,7 +123,7 @@ export default function AFormMaster({session}){
   <div className="employee-search">
    <label>Search<input placeholder="A Form no., CMLL id or name" value={q} onChange={e=>{setQ(e.target.value);setPage(0);}}/></label>
    <label>Site<select value={site} onChange={e=>{setSite(e.target.value);setPage(0);}}><option value="">All sites</option>{data.sites.map(name=><option key={name}>{name}</option>)}</select></label>
-   <label>Show<select value={only} onChange={e=>{setOnly(e.target.value);setPage(0);}}><option value="">All lines</option><option value="check">Lines to check</option><option value="blank">Without an A Form no.</option></select></label>
+   <label>Show<select value={only} onChange={e=>{setOnly(e.target.value);setPage(0);}}><option value="">All lines</option><option value="check">Lines to check</option><option value="blank">Without an A Form no.</option><option value="left">HR marks LEFT</option></select></label>
    <strong>{count(data.total)} lines</strong>
   </div>
   <div className="employee-register"><table><thead><tr><th>A Form no.</th><th>CMLL id</th><th>Site</th><th>Name (Employee Master)</th><th>Designation</th><th>Link</th><th></th></tr></thead>

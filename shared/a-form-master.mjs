@@ -123,16 +123,21 @@ export function planAFormMaster(existing,records,{now=new Date().toISOString(),f
  const removed=[...held.entries()].filter(([key,row])=>covered.has(row.siteKey)&&!inFile.has(key)).map(([,row])=>row);
  for(const row of removed)siteRow(row.siteName).removed++;
  const shared=sharedAFormNumbers(records);
- // A line works only at the site Employee Master holds for that person.
- let notInEmployeeMaster=0,otherSite=0;
+ // A line works only at the site Employee Master holds for that person. Someone Employee Master holds but who is
+ // not working (HR marks LEFT, or not on HR's list: listed false) is counted apart from a number nobody holds.
+ let notInEmployeeMaster=0,notWorking=0,otherSite=0;
  if(employees){
-  const sitesOf=new Map();
-  for(const employee of employees)if(employee.number&&employee.listed!==false)(sitesOf.get(employee.number)||sitesOf.set(employee.number,new Set()).get(employee.number)).add(employee.siteKey);
-  for(const record of records){const sites=sitesOf.get(record.number);if(!sites)notInEmployeeMaster++;else if(!sites.has(record.siteKey))otherSite++;}
+  const sitesOf=new Map(),known=new Set();
+  for(const employee of employees){
+   if(!employee.number)continue;
+   known.add(employee.number);
+   if(employee.listed!==false)(sitesOf.get(employee.number)||sitesOf.set(employee.number,new Set()).get(employee.number)).add(employee.siteKey);
+  }
+  for(const record of records){const sites=sitesOf.get(record.number);if(!sites){if(known.has(record.number))notWorking++;else notInEmployeeMaster++;}else if(!sites.has(record.siteKey))otherSite++;}
  }
  const sites=[...bySite.values()].sort((a,b)=>a.site.localeCompare(b.site));
  const summary={lines:records.length,withForm:records.filter(record=>record.keys.length).length,added:inserts.length,changed:updates.length,removed:removed.length,
-  unchanged:sites.reduce((sum,row)=>sum+row.unchanged,0),sharedNumbers:shared.length,notInEmployeeMaster,otherSite,employeesChecked:Boolean(employees),sites};
+  unchanged:sites.reduce((sum,row)=>sum+row.unchanged,0),sharedNumbers:shared.length,notInEmployeeMaster,notWorking,otherSite,employeesChecked:Boolean(employees),sites};
  return {inserts,updates,deleteIds:removed.map(row=>row.id),summary,lists:{shared,removed:removed.map(row=>({employeeId:aFormEmployeeId(row.number),aFormNo:row.aFormNo,site:row.siteName}))}};
 }
 
