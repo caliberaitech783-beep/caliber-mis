@@ -1,7 +1,6 @@
 import {normalizeScannedMeter,recoverScannedMeterDecimals} from './scan-meter-text.mjs';
 import {identifyCardMachine,normalizeScanEquipmentRows,compactScanEquipmentReferences} from '../../shared/scan-machine-rules.mjs';
-import {matchesEmployeeReference} from '../../shared/employee-identity.mjs';
-import {employeeAtLocation} from '../../shared/log-book-access.mjs';
+import {judgeCaliberId} from '../../shared/caliber-id-check.mjs';
 import {linkedScanEquipment,separatorDoorFields} from '../../shared/scan-fleet-door.mjs';
 import {resolveTripGrid} from '../services/trip-row-vision.mjs';
 import {matchScannedSite,hasDchLocation,tripCardLocation} from '../../shared/scan-site-match.mjs';
@@ -12,11 +11,20 @@ import {CARD_SHIFTS,normalizeCardShift,markedShiftEvidence,matchingWorkOrders,se
 import {formatTripCardSheet,parseTripCardSheet} from '../../shared/trip-card-sheet.mjs';
 const key=s=>String(s||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
 const one=(rows,predicate)=>{const found=rows.filter(predicate);return found.length===1?found[0]:null};
+// The driver or operator the scan may put on a card by itself, or null when the Caliber ID is in doubt
+// (shared/caliber-id-check.mjs). Only the number is used: a card whose number could not be read is never
+// matched on the name written on it (owner, 22 Nov 2026).
 function matchScanEmployee(masters,raw,location){
- const employees=masters.filter(row=>['C-Dir Employee master','ERP Employee master','Employee master'].includes(row.master_name)&&employeeAtLocation(row.record_data,location));
- const matches=row=>raw.employeeCode?matchesEmployeeReference(row.record_data,raw.employeeCode):raw.employee&&key(row.record_data.name||row.record_data.employee)===key(raw.employee);
- const imported=employees.filter(row=>row.master_name==='Employee master'&&matches(row));
- return imported.length===1?imported[0]:imported.length?null:one(employees.filter(row=>row.master_name!=='Employee master'),matches);
+ return judgeCaliberId(masters,{read:raw.employeeCode,readings:raw.caliberReadings,location}).employee;
+}
+// The verdict on a card's Caliber ID once the card has been read (twice where it is). location is the site the
+// card is saved under: the batch's site when the batch has one. Sets or clears the driver on the draft and keeps
+// the reason a held card waits for a person in raw.caliberCheck, which the review screen turns into its message.
+export function applyCaliberCheck(extracted,masters,location=extracted.draft.location){
+ const verdict=judgeCaliberId(masters,{read:extracted.raw.employeeCode,readings:extracted.raw.caliberReadings,location});
+ extracted.draft.employeeId=verdict.employee?String(verdict.employee.id):'';
+ if(verdict.check)extracted.raw.caliberCheck=verdict.check;else delete extracted.raw.caliberCheck;
+ return extracted;
 }
 
 export function matchScanDraft(draft,raw,kind,masters){

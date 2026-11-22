@@ -5,12 +5,23 @@ import {manualBreakdownHours} from '../shared/breakdown-hours-source.mjs';
 import {validTripTime} from '../shared/vlb-trip-handover.mjs';
 import {CARD_SHIFTS,machineDiscrepancies} from '../shared/trip-card-rules.mjs';
 import {tripTimesOutOfOrder} from '../shared/shift-clock.mjs';
+import {caliberCheckMessage,caliberNumber} from '../shared/caliber-id-check.mjs';
+import {canonicalSiteName} from '../shared/site-location.mjs';
 // Owner, 21 Nov 2026: a trip whose unloading comes after the next trip's loading has a misread time (the scan read
 // "10:07" as 16:07 on Gauri Pauni card 157). The card is held for review, with both times named as written on the draft.
 export function tripOrderIssues(draft={}){
  const issues={},trips=draft.trips||[];
  for(const i of tripTimesOutOfOrder(draft))issues[`trips.${i}.unloadingTime`]=`Unloading ${String(trips[i].unloadingTime).trim()} comes after the next trip's loading ${String(trips[i+1].loadingTime).trim()}. A vehicle unloads before it loads again: check both times against the card.`;
  return issues;
+}
+// The line on a card whose driver or operator the scan did not fill (owner, 22 Nov 2026: the Caliber ID decides
+// salary, so a number in doubt waits for a person). It says what the scan read, what Employee Master says about
+// that number and what to do. The reason is worked out when the card is read (raw.caliberCheck); it is used only
+// for the site it was judged at. A card read before that rule, or moved to another site, gets the short line.
+export function caliberHoldMessage(raw={},kind='vehicle',location=''){
+ const check=raw?.caliberCheck,read=caliberNumber(raw?.employeeCode)||String(raw?.employeeCode||'').trim().slice(0,40);
+ const judgedHere=check&&(!location||canonicalSiteName(check.at)===canonicalSiteName(location));
+ return (judgedHere&&caliberCheckMessage(check,kind))||(read?'Scan read '+read+'. No employee at this site has this number. Check the card.':'Caliber ID could not be read. Type the number from the card.');
 }
 const required=[['bookDate','Book date'],['location','Location'],['assetId','Door number'],['employeeId','Driver / operator'],['shiftId','Shift'],['shiftHours','Shift hours'],['openingHmr','Opening HMR'],['closingHmr','Closing HMR']];
 export function scanFieldState(draft,key,issues){
@@ -29,6 +40,7 @@ export function scanFieldIssues(draft={},kind='vehicle',raw={},options=null,lmv=
  if(kind==='vehicle')for(const [i,row] of (draft.trips||[]).entries()){if(tripEquipmentRequired(row,draft.timeMode)&&!String(row.equipmentName||'').trim())issues[`trips.${i}.equipmentName`]='Enter the loading equipment.';if(!Number.isSafeInteger(Number(row.tripCount))||Number(row.tripCount)<1)issues[`trips.${i}.tripCount`]='Enter a positive whole trip count.';if(draft.timeMode!=='without')for(const key of ['loadingTime','unloadingTime'])if(row[key]?!validTripTime(row[key]):!row.loadingTime&&!row.unloadingTime)issues[`trips.${i}.${key}`]='Check the time against the scan.';}
  if(kind==='vehicle'&&!lmv&&draft.timeMode!=='without')for(const [key,message] of Object.entries(tripOrderIssues(draft)))issues[key]||=message;
  if(options){for(const [field,collection,label,read]of [['assetId','assets','Equipment Master',raw.door],['employeeId','employees','Employee Master',raw.employeeCode],['shiftId','shifts','Shift Master',draft.cardShift]])if(!draft[field]){if(!options[collection]?.length)issues[field]=label+' is empty in this MIS database. Sync/import it before matching scans.';else if(read)issues[field]='Scan reads '+String(read).slice(0,80)+'; no unique '+label+' match was found. Check the reading or master record.';}}
+ if(!String(draft.employeeId??'').trim()&&!(options&&!options.employees?.length))issues.employeeId=caliberHoldMessage(raw,kind,draft.location);
  if(kind==='vehicle'&&options){
   const validation=validateTripEquipment(draft,options.assets||[]);
   Object.assign(issues,validation.issues);

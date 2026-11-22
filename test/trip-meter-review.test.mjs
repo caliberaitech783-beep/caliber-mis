@@ -13,9 +13,12 @@ test('reading-table candidates override scrambled page text and require explicit
  assert.equal(scanFieldIssues({...draft,meterReviewFields:[]}).openingKmr,undefined);
 });
 test('wrong template is never cropped as a reading table',async()=>assert.deepEqual(await readingCellImages(Buffer.alloc(0),'Job Card'),{}));
-test('driver/operator missing-field names follow the book type',()=>{
- assert.match(scanFieldIssues({},'vehicle').employeeId,/^Driver needs/);
- assert.match(scanFieldIssues({},'equipment').employeeId,/^Operator needs/);
+// Since 23 Nov 2026 a card with no driver or operator says what happened to its Caliber ID (shared/caliber-id-check.mjs).
+test('a card with no driver or operator says the Caliber ID was not read; a line that names the role follows the book type',()=>{
+ for(const kind of ['vehicle','equipment'])assert.equal(scanFieldIssues({},kind).employeeId,'Caliber ID could not be read. Type the number from the card.');
+ const raw={employeeCode:'3000',caliberCheck:{reason:'several',read:'3000',at:'Majri OC'}};
+ assert.match(scanFieldIssues({location:'Majri OC'},'vehicle',raw).employeeId,/Choose the driver from the list\.$/);
+ assert.match(scanFieldIssues({location:'Majri OC'},'equipment',raw).employeeId,/Choose the operator from the list\.$/);
 });
 test('scanned numeric C.ID resolves the full Employee Master ID without using handwritten name',()=>{
  const masters=[{id:42,master_name:'Employee master',record_data:{employeeId:'CMPL8311',employeeCode:'8311',name:'ANOOP SUNIL PAUL',site:'Sasti OC'}}];
