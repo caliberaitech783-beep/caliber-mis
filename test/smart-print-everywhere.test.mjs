@@ -8,7 +8,7 @@ const menu=main.slice(main.indexOf('function ExportMenu('),main.indexOf('functio
 
 test('one menu named Smart Print with the three items in the owner\'s order',()=>{
   assert.match(menu,/label = "Smart Print"/);
-  const pdf=menu.indexOf('Export PDF (A3)</button>'),excel=menu.indexOf('"Export Excel (Save As)" : "Export Excel"'),print=menu.indexOf('<Printer /> Smart Print</button>}</div>');
+  const pdf=menu.indexOf('Export PDF (A3)</button>'),excel=menu.indexOf('<FileSpreadsheet /> Export Excel</button>'),print=menu.indexOf('<Printer /> Smart Print</button>}</div>');
   assert.ok(pdf>0&&excel>pdf&&print>excel,'Export PDF (A3), then Export Excel, then Smart Print');
   assert.doesNotMatch(menu,/smartLabels|Smart PDF|Smart Excel/);
   // Every report heading and every shared table names it the same way.
@@ -22,21 +22,17 @@ test('one menu named Smart Print with the three items in the owner\'s order',()=
   assert.doesNotMatch(read('erp-masters.jsx'),/<PrintButton /);
 });
 
-test('Export PDF is one click to an A3 file; Export Excel asks where to save before building the workbook',()=>{
+test('Export PDF and Excel use direct browser downloads without a fragile Save As handoff',()=>{
   const pdf=menu.slice(menu.indexOf('const downloadPdf = () => {'),menu.indexOf('const printReport = () => {'));
   assert.doesNotMatch(pdf,/openSmartPrint/,'no column window before the PDF');
   assert.match(pdf,/smartPrintReportParts\(\{ title, columns: model\.columns, rows: model\.rows, formatCell: exportCellText \}\)/,'the columns on screen, with the Daily Updates journal as its own section');
   assert.doesNotMatch(pdf,/pageSize/,'the server default, A3, is used');
   assert.match(readFileSync(new URL('../server.mjs',import.meta.url),'utf8'),/===\'A4\'\?\'A4\':\'A3\'/);
   const excel=menu.slice(menu.indexOf('const downloadExcel = async () => {'),menu.indexOf('const downloadPdf = () => {'));
-  assert.ok(excel.indexOf('await chooseSaveTarget(fileName)')<excel.indexOf('runDownload('),'the Save As window opens while the click is fresh');
-  assert.match(excel,/catch \{ return; \}/,'Cancel stops quietly');
-  // Since 16 Nov 2026 a place that cannot be written sends the file to Downloads and the reason to the Diagnostics page.
-  assert.match(excel,/saveToTarget\(target, buildXlsxWorkbook\(title, model\.columns, exportRows, highlightedRows, model\.rows\), fileName, downloadExportFile, \{ onWriteError \}\)/);
-  assert.match(excel,/reportClientError\(error, \{ kind: "export"/);
-  // The Excel made from inside the Smart Print window goes through Save As as well.
-  assert.match(main,/target = await chooseSaveTarget\(fileName\);\s*recordUserActivity\(\{module:"Reports",action:"Download Excel report"/);
-  assert.match(read('smart-print.mjs'),/if\(error\?\.name==='AbortError'\)\{notice\.textContent='';toast\.hidden=true;/);
+  assert.doesNotMatch(excel,/chooseSaveTarget|saveToTarget/);
+  assert.match(excel,/downloadExportFile\(buildXlsxWorkbook\(title, model\.columns, exportRows, highlightedRows, model\.rows\), fileName\)/);
+  // The Excel made from inside the Smart Print window uses the same direct download.
+  assert.match(main,/downloadExportFile\(buildXlsxWorkbook\(title, columns, exportRows, highlightedRows, rows\), fileName\)/);
 });
 
 test('a table drawn by hand reaches the same menu and is read from the screen at the click',()=>{

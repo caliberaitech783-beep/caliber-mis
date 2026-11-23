@@ -6,6 +6,7 @@
 
 const DB_NAME='caliber-download-history',STORE='files',VERSION=1;
 export const KEEP_FILES=60,KEEP_BYTES=250*1024*1024;
+export const DOWNLOAD_HANDOFF_MS=5*60*1000;
 export const DOWNLOAD_HISTORY_EVENT='caliber-download-history';
 let owner='';
 /** The login whose files are listed and recorded. The header sets it once the user is signed in. */
@@ -72,8 +73,10 @@ export async function clearDownloads(){for(const row of await listDownloads())aw
 export function downloadBlob(blob,name,{title='',doc=globalThis.document,record=recordDownload}={}){
   const url=URL.createObjectURL(blob),link=doc.createElement('a');
   link.href=url;link.download=name;link.rel='noopener';link.style.display='none';
-  doc.body.appendChild(link);link.click();link.remove();
-  setTimeout(()=>URL.revokeObjectURL(url),60000);
+  doc.body.appendChild(link);link.click();
+  // Keep both the clicked link and its blob address alive while Chrome, Edge,
+  // antivirus software, or a download manager accepts the file on slower PCs.
+  setTimeout(()=>{link.remove();URL.revokeObjectURL(url);},DOWNLOAD_HANDOFF_MS);
   try{record?.(blob,name,{where:'downloads',title});}catch{/* the history never stops the file */}
 }
 

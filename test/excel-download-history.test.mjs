@@ -8,7 +8,7 @@ import { recordCountLine, withSerialColumn, isSerialColumn, serialTone, SERIAL_X
 import * as xlsxLayout from "../shared/xlsx-layout.mjs";
 import { buildXlsxSheetsWorkbook as sharedBuilder } from "../shared/report-xlsx.mjs";
 import { saveToTarget } from "../src/save-as.mjs";
-import { downloadBlob, fileKind, readCsvRows, readXlsxSheets, recordDownload } from "../src/download-history.mjs";
+import { DOWNLOAD_HANDOFF_MS, downloadBlob, fileKind, readCsvRows, readXlsxSheets, recordDownload } from "../src/download-history.mjs";
 import { breakdownRequests } from "../shared/loading-machine-report.mjs";
 
 function storedFiles(buffer) {
@@ -83,9 +83,10 @@ test("a download keeps its address long enough and is kept in Download History",
   try { downloadBlob({ size: 1 }, "report.xlsx", { doc, record: (blob, name, info) => kept.push([name, info.where]) }); }
   finally { URL.createObjectURL = createObjectURL; URL.revokeObjectURL = revokeObjectURL; globalThis.setTimeout = realTimeout; }
   assert.deepEqual(clicked, ["blob:report"]);
-  assert.equal(body.children.length, 0);
+  assert.equal(body.children.length, 1);
   assert.deepEqual(revoked, []);
-  assert.ok(timers[0] >= 30000, "the address is kept for at least 30 s");
+  assert.equal(timers[0], DOWNLOAD_HANDOFF_MS);
+  assert.ok(timers[0] >= 300000, "the link and address are kept for at least five minutes");
   assert.deepEqual(kept, [["report.xlsx", "downloads"]]);
 });
 
