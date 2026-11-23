@@ -90,10 +90,11 @@ test('the run reads Pulse-II once and puts the new sheets after the site sheet',
  assert.equal(done.lines.length,5);
 });
 
-test('the tab sits beside Attendance Sheet Mismatch, which stays as it is',()=>{
+test('the tab sits just beside Attendance Month-wise; Attendance Sheet Mismatch stays as it is, after it',()=>{
  const ids=operationReports.map(r=>r.id);
  assert.deepEqual(operationReports.find(r=>r.id==='attendance-site-sheet'),{id:'attendance-site-sheet',title:'Site Sheet vs Trip Card',group:'Manpower & OT'});
- assert.equal(ids.indexOf('attendance-site-sheet'),ids.indexOf('attendance-sheet')+1);
+ assert.equal(ids.indexOf('attendance-site-sheet'),ids.indexOf('attendance-month')+1);
+ assert.equal(ids.indexOf('attendance-sheet'),ids.indexOf('attendance-site-sheet')+1);
  const read=name=>fs.readFileSync(new URL(name,import.meta.url),'utf8');
  const screen=read('../src/manpower-reports.jsx');
  assert.match(screen,/:siteSheet\?<SiteSheetTripCard session=\{session\} ReportSection=\{ReportSection\}\/>:<AttendanceSheetCheck session=\{session\}\/>/);

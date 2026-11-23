@@ -312,12 +312,13 @@ test('the check reads Pulse-II once for the dates of the sheet and names the Exc
  await assert.rejects(runSheetCheck({sheet:parseAttendanceSheet(SHEET),site:'Sasti OC',session:{token:'T'},today:'2026-10-31',read}),/No date of this sheet can be compared/);
 });
 
-test('the tab sits beside Attendance Month-wise, in the tab row and in the Reports menu',()=>{
+test('the tab sits after the sheet upload tab, which is beside Attendance Month-wise, in the tab row and in the Reports menu',()=>{
  assert.deepEqual(operationReports.find(r=>r.id==='attendance-sheet'),{id:'attendance-sheet',title:'Attendance Sheet Mismatch',group:'Manpower & OT'});
- const ids=operationReports.map(r=>r.id);assert.equal(ids.indexOf('attendance-sheet'),ids.indexOf('attendance-month')+1);
+ // Owner, 24 Nov 2026: the tab where the site's sheet is uploaded sits just beside Attendance Month-wise.
+ const ids=operationReports.map(r=>r.id);assert.equal(ids.indexOf('attendance-sheet'),ids.indexOf('attendance-month')+2);
  const read=name=>fs.readFileSync(new URL(name,import.meta.url),'utf8');
  const screen=read('../src/manpower-reports.jsx');
- assert.match(screen,/\['attendance-month','Attendance Month-wise'\],\['attendance-sheet','Attendance Sheet Mismatch'\],\['attendance-site-sheet','Site Sheet vs Trip Card'\],\['attendance-trip-bio','Trip Card vs Bio-punch'\]\];/);
+ assert.match(screen,/\['attendance-month','Attendance Month-wise'\],\['attendance-site-sheet','Site Sheet vs Trip Card'\],\['attendance-sheet','Attendance Sheet Mismatch'\],\['attendance-trip-bio','Trip Card vs Bio-punch'\]\];/);
  assert.match(screen,/if\(!valid\|\|sheetCheck\)\{setBusy\(false\)/,'the tab does not start the Manpower read');
  assert.match(screen,/if\(sheetCheck\)return <section[\s\S]*?<AttendanceSheetCheck session=\{session\}\/>/);
  assert.match(read('../src/operations-reports.jsx'),/'attendance-batch','attendance-month','attendance-sheet','attendance-site-sheet','attendance-trip-bio'\]\.includes\(props\.reportId\)\)return <ManpowerReports/);

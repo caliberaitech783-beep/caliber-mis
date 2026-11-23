@@ -11,12 +11,14 @@ import './trip-card-verdict.css';
 const many=(n,one,more=one+'s')=>n+' '+(n===1?one:more);
 const col=(key,label,extra={})=>({key,label,value:r=>r[key]===''||r[key]===undefined||r[key]===null?'—':r[key],...extra});
 
-export function TripCardFilters({filter,onChange,min,max,logBooks,batches,disabled,checked,onDownload,children}){
+// tabs={false}: no log book tabs. Site Sheet vs Trip Card chooses the log book before the upload (its own tabs), so here
+// only the batch, From and To are left to choose.
+export function TripCardFilters({filter,onChange,min,max,logBooks,batches,disabled,checked,onDownload,children,tabs=true}){
  return <section className="tcv-filters" aria-label="What to see">
-  <div className="tcv-tabs" role="tablist" aria-label="Log book">
+  {tabs&&<div className="tcv-tabs" role="tablist" aria-label="Log book">
    {LOG_BOOK_TABS.map(t=><button key={t.key||'all'} type="button" role="tab" aria-selected={filter.logBook===t.key} disabled={disabled}
     onClick={()=>onChange({logBook:t.key,batch:''})}>{t.label}{logBooks&&<small>{logBooks[t.key]||0}</small>}</button>)}
-  </div>
+  </div>}
   <div className="tcv-fields">
    {children}
    <label>Batch<select value={filter.batch} disabled={disabled||!checked} onChange={e=>onChange({batch:e.target.value})}>

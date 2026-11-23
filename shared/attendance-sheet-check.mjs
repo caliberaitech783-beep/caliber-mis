@@ -29,6 +29,10 @@ export const SHEET_LEGEND=[
  ['duty','BLUE on a date = the sheet says A, PL, - or blank, Pulse-II has a duty saved for that date.'],
  ['skip','GREY on a date = not compared: the date is not locked in Pulse-II yet, or the mark is blank or not understood.'],
 ];
+// A sheet uploaded as one log book (owner, 24 Nov 2026: the VLB, ELB and LMV sheets are uploaded and checked apart). A P
+// whose trip card is in another log book is neither a match nor a missing card: it has its own colour and its own list.
+export const BOOK_FILL='FF9FE0D6';
+export const bookLegend=logBook=>['book','TEAL on a date = the sheet says P and Pulse-II has no '+logBook+' trip card for it: the trip card of that date, or every trip card of this person, is in another log book. Listed on the sheet "Another log book"; not counted as a missing card.'];
 export const CORRECTION_KINDS={
  'no-id':'No EMP. ID','id-unreadable':'EMP. ID not readable','id-not-found':'EMP. ID not in Pulse-II','id-twice':'EMP. ID twice in the sheet','id-left':'HR marks LEFT',
  // A name mismatch is one colour in the sheet and three kinds in the lists, the one that matters first (nameDifference).
@@ -194,7 +198,10 @@ const dutyNote=l=>({shift:shiftLetter(l.shift),books:text(l.books)||text(l.logBo
 // people:     Employee Master's answer for the numbers of the sheet ({number,found,name,designation,siteLabel,atSite,working,left}).
 // sitePeople: the people Employee Master holds working at this site ({number,name,designation}).
 // today:      YYYY-MM-DD (IST); later dates are not compared.
-export function checkAttendanceSheet({sheet,site,lines=[],lockedDays=[],people=[],sitePeople=[],today=''}){
+// logBook:    VLB, ELB or LMV when the sheet was uploaded as the sheet of one log book. `lines` then hold only the duties
+//             of that log book and otherLines the duties of the other two, so a P with a trip card in another log book is
+//             told apart from a P with no trip card at all. '' = one sheet for every log book, as before.
+export function checkAttendanceSheet({sheet,site,lines=[],lockedDays=[],people=[],sitePeople=[],today='',logBook='',otherLines=[]}){
  const siteKey=canonicalSiteName(site);
  const master=new Map(people.map(p=>[String(p.number),p]));
  const locked=new Set(lockedDays.filter(k=>siteOfKey(k)===siteKey).map(k=>String(k).slice(String(k).lastIndexOf('|')+1)));
@@ -203,6 +210,13 @@ export function checkAttendanceSheet({sheet,site,lines=[],lockedDays=[],people=[
   const number=lineNumber(line);if(!number||!line.date)continue;
   const entry={...line,number,here:canonicalSiteName(line.siteKey||line.site)===siteKey};
   const key=number+'|'+line.date;(byDay.get(key)||byDay.set(key,[]).get(key)).push(entry);active.add(number);
+ }
+ // The duties of the other log books: by person and date, and the log books each person's trip cards are in.
+ const otherByDay=new Map(),otherBooks=new Map(),otherBook=[];
+ for(const line of otherLines){
+  const number=lineNumber(line);if(!number||!line.date)continue;
+  const note=dutyNote(line),key=number+'|'+line.date;(otherByDay.get(key)||otherByDay.set(key,[]).get(key)).push(note);
+  const held=otherBooks.get(number)||otherBooks.set(number,new Set()).get(number);for(const book of note.logBooks)held.add(book);
  }
  const dateIndex=new Map(sheet.dates.map((date,index)=>[date,index]));
  const compared=sheet.filledDates.filter(date=>date>=OPERATIONAL_START&&(!today||date<=today));
@@ -225,9 +239,10 @@ export function checkAttendanceSheet({sheet,site,lines=[],lockedDays=[],people=[
   if(idIssue==='id-left')add('id-left',{sheetSays:'P marked',pulseSays:pulse.left?'HR marks LEFT':"Not on HR's list",correction:(pulse.left?'HR marks this person LEFT':"This person is not on HR's list")+', but the sheet marks P. Remove the P marks, or ask HR to correct Employee Master.'});
   if(nameKind)add('name-'+nameKind,{sheetSays:p.name,pulseSays:pulse.name,correction:NAME_ADVICE[nameKind]});
   if(siteIssue)add('site',{sheetSays:site,pulseSays:pulse.siteLabel||'No site',pulseSite:pulse.siteLabel||'',correction:'Pulse-II Employee Master holds this person at '+(pulse.siteLabel||'no site')+'. Correct the site on Employee Current Location, or remove the person from this sheet.'});
-  // The days. A person Pulse-II does not know has no day to compare.
-  const judge=known&&(onCards||hasDuties);
-  let sheetP=0,pulseP=0;const noDuty=[],blanks=[];
+  // The days. A person Pulse-II does not know has no day to compare. A person whose every trip card is in another log
+  // book is not compared under this one: he belongs to that log book's sheet.
+  const elsewhere=known&&!hasDuties&&otherBooks.has(p.number),judge=known&&(onCards||hasDuties)&&!elsewhere;
+  let sheetP=0,pulseP=0;const noDuty=[],blanks=[],otherDays=[];
   const cells=sheet.filledDates.map(date=>{
    const mark=p.marks[dateIndex.get(date)],kind=markKind(mark),cell={date,mark,kind,state:'',pulse:''};
    if(!compared.includes(date))return cell;
@@ -237,12 +252,16 @@ export function checkAttendanceSheet({sheet,site,lines=[],lockedDays=[],people=[
    const all=byDay.get(p.number+'|'+date)||[],here=all.filter(l=>l.here),away=all.filter(l=>!l.here);
    // The duties of the date, kept on the cell for the date by shift view (shared/site-sheet-days.mjs).
    cell.duties=here.map(dutyNote);cell.away=away.map(dutyNote);
+   const other=otherByDay.get(p.number+'|'+date)||[];if(other.length)cell.other=other;
    cell.pulse=here.length?'P ('+[...new Set(here.map(l=>shiftLetter(l.shift)))].join('+')+')':away.length?'At '+joined(away,'site'):'A';
    if(judge){if(kind==='present')sheetP++;if(here.length)pulseP++;}
    if(kind==='present'){
     if(here.length)return cell;
     if(away.length){cell.state='site';add('other-site',{date,sheetSays:mark,pulseSays:'Duty at '+joined(away,'site')+' (Shift '+[...new Set(away.map(l=>shiftLetter(l.shift)))].join(', ')+')',books:joined(away,'books'),pulseSite:joined(away,'site'),
      correction:'The sheet says P here; Pulse-II has the duty of this date at '+joined(away,'site')+'. Correct the sheet, or correct the site or the Caliber ID on that card.'});return cell;}
+    // P with the trip card in another log book: present, so not a missing card, and not a match of this log book either.
+    // It is not one of this log book's P days.
+    if(other.length||elsewhere){cell.state='book';otherDays.push(cell);if(judge)sheetP--;return cell;}
     if(onCards){cell.state='noDuty';noDuty.push(cell);}
     return cell;
    }
@@ -258,8 +277,18 @@ export function checkAttendanceSheet({sheet,site,lines=[],lockedDays=[],people=[
   else for(const cell of noDuty)add('no-duty',{date:cell.date,sheetSays:cell.mark,pulseSays:'No duty saved',correction:'The sheet says P; Pulse-II has no trip card, log book or zero-trip entry for this date. Save the missing card or zero-trip entry, or correct the sheet to A.'});
   if(blanks.length)add('blank',{date:blanks.length===1?blanks[0]:'',sheetSays:'(blank)',pulseSays:blanks.length===1?'A':'',correction:(blanks.length===1?'This date is':many(blanks.length,'date')+' ('+blanks.map(dayMonth).join(', ')+') are')+' blank in the sheet. Write P, A, PL or - .'});
   const own=corrections.filter(c=>c.row===p.row);
-  return {...p,pulse,idIssue,siteIssue,nameDiffers,nameKind,onCards,hasDuties,judge,cells,sheetP:judge?sheetP:null,pulseP:judge?pulseP:null,difference:judge&&onCards?sheetP-pulseP:null,corrections:own.length,
-   remark:!p.number||!known?'Days not compared: the EMP. ID is not in Pulse-II.':!judge?'Days not compared: not a driver or operator, and no duty in Pulse-II.':!onCards?'Only days with a duty in Pulse-II are compared: not a driver or operator.':''};
+  // One line per person for the days in another log book: they are not corrections of this log book.
+  let books='';
+  if(otherDays.length){
+   const withCard=otherDays.filter(cell=>cell.other?.length);
+   books=[...new Set(elsewhere?[...otherBooks.get(p.number)]:withCard.flatMap(cell=>cell.other.flatMap(d=>d.logBooks)))].sort().join(' + ')||'another log book';
+   otherBook.push({row:p.row,id:p.id,name:p.name,pulseName:pulse?.name||'',designation:p.designation||pulse?.designation||'',books,whole:elsewhere,days:otherDays.length,cardDays:withCard.length,noCardDays:otherDays.length-withCard.length,
+    dates:otherDays.map(cell=>cell.date),cards:[...new Set(withCard.flatMap(cell=>cell.other.map(d=>d.books)).filter(Boolean))].join('; ')});
+  }
+  const bookNote=otherDays.length&&!elsewhere?'P on '+many(otherDays.length,'date')+' with the trip card in '+books+': not counted here.':'';
+  return {...p,pulse,idIssue,siteIssue,nameDiffers,nameKind,onCards,hasDuties,judge,elsewhere,otherBooks:books,bookDays:otherDays.length,cells,sheetP:judge?sheetP:null,pulseP:judge?pulseP:null,difference:judge&&onCards?sheetP-pulseP:null,corrections:own.length,
+   remark:!p.number||!known?'Days not compared: the EMP. ID is not in Pulse-II.':elsewhere?'Days not compared under '+(logBook||'this log book')+': every trip card of this person is '+books+'.'
+    :!judge?'Days not compared: not a driver or operator, and no duty in Pulse-II.':[!onCards?'Only days with a duty in Pulse-II are compared: not a driver or operator.':'',bookNote].filter(Boolean).join(' ')};
  });
  for(const line of sheet.noId)corrections.push({kind:'no-id',label:CORRECTION_KINDS['no-id'],row:line.row,id:'',name:line.name,pulseName:'',designation:'',date:'',sheetSays:'(blank)',pulseSays:'',books:'',pulseSite:'',correction:'This line has no EMP. ID. Write the ID, or the line cannot be compared.'});
  // In Pulse-II, not in the sheet: people with a duty at this site on a compared date, then people Employee Master holds here.
@@ -275,7 +304,8 @@ export function checkAttendanceSheet({sheet,site,lines=[],lockedDays=[],people=[
   .sort((a,b)=>b.dates.length-a.dates.length||a.name.localeCompare(b.name));
  for(const p of notInSheet)corrections.push({kind:'not-in-sheet',label:CORRECTION_KINDS['not-in-sheet'],row:'',id:p.id,name:'',pulseName:p.name,designation:p.designation,date:p.dates.length===1?p.dates[0]:dmy(p.dates[0])+' to '+dmy(p.dates.at(-1)),sheetSays:'Not in the sheet',pulseSays:many(p.dates.length,'duty date')+' at this site',books:p.books,pulseSite:site,
   correction:'Pulse-II has '+many(p.dates.length,'duty date')+' at this site for this person, who is not in the sheet. Add the person to the sheet, or correct the Caliber ID on those cards.'});
- const listedOnly=sitePeople.filter(p=>!inSheet.has(String(p.number))&&!dutyPeople.has(String(p.number))).map(p=>({number:String(p.number),id:String(p.number),name:text(p.name),designation:text(p.designation),dates:[],books:'',kind:'listed'}))
+ // The sheet of one log book is not meant to hold everyone of the site: Employee Master's other people are not listed then.
+ const listedOnly=logBook?[]:sitePeople.filter(p=>!inSheet.has(String(p.number))&&!dutyPeople.has(String(p.number))).map(p=>({number:String(p.number),id:String(p.number),name:text(p.name),designation:text(p.designation),dates:[],books:'',kind:'listed'}))
   .sort((a,b)=>a.name.localeCompare(b.name));
  // A date the sheet has no column for.
  const noColumn=sheet.missingDates.filter(date=>date>=OPERATIONAL_START&&(!today||date<=today)).map(date=>{
@@ -286,7 +316,7 @@ export function checkAttendanceSheet({sheet,site,lines=[],lockedDays=[],people=[
   correction:'The sheet has no column for this date. Add the column and mark it.'});
  corrections.sort((a,b)=>(Number(a.row)||1e9)-(Number(b.row)||1e9)||String(a.date).localeCompare(String(b.date)));
  const counts=Object.fromEntries(Object.keys(CORRECTION_KINDS).map(kind=>[kind,corrections.filter(c=>c.kind===kind).length]));
- return {site,siteKey,rows,corrections,counts,notInSheet,listedOnly,noColumn,
+ return {site,siteKey,logBook,rows,corrections,counts,notInSheet,listedOnly,noColumn,otherBook,
   dates:{filled:sheet.filledDates,compared,judged,pending,early,later,unfilled:sheet.dates.filter(date=>!sheet.filledDates.includes(date))},
   totals:{people:rows.length,known:rows.filter(r=>r.pulse?.found).length,judged:rows.filter(r=>r.judge).length,drivers:rows.filter(r=>r.onCards).length,notJudged:rows.filter(r=>r.pulse?.found&&!r.judge).length,
    peopleWithCorrections:rows.filter(r=>r.corrections>0).length,corrections:corrections.length}};
@@ -305,9 +335,11 @@ export function sheetReadRange(sheet,today){
 // each mismatch in its colour and the colour key at the top. No sheet of this workbook colours its Sr. No.: a red or
 // orange serial number beside the colour key would be read as a mismatch.
 export function attendanceSheetWorkbook(result,{fileName='',checkedAt=''}={}){
- const {site,rows,corrections,counts,dates,totals}=result;
+ const {site,rows,corrections,counts,dates,totals}=result,logBook=result.logBook||'';
  const period=dates.compared.length?dmy(dates.compared[0])+' to '+dmy(dates.compared.at(-1)):'no date to compare';
- const title=site+' · Attendance sheet mismatch · '+period;
+ const title=site+(logBook?' · '+logBook+' sheet':'')+' · Attendance sheet mismatch · '+period;
+ // The sheet of one log book has one more colour: a P with the trip card in another log book.
+ const legendKey=logBook?[...SHEET_LEGEND,bookLegend(logBook)]:SHEET_LEGEND,fillColours=logBook?{...SHEET_FILLS,book:BOOK_FILL}:SHEET_FILLS;
  const gridColumns=['Row in sheet','SR NO','EMP. ID','NAME','Name in Pulse-II','Name mismatch','DESIGNATION',...dates.filled.map(dayMonth),'P days in sheet (locked dates)','P days in Pulse-II (locked dates)','Difference','Corrections','Remark'].map(label=>({label}));
  const cellFills=[];
  const grid=rows.map((r,index)=>{
@@ -319,9 +351,9 @@ export function attendanceSheetWorkbook(result,{fileName='',checkedAt=''}={}){
   const blank=value=>value===null||value===undefined?'':String(value);
   return [String(r.row),r.sr,r.id,r.name,r.pulse?.found?(r.nameDiffers?r.pulse.name:'Same'):'Not in Pulse-II',NAME_KIND_WORDS[r.nameKind]||'',r.designation,...r.cells.map(cell=>cell.mark),blank(r.sheetP),blank(r.pulseP),blank(r.difference),String(r.corrections),r.remark];
  });
- const legend=SHEET_LEGEND.map(([,line])=>line);
- const first={name:'Attendance check',title,plainSerial:true,freezeColumns:5,fills:SHEET_FILLS,cellFills,
-  headerRows:[title+(fileName?' · file: '+fileName:'')+(checkedAt?' · checked '+checkedAt:''),...legend],headerFills:Object.fromEntries(SHEET_LEGEND.map(([key],index)=>[index+1,key])),columns:gridColumns,rows:grid};
+ const legend=legendKey.map(([,line])=>line);
+ const first={name:'Attendance check',title,plainSerial:true,freezeColumns:5,fills:fillColours,cellFills,
+  headerRows:[title+(logBook?' · compared with '+logBook+' trip cards only':'')+(fileName?' · file: '+fileName:'')+(checkedAt?' · checked '+checkedAt:''),...legend],headerFills:Object.fromEntries(legendKey.map(([fill],index)=>[index+1,fill])),columns:gridColumns,rows:grid};
  const list={name:'Corrections',title:site+' · Corrections required · '+period,plainSerial:true,
   columns:['Row in sheet','EMP. ID','Name in sheet','Name in Pulse-II','Designation','Date','Mismatch','Sheet says','Pulse-II says','Correction required','Trip cards / log books'].map(label=>({label})),
   rows:corrections.map(c=>[String(c.row),c.id,c.name,c.pulseName,c.designation,/^\d{4}-\d{2}-\d{2}$/.test(c.date)?dmy(c.date):c.date,c.label,c.sheetSays,c.pulseSays,c.correction,c.books])};
@@ -339,7 +371,9 @@ export function attendanceSheetWorkbook(result,{fileName='',checkedAt=''}={}){
   ['Employees with at least one correction',String(totals.peopleWithCorrections),''],
   ['Corrections in all',String(totals.corrections),'Listed one by one on the sheet "Corrections".'],
   ...Object.entries(CORRECTION_KINDS).map(([kind,label])=>['· '+label,String(counts[kind]||0),'']),
-  ['In Pulse-II Employee Master at this site, not in the sheet',String(result.listedOnly.length),'Listed on the sheet "Not in sheet".'],
+  ...(logBook?[['In this sheet, trip cards in another log book (people)',String(result.otherBook.length),'Listed on the sheet "Another log book". Not counted as corrections of '+logBook+'.'],
+   ['Compared with',logBook+' trip cards only','A sheet of one log book: the other people Employee Master holds at this site are not listed.']]
+   :[['In Pulse-II Employee Master at this site, not in the sheet',String(result.listedOnly.length),'Listed on the sheet "Not in sheet".']]),
   ['Dates compared (locked in Pulse-II)',String(dates.judged.length),say(dates.judged)],
   ['Dates not locked in Pulse-II yet (not compared)',String(dates.pending.length),say(dates.pending)],
   ['Dates with no mark in the sheet (not compared)',String(dates.unfilled.length),say(dates.unfilled)],
