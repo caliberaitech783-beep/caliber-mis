@@ -157,6 +157,25 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
   const scope=exclusive?null:batchScope(await visible(pool,req.params.id,req));
   return transaction(async client=>fn(client,await visible(client,req.params.id,req)),scope);
  };
+ // The batch as its page reads it, on one pooled connection outside any transaction.
+ const readBatchPage=async(req,build=details)=>{const db=await pool.connect();try{return await build(db,await visible(db,req.params.id,req),req);}finally{db.release();}};
+ // What a batch action answers with: the batch page, read after the action's commit. Until
+ // 23 Nov 2026 the answer was built inside the action's transaction, so Lock VLB, Lock LMV, Close,
+ // reopen and a machine entry kept the site, date and shift lock (Unlock VLB: the lock of every
+ // site) for as long as the page read takes, 10 to 20 s on live that day, and every card save of
+ // that shift waited behind them.
+ // The action is already done when this runs, so a read that fails is tried once more and then
+ // answered as "done, reload", never as a failed action.
+ const actionAnswer=async(req,build)=>{
+  try{return await readBatchPage(req,build);}
+  catch{
+   try{await new Promise(resolve=>setTimeout(resolve,250));return await readBatchPage(req,build);}
+   catch(error){
+    console.warn('[vlb-batches] '+req.method+' '+req.originalUrl+' is done; the batch could not be read back:',error?.message||error);
+    throw Object.assign(new Error('Done. The batch could not be read back just now: reload the batch page.'),{status:503});
+   }
+  }
+ };
  const recovery=registerVlbBatchDeletions(app,{pool,protect:recoveryProtect,handle,ensure,sendOtp,imageStorage});
  app.get('/api/vlb-batches',...protect,editRoute(async(req,res)=>{
   const rows=await sharedBatchRows(()=>withoutRowSecurityRequest(async()=>(await pool.query(`
@@ -215,8 +234,7 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
   // The details are several dozen small queries. On one connection they wait in the pool queue
   // once; sent one by one through the pool, each waited its own turn (about 44 turns a request
   // on 12 Nov 2026).
-  const db=await pool.connect();let body;
-  try{body=JSON.stringify(await details(db,await visible(db,req.params.id,req),req));}finally{db.release();}
+  const body=JSON.stringify(await readBatchPage(req));
   const etag=jsonEntityTag('vlb-batch',body);
   res.set('ETag',etag);res.vary('Authorization');
   if(requestEtagMatches(req.get('If-None-Match'),etag))return res.status(304).end();
@@ -262,26 +280,26 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
    return details(client,batch,req);
   },{site:selection.site,bookDate:selection.date,shift:selection.shift});res.status(repeated?200:201).json(result);
  }));
- app.post('/api/vlb-batches/:id/close',...protect,handle(async(req,res)=>res.json(await batchTransaction(req,async(client,batch)=>{
+ app.post('/api/vlb-batches/:id/close',...protect,handle(async(req,res)=>{await batchTransaction(req,async(client,batch)=>{
   if(!mayClose(batch,req.batchActor))fail(twoStageEnabled()?'Only the active batch owner or an MIS administrator can close this batch.':'Only the active batch owner can close this batch.',403);
-  if(batch.closed_at)return details(client,batch,req);
+  if(batch.closed_at)return;
   await assertCloseAllowed(client,batch);
   const closed=(await client.query("UPDATE mis_vlb_batches SET closed_at=NOW(),amendment_by=NULL,closure_revision=closure_revision+1,stage='closed' WHERE id=$1 RETURNING *,book_date::text AS report_date",[batch.id])).rows[0];
-  await auditVlbBatch(client,batch,req.batchActor.login,'saved_and_locked',{closureRevision:closed.closure_revision,savedWithoutChanges:true,twoStage:twoStageEnabled()});return details(client,closed,req);
- }))));
- app.post('/api/vlb-batches/:id/lock-vlb',...protect,handle(async(req,res)=>res.json(await batchTransaction(req,async(client,batch)=>{
+  await auditVlbBatch(client,batch,req.batchActor.login,'saved_and_locked',{closureRevision:closed.closure_revision,savedWithoutChanges:true,twoStage:twoStageEnabled()});
+ });res.json(await actionAnswer(req));}));
+ app.post('/api/vlb-batches/:id/lock-vlb',...protect,handle(async(req,res)=>{await batchTransaction(req,async(client,batch)=>{
   if(!isOwner(batch,req.batchActor)&&!req.batchActor.admin)fail('Only the active batch owner can lock VLB for this batch.',403);
-  return details(client,await lockVlb(client,batch,req.batchActor.login),req);
- }))));
- app.post('/api/vlb-batches/:id/lock-lmv',...protect,handle(async(req,res)=>res.json(await batchTransaction(req,async(client,batch)=>{
+  await lockVlb(client,batch,req.batchActor.login);
+ });res.json(await actionAnswer(req));}));
+ app.post('/api/vlb-batches/:id/lock-lmv',...protect,handle(async(req,res)=>{await batchTransaction(req,async(client,batch)=>{
   if(!isOwner(batch,req.batchActor)&&!req.batchActor.admin)fail('Only the active batch owner or an MIS administrator can lock LMV.',403);
-  return details(client,await lockLmv(client,batch,req.batchActor.login),req);
- }))));
- app.post('/api/vlb-batches/:id/unlock-vlb',...protect,handle(async(req,res)=>res.json(await batchTransaction(req,async(client,batch)=>{
+  await lockLmv(client,batch,req.batchActor.login);
+ });res.json(await actionAnswer(req));}));
+ app.post('/api/vlb-batches/:id/unlock-vlb',...protect,handle(async(req,res)=>{await batchTransaction(req,async(client,batch)=>{
   if(!mayUnlockVlb(batch,req.batchActor))fail('Only the batch owner, an MIS user, an MIS administrator or the site Project Manager can unlock VLB.',403);
   const reason=String(req.body?.reason||'').trim();if(reason.length<5||reason.length>2000)fail('Enter an unlock reason of 5 to 2000 characters.',400);
-  return details(client,await unlockVlb(client,batch,req.batchActor.login,{reason}),req);
- },{exclusive:true}))));
+  await unlockVlb(client,batch,req.batchActor.login,{reason});
+ },{exclusive:true});res.json(await actionAnswer(req));}));
  app.get('/api/vlb-batches/:id/fleet',...protect,editRoute(async(req,res)=>{
   const db=await pool.connect();let info;
   try{info=await stageDetails(db,await visible(db,req.params.id,req));}finally{db.release();}
@@ -304,13 +322,14 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
   if(!logBookOps)fail('Machine entry is unavailable on this server.',503);
   // Pulse is read before the batch lock; inside it, the saved rows answer without a remote call.
   const prefetched=await prefetchFleetBreakdownRows(req.batchActor.login);
-  res.json(await batchTransaction(req,async(client,batch)=>{
+  const record=await batchTransaction(req,async(client,batch)=>{
    if(!mayEnterFleet(batch,req.batchActor))fail('Only an MIS user or MIS administrator can enter machines for this batch.',403);
    const readHours=lockedReadHours(logBookOps.readHours&& (input=>logBookOps.readHours({...input,client})),prefetched);
-   const record=await saveFleetEntry(client,batch,req.params.assetId,req.body||{},req.batchActor.login,{allowEditSaved:Boolean(req.batchActor.mis||req.batchActor.admin||req.batchActor.siteEditor&&!batch.closed_at),resolve:logBookOps.resolve,insert:logBookOps.insert,applyHours:data=>logBookOps.applyHours(data,req.batchActor.login,readHours),readHours});
-   const info=await stageDetails(client,batch);
-   return {record,fleet:info.fleet,fleetProgress:info.fleetProgress,closeBlockers:info.closeBlockers,machineReport:info.machineReport};
-  }));
+   return saveFleetEntry(client,batch,req.params.assetId,req.body||{},req.batchActor.login,{allowEditSaved:Boolean(req.batchActor.mis||req.batchActor.admin||req.batchActor.siteEditor&&!batch.closed_at),resolve:logBookOps.resolve,insert:logBookOps.insert,applyHours:data=>logBookOps.applyHours(data,req.batchActor.login,readHours),readHours});
+  });
+  // The machine list for the page is read after the commit (see actionAnswer).
+  const info=await actionAnswer(req,(db,batch)=>stageDetails(db,batch));
+  res.json({record,fleet:info.fleet,fleetProgress:info.fleetProgress,closeBlockers:info.closeBlockers,machineReport:info.machineReport});
  }));
  const ensureReopenRequest=async(client,batch,req,reason)=>{
    if(!batch.closed_at)fail('This batch is already open.');
@@ -353,11 +372,11 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
    if(request)await client.query("UPDATE mis_vlb_reopen_requests SET status='used',used_at=NOW() WHERE id=$1",[request.id]);
    await auditVlbBatch(client,batch,req.batchActor.login,'reopened',{requestId:request?.id||null,approvedBy:request?.decided_by||null,pmApproval:request?'approved':'not required'});
    const records=await eligible(client,{site:canonicalSiteName(batch.site),date:batch.report_date,shift:batch.shift});for(const record of records)await syncVlbBatchRecord(client,record,req.batchActor.login,{relock:false});
-   return details(client,opened,req);
  };
  app.post('/api/vlb-batches/:id/reopen',...protect,handle(async(req,res)=>{
   // Owner, 19 Nov 2026: every login that may use VLB batches reopens a saved batch, whatever its role.
-  res.json(await batchTransaction(req,(client,batch)=>performReopen(client,batch,req)));
+  await batchTransaction(req,(client,batch)=>performReopen(client,batch,req));
+  res.json(await actionAnswer(req));
  }));
  app.get('/api/vlb-batches/:id/approval-otp',...protect,handle(async(req,res)=>{const batch=await visible(pool,req.params.id,req);res.json({otps:(await liveApprovalOtps(pool,batch.id,req.batchActor.login)).map(publicApprovalOtp)})}));
  // PM approval by OTP is no longer needed (owner, 18 Nov 2026): reopen and Unlock VLB act directly.
@@ -378,8 +397,9 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
    await auditVlbBatch(client,batch,req.batchActor.login,'reopen_approved',{requestId:request.id,requestedBy:request.requested_by,via:'otp',otpId:row.id,sentTo:row.sent_to,note});
   },{exclusive:true});
   if(outcome?.refused)fail(outcome.refused,400);
-  try{const batch=await batchTransaction(req,(client,current)=>performReopen(client,current,req));return res.json({approved:true,reopened:true,batch});}
+  try{await batchTransaction(req,(client,current)=>performReopen(client,current,req));}
   catch(error){if(!error.status)throw error;const batch=await details(pool,await visible(pool,req.params.id,req),req);return res.json({approved:true,reopened:false,error:error.message,batch});}
+  return res.json({approved:true,reopened:true,batch:await actionAnswer(req)});
  }));
  return recovery;
 }
