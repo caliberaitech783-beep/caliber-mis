@@ -34,6 +34,8 @@ test("legacy NCL locations match once and do not duplicate Jayant", () => {
     canonicalSiteName("Dudhichua West"),
     canonicalSiteName("Dudhichua OB"),
   );
+  assert.equal(canonicalSiteName("Dudichua OB West"), canonicalSiteName("Dudhichua OB"));
+  assert.notEqual(canonicalSiteName("Dudichua OB West"), canonicalSiteName("Dudhichua East OB"));
   assert.equal(
     canonicalSiteName("Dudhichua East"),
     canonicalSiteName("Dudhichua East OB"),
