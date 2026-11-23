@@ -8,6 +8,10 @@
 //                                      keeps who was on it before, who changed it and when; its batch copy follows and
 //                                      its revision rises, so the stored attendance of that day is built again.
 //  4. GET  /api/caliber-recheck/record the corrections done, for HR.
+//  5. POST /api/caliber-recheck/confirm  "This card is right" (owner, 23 Nov 2026): the paper card shows the saved
+//                                      driver, so the card leaves the list. Only for a card listed because its FORM A
+//                                      box names a colleague (shared/caliber-recheck.mjs); who said so and when is kept,
+//                                      and DELETE .../confirm/:id takes it back. GET .../confirmed lists them.
 // The run can be repeated at any time: a card that was corrected passes the re-check and leaves the list.
 //
 // The run changes only who is on the card: employeeId, employeeName and caliberId. It does so in closed and locked
@@ -16,7 +20,7 @@
 import {readScanMasters} from '../services/scan-master-cache.mjs';
 import {SCAN_MASTER_NAMES} from '../services/a-form-people-index.mjs';
 import {logBookSiteScope,siteAllowed,requireLogBookSite,employeeAtLocation,employeeOnHrList} from '../../shared/log-book-access.mjs';
-import {recheckSavedCard,recheckCounts,RECHECK_REASONS} from '../../shared/caliber-recheck.mjs';
+import {recheckSavedCard,recheckCounts,RECHECK_REASONS,canConfirmSaved,confirmationHolds} from '../../shared/caliber-recheck.mjs';
 import {needsDriverConfirm,employeeLeft,employeeDesignation,fetchRefusal} from '../../shared/caliber-id-check.mjs';
 import {employeeIdentity} from '../../shared/employee-identity.mjs';
 import {isMisAdministrator} from '../../shared/mis-admin-access.mjs';
@@ -37,7 +41,14 @@ export const CALIBER_RECHECK_SCHEMA=`
   status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','applied','cancelled')),
   applied_by TEXT,applied_name TEXT,applied_at TIMESTAMPTZ,note TEXT NOT NULL DEFAULT '');
  CREATE UNIQUE INDEX IF NOT EXISTS mis_caliber_corrections_one_pending ON mis_caliber_corrections(logbook_id) WHERE status='pending';
- CREATE INDEX IF NOT EXISTS mis_caliber_corrections_done ON mis_caliber_corrections(applied_at DESC) WHERE status='applied';`;
+ CREATE INDEX IF NOT EXISTS mis_caliber_corrections_done ON mis_caliber_corrections(applied_at DESC) WHERE status='applied';
+ CREATE TABLE IF NOT EXISTS mis_caliber_confirmed_cards(
+  id BIGSERIAL PRIMARY KEY,logbook_id BIGINT NOT NULL,book_no TEXT NOT NULL DEFAULT '',book_type TEXT NOT NULL,book_date TEXT NOT NULL,site TEXT NOT NULL,
+  reason TEXT NOT NULL DEFAULT '',employee_id TEXT NOT NULL DEFAULT '',caliber_id TEXT NOT NULL DEFAULT '',name TEXT NOT NULL DEFAULT '',
+  a_form TEXT NOT NULL DEFAULT '',named_id TEXT NOT NULL DEFAULT '',named_name TEXT NOT NULL DEFAULT '',
+  confirmed_by TEXT NOT NULL,confirmed_name TEXT NOT NULL DEFAULT '',confirmed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  status TEXT NOT NULL DEFAULT 'confirmed' CHECK(status IN ('confirmed','withdrawn')),withdrawn_by TEXT,withdrawn_at TIMESTAMPTZ);
+ CREATE UNIQUE INDEX IF NOT EXISTS mis_caliber_confirmed_cards_one ON mis_caliber_confirmed_cards(logbook_id) WHERE status='confirmed';`;
 
 const text=value=>String(value??'').trim();
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status})};
@@ -54,6 +65,11 @@ export const RECHECK_CARDS_SQL=`SELECT l.id,l.book_no,l.book_type,l.book_date::t
  FROM mis_log_books l CROSS JOIN LATERAL jsonb_to_record(l.data) AS x("employeeId" text,"caliberId" text,"employeeName" text,"aFormNo" text,"jobCardNo" text,door text,"bookShiftCode" text,"cardShift" text,"shiftName" text,"scanCardId" text)
  WHERE l.deleted_at IS NULL AND l.book_date>=$1::date AND l.book_date<=$2::date ORDER BY l.book_date,l.id`;
 const PENDING_SQL="SELECT id,logbook_id,new_employee_id,new_caliber_id,new_name,picked_by,picked_name,picked_at,note FROM mis_caliber_corrections WHERE status='pending'";
+// The confirmations of the dates asked (book_date is kept as YYYY-MM-DD text, so it compares as a date does).
+const CONFIRMED_OF_DATES_SQL="SELECT logbook_id,employee_id,a_form FROM mis_caliber_confirmed_cards WHERE status='confirmed' AND book_date>=$1 AND book_date<=$2";
+const CONFIRMED_SQL="SELECT id,logbook_id,book_no,book_type,book_date,site,caliber_id,name,a_form,named_id,named_name,confirmed_by,confirmed_name,confirmed_at FROM mis_caliber_confirmed_cards WHERE status='confirmed' ORDER BY confirmed_at DESC,id DESC LIMIT 20000";
+const WITHDRAW_SQL="UPDATE mis_caliber_confirmed_cards SET status='withdrawn',withdrawn_by=$2,withdrawn_at=NOW() WHERE logbook_id=$1 AND status='confirmed'";
+const CANCEL_PICK_SQL="UPDATE mis_caliber_corrections SET status='cancelled' WHERE logbook_id=$1 AND status='pending'";
 const CARD_SQL="SELECT id,book_no,book_type,book_date::text AS date,site,revision,data FROM mis_log_books WHERE id=$1 AND deleted_at IS NULL AND book_date>=$2::date";
 const EMPLOYEE_SQL="SELECT id,master_name,record_data FROM master_records WHERE id=$1 AND master_name=ANY($2::text[])";
 const EMPLOYEE_LISTS=['Employee master','ERP Employee master','C-Dir Employee master'];
@@ -118,26 +134,51 @@ export function registerCaliberRecheck(app,{pool,requireSession,requireAdministr
 
  app.get('/api/caliber-recheck',...protect,wrap(async(req,res)=>{
   const scope=await getSiteScope(req.session),{from,to}=period(req.query),started=Date.now();
-  const [masters,cards,picks]=await Promise.all([readMasters(pool).then(result=>result.rows),pool.query(RECHECK_CARDS_SQL,[from,to]).then(result=>result.rows),pool.query(PENDING_SQL).then(result=>result.rows)]);
-  const waiting=new Map(picks.map(row=>[String(row.logbook_id),row])),sites=new Map(),listed=[];
-  let judged=0;
+  const [masters,cards,picks,kept]=await Promise.all([readMasters(pool).then(result=>result.rows),pool.query(RECHECK_CARDS_SQL,[from,to]).then(result=>result.rows),pool.query(PENDING_SQL).then(result=>result.rows),pool.query(CONFIRMED_OF_DATES_SQL,[from,to]).then(result=>result.rows)]);
+  const waiting=new Map(picks.map(row=>[String(row.logbook_id),row])),right=new Map(kept.map(row=>[String(row.logbook_id),row])),sites=new Map(),listed=[];
+  let judged=0,confirmed=0;
   for(const row of cards){
    if(!siteAllowed(scope,row.site))continue;
    judged++;
    const key=canonicalSiteName(row.site)||row.site;
-   if(!sites.has(key))sites.set(key,{key,site:displaySiteName(row.site)||row.site,cards:0,listed:0,picked:0});
+   if(!sites.has(key))sites.set(key,{key,site:displaySiteName(row.site)||row.site,cards:0,listed:0,picked:0,confirmed:0});
    const site=sites.get(key);site.cards++;
    const verdict=recheckSavedCard(masters,{kind:row.book_type,site:row.site,date:row.date,employeeId:row.employee_id,caliberId:row.caliber_id,aFormNo:row.a_form});
    if(!verdict)continue;
+   // A person confirmed this card from the paper card: it is counted, not listed.
+   if(confirmationHolds(right.get(String(row.id)),{employeeId:row.employee_id,aFormNo:row.a_form},verdict)){site.confirmed++;confirmed++;continue;}
    const pick=publicPick(waiting.get(String(row.id)));
    site.listed++;if(pick)site.picked++;
    listed.push({id:String(row.id),bookNo:row.book_no,book:kindLabel(row.book_type),kind:row.book_type==='equipment'?'equipment':'vehicle',date:row.date,shift:shiftOf(row),siteKey:key,site:site.site,door:row.door,
     cardNo:row.book_type==='equipment'?row.job_card:row.a_form,scanned:Boolean(row.scanned),savedId:row.caliber_id,savedName:row.employee_name,
-    reason:verdict.reason,reasonLabel:RECHECK_REASONS[verdict.reason],line:verdict.line,lookAlikes:verdict.lookAlikes||[],more:verdict.more||0,aForm:verdict.aForm||null,pick});
+    reason:verdict.reason,reasonLabel:RECHECK_REASONS[verdict.reason],line:verdict.line,lookAlikes:verdict.lookAlikes||[],more:verdict.more||0,aForm:verdict.aForm||null,canConfirm:canConfirmSaved(verdict),pick});
   }
   res.json({from,to,cards:judged,listed,counts:recheckCounts(listed),sites:[...sites.values()].sort((a,b)=>b.listed-a.listed||a.site.localeCompare(b.site)),
-   picked:listed.filter(row=>row.pick).length,canApply:isMisAdministrator(req.session),tookMs:Date.now()-started});
+   picked:listed.filter(row=>row.pick).length,confirmed,canApply:isMisAdministrator(req.session),tookMs:Date.now()-started});
  }));
+
+ // "This card is right": the paper card shows the driver the card is saved under. Returns {confirmed:true}, or
+ // {confirmed:false} with stands (the card passes by itself, nothing to confirm) or refused (why a person cannot
+ // settle this card with a tick). A choice that was waiting for the card is dropped when the card is settled.
+ const confirmSaved=async(req,card)=>{
+  const data=card.data||{},kind=card.book_type==='equipment'?'equipment':'vehicle';
+  const masters=(await readMasters(pool)).rows;
+  const verdict=recheckSavedCard(masters,{kind:card.book_type,site:card.site,date:card.date,employeeId:data.employeeId,caliberId:data.caliberId,aFormNo:data.aFormNo});
+  if(!verdict){await pool.query(CANCEL_PICK_SQL,[card.id]);return {confirmed:false,stands:true};}
+  if(!canConfirmSaved(verdict))return {confirmed:false,refused:'This card cannot be confirmed as right. '+verdict.line};
+  const employee=/^\d{1,18}$/.test(text(data.employeeId))?(await pool.query(EMPLOYEE_SQL,[text(data.employeeId),EMPLOYEE_LISTS])).rows[0]:null;
+  const refusal=pickRefusal(employee?.record_data,{site:card.site,date:card.date,kind});
+  if(refusal)return {confirmed:false,refused:refusal};
+  const identity=employeeIdentity(employee.record_data),name=text(employee.record_data.name||employee.record_data.employee);
+  await transaction(async client=>{
+   await client.query(CANCEL_PICK_SQL,[card.id]);
+   await client.query(WITHDRAW_SQL,[card.id,login(req)]);
+   await client.query('INSERT INTO mis_caliber_confirmed_cards(logbook_id,book_no,book_type,book_date,site,reason,employee_id,caliber_id,name,a_form,named_id,named_name,confirmed_by,confirmed_name) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)',
+    [card.id,card.book_no,card.book_type,card.date,card.site,verdict.reason,text(data.employeeId),identity.employeeId,name,text(data.aFormNo),text(verdict.aForm?.id),text(verdict.aForm?.name),login(req),nameOf(req)]);
+  });
+  req.audit={eventType:'Log book',module:'Caliber ID re-check',action:'Confirm the saved driver',targetType:'Log book',targetReference:card.book_no,details:{driver:identity.employeeId,name,site:card.site,date:card.date,formA:text(data.aFormNo),formANames:text(verdict.aForm?.id)}};
+  return {confirmed:true,card:{bookNo:card.book_no,employeeId:identity.employeeId,name}};
+ };
 
  // The site names the right driver for one listed card. The employee comes from the Fetch box (its master line id).
  app.post('/api/caliber-recheck/pick',...protect,wrap(async(req,res)=>{
@@ -150,15 +191,20 @@ export function registerCaliberRecheck(app,{pool,requireSession,requireAdministr
   const refusal=pickRefusal(employee?.record_data,{site:card.site,date:card.date,kind});
   if(refusal)fail(refusal,409);
   const data=card.data||{},identity=employeeIdentity(employee.record_data),name=text(employee.record_data.name||employee.record_data.employee);
-  // The same person as on the card: nothing to correct. (After a confirmation or an approved site move the card passes the re-check by itself.)
+  // The same person as on the card: nothing to correct. Typing the saved driver's own number from the paper card is
+  // the same answer as "This card is right", so a card listed for its FORM A box is confirmed and leaves the list.
+  // (After a helper's "Yes" or an approved site move the card passes the re-check by itself.)
   if(String(data.employeeId??'')===String(employee.id)){
-   await pool.query("UPDATE mis_caliber_corrections SET status='cancelled' WHERE logbook_id=$1 AND status='pending'",[card.id]);
-   return res.json({same:true,pick:null});
+   await pool.query(CANCEL_PICK_SQL,[card.id]);
+   const outcome=await confirmSaved(req,card);
+   return res.json({same:true,pick:null,confirmed:outcome.confirmed});
   }
   const masters=(await readMasters(pool)).rows;
   const verdict=recheckSavedCard(masters,{kind:card.book_type,site:card.site,date:card.date,employeeId:data.employeeId,caliberId:data.caliberId,aFormNo:data.aFormNo});
   const saved=await transaction(async client=>{
-   await client.query("UPDATE mis_caliber_corrections SET status='cancelled' WHERE logbook_id=$1 AND status='pending'",[card.id]);
+   await client.query(CANCEL_PICK_SQL,[card.id]);
+   // Another driver is chosen: an earlier "This card is right" no longer stands.
+   await client.query(WITHDRAW_SQL,[card.id,login(req)]);
    return (await client.query('INSERT INTO mis_caliber_corrections(logbook_id,book_no,book_type,book_date,site,reason,old_employee_id,old_caliber_id,old_name,new_employee_id,new_caliber_id,new_name,picked_by,picked_name) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *',
     [card.id,card.book_no,card.book_type,card.date,card.site,verdict?.reason||'',text(data.employeeId),text(data.caliberId),text(data.employeeName),String(employee.id),identity.employeeId,name,login(req),nameOf(req)])).rows[0];
   });
@@ -174,6 +220,37 @@ export function registerCaliberRecheck(app,{pool,requireSession,requireAdministr
   requireLogBookSite(scope,pick.site);
   await pool.query("UPDATE mis_caliber_corrections SET status='cancelled' WHERE id=$1 AND status='pending'",[pick.id]);
   res.json({removed:true});
+ }));
+
+ app.post('/api/caliber-recheck/confirm',...protect,wrap(async(req,res)=>{
+  const scope=await getSiteScope(req.session),logbookId=text(req.body?.logbookId);
+  if(!/^\d{1,18}$/.test(logbookId))fail('Choose a card.');
+  const card=(await pool.query(CARD_SQL,[logbookId,OPERATIONAL_START])).rows[0];
+  if(!card)fail('This card is no longer saved.',404);
+  requireLogBookSite(scope,card.site);
+  const outcome=await confirmSaved(req,card);
+  if(outcome.refused)fail(outcome.refused,409);
+  res.status(outcome.confirmed?201:200).json(outcome);
+ }));
+
+ // Takes a "This card is right" back: the card is judged afresh and listed again.
+ app.delete('/api/caliber-recheck/confirm/:logbookId',...protect,wrap(async(req,res)=>{
+  const scope=await getSiteScope(req.session);
+  if(!/^\d{1,18}$/.test(req.params.logbookId))fail('Choose a card.');
+  const row=(await pool.query("SELECT id,site,book_no FROM mis_caliber_confirmed_cards WHERE logbook_id=$1 AND status='confirmed'",[req.params.logbookId])).rows[0];
+  if(!row)return res.json({removed:false});
+  requireLogBookSite(scope,row.site);
+  await pool.query(WITHDRAW_SQL,[req.params.logbookId,login(req)]);
+  req.audit={eventType:'Log book',module:'Caliber ID re-check',action:'Take back the confirmation',targetType:'Log book',targetReference:row.book_no,details:{site:row.site}};
+  res.json({removed:true});
+ }));
+
+ // The cards confirmed as right, for HR: which card, which driver stays on it, whom the FORM A box named, who confirmed.
+ app.get('/api/caliber-recheck/confirmed',...protect,wrap(async(req,res)=>{
+  const scope=await getSiteScope(req.session);
+  const {rows}=await pool.query(CONFIRMED_SQL);
+  res.json({confirmed:rows.filter(row=>siteAllowed(scope,row.site)).map(row=>({id:String(row.id),logbookId:String(row.logbook_id),bookNo:row.book_no,book:kindLabel(row.book_type),date:row.book_date,site:displaySiteName(row.site)||row.site,
+   driver:row.caliber_id,driverName:row.name,formA:row.a_form,namedId:row.named_id,namedName:row.named_name,by:row.confirmed_name||row.confirmed_by,at:row.confirmed_at}))});
  }));
 
  // The correction run. Every waiting pick the login may see is put on its card; one that no longer holds stays waiting with the reason.
