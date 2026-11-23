@@ -322,7 +322,7 @@ test('the tab sits beside Attendance Month-wise, in the tab row and in the Repor
  assert.match(screen,/if\(sheetCheck\)return <section[\s\S]*?<AttendanceSheetCheck session=\{session\}\/>/);
  assert.match(read('../src/operations-reports.jsx'),/'attendance-batch','attendance-month','attendance-sheet'\]\.includes\(props\.reportId\)\)return <ManpowerReports/);
  const page=read('../src/attendance-sheet-check.jsx');
- assert.match(page,/accept="\.xlsx,\.xlsm,\.xlk"/,'an Excel backup file (.xlk) can be chosen too');
- assert.match(page,/Check and download Excel/);assert.match(page,/Nothing is changed in Pulse-II/);
+ assert.match(page,/accept="\.dat,\.txt,\.csv,\.xlsx,\.xlsm"/,'the device attlog .dat or its export');
+ assert.match(page,/Drivers and operators only/);assert.match(page,/Download Excel/);assert.match(page,/Nothing is changed in Pulse-II/);
  assert.match(read('../server/routes/log-book.mjs'),/registerAttendanceSheetCheck\(app,\{pool,protect\}\);/);
 });

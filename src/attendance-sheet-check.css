@@ -19,3 +19,21 @@
 .asc-counts{border-collapse:collapse;width:100%;max-width:720px}
 .asc-counts th,.asc-counts td{padding:6px 10px;border:1px solid #e3d9ee;text-align:left;font-weight:400;white-space:normal;text-transform:none;letter-spacing:0;font-size:14px;color:inherit;background:none}
 .asc-counts td{text-align:right;font-weight:700;width:70px}
+/* Trip card vs biometric (drivers and operators): the result shown on screen. */
+.asc-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px}
+.asc-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(140px,100%),1fr));gap:8px}
+.asc-kpis>*{display:flex;flex-direction:column;gap:2px;padding:10px 12px;border:1px solid #e3d9ee;border-radius:10px;background:var(--card,#fff);color:inherit;font:inherit;text-align:left}
+.asc-kpis>button{cursor:pointer}.asc-kpis>button.on{outline:2px solid #6a3fa0}
+.asc-kpis b{font-size:20px}.asc-kpis span{font-size:12.5px;color:var(--muted,#665e75)}
+.asc-kpi-no-biometric{background:#ffe3e3!important}.asc-kpi-no-trip-card{background:#ffeed9!important}.asc-kpi-site-mismatch{background:#efe3ff!important}
+.asc-kpi-shift-mismatch{background:#f3e8d8!important}.asc-kpi-miss-punch{background:#fff6c9!important}
+.asc-tabs{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.asc-tabs button{padding:7px 12px;border:1px solid #c7b5dd;border-radius:8px;background:var(--card,#fff);color:inherit;font:inherit;cursor:pointer}
+.asc-tabs button.on{background:#6a3fa0;border-color:#6a3fa0;color:#fff}
+.asc-tabs input{flex:1;min-width:180px;padding:7px 10px;border:1px solid #c7b5dd;border-radius:8px;background:var(--card,#fff);color:inherit;font:inherit}
+.asc-table{overflow:auto;max-height:65vh;border:1px solid #e3d9ee;border-radius:10px}
+.asc-table table{border-collapse:collapse;width:100%}
+.asc-table th,.asc-table td{padding:6px 10px;border-bottom:1px solid #eee6f6;text-align:left;white-space:nowrap;font-size:13.5px}
+.asc-table th{position:sticky;top:0;background:#f3eefb;font-weight:600;z-index:1}
+.asc-table td.asc-wrap{white-space:normal;min-width:260px}
+.asc-tag{display:inline-block;padding:2px 8px;border-radius:99px;font-size:12px;font-weight:600;color:#3d2a5c}
