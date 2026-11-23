@@ -560,3 +560,31 @@ test('Manpower Step 1 and Step 3 headings sort lines, percentages as numbers, wi
   assert.deepEqual(order(),['c','b','a','all']);
   assert.deepEqual(order('ot-categories'),['a','b','c','all'],'each Step table keeps its own sort');
 });
+
+// Owner, 23 Nov 2026: on Attendance Month-wise the Site box offered only All. The two attendance tabs use their own
+// lighter read, which sends no selection lists, so the Site list is taken from the sites that read reports on.
+test('Attendance Batch-wise and Month-wise offer every site of their own read in the Site box',async()=>{
+  const filters={from:'2026-11-01',to:'2026-11-01',site:'',shift:'',batch:'',employee:'',asset:''};
+  const payload={otSites:[{site:'Sasti OC',siteKey:'sasti ob'},{site:'Jayant OC',siteKey:'jayant ob'}],attendanceSites:[{site:'Sasti OC',siteKey:'sasti ob'},{site:'Bina OC',siteKey:'bina ob'},{site:'-',siteKey:''}],
+    otDuties:[],attendanceEquipment:[],attendanceShifts:[],lockedDays:[],exceptions:[],notes:[],generatedAt:'2026-11-23T05:00:00Z'};
+  for(const reportId of ['attendance-batch','attendance-month']){
+    const effects=[],asked=[];
+    const scope={OPERATIONAL_START:'2026-11-01',AttendanceRegister:()=>null,useEffect:run=>{effects.push(run);},fetch:async url=>{asked.push(url);return {ok:true,json:async()=>payload};}};
+    // Shifts listed by another tab stay as they were: only the Site list is the register's own.
+    const view=await component('manpower-reports.jsx','ManpowerReports',scope,[filters,null,'',false,0,{shifts:['S1']}]);
+    const props={session:{token:'test'},reportId,onSelect:()=>{}};
+    const siteBox=()=>nodes(view(props),'label').find(label=>[label.props.children].flat()[0]==='Site');
+    const offered=()=>nodes(siteBox(),'option').map(option=>option.props.value);
+    assert.deepEqual(offered(),[''],reportId+': only All until the report has been read');
+    effects[0]();
+    for(let turn=0;turn<10;turn++)await Promise.resolve();
+    assert.match(asked[0],/^\/api\/reports\/manpower\/attendance\?/,reportId+' uses the lighter read');
+    assert.deepEqual(offered(),['','Bina OC','Jayant OC','Sasti OC'],reportId+': each site once, by name, no "-"');
+    assert.deepEqual(view.slots[5].shifts,['S1']);
+    // Choosing a site narrows the register to it without another read.
+    nodes(siteBox(),'select')[0].props.onChange({target:{value:'Jayant OC',blur(){}}});
+    const register=nodes(view(props),scope.AttendanceRegister)[0];
+    assert.deepEqual(register.props.sites,[{site:'Jayant OC',siteKey:'jayant ob'}]);
+    assert.equal(asked.length,1);
+  }
+});
