@@ -26,6 +26,15 @@
 .caliber-recheck .cr-chosen small{opacity:.85}
 .caliber-recheck .cr-chosen .cr-note{flex:1 1 100%;padding:2px 6px;border-radius:4px;background:#fff1f2;color:#991b1b;opacity:1}
 .caliber-recheck .cr-chosen button{padding:2px 8px;font-size:12px}
+.caliber-recheck .cr-said{display:block;margin:0 0 6px;padding:2px 6px;border-radius:4px;background:#eaf7f0;color:#14532d;font-size:12px;line-height:1.4;white-space:normal}
+/* The number box on its own line, Fetch and Submit side by side under it: the same at every column width. */
+.caliber-recheck .employee-id-lookup>div:first-child{flex-wrap:wrap}
+.caliber-recheck .employee-id-lookup>div:first-child>input{flex:1 1 100%}
+.caliber-recheck .employee-id-lookup>div:first-child>button{flex:1 1 0;padding:6px 8px;white-space:nowrap}
+.caliber-recheck .employee-id-submit{border:1px solid #1f7a4d;border-radius:6px;background:#1f7a4d;color:#fff;font-weight:700;cursor:pointer}
+.caliber-recheck .employee-id-submit:hover:not(:disabled),.caliber-recheck .employee-id-submit:focus-visible{background:#17603c;outline:2px solid #1f7a4d;outline-offset:1px}
+.caliber-recheck .employee-id-submit:disabled{opacity:.55;cursor:default}
+.caliber-recheck .employee-id-lookup small.employee-id-found{padding:2px 6px;border-radius:4px;background:#eaf7f0;color:#14532d}
 .caliber-recheck .employee-id-lookup input{min-width:0;flex:1 1 120px;padding:6px 8px}
 .caliber-recheck .employee-id-lookup small{display:block;margin-top:4px;font-size:12px;line-height:1.4;white-space:normal}
 .caliber-recheck .employee-id-lookup small[role=alert]{padding:2px 6px;border-radius:4px;background:#fff1f2;color:#991b1b!important}

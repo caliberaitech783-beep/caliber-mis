@@ -23,6 +23,8 @@ export default function CaliberRecheck({session,ReportSection}){
  const [from,setFrom]=useState(OPERATIONAL_START),[to,setTo]=useState(todayInIndia());
  const [held,setHeld]=useState(emptyRecheck),[progress,setProgress]=useState(null),[error,setError]=useState(''),[notice,setNotice]=useState('');
  const [open,setOpen]=useState({site:'',slot:null}),[confirming,setConfirming]=useState(false),[running,setRunning]=useState(false),[refused,setRefused]=useState([]),[record,setRecord]=useState(null);
+ // What the last Submit did, said on its own line: the page's notices are far above Step 3.
+ const [said,setSaid]=useState(null);
  const run=useRef(0);
  const api=async(path,options={})=>{
   const response=await fetch(path,{...options,headers:{Authorization:`Bearer ${session.token}`,...(options.body?{'Content-Type':'application/json'}:{})}});
@@ -31,9 +33,11 @@ export default function CaliberRecheck({session,ReportSection}){
   return body;
  };
  // Every date of the period, one after the other. A newer run, or leaving the page, stops an older one.
+ // Reading one date again after a Submit (fresh = false) is not a newer run: it must not stop a full read that is
+ // still going, or the list would end at the date it had reached.
  const recheck=async(dates=recheckDates(from,to),fresh=true,keepMessages=false)=>{
-  const mine=++run.current;
-  setError('');if(fresh){setHeld(emptyRecheck());setOpen({site:'',slot:null});if(!keepMessages){setNotice('');setRefused([]);}}
+  const mine=fresh?++run.current:run.current;
+  setError('');if(fresh){setSaid(null);setHeld(emptyRecheck());setOpen({site:'',slot:null});if(!keepMessages){setNotice('');setRefused([]);}}
   try{
    for(let i=0;i<dates.length;i++){
     if(run.current!==mine)return;
@@ -43,20 +47,20 @@ export default function CaliberRecheck({session,ReportSection}){
     setHeld(now=>addRecheckAnswer(now,answer));
    }
   }catch(e){if(run.current===mine)setError(e.message);}
-  finally{if(run.current===mine)setProgress(null);}
+  finally{if(fresh&&run.current===mine)setProgress(null);}
  };
  useEffect(()=>{void recheck();return()=>{run.current++};},[]);
 
+ // Submit on a card's line. A refusal is thrown back to the Fetch box, which says it on that line.
  const choose=async(row,employee)=>{
-  setError('');setNotice('');
-  try{
-   const answer=await api('/api/caliber-recheck/pick',{method:'POST',body:JSON.stringify({logbookId:row.id,employeeId:employee.id})});
-   setNotice(answer.same?employee.name+' is the person already on card '+row.bookNo+'. Nothing to correct on it.':employee.name+' · '+employee.caliberId+' chosen for card '+row.bookNo+'. The card changes when the corrections are run.');
-   await recheck([row.date],false);
-  }catch(e){setError(e.message);}
+  setError('');setNotice('');setSaid(null);
+  const answer=await api('/api/caliber-recheck/pick',{method:'POST',body:JSON.stringify({logbookId:row.id,employeeId:employee.id})});
+  setNotice(answer.same?employee.name+' is the person already on card '+row.bookNo+'. Nothing to correct on it.':employee.name+' · '+employee.caliberId+' chosen for card '+row.bookNo+'. The card changes when the corrections are run.');
+  setSaid({id:row.id,text:answer.same?employee.name+' is the person already on this card. Nothing to correct on it.':'Submitted. The card changes when the corrections are run.'});
+  await recheck([row.date],false);
  };
  const unchoose=async row=>{
-  setError('');setNotice('');
+  setError('');setNotice('');setSaid(null);
   try{await api('/api/caliber-recheck/pick/'+row.id,{method:'DELETE'});await recheck([row.date],false);}catch(e){setError(e.message);}
  };
  const apply=async()=>{
@@ -92,7 +96,8 @@ export default function CaliberRecheck({session,ReportSection}){
  const right=row=><div className="cr-right">
   {row.pick&&<p className="cr-chosen"><strong>{row.pick.employeeId} · {row.pick.name}</strong><small>chosen by {row.pick.by}</small>{row.pick.note&&<small className="cr-note" role="alert">Not corrected in the last run: {row.pick.note}</small>}
    <button type="button" onClick={()=>unchoose(row)}>Remove</button></p>}
-  <EmployeeIdLookup key={row.id+'|'+(row.pick?.id||'')} scanMode token={session.token} location={row.site} bookDate={row.date} role={row.kind==='equipment'?'operator':'driver'} card={{door:row.door,cardNo:row.cardNo,book:row.bookNo}} onResolved={employee=>choose(row,employee)}/>
+  {said?.id===row.id&&<small className="cr-said" role="status">{said.text}</small>}
+  <EmployeeIdLookup key={row.id+'|'+(row.pick?.id||'')} submitLabel="Submit" scanMode token={session.token} location={row.site} bookDate={row.date} role={row.kind==='equipment'?'operator':'driver'} card={{door:row.door,cardNo:row.cardNo,book:row.bookNo}} onResolved={employee=>choose(row,employee)}/>
  </div>;
  const cardColumns=[...(manySites||slot?.key===EVERY?[{key:'where',label:'Site · date · shift',value:row=>(manySites?row.site+' · ':'')+dmy(row.date)+' · '+shiftChoiceLabel(row.shift)}]:[]),
   {key:'bookNo',label:'Book NO',value:row=>row.bookNo},{key:'door',label:'Vehicle / machine',value:row=>row.door},{key:'cardNo',label:'Card NO',value:row=>row.cardNo},
@@ -104,7 +109,7 @@ export default function CaliberRecheck({session,ReportSection}){
  return <section className="caliber-recheck">
   <header className="cr-head">
    <div><h1>Caliber ID Re-check</h1>
-    <p>Every saved card is judged again against Employee Master, at its own site and date. A card is listed when its driver or operator is not a working driver or operator of that site on that date. Type the right number from the paper card; the cards change together when the corrections are run.</p></div>
+    <p>Every saved card is judged again against Employee Master, at its own site and date. A card is listed when its driver or operator is not a working driver or operator of that site on that date. Type the right number from the paper card and press Submit on that line; the cards change together when the corrections are run.</p></div>
    <form className="cr-period" onSubmit={event=>{event.preventDefault();void recheck();}}>
     <label>From<input type="date" min={OPERATIONAL_START} max={to} value={from} disabled={busy} onChange={event=>setFrom(event.target.value)}/></label>
     <label>To<input type="date" min={from} max={todayInIndia()} value={to} disabled={busy} onChange={event=>setTo(event.target.value)}/></label>
@@ -138,7 +143,7 @@ export default function CaliberRecheck({session,ReportSection}){
     isPicked={sameSlot} allPicked={slot?.key===EVERY} ariaLabel="Cards to check by date and shift" emptyMessage="No card to check at this site in these dates."/>
   </ReportSection>}
   {level>=3&&<ReportSection key={'cr-cards-'+site+'|'+slot.key} reportKey="Caliber ID re-check cards" title={'Step 3 · Caliber ID re-check · '+siteLabel+' · '+slot.label} category="caliber-recheck-cards" dataReady={!busy} recordDateFilter={false}
-   description="One line per card. Type the right Employee ID or Caliber ID from the paper card and press Fetch; a look-alike ID of the site is the likeliest. The card is not changed here: it changes when the corrections are run."
+   description="One line per card. Type the right Employee ID or Caliber ID from the paper card, see the name shown under it and press Submit on that line; a look-alike ID of the site is the likeliest. The card is not changed here: it changes when the corrections are run."
    rows={cards} columns={cardColumns} rowKey={row=>row.id} rowClassName={row=>row.pick?'cr-picked':''} emptyMessage="No card to check in this date and shift."/>}
 
   <details className="cr-record" onToggle={event=>{if(event.currentTarget.open&&!record)void loadRecord();}}>

@@ -283,6 +283,86 @@ test('the Fetch box asks once about a helper and sends the yes',async()=>{
  assert.equal(box.buttons(tree).length,1,'the question goes once it is answered');
 });
 
+// The Caliber ID Re-check lines (owner, 23 Nov 2026: "there is no submit button beside every error").
+const buttonLabel=button=>[].concat(button.props.children).join('');
+const foundLine=(box,tree)=>box.find(tree,n=>n.props?.className==='employee-id-found')[0];
+const foundText=line=>{const parts=[];const visit=node=>{if(Array.isArray(node))return node.forEach(visit);if(React.isValidElement(node))return visit(node.props.children);if(node!==null&&node!==undefined&&node!==false)parts.push(String(node))};visit(line.props.children);return parts.join('')};
+const recheckAnswers=body=>body.caliberId==='1605'?{status:200,body:{id:'5',name:'ABHIMANYU PASWAN',caliberId:'CMLL1605'}}:{status:403,body:{error:'No working driver has this number at this site.'}};
+
+test('with a Submit button a typed number only shows whose it is, and Submit hands that person over',async()=>{
+ const box=await lookupBox({answers:recheckAnswers,scanMode:true,submitLabel:'Submit'});
+ let tree=box.render();
+ assert.deepEqual(box.buttons(tree).map(buttonLabel),['Fetch driver','Submit'],'the line has its Submit button');
+ assert.equal(box.buttons(tree)[1].props.disabled,false,'Submit is never a dead grey button on an empty line');
+ // Nothing typed: Submit says what to do and asks the server nothing.
+ await box.buttons(tree)[1].props.onClick({});
+ tree=box.render();
+ assert.equal(box.find(tree,n=>n.props?.role==='alert')[0].props.children,'Type the right Employee ID or Caliber ID from the paper card, then press Submit.');
+ assert.equal(box.calls.length,0);
+ // A pause in typing shows the person. It chooses nobody.
+ box.input(tree).props.onChange({target:{value:'1605'}});
+ tree=box.render();await box.runTimers();tree=box.render();
+ assert.deepEqual(box.calls.map(call=>[call.url,call.body.caliberId]),[['/api/log-books/employee-lookup?scan=1','1605']]);
+ assert.equal(box.resolved.length,0,'a pause in typing chooses nobody');
+ assert.equal(foundText(foundLine(box,tree)),'CMLL1605 · ABHIMANYU PASWAN Press Submit to choose this person.');
+ // Fetch on a number already shown, and Submit, do not make the person wait for a second answer they have.
+ await box.buttons(tree)[1].props.onClick({});
+ assert.equal(box.calls.length,1,'the person shown is handed over as fetched');
+ assert.deepEqual(box.resolved.map(employee=>[employee.id,employee.name]),[['5','ABHIMANYU PASWAN']]);
+ tree=box.render();
+ assert.equal(foundLine(box,tree),undefined,'the line is clear again once handed over');
+
+ // Pressing Enter: the first shows the person, the second submits.
+ const keys=await lookupBox({answers:recheckAnswers,scanMode:true,submitLabel:'Submit'});
+ tree=keys.render();keys.input(tree).props.onChange({target:{value:'1605'}});tree=keys.render();
+ const enter={key:'Enter',repeat:false,preventDefault(){}};
+ keys.input(tree).props.onKeyDown(enter);await new Promise(resolve=>setImmediate(resolve));
+ tree=keys.render();
+ assert.equal(keys.resolved.length,0);assert.ok(foundLine(keys,tree),'the first Enter shows the person');
+ keys.input(tree).props.onKeyDown(enter);await new Promise(resolve=>setImmediate(resolve));
+ assert.deepEqual(keys.resolved.map(employee=>employee.name),['ABHIMANYU PASWAN'],'the second Enter submits');
+});
+
+test('Submit pressed before the name came fetches and hands over; a refusal is said on the line',async()=>{
+ const quick=await lookupBox({answers:recheckAnswers,scanMode:true,submitLabel:'Submit'});
+ let tree=quick.render();quick.input(tree).props.onChange({target:{value:'1605'}});tree=quick.render();
+ await quick.buttons(tree)[1].props.onClick({});
+ assert.equal(quick.calls.length,1);assert.equal(quick.resolved[0].name,'ABHIMANYU PASWAN');
+
+ // A number nobody at the site has: said on the line, nobody handed over.
+ const wrong=await lookupBox({answers:recheckAnswers,scanMode:true,submitLabel:'Submit'});
+ tree=wrong.render();wrong.input(tree).props.onChange({target:{value:'1606'}});tree=wrong.render();
+ await wrong.buttons(tree)[1].props.onClick({});tree=wrong.render();
+ assert.equal(wrong.find(tree,n=>n.props?.role==='alert')[0].props.children,'No working driver has this number at this site.');
+ assert.equal(wrong.resolved.length,0);
+
+ // The page refuses the choice (thrown by onResolved): said on the line, and the person stays shown to submit again.
+ const refusedBox=await lookupBox({answers:recheckAnswers,scanMode:true,submitLabel:'Submit',onResolved:async()=>{throw new Error('Employee Master says this person has resigned.')}});
+ tree=refusedBox.render();refusedBox.input(tree).props.onChange({target:{value:'1605'}});tree=refusedBox.render();await refusedBox.runTimers();tree=refusedBox.render();
+ await refusedBox.buttons(tree)[1].props.onClick({});tree=refusedBox.render();
+ assert.equal(refusedBox.find(tree,n=>n.props?.role==='alert')[0].props.children,'Employee Master says this person has resigned.');
+ assert.ok(foundLine(refusedBox,tree));
+
+ // An answer for a number the person has since changed is dropped.
+ const late=await lookupBox({answers:recheckAnswers,scanMode:true,submitLabel:'Submit'});
+ tree=late.render();late.input(tree).props.onChange({target:{value:'1605'}});tree=late.render();
+ const pending=late.buttons(tree)[0].props.onClick({});
+ late.input(tree).props.onChange({target:{value:'160'}});late.render();
+ await pending;tree=late.render();
+ assert.equal(foundLine(late,tree),undefined,'1605 is not shown against 160');assert.equal(late.resolved.length,0);
+});
+
+test('with a Submit button the helper question still hands the person over on Yes',async()=>{
+ const answers=body=>body.confirmDriver===true?{status:200,body:{id:'8',name:'HELPING HAND',caliberId:'CMPL14970'}}:{status:409,body:{error:'This is HELPING HAND, HELPER. Confirm HELPING HAND drove this vehicle, or correct the number.',confirmDriver:{name:'HELPING HAND',designation:'HELPER'}}};
+ const box=await lookupBox({answers,scanMode:true,submitLabel:'Submit'});
+ let tree=box.render();box.input(tree).props.onChange({target:{value:'14970'}});tree=box.render();await box.runTimers();tree=box.render();
+ assert.deepEqual(box.buttons(tree).map(buttonLabel),['Fetch driver','Submit','Yes, HELPING HAND drove this vehicle']);
+ assert.equal(box.resolved.length,0);
+ await box.buttons(tree)[2].props.onClick({});
+ assert.deepEqual([box.calls.at(-1).body.caliberId,box.calls.at(-1).body.confirmDriver],['14970',true]);
+ assert.equal(box.resolved[0].name,'HELPING HAND');
+});
+
 test('the review screen leaves the Fetch box empty when the two readings differ',()=>{
  const source=readFileSync(new URL('../src/bulk-card-scanning.jsx',import.meta.url),'utf8');
  assert.ok(source.includes("suggestedId={card?.raw_fields?.caliberCheck?.reason==='readings-differ'?'':card?.raw_fields?.employeeCode||''}"));

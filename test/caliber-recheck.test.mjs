@@ -264,6 +264,10 @@ test('the page is in the menu, drawn in the report steps, with the Fetch box on 
  for(const title of ["'Step 1 · Caliber ID re-check · All sites · '","'Step 2 · Caliber ID re-check · '","'Step 3 · Caliber ID re-check · '"])assert.ok(page.includes(title),title);
  assert.ok(page.includes('<DateShiftGrid grid={grid}'),'Step 2 is the shared date by shift table');
  assert.ok(page.includes('<EmployeeIdLookup key={row.id+'),'each card has the Fetch box');
+ // Owner, 23 Nov 2026: a Submit button on every line; what it did is said on that line.
+ assert.ok(page.includes(`<EmployeeIdLookup key={row.id+'|'+(row.pick?.id||'')} submitLabel="Submit" scanMode`),'each card has its Submit button');
+ assert.ok(page.includes('{said?.id===row.id&&<small className="cr-said" role="status">{said.text}</small>}'),'the result of Submit is said on the line');
+ assert.ok(page.includes('const mine=fresh?++run.current:run.current;'),'reading one date again after a Submit does not stop a full read');
  assert.ok(page.includes("'/api/caliber-recheck?from='+dates[i]+'&to='+dates[i]"),'the server is asked day by day');
  assert.ok(readFileSync(new URL('../server.mjs',import.meta.url),'utf8').includes('registerCaliberRecheck(app,{pool,requireSession,requireAdministrator,getSiteScope:logBookScope});'));
 });
