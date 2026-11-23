@@ -1,4 +1,4 @@
-import {compareShiftLabels,isSiteName,shiftChoiceLabel} from '../shared/report-filter-options.mjs';
+import {compareShiftLabels,isSiteName,shiftChoiceLabel,siteChoices} from '../shared/report-filter-options.mjs';
 import './log-book-readability.css';
 import {compactLogBookLabel} from '../shared/log-book-labels.mjs';
 import React,{useEffect,useMemo,useRef,useState} from 'react';
@@ -64,6 +64,9 @@ const noPfPick={siteKey:'',scope:false,date:'',shift:'',equipment:''};
 const remembered=key=>{try{return localStorage.getItem(key)==='true';}catch{return false;}};
 const remember=(key,value)=>{try{localStorage.setItem(key,String(value));}catch{}};
 
+// The register's lighter read sends no selection lists, so its Site list is the sites that read reports on: each once,
+// by its OC name. Without it the Site box of Attendance Batch-wise and Month-wise offered only All (owner, 23 Nov 2026).
+const registerSites=payload=>siteChoices([...(payload.otSites||[]),...(payload.attendanceSites||[])].map(s=>s.site));
 // The site that is open in a report: the only site when there is one, else the one picked (or every site).
 const openSite=(sites,picked)=>sites.length===1?sites[0].siteKey:picked===EVERY||sites.some(s=>s.siteKey===picked)?picked:'';
 // Month and year counts arrive in a separate read for one site. Until then a cell says so instead of showing a zero;
@@ -614,7 +617,7 @@ export default function ManpowerReports({session,reportId='manpower',onSelect,Re
  const valid=filters.from>=OPERATIONAL_START&&filters.to>=filters.from&&Date.parse(filters.to)-Date.parse(filters.from)<=30*86400000;
  useEffect(()=>{
   const controller=new AbortController();setError('');setData(null);if(!valid){setBusy(false);return ()=>controller.abort();}setBusy(true);
-  fetch(source,{headers:{Authorization:`Bearer ${session.token}`},signal:controller.signal}).then(async response=>{const payload=await response.json();if(!response.ok)throw Error(payload.error||'Unable to load saved manpower records.');return payload;}).then(payload=>{if(!controller.signal.aborted){setData({query,payload});if(!register)setOptions(payload.options);}}).catch(e=>{if(!controller.signal.aborted)setError(e.message);}).finally(()=>{if(!controller.signal.aborted)setBusy(false);});
+  fetch(source,{headers:{Authorization:`Bearer ${session.token}`},signal:controller.signal}).then(async response=>{const payload=await response.json();if(!response.ok)throw Error(payload.error||'Unable to load saved manpower records.');return payload;}).then(payload=>{if(!controller.signal.aborted){setData({query,payload});if(register)setOptions(current=>({...current,sites:registerSites(payload)}));else setOptions(payload.options);}}).catch(e=>{if(!controller.signal.aborted)setError(e.message);}).finally(()=>{if(!controller.signal.aborted)setBusy(false);});
   return()=>controller.abort();
  },[query,register,session.token,refresh,valid]);
  const ready=data?.query===query&&valid&&!busy&&!error,report=ready?data.payload:null;
