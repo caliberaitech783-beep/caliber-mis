@@ -1,6 +1,8 @@
 // Site Sheet vs Trip Card (owner, 23 Nov 2026): the attendance Excel a site keeps by hand against Pulse-II trip cards,
 // date by shift, both ways, with a drill-down: "where the trip card has calculated a present but the sheet has not,
-// shift wise with drill down, and secondly the opposite way".
+// shift wise with drill down, and secondly the opposite way". Later the same evening: the sheet is saved per login and
+// read on screen, no Excel; after the date by shift step comes a department-wise, designation-wise or category-wise step
+// (HR Pulse's Employee Master: DEPARTMENT, DESIGNATION, CATEGORY).
 //
 // It reads the result of checkAttendanceSheet (shared/attendance-sheet-check.mjs): one cell per person and date, with its
 // state and the duties of that date. One line here is one person on one date (and one shift):
@@ -10,7 +12,8 @@
 // The site's sheet has dates only, no shift. A line takes the shift of its Pulse-II duty; a "sheet P, no trip card" line
 // has no duty, so its shift is not known and it sits in its own column. Its nearest worked shift at this site is given as a
 // hint for finding the missing card; it is never counted as that shift.
-import {dmy} from './attendance-sheet-check.mjs';
+import {employeeNumber} from './hr-employee-master.mjs';
+import {SHEET_MAX_PEOPLE} from './attendance-sheet-check.mjs';
 
 export const UNKNOWN_SHIFT='zz-not-in-sheet';
 export const DAY_KINDS=[
@@ -42,13 +45,15 @@ export function nearestShift(worked,date){
  return [before,after].filter(Boolean).map(say).join(' · ')||'No duty at this site on any compared date';
 }
 
-// One line per person, date and shift for the three kinds.
+// One line per person, date and shift for the three kinds. Department, designation and category are HR Pulse's (the
+// Employee Master copy); the sheet's own designation is used only when Employee Master has none.
 export function sheetDayLines(result){
  const lines=[];
  for(const r of result?.rows||[]){
   if(!r.pulse?.found)continue;
   const worked=r.cells.filter(c=>c.duties?.length).map(c=>({date:c.date,shifts:uniq(c.duties.map(d=>d.shift))}));
-  const base={row:r.row,id:r.id,name:r.name,pulseName:r.pulse?.name||'',designation:r.designation||r.pulse?.designation||''};
+  const base={row:r.row,id:r.id,name:r.name,pulseName:r.pulse?.name||'',designation:text(r.pulse?.designation)||text(r.designation),
+   department:text(r.pulse?.department),category:text(r.pulse?.category)};
   for(const c of r.cells){
    if(c.state==='duty'){
     const duties=c.duties||[];
@@ -86,6 +91,33 @@ export function kindTotals(lines){
  return Object.fromEntries(DAY_KINDS.map(k=>{const own=lines.filter(l=>l.kind===k.key);return [k.key,{lines:own.length,people:new Set(own.map(l=>l.id)).size}];}));
 }
 
+// ---- Department, designation, category --------------------------------------------------------------------------------
+// HR Pulse writes one job several ways ("TIPPER DRIVER", "DRIVER (TIPPER)", "TIPPER-DRIVER": 259 people at Sasti). Names
+// that differ only in letter case, punctuation, spacing or word order are one line, shown in the spelling most people
+// have. A real misspelling ("PC- OPRATOR") stays its own line: HR corrects it in HR Pulse.
+export const GROUP_BYS=[
+ {key:'department',label:'Department-wise',heading:'Department'},
+ {key:'designation',label:'Designation-wise',heading:'Designation'},
+ {key:'category',label:'Category-wise',heading:'Category'},
+];
+export const NOT_GIVEN='Not given in HR Pulse';
+export const groupKey=value=>text(value).toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim().split(' ').filter(Boolean).sort().join(' ');
+export function groupLines(lines,by){
+ const groups=new Map();
+ for(const l of lines){
+  const written=text(l[by]),key=groupKey(written)||'~';
+  const g=groups.get(key)||groups.set(key,{key,spellings:new Map(),total:0,card:0,noCard:0,away:0,ids:new Set(),cardIds:new Set(),noCardIds:new Set(),awayIds:new Set()}).get(key);
+  g.total++;g[l.kind]++;g.ids.add(l.id);g[l.kind+'Ids'].add(l.id);
+  if(written)g.spellings.set(written,(g.spellings.get(written)||new Set()).add(l.id));
+ }
+ return [...groups.values()].map(g=>{
+  const spellings=[...g.spellings.entries()].sort((a,b)=>b[1].size-a[1].size||a[0].localeCompare(b[0])).map(([name])=>name);
+  return {id:g.key,key:g.key,label:spellings[0]||NOT_GIVEN,spellings,total:g.total,card:g.card,noCard:g.noCard,away:g.away,
+   people:g.ids.size,cardPeople:g.cardIds.size,noCardPeople:g.noCardIds.size,awayPeople:g.awayIds.size};
+ }).sort((a,b)=>b.total-a.total||a.label.localeCompare(b.label));
+}
+export const inGroup=(line,by,key)=>(groupKey(line[by])||'~')===key;
+
 // One person day by day: the sheet's mark beside Pulse-II for every date of the sheet that is filled.
 const STATE_WORDS={duty:'Trip card present, sheet not P',noDuty:'Sheet P, no trip card',site:'Sheet P, trip card at another site',skip:'Not compared',
  '':'Same in both'};
@@ -96,28 +128,29 @@ export function personDays(row){
   state:c.state,result:c.state?STATE_WORDS[c.state]??'':!c.pulse?'Not compared':c.kind==='present'&&!c.duties?.length&&!c.away?.length?'Not judged: not a driver or operator':STATE_WORDS['']}));
 }
 
-// ---- The Excel ------------------------------------------------------------------------------------------------------
-// Three sheets for buildXlsxSheetsWorkbook, put after the site's own sheet: the date by shift counts, then the lines of
-// each way, date and shift in order.
-export function sheetDaySheets(result,lines=sheetDayLines(result)){
- const period=result.dates?.compared?.length?dmy(result.dates.compared[0])+' to '+dmy(result.dates.compared.at(-1)):'';
- const rows=dayShiftRows(lines);
- const shifts=uniq(rows.map(r=>r.shift)).sort((a,b)=>shiftRank(a)-shiftRank(b)||a.localeCompare(b));
- // One column per shift and kind that occurs, then the day totals.
- const cols=shifts.flatMap(shift=>DAY_KINDS.filter(k=>rows.some(r=>r.shift===shift&&r[k.key]>0)).map(k=>({shift,kind:k.key,label:shiftName(shift)+' · '+k.short})));
- const dates=uniq(rows.map(r=>r.date)).sort();
- const count=(date,shift,kind)=>rows.filter(r=>(!date||r.date===date)&&(!shift||r.shift===shift)).reduce((n,r)=>n+(kind?r[kind]:r.total),0);
- const gridRow=date=>[date?dmy(date):'All dates',...cols.map(c=>String(count(date,c.shift,c.kind))),...DAY_KINDS.map(k=>String(count(date,'',k.key))),String(count(date,'',''))];
- const grid={name:'Date x shift',title:result.site+' · Trip card against the sheet · date by shift · '+period,plainSerial:true,
-  headerRows:[result.site+' · Trip card against the sheet · date by shift · '+period,
-   'Each figure is people on that date and shift. Trip card, sheet not P: Pulse-II has a duty, the sheet says A, PL, - or blank. Sheet P, no trip card: the sheet says P, Pulse-II has no duty that date.',
-   'The site sheet has dates only, no shift: a "sheet P, no trip card" line has no duty to take a shift from, so it is under "Shift not in sheet".'],
-  columns:['Date',...cols.map(c=>c.label),...DAY_KINDS.map(k=>'Day · '+k.short),'Day · all'].map(label=>({label})),
-  rows:[...dates.map(gridRow),gridRow('')],highlightedRows:new Set([dates.length])};
- const detail=(kinds,name,title,withNearest)=>({name,title:result.site+' · '+title+' · '+period,plainSerial:true,
-  columns:['Date','Shift','Row in sheet','EMP. ID','Name in sheet','Name in Pulse-II','Designation','Sheet says','Pulse-II says',...(withNearest?['Nearest shift worked here']:[]),'Trip cards / log books','Equipment','Correction required'].map(label=>({label})),
-  rows:lines.filter(l=>kinds.includes(l.kind)).map(l=>[dmy(l.date),shiftName(l.shift),String(l.row),l.id,l.name,l.pulseName,l.designation,l.sheetSays,l.pulseSays,...(withNearest?[l.nearest]:[]),l.books,l.equipment,l.correction])});
- return [grid,
-  detail(['card'],'Trip card, sheet not P','Trip card present, sheet not P',false),
-  detail(['noCard','away'],'Sheet P, no trip card','Sheet P, no trip card at this site',true)];
+// ---- The saved sheet ------------------------------------------------------------------------------------------------
+// What is kept of an uploaded sheet (owner: "user-wise it will save"): the lines and marks parseAttendanceSheet read, and
+// nothing else of the file. The server keeps it as it comes back from here, so a sheet the browser could not have read
+// is refused.
+const ISO=/^\d{4}-\d{2}-\d{2}$/;
+const capped=(value,length)=>text(value).replace(/\s+/g,' ').slice(0,length);
+export function savedSheetFrom(sheet){
+ const dates=Array.isArray(sheet?.dates)?sheet.dates.map(String):[];
+ if(!dates.length||dates.length>62||!dates.every(d=>ISO.test(d)))throw Error('This sheet has no date columns that can be kept.');
+ const people=Array.isArray(sheet?.people)?sheet.people:[];
+ if(!people.length)throw Error('This sheet has no employee line to keep.');
+ if(people.length>SHEET_MAX_PEOPLE)throw Error(`Keep up to ${SHEET_MAX_PEOPLE} employees in one sheet.`);
+ const kept=people.map(p=>{
+  const marks=Array.isArray(p?.marks)?p.marks:[];
+  if(marks.length!==dates.length)throw Error('A line of this sheet does not have one mark per date.');
+  const id=capped(p.id,40);
+  return {row:Number(p.row)||0,sr:capped(p.sr,12),id,number:employeeNumber(id),name:capped(p.name,120),designation:capped(p.designation,80),marks:marks.map(m=>capped(m,8))};
+ });
+ const keepDates=list=>(Array.isArray(list)?list.map(String):[]).filter(d=>ISO.test(d));
+ const filledDates=keepDates(sheet.filledDates).filter(d=>dates.includes(d));
+ if(!filledDates.length)throw Error('No date of this sheet is marked.');
+ return {sheetName:capped(sheet.sheetName,60),headerRow:Number(sheet.headerRow)||0,dates,filledDates,missingDates:keepDates(sheet.missingDates).slice(0,62),
+  noId:(Array.isArray(sheet.noId)?sheet.noId:[]).slice(0,SHEET_MAX_PEOPLE).map(l=>({row:Number(l?.row)||0,name:capped(l?.name,120)})),people:kept};
 }
+// The month a saved sheet belongs to: the month of its first marked date. One login keeps one sheet per site and month.
+export const sheetMonth=sheet=>[...(sheet?.filledDates||[])].sort()[0]?.slice(0,7)||'';
