@@ -36,7 +36,8 @@ import {applyBreakdownHours,prefetchBreakdownRows,createBreakdownRowsPrefetchCac
 import {withVlbTripHandovers} from '../../shared/vlb-trip-handover.mjs';
 import {SCAN_IMAGE_TYPES,scanImageDimensions,scanImageMime} from '../rules/scan-image-format.mjs';
 import {scanBlobKey} from '../services/scan-blob-storage.mjs';
-import {allowedScanBatches,requireLogBookSite,createLogBookSiteCache,scanDeletionAllowed} from '../../shared/log-book-access.mjs';
+import {allowedScanBatches,requireLogBookSite,scanDeletionAllowed} from '../../shared/log-book-access.mjs';
+import {sharedLogBookSites} from '../services/log-book-site-list.mjs';
 import {canonicalSiteName} from '../../shared/site-location.mjs';
 import {fillVlbScanOpeningMeters,readVlbOpeningMeterRows,preloadVlbOpeningMeterRows} from '../rules/vlb-scan-opening-meters.mjs';
 import {createScanCheckMemo,memoKey} from '../rules/scan-check-memo.mjs';
@@ -203,7 +204,7 @@ export async function checkScanCard(client,kind,card,input=card.draft,{enforceEm
  return {errors,warnings,data,number};
 }
 export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,requireSession,requireAdministrator,getGroqConfig,readHours,readBreakdownRows=null,sendCardDeletionOtp=request=>sendDeletionOtp({pool,...request}),readPulseFleet=null,refreshPulseFleet=null,archiveSavedBatch=null,archiveTarget=null,imageStorage=null,localDrafts=false,scanConcurrency=geminiEnabled(process.env)?DEFAULT_GEMINI_WORKERS:1,getSiteScope=async()=>({sites:null}),fingerprintBackfill=!process.env.NODE_TEST_CONTEXT,
- readLane=createReportLane({slots:scanReadSlots(process.env),cacheMs:0}),entryReadSteps=createEntryReadSteps(),filterLogBookSites=createLogBookSiteCache({pool}),
+ readLane=createReportLane({slots:scanReadSlots(process.env),cacheMs:0}),entryReadSteps=createEntryReadSteps(),filterLogBookSites=sharedLogBookSites(pool),
  progressLane=createReportLane({slots:scanProgressSlots(process.env),cacheMs:SCAN_PROGRESS_SHARE_MS}),
  // Tells the administrators when the reading account stops reading (no credit, key refused, quota).
  alertAdministrators=null,outageProbeMs=OUTAGE_PROBE_MS,
@@ -826,6 +827,7 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
   let archive=null;
   const remaining=(await pool.query("SELECT id FROM mis_scan_cards WHERE batch_id=$1 AND status<>'posted' AND review_note<>$2 LIMIT 1",[batch.id,'Removed from batch: wrong date, site or shift'])).rows.length;
   if(!remaining){try{archive=await archiveBatch(batch);}catch{archive={status:'pending',target:archiveTarget||'local',azureUploadEnabled:archiveTarget==='azure',message:'The log book was saved. Folder archiving needs a retry.'};}}
+  filterLogBookSites.remember(record?.data?.location);
   res.json({status:'posted',record,archive});
  })));
  app.post('/api/scan-batches/:id/archive',...protect,wrap(async(req,res)=>{if(!archiveSavedBatch)fail('Local folder archiving is not enabled.',409);const batch=await getBatch(pool,req.params.id);res.json(await archiveBatch(batch));}));

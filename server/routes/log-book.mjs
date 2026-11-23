@@ -40,14 +40,15 @@ import {registerLogBookDeletion} from '../rules/log-book-deletion.mjs';
 import {manualBreakdownHours,applyBreakdownHours,prefetchBreakdownRows,lockedReadHours} from '../../shared/breakdown-hours-source.mjs';
 import {TRIP_VERIFICATION_SCHEMA,enqueueTripVerification} from './pulse-trip-verification.mjs';
 import {decodeScanRow} from '../rules/scan-text-storage.mjs';
-import {validTripTimes,vlbCountedTrips,withVlbTripHandovers,withVlbTripCounts} from '../../shared/vlb-trip-handover.mjs';
+import {validTripTimes,vlbCountedTrips,withVlbTripHandovers,withVlbTripCounts,linkVlbTripHandovers} from '../../shared/vlb-trip-handover.mjs';
 import {VLB_TRIP_HANDOVER_SCHEMA} from '../rules/vlb-trip-handover-schema.mjs';
 import {savedLogBookFilters} from '../rules/saved-log-book-filters.mjs';
 import {scanImageMime} from '../rules/scan-image-format.mjs';
 import {employeeIdentity} from '../../shared/employee-identity.mjs';
 import {mirrorReadAt,readBreakdownRowsWithMirror,withPulseCopyTime} from '../services/pulse-breakdown-mirror.mjs';
 import {registerElbPulseRepair} from './elb-pulse-repair.mjs';
-import {logBookSiteScope,logBookAccountLocation,siteAllowed,requireLogBookSite,employeeAtLocation,filterLogBookSites} from '../../shared/log-book-access.mjs';
+import {logBookSiteScope,logBookAccountLocation,siteAllowed,requireLogBookSite,employeeAtLocation} from '../../shared/log-book-access.mjs';
+import {sharedLogBookSites} from '../services/log-book-site-list.mjs';
 import {activeWorkOrders,workOrderJobTypes,WORK_ORDER_MASTERS,meterRuleIssues,shiftMeterIssues,kmrMeterReplaced,normalizeCardShift,CARD_SHIFTS,formatBookNumber,bookShiftCode,matchingWorkOrders,machineLabel,machineSummary,machineDiscrepancies,systemBookDate,latestWorkOrder,interTripGap,tripEquipmentRequired} from '../../shared/trip-card-rules.mjs';
 import {equipmentDoorNumber} from '../../shared/equipment-door.mjs';
 import {assignmentWindows,logBookAssignment,applyTransferPortion} from '../../shared/log-book-transfers.mjs';
@@ -294,6 +295,20 @@ export function scanCardsForOperations(cards){
 // lane: the report lane that the heavy report readings (operations, Manpower, Batch Status) go through; tests may pass their own.
 export function registerLogBooks(app,{pool,requireSession,requireAdministrator,pulseMasterSync,breakdownMirror=null,sendDeletionOtp,imageStorage,approvalOtp={},getSiteScope=async session=>logBookSiteScope(session),lane=reportLane}){
  let ready;
+ // The sites that hold cards: one list for the whole server, read once a minute as the server and
+ // filtered by each login's own scope (server/services/log-book-site-list.mjs).
+ const filterLogBookSites=sharedLogBookSites(pool);
+ // What the screen gets back after a VLB save: the card with its trip counts and handover links.
+ // It is built after the commit, on a pooled connection. Until 23 Nov 2026 it was built inside the
+ // save, before the commit, and for a site login it first listed the sites by reading every card
+ // saved since 1 November (20 to 30 s on live that day) while the site, date and shift lock kept
+ // every other operator of that shift waiting. The card is already saved here, so a failed read
+ // never turns the save into an error: the card is answered with its own trip counts and the
+ // links appear on the next reload.
+ const savedCardAnswer=async(req,record)=>{
+  try{return (await withVlbTripHandovers(pool,[record],await filterLogBookSites(pool,req.logBookScope)))[0];}
+  catch(error){console.warn('[log-book] '+record.book_no+' is saved; answered without handover links:',error?.message||error);return linkVlbTripHandovers([record])[0]||record;}
+ };
  const ensure=()=>ready??=(pool.query(LOG_BOOK_SCHEMA+SHIFT_ATTENDANCE_SCHEMA+ATTENDANCE_DAY_STORE_SCHEMA+OPERATIONS_DAY_STORE_SCHEMA).catch(error=>{ready=null;throw error}));
  const protect=[requireSession,requireAdministrator,async(req,res,next)=>{try{req.logBookScope=await getSiteScope(req.session);next()}catch(error){if(error.status)return res.status(error.status).json({error:error.message});next(error)}}];
  registerLogBookDashboard(app,{pool,protect,ensureBooks:ensure});
@@ -524,13 +539,18 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
        if(!result.rowCount)throw Object.assign(new Error('This log book changed or is unavailable. Reload it before saving.'),{status:409});
      }else{
        const previous=(await client.query('SELECT id,book_no,book_type,data,revision,created_at,updated_at,created_by FROM mis_log_books WHERE request_key=$1 AND book_date>=$$2026-11-01$$',[requestKey])).rows[0];
-       if(previous){requireLogBookSite(req.logBookScope,previous.data.location);if(previous.created_by!==(req.session.login||req.session.name)||previous.book_type!==kind)throw Object.assign(new Error('Save reference already used.'),{status:409});const response=kind==='vehicle'?(await withVlbTripHandovers(client,[previous],await filterLogBookSites(client,req.logBookScope)))[0]:previous;await client.query('COMMIT');return res.json(response);}
+       if(previous){requireLogBookSite(req.logBookScope,previous.data.location);if(previous.created_by!==(req.session.login||req.session.name)||previous.book_type!==kind)throw Object.assign(new Error('Save reference already used.'),{status:409});await client.query('COMMIT');client.release();client=null;return res.json(kind==='vehicle'?await savedCardAnswer(req,previous):previous);}
        if(kind==='vehicle')data.duplicateReason=text(req.body.duplicateReason);
        result={rows:[await insertLogBook(client,kind,data,requestKey,req.session.login||req.session.name)]};
      }
      if(updating){await enqueueTripVerification(client,result.rows[0]);await syncVlbBatchRecord(client,result.rows[0],req.session.login||req.session.name);await syncElbBatchRecord(client,result.rows[0],req.session.login||req.session.name);}
      mark('persist_and_batch');
-     const response=kind==='vehicle'?(await withVlbTripHandovers(client,result.rows,await filterLogBookSites(client,req.logBookScope)))[0]:result.rows[0];mark('handovers');await client.query('COMMIT');mark('commit');finish();res.status(updating?200:201).json(response);
+     await client.query('COMMIT');mark('commit');
+     // The card is saved. Its connection, and with it the site, date and shift lock, is given back
+     // before the answer is built, so nothing is read for the screen while other operators wait.
+     client.release();client=null;
+     const saved=result.rows[0];filterLogBookSites.remember(saved.data?.location);
+     const response=kind==='vehicle'?await savedCardAnswer(req,saved):saved;mark('handovers');finish();res.status(updating?200:201).json(response);
    }catch(error){mark('failed');finish();if(client)await client.query('ROLLBACK').catch(()=>{});if(error.status)return res.status(error.status).json({error:error.message,...(error.details||{})});next(error)}finally{client?.release();}
  }
  app.post('/api/log-books/:kind',...protect,save);

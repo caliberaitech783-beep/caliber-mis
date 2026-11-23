@@ -1,6 +1,7 @@
 import {canonicalSiteName} from '../../shared/site-location.mjs';
 import {manpowerFilters,buildManpowerReport,attendanceWindows,joinAttendanceReports,joinOtReports,joinManpowerReports,MANPOWER_VIEWS,pendingSiteDays,lockedSiteDays,otHistoryWindows,otHistorySummary,otYearWindows,otDriverTally,OT_HISTORY_DAYS} from '../rules/manpower-report.mjs';
-import {siteAllowed,filterLogBookSites,requireLogBookSite} from '../../shared/log-book-access.mjs';
+import {siteAllowed,requireLogBookSite} from '../../shared/log-book-access.mjs';
+import {sharedLogBookSites} from '../services/log-book-site-list.mjs';
 import {directLane,reportKey} from '../services/report-lane.mjs';
 import {linkVlbTripHandovers} from '../../shared/vlb-trip-handover.mjs';
 import {buildReportInWorker} from '../services/report-build-pool.mjs';
@@ -37,6 +38,8 @@ async function reportMasters(client){
 }
 
 export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandovers=async(_,rows)=>rows,today=todayIst,lane=directLane,useDayStore=attendanceDayStoreEnabled(),buildInWorker=buildReportInWorker}){
+ // The server's one list of sites that hold cards (server/services/log-book-site-list.mjs).
+ const filterLogBookSites=sharedLogBookSites(pool);
  app.get('/api/reports/manpower',...protect,async(req,res,next)=>{
   try{
    const filters=manpowerFilters(req.query);

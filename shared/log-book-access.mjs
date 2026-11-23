@@ -30,11 +30,9 @@ export function requireLogBookSite(scope,site){
   if(!siteAllowed(scope,site))throw Object.assign(new Error('This location is not assigned to your login.'),{status:403});
 }
 const LOG_BOOK_SITES_SQL='SELECT DISTINCT site FROM mis_log_books WHERE book_date>=$$2026-11-01$$';
-export async function filterLogBookSites(client,scope){
-  if(scope.sites===null)return null;
-  const {rows}=await client.query(LOG_BOOK_SITES_SQL);
-  return rows.map(row=>row.site).filter(site=>siteAllowed(scope,site));
-}
+// The sites that hold cards, narrowed to a login's scope. There is no read-it-yourself helper any
+// more: every server route takes the one shared list (server/services/log-book-site-list.mjs).
+//
 // On 15 Nov 2026 the live scan entry read spent 3.2 s on average (10.4 s at most)
 // reading this site list, which it reads again on every poll. The list only grows
 // when a log book is saved at a site that had none, so one read is shared by all
@@ -42,18 +40,57 @@ export async function filterLogBookSites(client,scope){
 // The read itself took up to 17 s on live, so once a list is held an expired list
 // is still answered at once and the new one is read through `pool` in the
 // background; the caller's own connection is never kept after its request ends.
-export function createLogBookSiteCache({pool=null,ttlMs=60_000,now=()=>Date.now()}={}){
+//
+// trusted (the server passes withoutRowSecurityRequest, with a pool): the list is read outside
+// the caller's login. Under row security a read made as one site's login returns that site only,
+// so the list held for everybody was whichever sites the login that happened to refresh it may
+// see, and the database checked every card against that login's sites (20 to 30 s on live on
+// 23 Nov 2026, about 90,000 cards). Read as the server it is every site, and each caller's own
+// scope is applied to it here as before.
+// The trusted read always takes its own connection from the pool, never the caller's: a
+// connection carries one login's scope at a time, and the caller may be using its own.
+// Until the first trusted read is in, a caller that holds a connection is answered from that
+// connection as its own login (what it always got, kept for nobody else) instead of waiting
+// for a second connection while holding one.
+// remember(site): a card was just saved at this site, so a site's first card is in the list at
+// once instead of after the next read.
+export function createLogBookSiteCache({pool=null,ttlMs=60_000,now=()=>Date.now(),trusted=null}={}){
   let sites=null,readAt=0,reading=null;
-  const refresh=client=>reading??=client.query(LOG_BOOK_SITES_SQL).then(({rows})=>{sites=rows.map(row=>row.site);readAt=now();return sites;}).finally(()=>{reading=null;});
+  const remembered=new Set();
+  const shared=Boolean(trusted&&pool);
+  const read=db=>shared?trusted(()=>pool.query(LOG_BOOK_SITES_SQL)):db.query(LOG_BOOK_SITES_SQL);
+  const refresh=client=>{
+    if(reading)return reading;
+    let started;
+    // A read that cannot even start is a failed read like any other, never an error thrown at a
+    // caller that only asked for the list in the background.
+    try{started=Promise.resolve(read(client));}catch(error){return Promise.reject(error);}
+    reading=started.then(({rows})=>{
+      const found=rows.map(row=>row.site);
+      for(const site of found)remembered.delete(site);
+      sites=[...found,...remembered];readAt=now();return sites;
+    }).finally(()=>{reading=null;});
+    return reading;
+  };
   const all=client=>{
     if(sites&&now()-readAt<ttlMs)return sites;
     if(sites&&pool){refresh(pool).catch(()=>{});return sites;}
+    if(shared&&client!==pool){
+      refresh(pool).catch(()=>{});
+      return client.query(LOG_BOOK_SITES_SQL).then(({rows})=>rows.map(row=>row.site));
+    }
     return refresh(client);
   };
-  return async(client,scope)=>{
+  const permitted=async(client,scope)=>{
     if(scope.sites===null)return null;
     return (await all(client)).filter(site=>siteAllowed(scope,site));
   };
+  permitted.remember=site=>{
+    if(typeof site!=='string'||!site||sites?.includes(site))return;
+    remembered.add(site);
+    if(sites)sites=[...sites,site];
+  };
+  return permitted;
 }
 
 export async function allowedScanBatches(client,scope,login,batchId){
