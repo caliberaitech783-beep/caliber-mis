@@ -135,7 +135,7 @@ test('the screen chooses the log book before the upload, keeps a file and a resu
  assert.match(page,/Which sheet are you uploading\?/);
  assert.match(page,/<div className="ssc-book-tabs" role="tablist" aria-label="Log book of the sheet">\s*\{SHEET_BOOKS\.map\(/);
  assert.match(page,/useState\(\(\)=>Object\.fromEntries\(SHEET_BOOKS\.map\(b=>\[b\.key,blankTab\(\)\]\)\)\)/,'one file, check and result per log book');
- assert.match(page,/siteSheetView\(\{sheet:held\.file\.sheet,data,site:at,from,to,batch:'',sheetBook:key\}\)/,'the check is of the log book of its tab');
+ assert.match(page,/siteSheetView\(\{sheet:held\.file\.sheet,data,site:at,\.\.\.selectionOf\(\{\.\.\.held\.filter,from,to,batch:''\}\),sheetBook:key\}\)/,'the check is of the log book of its tab');
  assert.match(page,/<TripCardFilters tabs=\{false\} /,'the log book is not chosen again after the upload');
  assert.match(source('../src/trip-card-verdict.jsx'),/\{tabs&&<div className="tcv-tabs" role="tablist" aria-label="Log book">/);
  const ids=operationReports.map(r=>r.id);

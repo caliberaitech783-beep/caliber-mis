@@ -6,6 +6,11 @@
 .tcv-tabs button small{padding:1px 8px;border-radius:999px;background:#efe7f8;color:#3d2a5c;font-size:12px}
 .tcv-tabs button[aria-selected="true"] small{background:rgba(255,255,255,.22);color:#fff}
 .tcv-tabs button:disabled{opacity:.6;cursor:default}
+.tcv-ways{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.tcv-ways>span{margin-right:4px;font-weight:700;font-size:14px}
+.tcv-ways button{padding:6px 14px;border:1px solid #c7b5dd;border-radius:999px;background:#fff;color:#2a1d40;font:inherit;font-weight:600;cursor:pointer}
+.tcv-ways button[aria-pressed="true"]{background:#3d2a5c;color:#fff;border-color:#3d2a5c}
+.tcv-ways button:disabled{opacity:.6;cursor:default}
 .tcv-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(190px,100%),1fr));gap:12px;align-items:end}
 .tcv-fields label{display:flex;flex-direction:column;gap:5px;font-weight:600;font-size:14px;min-width:0}
 .tcv-fields input,.tcv-fields select{width:100%;padding:9px 10px;border:1px solid #c7b5dd;border-radius:8px;background:var(--card,#fff);color:inherit;font:inherit;font-weight:400}

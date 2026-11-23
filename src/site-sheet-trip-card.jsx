@@ -12,6 +12,8 @@
 // Owner, 24 Nov 2026 (morning): a batch and From / To choose what is seen, at once, without reading Pulse-II again; every
 // trip card of the selection is judged against the sheet: the OK ones are only counted ("need no attention") and only
 // the ones that need attention are listed, each with its problem (TripCardVerdict).
+// Owner, 24 Nov 2026 (same morning, PR 517): the three steps stand one under the other; Step 2 holds the site with
+// "Select by" Date to date / Batch wise / Batch + dates; Check is the last step, with the download of a selection.
 // Owner, 24 Nov 2026 (later): "3 tabs to select the VLB, ELB and LMV sheets, process and upload differently; the user
 // selects the category of file to upload and the same way it fetches the result". The log book is now chosen BEFORE the
 // upload: three tabs (SHEET_BOOKS), each with its own file, its own Check and its own result, compared with the trip
@@ -23,7 +25,7 @@ import {TripCardFilters,TripCardVerdict} from './trip-card-verdict.jsx';
 import {dmy,CORRECTION_KINDS} from '../shared/attendance-sheet-check.mjs';
 import {DAY_KINDS,SHEET_BOOKS,dayShiftRows,kindLabel,kindTotals,otherBookRows,personDays,shiftName} from '../shared/site-sheet-days.mjs';
 import {readAttendanceFile,sheetApi} from './attendance-sheet-run.mjs';
-import {readSiteSheetData,siteSheetView,siteSheetWorkbook} from './site-sheet-run.mjs';
+import {SELECT_BY,readSiteSheetData,selectionOf,siteSheetView,siteSheetWorkbook} from './site-sheet-run.mjs';
 import {DateShiftGrid,dateShiftExport,dateShiftGrid} from './date-shift-grid.jsx';
 import {downloadBlob} from './download-history.mjs';
 import './attendance-sheet-check.css';
@@ -37,8 +39,8 @@ const noPick={kind:'',date:'',shift:'',box:'',all:false,person:'',others:false};
 const col=(key,label,extra={})=>({key,label,value:r=>r[key]===''||r[key]===undefined||r[key]===null?'—':r[key],...extra});
 const lineKey=l=>[l.row,l.date,l.shift,l.kind].join('|');
 // What one log book tab holds: its file, its check, what is opened in its result and its batch and dates.
-const blankTab=()=>({file:{busy:false,name:'',sheet:null,error:''},run:{busy:false,error:'',done:null},pick:noPick,filter:{from:'',to:'',batch:''}});
-const viewOfTab=(tab,book)=>tab.run.done?.data&&tab.file.sheet?siteSheetView({sheet:tab.file.sheet,data:tab.run.done.data,site:tab.run.done.site,...tab.filter,sheetBook:book}):null;
+const blankTab=()=>({file:{busy:false,name:'',sheet:null,error:''},run:{busy:false,error:'',done:null},pick:noPick,filter:{by:'dates',from:'',to:'',batch:''}});
+const viewOfTab=(tab,book)=>tab.run.done?.data&&tab.file.sheet?siteSheetView({sheet:tab.file.sheet,data:tab.run.done.data,site:tab.run.done.site,...selectionOf(tab.filter),sheetBook:book}):null;
 
 export default function SiteSheetTripCard({session,ReportSection}){
  const [sites,setSites]=useState({list:null,error:''}),[site,setSite]=useState('');
@@ -57,7 +59,7 @@ export default function SiteSheetTripCard({session,ReportSection}){
  const choose=async event=>{
   const key=book,picked=event.target.files?.[0];event.target.value='';if(!picked)return;
   patch(key,{run:{busy:false,error:'',done:null},pick:noPick,file:{busy:true,name:picked.name,sheet:null,error:''}});
-  try{const read=await readAttendanceFile(picked);patch(key,{file:{busy:false,name:picked.name,sheet:read,error:''},filter:{from:read.filledDates[0]||'',to:read.filledDates.at(-1)||'',batch:''}});}
+  try{const read=await readAttendanceFile(picked);patch(key,t=>({file:{busy:false,name:picked.name,sheet:read,error:''},filter:{...t.filter,from:read.filledDates[0]||'',to:read.filledDates.at(-1)||'',batch:''}}));}
   catch(error){patch(key,{file:{busy:false,name:picked.name,sheet:null,error:error.message}});}
  };
  const check=async()=>{
@@ -67,10 +69,10 @@ export default function SiteSheetTripCard({session,ReportSection}){
    const data=await readSiteSheetData({sheet:held.file.sheet,site:at,session});
    const from=held.filter.from&&held.filter.from>=data.range.from&&held.filter.from<=data.range.to?held.filter.from:data.range.from;
    const to=held.filter.to&&held.filter.to<=data.range.to&&held.filter.to>=from?held.filter.to:data.range.to;
-   const first=siteSheetView({sheet:held.file.sheet,data,site:at,from,to,batch:'',sheetBook:key});
+   const first=siteSheetView({sheet:held.file.sheet,data,site:at,...selectionOf({...held.filter,from,to,batch:''}),sheetBook:key});
    const made=siteSheetWorkbook(first,{fileName:held.file.name});
    downloadBlob(made.blob,made.name,{title:made.title});
-   patch(key,{filter:{from,to,batch:''},run:{busy:false,error:'',done:{data,site:at,name:made.name}}});
+   patch(key,t=>({filter:{...t.filter,from,to,batch:''},run:{busy:false,error:'',done:{data,site:at,name:made.name}}}));
   }catch(error){patch(key,{run:{busy:false,error:error.message,done:null}});}
  };
  // One site for the three sheets: another site clears the three results (the files stay; Check again).
@@ -137,36 +139,45 @@ export default function SiteSheetTripCard({session,ReportSection}){
      <b>{b.label}</b><span>{b.about}</span>{tabs[b.key].file.name&&<em>{tabs[b.key].file.name}</em>}<small className={'ssc-book-'+note.tone}>{note.text}</small></button>;})}
    </div>
   </section>
-  <div className="asc-steps" role="tabpanel" aria-label={active.label}>
+  <div className="asc-steps ssc-steps" role="tabpanel" aria-label={active.label}>
    <section className="asc-step"><h2>1 · {book} attendance Excel of the site</h2>
     <label className={'asc-upload'+(file.busy?' busy':'')}><Upload size={16}/>{file.busy?'Reading the file…':sheet?'Choose another '+book+' file':'Choose the '+book+' Excel file'}<input type="file" accept=".xlsx,.xlsm,.xlk" disabled={file.busy||run.busy} onChange={choose}/></label>
     {sheet&&<p className="asc-note" role="status"><strong>{file.name}</strong> · sheet “{sheet.sheetName}” · {many(sheet.people.length,'employee')} · {sheet.filledDates.length?'marks from '+dmy(sheet.filledDates[0])+' to '+dmy(sheet.filledDates.at(-1)):'no date is marked'}{sheet.missingDates.length?' · no column for '+sheet.missingDates.map(dmy).join(', '):''}</p>}
     {file.error&&<p className="asc-error" role="alert">{file.name}: {file.error}</p>}
     {!sheet&&!file.busy&&!file.error&&<p className="asc-hint">Only the people of the {active.about.split(' · ')[0]} belong in this file. If the site keeps one sheet for everyone, upload that same file here: the people whose trip cards are in another log book are listed apart.</p>}
    </section>
-   <section className="asc-step"><h2>2 · Site of this sheet</h2>
-    <select aria-label="Site of this attendance sheet" value={site} disabled={anyBusy||!sites.list} onChange={e=>chooseSite(e.target.value)}>
-     <option value="">{sites.list?'Select the site':'Reading your sites…'}</option>{(sites.list||[]).map(name=><option key={name} value={name}>{name}</option>)}
-    </select>
+   {/* Owner, 24 Nov 2026: the batch and dates sit in Step 2 with the site, so Check is the last step. The log book is not
+       chosen here any more: it is the tab chosen above, before the upload. */}
+   <section className="asc-step"><h2>2 · Site, batch and dates</h2>
+    <TripCardFilters tabs={false} filter={filter} onChange={setChoice} min={data?.range.from||sheet?.filledDates[0]} max={data?.range.to||sheet?.filledDates.at(-1)}
+     batches={view?.batches} disabled={run.busy||!sheet} checked={Boolean(view)} ways={SELECT_BY}>
+     <label>Site<select aria-label="Site of this attendance sheet" value={site} disabled={anyBusy||!sites.list} onChange={e=>chooseSite(e.target.value)}>
+      <option value="">{sites.list?'Select the site':'Reading your sites…'}</option>{(sites.list||[]).map(name=><option key={name} value={name}>{name}</option>)}
+     </select></label>
+    </TripCardFilters>
     {sites.error&&<p className="asc-error" role="alert">{sites.error}</p>}
     {sites.list&&!sites.list.length&&!sites.error&&<p className="asc-error" role="alert">No site is assigned to your login.</p>}
+    {!sheet&&<p className="asc-hint">The dates open once the {book} Excel file is chosen in Step 1.</p>}
+    {sheet&&filter.by==='batch'&&<p className="asc-hint">Batch wise: every date of the sheet{period?' ('+period+')':''}.{view?'':' The batches are listed after Check.'}</p>}
+    {sheet&&filter.by==='both'&&!view&&<p className="asc-hint">The batches are listed after Check.</p>}
     {anyResult&&<p className="asc-hint">One site for the VLB, ELB and LMV sheets. Another site clears the three results; the files stay.</p>}
    </section>
-   <section className="asc-step"><h2>3 · Check against {book} trip cards</h2>
-    <button type="button" className="asc-run" disabled={!ready} onClick={check}><Download size={16}/>{run.busy?'Comparing with Pulse-II…':'Check '+book+' and download Excel'}</button>
+   <section className="asc-step"><h2>3 · Check</h2>
+    <div className="ssc-run-row">
+     <button type="button" className="asc-run" disabled={!ready} onClick={check}><Download size={16}/>{run.busy?'Comparing with Pulse-II…':'Check '+book+' and download Excel'}</button>
+     {view&&<button type="button" className="asc-run light" disabled={run.busy} onClick={download}><Download size={16}/>Download Excel of this selection</button>}
+    </div>
     {run.busy&&<p className="asc-note" role="status">Reading Pulse-II attendance of these dates. A full month takes up to a minute.</p>}
     {!sheet&&!file.busy&&<p className="asc-hint">Choose the {book} Excel file first.</p>}{sheet&&!site&&<p className="asc-hint">Select the site.</p>}
    </section>
   </div>
-  {sheet&&<TripCardFilters tabs={false} filter={filter} onChange={setChoice} min={data?.range.from||sheet.filledDates[0]} max={data?.range.to||sheet.filledDates.at(-1)}
-   batches={view?.batches} disabled={run.busy} checked={Boolean(view)} onDownload={view?download:null}/>}
   {run.error&&<p className="asc-error" role="alert">{run.error}</p>}
   {result&&<TripCardVerdict key={'ssc-verdict-'+book+'-'+done.name} view={view} ReportSection={ReportSection} withSheet against={'the '+book+' sheet'} site={result.site} period={period}/>}
   {result&&<>
    <section className="asc-result" aria-label={'Result of the '+book+' check'}>
     <h2>{result.site} · {book} sheet · {period||'no date to compare'} · {many(result.totals.corrections,'correction')} for {many(result.totals.peopleWithCorrections,'employee')}</h2>
     <p className="asc-note" role="status">The Excel <strong>{done.name}</strong> is in your Downloads folder and in Download History (the folder button at the top). <button type="button" className="asc-again" onClick={download}>Download again</button></p>
-    {filter.batch&&<p className="asc-hint">These counts are the whole {book} sheet from {dmy(view.from)} to {dmy(view.to)}, every batch. The trip card lines and the date by shift below are batch {filter.batch} only; "Sheet P, no trip card" has no card, so no batch: it shows under All batches.</p>}
+    {view.batch&&<p className="asc-hint">These counts are the whole {book} sheet from {dmy(view.from)} to {dmy(view.to)}, every batch. The trip card lines and the date by shift below are batch {view.batch} only; "Sheet P, no trip card" has no card, so no batch: it shows under All batches.</p>}
     <table className="asc-counts"><tbody>
      <tr><th scope="row">Employees in the {book} sheet</th><td>{result.totals.people}</td></tr>
      <tr><th scope="row">Compared day by day with {book} trip cards (drivers and operators, or a {book} duty in Pulse-II)</th><td>{result.totals.judged}</td></tr>

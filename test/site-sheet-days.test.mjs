@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import test from 'node:test';
 import {parseAttendanceSheet,checkAttendanceSheet} from '../shared/attendance-sheet-check.mjs';
 import {UNKNOWN_SHIFT,DAY_KINDS,sheetDayLines,dayShiftRows,kindTotals,personDays,sheetDaySheets,shiftName,nearestShift} from '../shared/site-sheet-days.mjs';
-import {runSiteSheetCheck} from '../src/site-sheet-run.mjs';
+import {runSiteSheetCheck,SELECT_BY,selectionOf} from '../src/site-sheet-run.mjs';
 import {operationReports} from '../src/operations-report-model.mjs';
 
 const day=n=>new Date(Date.UTC(2026,10,n));
@@ -103,4 +103,34 @@ test('the tab sits just beside Attendance Month-wise; Attendance Sheet Mismatch 
  assert.match(page,/accept="\.xlsx,\.xlsm,\.xlk"/);assert.match(page,/Nothing is changed in Pulse-II/);
  for(const step of ["'Step 1 · '","'Step 2 · '","'Step 3 · '","'Step 4 · '"])assert.ok(page.includes(step),step);
  assert.match(page,/<DateShiftGrid /);
+});
+
+// The log book itself is no longer chosen in Step 2: it is the tab chosen before the upload (test/site-sheet-log-book.test.mjs).
+test('Step 2 holds the site with the batch and dates; Check is the last step (owner, 24 Nov 2026)',()=>{
+ const page=fs.readFileSync(new URL('../src/site-sheet-trip-card.jsx',import.meta.url),'utf8');
+ const tabs=page.indexOf('<div className="ssc-book-tabs" role="tablist"'),one=page.indexOf('<h2>1 · {book} attendance Excel of the site</h2>');
+ const two=page.indexOf('<h2>2 · Site, batch and dates</h2>'),bar=page.indexOf('<TripCardFilters '),three=page.indexOf('<h2>3 · Check</h2>');
+ assert.ok(tabs>0&&tabs<one&&one<two,'the log book tabs come first, then the Excel of that log book');
+ assert.ok(two>0&&two<bar&&bar<three,'the choice bar sits in Step 2, before Check');
+ assert.match(page,/<div className="asc-steps ssc-steps"/,'the three steps stand one under the other');
+ assert.equal(page.split('<TripCardFilters ').length,2,'one choice bar');
+ assert.ok(page.slice(bar,three).includes('aria-label="Site of this attendance sheet"'),'the site is chosen in the same bar');
+ assert.ok(page.slice(three).includes('Download Excel of this selection'),'the download of a selection sits with Check');
+ assert.doesNotMatch(page,/onDownload=/,'no second download button in the bar');
+});
+
+test('Select by: Date to date, Batch wise or Batch + dates (owner, 24 Nov 2026)',()=>{
+ assert.deepEqual(SELECT_BY.map(w=>[w.key,w.label]),[['dates','Date to date'],['batch','Batch wise'],['both','Batch + dates']]);
+ const chosen={logBook:'VLB',batch:'Sasti VLB Batch 1',from:iso(5),to:iso(9)};
+ assert.deepEqual(selectionOf({...chosen,by:'dates'}),{logBook:'VLB',batch:'',from:iso(5),to:iso(9)},'dates: every batch');
+ assert.deepEqual(selectionOf({...chosen,by:'batch'}),{logBook:'VLB',batch:'Sasti VLB Batch 1',from:'',to:''},'batch: every date read');
+ assert.deepEqual(selectionOf({...chosen,by:'both'}),{...chosen},'both: the batch within the dates');
+ assert.deepEqual(selectionOf(chosen),selectionOf({...chosen,by:'dates'}),'Date to date is the first choice');
+ const read=name=>fs.readFileSync(new URL(name,import.meta.url),'utf8');
+ assert.match(read('../src/site-sheet-trip-card.jsx'),/ways=\{SELECT_BY\}/);
+ assert.match(read('../src/site-sheet-trip-card.jsx'),/siteSheetView\(\{sheet:tab\.file\.sheet,data:tab\.run\.done\.data,site:tab\.run\.done\.site,\.\.\.selectionOf\(tab\.filter\),sheetBook:book\}\)/,'each log book tab is seen through its own choice');
+ const bar=read('../src/trip-card-verdict.jsx');
+ assert.match(bar,/\{by!=='dates'&&<label>Batch/,'Date to date hides the batch');
+ assert.equal(bar.split("{by!=='batch'&&<label>").length,3,'Batch wise hides From and To');
+ assert.doesNotMatch(read('../src/trip-card-biopunch.jsx'),/ways=/,'Trip Card vs Bio-punch keeps batch and dates together');
 });
