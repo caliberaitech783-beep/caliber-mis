@@ -29,7 +29,8 @@ export function hrMasterChangeSheets(preview){
  ];
 }
 
-export default function HrMasterImport({session,onApplied}){
+// locked: Apply is switched off until the owner allows it on Telegram (src/employee-master-door.jsx). Looking at the changes stays open.
+export default function HrMasterImport({session,onApplied,locked=false}){
  const [owner,setOwner]=useState(null),[busy,setBusy]=useState(''),[error,setError]=useState(''),[notice,setNotice]=useState('');
  const [preview,setPreview]=useState(null),[problems,setProblems]=useState(null),[sure,setSure]=useState(false);
  const file=useRef(),sheet=useRef(null),leaveOut=useRef(false);
@@ -100,7 +101,7 @@ export default function HrMasterImport({session,onApplied}){
    {!preview.first&&<label className="hr-master-sites"><input type="checkbox" checked={preview.applySites} disabled={Boolean(busy)} onChange={event=>look(event.target.checked)}/> Also take HR's site for the people whose site differs</label>}
    <div className="employee-actions">
     <button type="button" onClick={download} disabled={Boolean(busy)}>Download the list of changes (Excel)</button>
-    {!sure?<button type="button" onClick={()=>setSure(true)} disabled={Boolean(busy)}>Apply to Employee Master</button>
+    {!sure?<button type="button" onClick={()=>setSure(true)} disabled={Boolean(busy)||locked} title={locked?'Switched off: employees are changed only in HR Pulse.':undefined}>Apply to Employee Master</button>
      :<><button type="button" className="hr-master-apply" onClick={apply} disabled={Boolean(busy)}>Yes, apply HR's master now</button><button type="button" onClick={()=>setSure(false)} disabled={Boolean(busy)}>Not now</button></>}
    </div>
   </div>}

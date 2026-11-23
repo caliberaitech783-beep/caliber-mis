@@ -46,6 +46,7 @@ import {sharedMisDashboardIdentity} from './server/rules/mis-dashboard-identity.
 import {registerMasterSync} from './server/routes/master-sync.mjs';
 import {createHrEmployeeSync} from './server/services/hr-employee-sync.mjs';
 import {registerEmployeeMaster} from './server/routes/employee-master.mjs';
+import {createEmployeeMasterDoor,registerEmployeeMasterDoor} from './server/routes/employee-master-door.mjs';
 import {registerHrMasterImport} from './server/routes/hr-master-import.mjs';
 import {registerAFormMaster} from './server/routes/a-form-master.mjs';
 import {registerErpEmployees} from './server/routes/erp-employee-source.mjs';
@@ -8056,7 +8057,11 @@ const releaseOtp=registerReleaseOtp(app,{pool,
  verifyIdentity:releaseIdentity,audit:releaseAudit,
  // Approve / Reject may also be asked for by "Merge a PR and make it live" (merge-and-release.yml).
  verifyApprovalIdentity:releaseApprovalIdentity});
-telegramCallbacks.handle=input=>releaseOtp.handleTelegramCallback(input);
+// Owner, 23 Nov 2026: an employee is created, edited and deleted only in HR Pulse. Every Pulse-II door that
+// does so is switched off and opens only when the owner taps Allow on Telegram (shared/employee-master-door.mjs).
+const employeeMasterDoor=createEmployeeMasterDoor({pool,sendButtons:(chatId,text,buttons,options)=>misTelegram.sendButtons(chatId,text,buttons,options)});
+// A tapped button belongs to a release approval or to the Employee Master door; each knows its own buttons.
+telegramCallbacks.handle=async input=>(await releaseOtp.handleTelegramCallback(input))??employeeMasterDoor.handleTelegramCallback(input);
 // After every production release the workflow reports what it deployed; the owner gets it on Telegram.
 registerReleaseReport(app,{verifyIdentity:releaseIdentity,ownerLogins:()=>ownerTelegramLogins(pool),
  telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain(),inChannel:(channel,person)=>misTelegram.inChannel(channel,person)}),audit:releaseAudit});
@@ -8074,9 +8079,10 @@ const logBookScope=session=>{
   return req.logBookScopeRead.scope;
 };
 registerErpEmployees(app,{pool,requireSession,requireAdministrator,getSiteScope:logBookScope});
-registerEmployeeMaster(app,{pool,requireSession,requireAdministrator});
+registerEmployeeMasterDoor(app,{door:employeeMasterDoor,requireSession,requireAdministrator});
+registerEmployeeMaster(app,{pool,requireSession,requireAdministrator,door:employeeMasterDoor});
 // HR's all-sites Excel as the Employee Master: preview and apply (shared/hr-employee-master.mjs).
-registerHrMasterImport(app,{pool,requireSession,requireAdministrator});
+registerHrMasterImport(app,{pool,requireSession,requireAdministrator,door:employeeMasterDoor});
 // A Form Master: A Form no., CMLL id and site linked for scanned cards and biometric files (shared/a-form-master.mjs).
 registerAFormMaster(app,{pool,requireSession,requireAdministrator});
 const scanImageStorage=createScanBlobStorage(scanBlobConfig());
