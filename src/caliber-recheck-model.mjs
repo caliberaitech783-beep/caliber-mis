@@ -15,26 +15,28 @@ export function recheckDates(from,to){
 }
 // What is held is the server's answer for each date asked, so a date asked again (after a driver is chosen) simply
 // replaces its earlier answer.
-export const emptyRecheck=()=>({cards:0,confirmed:0,listed:[],sites:new Map(),days:0,canApply:false,answers:new Map()});
+// corrected: the cards that carry a correction (owner, 23 Nov 2026: Submit corrects the card at once, so its line
+// leaves the list; the count is what shows the work done).
+export const emptyRecheck=()=>({cards:0,confirmed:0,corrected:0,listed:[],sites:new Map(),days:0,canApply:false,answers:new Map()});
 export function addRecheckAnswer(held,answer){
  const answers=new Map(held.answers);
  answers.set(answer.from,answer);
- const sites=new Map(),listed=[];let cards=0,confirmed=0;
+ const sites=new Map(),listed=[];let cards=0,confirmed=0,corrected=0;
  for(const one of [...answers.values()].sort((a,b)=>a.from<b.from?-1:1)){
-  cards+=one.cards||0;confirmed+=one.confirmed||0;listed.push(...(one.listed||[]));
-  for(const site of one.sites||[]){const now=sites.get(site.key)||{key:site.key,site:site.site,cards:0,confirmed:0};sites.set(site.key,{...now,cards:now.cards+site.cards,confirmed:now.confirmed+(site.confirmed||0)});}
+  cards+=one.cards||0;confirmed+=one.confirmed||0;corrected+=one.corrected||0;listed.push(...(one.listed||[]));
+  for(const site of one.sites||[]){const now=sites.get(site.key)||{key:site.key,site:site.site,cards:0,confirmed:0,corrected:0};sites.set(site.key,{...now,cards:now.cards+site.cards,confirmed:now.confirmed+(site.confirmed||0),corrected:now.corrected+(site.corrected||0)});}
  }
- return {cards,confirmed,listed,sites,days:answers.size,canApply:Boolean(answer.canApply),answers};
+ return {cards,confirmed,corrected,listed,sites,days:answers.size,canApply:Boolean(answer.canApply),answers};
 }
 const countOf=rows=>({listed:rows.length,picked:rows.filter(row=>row.pick).length});
 // Step 1: one line per site, the most cards to check on top, and the line of all sites.
 export function recheckSiteRows(held){
  const bySite=new Map();
  for(const row of held.listed){if(!bySite.has(row.siteKey))bySite.set(row.siteKey,[]);bySite.get(row.siteKey).push(row);}
- const rows=[...held.sites.values()].map(site=>{const counts=countOf(bySite.get(site.key)||[]);return {id:site.key,key:site.key,site:site.site,cards:site.cards,confirmed:site.confirmed||0,...counts,open:counts.listed-counts.picked};})
+ const rows=[...held.sites.values()].map(site=>{const counts=countOf(bySite.get(site.key)||[]);return {id:site.key,key:site.key,site:site.site,cards:site.cards,confirmed:site.confirmed||0,corrected:site.corrected||0,...counts,open:counts.listed-counts.picked};})
   .sort((a,b)=>b.listed-a.listed||a.site.localeCompare(b.site));
  const all=countOf(held.listed);
- return {rows,total:{id:EVERY,key:EVERY,total:true,site:'All sites',cards:held.cards,confirmed:held.confirmed||0,...all,open:all.listed-all.picked}};
+ return {rows,total:{id:EVERY,key:EVERY,total:true,site:'All sites',cards:held.cards,confirmed:held.confirmed||0,corrected:held.corrected||0,...all,open:all.listed-all.picked}};
 }
 export const cardsOfSite=(held,siteKey)=>siteKey===EVERY?held.listed:held.listed.filter(row=>row.siteKey===siteKey);
 // Step 2: one row per date and shift (and site, when all sites are open) with its cards to check.
