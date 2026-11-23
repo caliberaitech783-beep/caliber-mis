@@ -39,7 +39,7 @@ import { siteReportHtml } from "./site-report.mjs";
 import { isIdleVehicleRequest } from "../shared/request-idle.mjs";
 import { requestStatusLabel, requestStatusSortRank } from "./request-status.mjs";
 import { openSmartPrint, printFitScale, printPageSize, setSmartPrintExporter, setSmartPrintPrinterSource, smartPrintReportParts } from "./smart-print.mjs";
-import { chooseSaveTarget, claudeAppPane, saveAsAvailable, saveOutcomeMessage, saveToTarget } from "./save-as.mjs";
+import { saveOutcomeMessage } from "./save-as.mjs";
 import { downloadBlob } from "./download-history.mjs";
 import DownloadHistoryButton from "./download-history.jsx";
 import { registerSmartPrintMenu } from "./table-smart-print.jsx";
@@ -3963,11 +3963,10 @@ async function exportSmartPrintSelection({ format, title, sourceTitle=title, col
   const exportRows = rows.map((row) => columns.map((column) => exportCellText(column.value?.(row))));
   const highlightedRows = new Set(rows.flatMap((row, index) => highlightRow?.(row) ? [index] : []));
   if (format === "xlsx") {
-    // Excel asks where to save first (Save As window); Cancel there stops the export.
-    const fileName = exportFileName(title, "xlsx"), target = await chooseSaveTarget(fileName);
+    const fileName = exportFileName(title, "xlsx");
     recordUserActivity({module:"Reports",action:"Download Excel report",targetReference:title,reason:`${rows.length} records`});
-    return saveToTarget(target, buildXlsxWorkbook(title, columns, exportRows, highlightedRows, rows), fileName, downloadExportFile,
-      { onWriteError: (error) => { void reportClientError(error, { kind: "export", componentStack: `Excel could not be written where chosen: ${title}` }); } });
+    downloadExportFile(buildXlsxWorkbook(title, columns, exportRows, highlightedRows, rows), fileName);
+    return {name:fileName, saved:false};
   }
   recordUserActivity({module:"Reports",action:"Download PDF report",targetReference:title,reason:`${rows.length} records`});
   const appendixTables = appendices.map((appendix) => ({
@@ -4001,7 +4000,7 @@ function PrintButton({ title, columns = [], rows = [], className = "secondary", 
 // printSection: Smart Print captures the dashboard section (.mine-panel) holding the menu, as it is on screen.
 // excelSheets: a function returning [{name, title, columns, rows}]; Excel then has one sheet per table.
 // source: for a table drawn by hand, a function that reads {columns, rows} from the screen when an item is clicked.
-// The same three items everywhere, in this order: Export PDF (A3), Export Excel (Save As), Smart Print.
+// The same three items everywhere, in this order: Export PDF (A3), Export Excel, Smart Print.
 function ExportMenu({ title, columns = [], rows = [], smartPrintColumns = columns, smartPrintRows = rows, className = "secondary", label = "Smart Print", printOnly = false, smartPrintItem = true, highlightRow, reportGrouping, dashboardPdf = false, portalClassName = "", printSection = false, excelSheets = null, source = null, onSmartPrint = null }) {
   const {shifts}=useRequestShiftData();
   columns=requestShiftColumns(columns,rows,shifts);
@@ -4066,25 +4065,19 @@ function ExportMenu({ title, columns = [], rows = [], smartPrintColumns = column
       }
     }, 50);
   };
-  // Export Excel: the Save As window opens first, while the click is still fresh, then the workbook is built
-  // from the columns and rows as they are on screen and written to the chosen place.
-  const downloadExcel = async () => {
-    setOpen(false);
-    if (exportRunning.current) { beginDownload("Excel").error(new Error("another export from this table is still being prepared. Wait for it to finish, then export again.")); return; }
-    const model = excelSheets ? null : currentModel();
-    if (!excelSheets && !model) return;
-    const fileName = exportFileName(title, "xlsx");
-    // A place that cannot be written: the file goes to Downloads and the reason reaches the Diagnostics page.
-    const onWriteError = (error) => { void reportClientError(error, { kind: "export", componentStack: `Excel could not be written where chosen: ${title}` }); };
-    let target;
-    try { target = await chooseSaveTarget(fileName); } catch { return; }
+  const downloadExcel = () => {
     runDownload("Preparing Excel report...", () => {
+      const model = excelSheets ? null : currentModel();
+      if (!excelSheets && !model) throw new Error("There is no table to export.");
+      const fileName = exportFileName(title, "xlsx");
       const sheets = excelSheets?.();
       recordUserActivity({module:"Reports",action:"Download Excel report",targetReference:title,reason:sheets ? `${sheets.length} sheets` : `${model.rows.length} records`});
-      if (sheets) return saveToTarget(target, buildXlsxSheetsWorkbook(title, prepareXlsxExportSheets({ title, sheets, formatCell: exportCellText })), fileName, downloadExportFile, { onWriteError });
-      const exportRows = model.rows.map((row) => model.columns.map((column) => exportCellText(column.value?.(row))));
-      const highlightedRows = new Set(model.rows.flatMap((row, index) => highlightRow?.(row) ? [index] : []));
-      return saveToTarget(target, buildXlsxWorkbook(title, model.columns, exportRows, highlightedRows, model.rows), fileName, downloadExportFile, { onWriteError });
+      const highlightedRows = sheets ? undefined : new Set(model.rows.flatMap((row, index) => highlightRow?.(row) ? [index] : []));
+      const workbook = sheets
+        ? buildXlsxSheetsWorkbook(title, prepareXlsxExportSheets({ title, sheets, formatCell: exportCellText }))
+        : buildXlsxWorkbook(title, model.columns, [], highlightedRows, model.rows);
+      downloadExportFile(workbook, fileName);
+      return {name:fileName, saved:false};
     });
   };
   // Export PDF (A3): one click, an A3 landscape file of the columns and rows as they are on screen.
@@ -4125,7 +4118,7 @@ function ExportMenu({ title, columns = [], rows = [], smartPrintColumns = column
     openSmartPrint({ title, columns: model.smartPrintColumns, rows: model.smartPrintRows, highlightRow, reportGrouping, onPrint: printTableReport, formatCell: exportCellText });
   };
   if (printOnly) return <button type="button" className={className} onClick={printReport} aria-label={`Smart Print ${title}`}><Printer /><span>Smart Print</span></button>;
-  return <><div className="export-menu"><button ref={triggerRef} type="button" className={`${className} export-menu-trigger`} onClick={() => setOpen((current) => !current)} disabled={Boolean(downloadActivity)} aria-expanded={open} aria-haspopup="menu"><Printer /><span>{label}</span><ChevronDown /></button>{open && createPortal(<div className={`export-menu-popover${portalClassName ? ` ${portalClassName}` : ""}`} style={popoverPosition} role="menu" aria-label={`${title} export options`}><button type="button" role="menuitem" onClick={downloadPdf} disabled={Boolean(downloadActivity)}><Download /> Export PDF (A3)</button><button type="button" role="menuitem" onClick={downloadExcel} disabled={Boolean(downloadActivity)} title={saveAsAvailable() ? "Opens the Save As window: choose the folder and the file name" : claudeAppPane() ? "A Save As window opens: choose the folder and press Save" : undefined}><FileSpreadsheet /> {saveAsAvailable() ? "Export Excel (Save As)" : "Export Excel"}</button>{smartPrintItem && <button type="button" role="menuitem" onClick={printReport}><Printer /> Smart Print</button>}</div>, reportPortalTarget())}</div><CaliberActivityOverlay message={downloadActivity} className={portalClassName} /></>;
+  return <><div className="export-menu"><button ref={triggerRef} type="button" className={`${className} export-menu-trigger`} onClick={() => setOpen((current) => !current)} disabled={Boolean(downloadActivity)} aria-expanded={open} aria-haspopup="menu"><Printer /><span>{label}</span><ChevronDown /></button>{open && createPortal(<div className={`export-menu-popover${portalClassName ? ` ${portalClassName}` : ""}`} style={popoverPosition} role="menu" aria-label={`${title} export options`}><button type="button" role="menuitem" onClick={downloadPdf} disabled={Boolean(downloadActivity)}><Download /> Export PDF (A3)</button><button type="button" role="menuitem" onClick={downloadExcel} disabled={Boolean(downloadActivity)} title="Download this report as an Excel workbook"><FileSpreadsheet /> Export Excel</button>{smartPrintItem && <button type="button" role="menuitem" onClick={printReport}><Printer /> Smart Print</button>}</div>, reportPortalTarget())}</div><CaliberActivityOverlay message={downloadActivity} className={portalClassName} /></>;
 }
 // Screens that draw their own table reach this menu through <TableSmartPrint/>.
 registerSmartPrintMenu(ExportMenu);
