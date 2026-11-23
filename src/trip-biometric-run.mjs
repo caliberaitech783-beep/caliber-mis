@@ -5,6 +5,8 @@ import {biometricDays,biometricRange,tripBiometricCheck,tripBiometricWorkbook} f
 import {buildXlsxSheetsWorkbook} from '../shared/report-xlsx.mjs';
 import {formatDisplayDateTime} from '../shared/date-time-format.mjs';
 import {sheetApi,todayIst} from './attendance-sheet-run.mjs';
+import {lineNumber} from '../shared/attendance-sheet-check.mjs';
+import {canonicalSiteName} from '../shared/site-location.mjs';
 
 export {sheetApi,todayIst};
 
@@ -20,6 +22,30 @@ export async function readBiometricFile(file,reader){
  const content=await file.text();
  if(/\.csv$/.test(name)&&!/\t/.test(content.slice(0,2000)))return biometricDays({rows:content.split(/\r?\n/).map(line=>line.split(',').map(cell=>cell.replace(/^"|"$/g,'').trim()))});
  return biometricDays({content});
+}
+
+export const SOURCE_CHOICES=[
+ {value:'both',label:'Both: machine direct + imported'},
+ {value:'machine',label:'Machine direct (HR Pulse) only'},
+ {value:'imported',label:'Imported in app only'},
+];
+const slug=value=>String(value).replace(/[^A-Za-z0-9]+/g,'-').replace(/^-|-$/g,'');
+
+// The punches Pulse-II already has (owner, 23 Nov 2026): machine direct from HR Pulse and those imported on Attendance
+// Management, for a site and dates, set beside trip card attendance. Returns {result, biometric, title, blob, name}.
+export async function runHeldBiometricCheck({site,from,to,source='both',session,read=sheetApi,build=buildXlsxSheetsWorkbook}){
+ const attendance=await read('/api/reports/manpower/attendance?'+new URLSearchParams({from,to,view:'attendance'}),session);
+ const lines=[...(attendance.otDuties||[]),...(attendance.attendanceEquipment||[])];
+ const siteKey=canonicalSiteName(site);
+ const onCards=[...new Set(lines.filter(l=>canonicalSiteName(l.siteKey||l.site)===siteKey).map(lineNumber).filter(Boolean))];
+ const biometric=await read('/api/reports/manpower/attendance-sheet/biometric',session,{method:'POST',body:JSON.stringify({site,from,to,source,numbers:onCards})});
+ if(!biometric.machine?.connected&&biometric.machine?.asked&&!biometric.imported?.asked)throw Error(biometric.machine.error||'The machine punches could not be read.');
+ const numbers=[...new Set([...biometric.days.map(d=>d.caliberCode),...lines.map(lineNumber).filter(Boolean)])];
+ const master=await read('/api/reports/manpower/attendance-sheet/people',session,{method:'POST',body:JSON.stringify({site,ids:numbers.slice(0,5000)})});
+ const result=tripBiometricCheck({days:biometric.days,lines,lockedDays:attendance.lockedDays||[],people:master.people||[],site:master.site||site,from,to});
+ const label=SOURCE_CHOICES.find(c=>c.value===source)?.label||'';
+ const book=tripBiometricWorkbook(result,{fileName:'biometric: '+label,checkedAt:formatDisplayDateTime(new Date())});
+ return {result,biometric,title:book.title,blob:build(book.title,book.sheets),name:`Trip-card-vs-biometric-${slug(result.site)}-${from}-to-${to}.xlsx`};
 }
 
 // Reads Pulse-II for the dates of the file and compares. Returns {result, range, title, blob, name}.

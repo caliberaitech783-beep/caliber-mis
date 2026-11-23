@@ -168,6 +168,8 @@ export function createHrEmployeeSync({pool,key=process.env.HR_SYNC_KEY,base=proc
   employees:()=>read('employees'),
   // The approved transfers HR holds, for a cheap look before the whole transfer copy.
   transfers:()=>read('transfers'),
+  // The site machines' punches of up to 31 days (caliber-hr server/mis-biometric-punches.mjs), for Attendance Sheet Mismatch.
+  biometricPunches:({from,to})=>read('biometric-punches?'+new URLSearchParams({from,to})),
   sendSiteMove,
   async count(name){
    if(name!==HR_EMPLOYEE_TRANSFER)return null;

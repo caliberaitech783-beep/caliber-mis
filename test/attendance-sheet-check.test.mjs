@@ -268,8 +268,8 @@ function fakeApp(){
 }
 test('the reads follow the sites of the login and refuse what cannot be checked',async()=>{
  const app=fakeApp();let asked=0;
- registerAttendanceSheetCheck(app,{pool:{},protect:[(req,res,next)=>next()],readIndex:async()=>{asked++;return INDEX;}});
- assert.deepEqual([...app.routes.keys()],['GET /api/reports/manpower/attendance-sheet/sites','POST /api/reports/manpower/attendance-sheet/people']);
+ registerAttendanceSheetCheck(app,{pool:{},protect:[(req,res,next)=>next()],readIndex:async()=>{asked++;return INDEX;},hrPunches:async()=>({sites:[],punches:[]})});
+ assert.deepEqual([...app.routes.keys()],['POST /api/reports/manpower/attendance-sheet/biometric','GET /api/reports/manpower/attendance-sheet/sites','POST /api/reports/manpower/attendance-sheet/people']);
  const everySite={sites:null},oneSite={sites:['sasti ob'],label:'Sasti OC'};
  assert.equal((await app.call('GET /api/reports/manpower/attendance-sheet/sites',{logBookScope:everySite})).body.sites.length,8);
  assert.deepEqual((await app.call('GET /api/reports/manpower/attendance-sheet/sites',{logBookScope:oneSite})).body.sites,['Sasti OC']);
