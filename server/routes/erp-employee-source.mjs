@@ -16,6 +16,7 @@ export function hrRefreshBlockLine(held){
  if(held?.reason==='two-lines')return 'HR Pulse has this ID on more than one line.'+CONTACT_HR;
  return 'HR Pulse holds this ID in a form Pulse-II cannot use.'+CONTACT_HR;
 }
+export const REFRESH_NOT_CONNECTED='Pulse-II is not connected to HR Pulse right now, so it could not be asked. Please tell your MIS administrator.';
 // hrCopy: () => the copy from HR Pulse (server/services/hr-employee-minute-copy.mjs), asked when a person presses Refresh.
 export function registerErpEmployees(app,{pool,requireSession,requireAdministrator,getSiteScope=async session=>logBookSiteScope(session),hrCopy=()=>null}){
  // refresh:true on a refusal tells the Fetch box to offer Refresh: the number is one HR settles (not found, or left).
@@ -71,10 +72,13 @@ export function registerErpEmployees(app,{pool,requireSession,requireAdministrat
   const id=String(req.body.caliberId||'').trim().toUpperCase();
   if(!/^[A-Z0-9-]{1,40}$/.test(id))return res.status(400).json({error:'Enter a valid Employee ID or Caliber ID.'});
   const copy=hrCopy();
-  if(!copy)return res.status(503).json({error:'HR Pulse is not connected to Pulse-II yet, so it could not be asked.'+CONTACT_HR,refresh:true});
+  // 503: this server has no connection to HR Pulse at all (its key is missing), so pressing again will not help and
+  // HR cannot help either: the person is sent to the MIS administrator. (23 Nov 2026: the line said "did not answer.
+  // Press Refresh again in a minute" while the key was gone.) 502: HR Pulse was asked and did not answer in time.
+  if(!copy)return res.status(503).json({error:REFRESH_NOT_CONNECTED,refresh:true});
   let asked;
   try{asked=await copy.person(id,{by:String(req.session?.login||req.session?.name||'')});}
-  catch(e){if(!e.status)throw e;return res.status(e.status).json({error:e.status>=500?'HR Pulse did not answer. Press Refresh again in a minute.':e.message,refresh:true});}
+  catch(e){if(!e.status)throw e;return res.status(e.status).json({error:e.status===503?REFRESH_NOT_CONNECTED:e.status>=500?'HR Pulse did not answer. Press Refresh again in a minute.':e.message,refresh:true});}
   if(!asked.found)return res.status(404).json({error:ID_NOT_FOUND,refresh:true});
   if(asked.blocked)return res.status(409).json({error:hrRefreshBlockLine(asked.blocked),refresh:true});
   if(asked.changed)req.audit={eventType:'Master data',module:'Employee master',action:'Refresh from HR Pulse',targetType:'Employee',targetReference:id,details:{added:asked.added===true,site:location}};

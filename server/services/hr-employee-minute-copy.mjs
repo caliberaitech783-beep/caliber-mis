@@ -20,6 +20,9 @@ import {applyEmployeeSiteMove,EMPLOYEE_SITE_MOVE_SCHEMA} from '../routes/employe
 export const HR_COPY_STATE_KEY='hr_employee_copy';
 export const HR_COPY_INTERVAL_MS=60*1000;
 export const HR_COPY_SILENT_MINUTES=10;
+// While no server can reach HR Pulse (the key is missing), the people are told again this often.
+export const HR_COPY_DISCONNECTED_REMIND_MINUTES=60;
+export const HR_COPY_NOT_CONNECTED='Pulse-II is not connected to HR Pulse: the server setting HR_SYNC_KEY is missing. Nothing is being copied.';
 // A Refresh at a card reads HR Pulse's whole list; several presses within this time share one read.
 export const HR_REFRESH_KEEP_MS=20*1000;
 // What is held for a number and changes nothing for it: the person at the card is sent to HR.
@@ -61,8 +64,9 @@ export const matchDue=(state,at)=>state?.started===true&&!state.stopped&&istHour
  &&!(state.matchTriedAt&&at-Date.parse(state.matchTriedAt)<HR_MATCH_RETRY_MINUTES*60*1000);
 const istClock=at=>new Intl.DateTimeFormat('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(at));
 
-export function createHrEmployeeMinuteCopy({pool,hr,now=()=>Date.now(),alert=async()=>{}}){
- let schema=null,running=false,timer=null,first=null,matching=null;
+// live: is this the live server (server/services/health-report.mjs, isLiveSlot)? Only it tells that its key is missing.
+export function createHrEmployeeMinuteCopy({pool,hr,now=()=>Date.now(),alert=async()=>{},live=true}){
+ let schema=null,running=false,timer=null,first=null,matching=null,keyMissingSince=0;
  const ensure=()=>schema??=pool.query(SETTINGS_SCHEMA).then(()=>pool.query(EMPLOYEE_SITE_MOVE_SCHEMA)).catch(error=>{schema=null;throw error;});
  const iso=()=>new Date(now()).toISOString();
  const readState=async()=>{await ensure();return (await pool.query(READ_SQL,[HR_COPY_STATE_KEY])).rows[0]?.setting_value||{};};
@@ -104,9 +108,36 @@ export function createHrEmployeeMinuteCopy({pool,hr,now=()=>Date.now(),alert=asy
   return [...kept,...nowHeld.map(item=>({...item,since:since.get(item.number+'|'+item.reason)||at}))].slice(-HELD_LIMIT);
  };
 
+ // This server has no key for HR Pulse (the Azure setting HR_SYNC_KEY), so it can copy nothing.
+ // On 23 Nov 2026 a release moved that key off the live server: the copy stood still for 22 minutes, Refresh at a
+ // card could not ask HR Pulse, and nobody was told, because a server without the key simply skipped its minute.
+ // Only the live server speaks (the test slot is never told about), and it speaks for itself: once it has been
+ // without the key for HR_COPY_SILENT_MINUTES the release approvers are told on Telegram, and again every
+ // HR_COPY_DISCONNECTED_REMIND_MINUTES while it lasts. The other slot may still be copying Employee Master at that
+ // moment; Refresh at a card is answered by the live server, so it is told all the same, and the message says which.
+ // It never touches lastRunAt, which would make a server that has the key skip its own minute.
+ async function notConnected(){
+  if(hr.configured()){keyMissingSince=0;return {skipped:'connected'};}
+  if(!live)return {skipped:'not connected'};
+  if(!keyMissingSince)keyMissingSince=now();
+  if(now()-keyMissingSince<HR_COPY_SILENT_MINUTES*60*1000)return {skipped:'not connected'};
+  const state=await readState();
+  // Before the copy from HR Pulse was ever started there is no connection to lose.
+  if(!state.started)return {skipped:'not connected'};
+  const told=Date.parse(state.disconnected?.toldAt);
+  if(Number.isFinite(told)&&now()-told<HR_COPY_DISCONNECTED_REMIND_MINUTES*60*1000)return {skipped:'not connected'};
+  const toldAt=iso(),copied=Date.parse(state.lastOkAt),copying=Number.isFinite(copied)&&now()-copied<HR_COPY_SILENT_MINUTES*60*1000;
+  await saveState({disconnected:{since:new Date(keyMissingSince).toISOString(),toldAt},...(copying?{}:{error:HR_COPY_NOT_CONNECTED})});
+  await tell(`hr-employee-copy:not-connected:${toldAt.slice(0,16)}`,`⛔ The live server of Pulse-II has not been connected to HR Pulse since ${istClock(keyMissingSince)} IST. Refresh at a card cannot ask HR Pulse${copying?'. Employee Master is still being copied by the other server':', and Employee Master changes and transfers are not coming'}.\nCause: the server setting HR_SYNC_KEY is missing on the live server. It must be saved on both slots and kept with each slot (Azure, App Service settings).`);
+  return {skipped:'not connected',told:true};
+ }
+ // The live server copied again: a later loss of the key is a new one, told afresh.
+ const connectedAgain=state=>live&&state.disconnected?{disconnected:null}:{};
+
  async function tick(){
   if(running)return {skipped:'running'};
   if(!hr.configured())return {skipped:'not connected'};
+  keyMissingSince=0;
   let state=await readState();
   if(!state.started)return {skipped:'not started'};
   if(state.stopped)return {skipped:'stopped'};
@@ -130,7 +161,7 @@ export function createHrEmployeeMinuteCopy({pool,hr,now=()=>Date.now(),alert=asy
     lines.push(...(feed.employees||[]));
     latest=text(feed.latest)||after;after=latest;rounds++;
    }while(feed.more&&rounds<MAX_ROUNDS);
-   if(!numbers.size){await saveState({lastRunAt:at,lastOkAt:at,seq:latest,error:'',failingSince:null,failureTold:false});return {ok:true,changed:0};}
+   if(!numbers.size){await saveState({lastRunAt:at,lastOkAt:at,seq:latest,error:'',failingSince:null,failureTold:false,...connectedAgain(state)});return {ok:true,changed:0};}
    const {plan,refusal,notMoved}=await copyPeople([...numbers],lines,{accepted:state.accepted||{},
     decide:made=>made.summary.switchedOff>HR_COPY_STOP_LIMIT?`This minute's changes from HR Pulse would switch off ${count(made.summary.switchedOff)} people (removed ${count(made.summary.removed)}, marked LEFT ${count(made.summary.left)}). Nothing was applied. Open Preview on Sync all masters, check and apply.`:''});
    if(refusal){
@@ -142,7 +173,7 @@ export function createHrEmployeeMinuteCopy({pool,hr,now=()=>Date.now(),alert=asy
    const held=heldAfter(before,[...numbers].map(value=>employeeNumber(value)),nowHeld,at);
    const fresh=nowHeld.filter(item=>!before.some(old=>old.number===item.number&&old.reason===item.reason));
    const wrote=plan.updates.length+plan.inserts.length+plan.offIds.length+plan.moves.length>0;
-   await saveState({lastRunAt:at,lastOkAt:at,seq:latest,held,error:'',failingSince:null,failureTold:false,...(wrote?{lastChangeAt:at,lastSummary:plan.summary}:{})});
+   await saveState({lastRunAt:at,lastOkAt:at,seq:latest,held,error:'',failingSince:null,failureTold:false,...connectedAgain(state),...(wrote?{lastChangeAt:at,lastSummary:plan.summary}:{})});
    if(fresh.length)await tell(`hr-employee-copy:held:${at}`,`⚠️ Employee Master copy from HR Pulse: ${count(fresh.length)} change${fresh.length===1?' is':'s are'} held for a person to look at (Sync all masters).\n${fresh.slice(0,5).map(item=>`${item.employeeId} ${item.name}: ${item.detail}`).join('\n')}`);
    return {ok:true,changed:numbers.size,summary:plan.summary,held:nowHeld.length};
   }catch(error){
@@ -251,7 +282,7 @@ export function createHrEmployeeMinuteCopy({pool,hr,now=()=>Date.now(),alert=asy
    lastMatch:state.lastMatch||null,matchHour:HR_MATCH_HOUR};
  };
  const run=()=>void tick().catch(error=>console.error('Employee Master copy from HR Pulse failed',error?.message));
- return {tick,start,accept,person,match,status,
+ return {tick,start,accept,person,match,notConnected,status,
   startTimer({firstDelayMs=90*1000}={}){if(timer||first)return;first=setTimeout(()=>{first=null;run();timer=setInterval(run,HR_COPY_INTERVAL_MS);timer.unref?.();},firstDelayMs);first.unref?.();},
   stopTimer(){clearTimeout(first);clearInterval(timer);first=null;timer=null;}};
 }

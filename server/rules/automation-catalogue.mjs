@@ -142,7 +142,7 @@ export const AUTOMATIONS=[
   telegram:context=>state(misBot(context)),whatsapp:context=>state(context.whatsappConfigured),popup:()=>null,count:{outbox:['employee-move-otp']},
   why:context=>[misBotWhy(context),whatsappWhy(context)],offWarning:CODE_WARNING},
  {code:'A27',key:'hr-employee-copy',name:'Employee Master copy from HR Pulse stopped or held',category:'Masters',
-  rule:'The minute copy of Employee Master from HR Pulse stops itself (one minute would switch off more than 50 people), holds a change for a person, or has not been able to copy for 10 minutes',
+  rule:'The minute copy of Employee Master from HR Pulse stops itself (one minute would switch off more than 50 people), holds a change for a person, has not been able to copy for 10 minutes, or the live server has lost its connection to HR Pulse (the server setting HR_SYNC_KEY is missing) for 10 minutes, told again every hour while it lasts',
   trigger:'At once, when it happens',people:'Owner (logins with the owner\'s registered mobile) and Mr Mohit Chadda',
   format:'What happened, how many people, the first few lines, and where to look (Sync all masters)',controlledIn:'This page',
   telegram:context=>state(misBot(context)),whatsapp:()=>null,popup:()=>null,count:{outbox:['hr-employee-copy']},

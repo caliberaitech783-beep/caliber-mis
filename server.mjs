@@ -8202,7 +8202,7 @@ const erpMasters=registerErpMasters(app,{pool,config:savedOracleConfig,requireSe
 // When it stops, holds a change or cannot copy, the release approvers (the owner's logins and Mr Mohit Chadda) are told on Telegram.
 const hrEmployeeSync=createHrEmployeeSync({pool});
 const hrEmployeeCopyTelegram=telegramOutboxSender(pool,{drain:()=>misTelegram.drain(),inChannel:(channel,person)=>misTelegram.inChannel(channel,person)});
-const hrEmployeeCopy=createHrEmployeeMinuteCopy({pool,hr:hrEmployeeSync,
+const hrEmployeeCopy=createHrEmployeeMinuteCopy({pool,hr:hrEmployeeSync,live:isLiveSlot(),
  alert:async(message,key)=>{for(const login of await releaseApproverLogins(pool)){try{await hrEmployeeCopyTelegram.send(login,message,`${key}:${login}`);}catch{/* the next person is still told */}}}});
 hrSiteMoveOutbox=createHrSiteMoveOutbox({pool,hr:hrEmployeeSync});
 const masterSync=registerMasterSync(app,{pool,pulse:pulseMasterSync,erp:erpMasters,hr:hrEmployeeSync,copy:hrEmployeeCopy,outbox:hrSiteMoveOutbox,requireSession,requireAdministrator});
