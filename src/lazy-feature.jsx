@@ -4,7 +4,8 @@ import { reportClientError } from "./client-error-report.mjs";
 
 const CHUNK_RECOVERY_KEY = "bdms:lazy-chunk-recovery-at";
 const CHUNK_RECOVERY_WINDOW_MS = 60_000;
-const CHUNK_FAILURE_PATTERN = /chunkloaderror|loading chunk|failed to fetch dynamically imported module|error loading dynamically imported module|importing a module script failed/i;
+// "Unable to preload CSS" is what the bundler raises when a screen's stylesheet from an older release is gone.
+const CHUNK_FAILURE_PATTERN = /chunkloaderror|loading chunk|failed to fetch dynamically imported module|error loading dynamically imported module|importing a module script failed|unable to preload css/i;
 
 export function isLazyChunkFailure(error) {
   const detail = [error?.name, error?.message, String(error || "")].filter(Boolean).join(" ");
