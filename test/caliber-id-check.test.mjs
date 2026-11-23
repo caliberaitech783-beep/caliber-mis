@@ -336,12 +336,12 @@ test('Submit pressed before the name came fetches and hands over; a refusal is s
  assert.equal(wrong.find(tree,n=>n.props?.role==='alert')[0].props.children,'No working driver has this number at this site.');
  assert.equal(wrong.resolved.length,0);
 
- // The page refuses the choice (thrown by onResolved): said on the line, and the person stays shown to submit again.
+ // The page refuses the choice (thrown by onResolved): said on the line, and "Press Submit to choose" goes with it.
  const refusedBox=await lookupBox({answers:recheckAnswers,scanMode:true,submitLabel:'Submit',onResolved:async()=>{throw new Error('Employee Master says this person has resigned.')}});
  tree=refusedBox.render();refusedBox.input(tree).props.onChange({target:{value:'1605'}});tree=refusedBox.render();await refusedBox.runTimers();tree=refusedBox.render();
  await refusedBox.buttons(tree)[1].props.onClick({});tree=refusedBox.render();
  assert.equal(refusedBox.find(tree,n=>n.props?.role==='alert')[0].props.children,'Employee Master says this person has resigned.');
- assert.ok(foundLine(refusedBox,tree));
+ assert.equal(foundLine(refusedBox,tree),undefined,'a refused person is not offered again');
 
  // An answer for a number the person has since changed is dropped.
  const late=await lookupBox({answers:recheckAnswers,scanMode:true,submitLabel:'Submit'});
