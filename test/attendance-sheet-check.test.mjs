@@ -247,7 +247,7 @@ const INDEX=buildAFormPeople([worker(1,901001,'RAM KUMAR','Sasti OC'),worker(2,9
 test('Employee Master answers for the IDs of the sheet, and lists who it holds working at the site',()=>{
  const answer=sheetPeopleAnswer(INDEX,'Sasti OC',['901001','901006','901007','901020','901021','909999']);
  const of=number=>answer.people.find(p=>p.number===number);
- assert.deepEqual(of('901001'),{number:'901001',found:true,name:'RAM KUMAR',designation:'TIPPER DRIVER',department:'',category:'',siteLabel:'Sasti OC',atSite:true,working:true,left:false});
+ assert.deepEqual(of('901001'),{number:'901001',found:true,name:'RAM KUMAR',designation:'TIPPER DRIVER',siteLabel:'Sasti OC',atSite:true,working:true,left:false});
  assert.deepEqual([of('901006').found,of('901006').working,of('901006').left],[true,false,true]);
  assert.deepEqual([of('901007').atSite,of('901007').siteLabel],[false,'Majri OC']);
  assert.deepEqual([of('901020').atSite,of('901020').siteLabel],[true,'Sasti OC'],'a number on two lines is read at this site first');
