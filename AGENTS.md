@@ -57,6 +57,15 @@ Set by the owner on 15 November 2026.
 - Leaving the card (no card selected, back to card status, another page) returns the sidebar to the user's own setting; the forced auto-hide is never saved as the user's setting.
 - `src/scan-card-sidebar.mjs` holds the rule; `test/scan-card-sidebar.test.mjs` checks it. Do not remove it.
 
+# Employee Master is changed only in HR Pulse
+
+Set by the owner on 23 November 2026: "Pulse HR is now the final authority for employee master. All the creation, edit, and delete will only happen from Pulse HR, not from Pulse 2", and of Pulse-II's own doors: "Stop it and switch it off till the time I don't allow from my Telegram."
+
+- Every Pulse-II route that adds or edits an employee answers 423 while the door is closed: Employee Master add, edit and Import CSV / JSON, HR's master Excel Apply, and Employee Current Location Save. The general master routes never write `Employee master` or `ERP Employee master`, open door or not.
+- The door opens only when the owner (`EMPLOYEE_DOOR_OWNER_LOGINS`) taps Allow on Telegram, for 30 minutes, and closes by itself. An administrator asks from the Employee Master page with a reason; an open door can be closed at once.
+- Not behind the door, because they happen while a batch is made or come from HR: the site move with OTP on a card, the "drives this vehicle" mark on Fetch, and transfers approved in HR. The owner wants these to reach HR Pulse too (two-way); that link is not built yet.
+- A new route that adds, edits or deletes an employee must take `door.requireOpen`. `shared/employee-master-door.mjs` holds the rule, `server/routes/employee-master-door.mjs` the lock and the Telegram buttons; `test/employee-master-door.test.mjs` checks it.
+
 # Employee Transfer from HR (Employee Master is not synced)
 
 Set by the owner on 23 November 2026: "do not sync Employee Master, sync only Employee Transfer".
