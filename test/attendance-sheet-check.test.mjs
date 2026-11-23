@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
-import {parseAttendanceSheet,checkAttendanceSheet,attendanceSheetWorkbook,sheetReadRange,sameName,markKind,headingDate,lineNumber,SHEET_FILLS,SHEET_LEGEND,CORRECTION_KINDS} from '../shared/attendance-sheet-check.mjs';
+import {parseAttendanceSheet,checkAttendanceSheet,attendanceSheetWorkbook,sheetReadRange,sameName,nameDifference,markKind,headingDate,lineNumber,SHEET_FILLS,SHEET_LEGEND,CORRECTION_KINDS} from '../shared/attendance-sheet-check.mjs';
 import {buildXlsxSheetsWorkbook} from '../shared/report-xlsx.mjs';
 import {buildAFormPeople} from '../shared/a-form-people.mjs';
 import {registerAttendanceSheetCheck,sheetPeopleAnswer} from '../server/routes/attendance-sheet-check.mjs';
@@ -38,8 +38,8 @@ const SHEET=[
 ];
 const SITE='Sasti OC',KEY='sasti ob';
 const master=(number,name,o={})=>({number:String(number),found:true,name,designation:'',siteLabel:SITE,atSite:true,working:true,left:false,...o});
-const PEOPLE=[master(901001,'Ram Kumar'),master(901002,'SHYAM LAL'),master(901003,'MOHAMMAD ARIF'),master(901004,'MOHAN DAS'),master(901005,'NEW NAME'),
- master(901006,'GONE MAN',{working:false,left:true,atSite:false,siteLabel:''}),master(901007,'FAR MAN',{atSite:false,siteLabel:'Majri OC'}),
+const PEOPLE=[master(901001,'Ram Kumar'),master(901002,'SHYAM LAL'),master(901003,'MOHAMMAD ARIF'),master(901004,'MOHAN DASS'),master(901005,'NEW NAME'),
+ master(901006,'GONE MAN',{working:false,left:true,atSite:false,siteLabel:''}),master(901007,'FAR MAN KHAN',{atSite:false,siteLabel:'Majri OC'}),
  {number:'909999',found:false,name:'',designation:'',siteLabel:'',atSite:false,working:false,left:false},
  master(901010,'TWICE MAN'),master(901012,'ODD MARK'),master(901013,'NEVER SCANNED')];
 const duty=(number,n,o={})=>({date:iso(n),shift:'S1',site:SITE,siteKey:KEY,caliberCode:'CMLL'+number,employeeId:'E'+number,employeeName:'N'+number,books:'TC'+number+'-'+n,doors:'V1',...o});
@@ -91,6 +91,22 @@ test('the same name written two ways is not a name mismatch; another name is',()
  for(const [a,b] of [['OLD NAME','NEW NAME'],['RAM KUMAR','RAM KUMAR YADAV'],['RAM','SHYAM'],['RAM','']])assert.equal(sameName(a,b),false,a+' / '+b);
 });
 
+// Owner, 23 Nov 2026 ("Yes, group them"): a site's first sheet gave 299 name mismatches, about 257 of them the same person
+// written differently. The sheet keeps one colour; the lists say which kind, so the ones that matter are found at once.
+test('a name mismatch is named by kind: spelling, fuller name, or another name',()=>{
+ for(const [a,b] of [['RAM KUMAR','Ram  Kumar'],['MD ARIF / RAHIM','MOHAMMAD ARIF']])assert.equal(nameDifference(a,b),'',a+' = '+b);
+ // The same words a letter or two apart, a missing space with a letter, or an initial for a word.
+ for(const [a,b] of [['AKSHAY VITTHAL MULE','AKSHAY VITHAL MULE'],['DINESH PRAJAPATI','DINESH PRAJAPATHI'],['RAMKUMAR SAHU','RAM KUMAAR SAHU'],['A K SINGH','ANIL KUMAR SINGH'],['MOHAN DAS','MOHAN DASS'],['RAM LAL','RAJ LAL']])
+  assert.equal(nameDifference(a,b),'spelling',a+' / '+b);
+ // One side has a surname or a father's name more; the rest pair up, a letter apart allowed.
+ for(const [a,b] of [['RAM KUMAR','RAM KUMAR YADAV'],['RAM KUMAR YADAV','RAM KUMAR'],['SANTOSH','SANTOSH KUMAR SAKET'],['RAKESH THAMKE','RAKESH MAROTI THAMAKE'],['FAR MAN','FAR MAN KHAN / OLD MAN KHAN']])
+  assert.equal(nameDifference(a,b),'fuller',a+' / '+b);
+ // Another name: the EMP. ID may belong to someone else.
+ for(const [a,b] of [['OLD NAME','NEW NAME'],['RAM','SHYAM'],['RAM KUMAR','SHYAM KUMAR'],['ALI KHAN','ANIL KHAN'],['RAM KUMAR YADAV','SURESH PATEL'],['RAM KUMAR','RAM SINGH YADAV']])
+  assert.equal(nameDifference(a,b),'other',a+' / '+b);
+ assert.deepEqual(Object.keys(CORRECTION_KINDS).filter(kind=>kind.startsWith('name-')),['name-other','name-fuller','name-spelling'],'the one that matters comes first in every list');
+});
+
 test('a Pulse-II duty belongs to its Employee ID when written as an ID, else to its Caliber ID',()=>{
  assert.equal(lineNumber({caliberCode:'CMLL77',employeeId:'CMPL901003'}),'901003','the sheet writes the Employee ID');
  assert.equal(lineNumber({caliberCode:'CMLL901001',employeeId:'55'}),'901001');
@@ -115,7 +131,12 @@ test('each kind of mismatch is found, with the correction required',()=>{
  assert.match(of('CMPL901004').remark,/Only days with a duty in Pulse-II are compared/);
  // P in the sheet, no duty; and the name differs.
  assert.deepEqual([cells('CMPL901005'),of('CMPL901005').nameDiffers,of('CMPL901005').difference],[['','','','noDuty'],true,1]);
- const name=result.corrections.find(c=>c.kind==='name');assert.deepEqual([name.id,name.sheetSays,name.pulseSays],['CMPL901005','OLD NAME','NEW NAME']);
+ const name=result.corrections.find(c=>c.kind==='name-other');assert.deepEqual([name.id,name.label,name.sheetSays,name.pulseSays],['CMPL901005','Name differs: another name','OLD NAME','NEW NAME']);
+ assert.match(name.correction,/First check that the ID belongs to this person: it may be wrong in the sheet/);
+ // The same person written differently is said as such: a fuller name, a spelling.
+ assert.deepEqual(result.corrections.filter(c=>c.kind.startsWith('name-')).map(c=>[c.id,c.kind,c.pulseSays]),[['CMPL901004','name-spelling','MOHAN DASS'],['CMPL901005','name-other','NEW NAME'],['CMPL901007','name-fuller','FAR MAN KHAN']]);
+ assert.deepEqual(['CMPL901001','CMPL901004','CMPL901005','CMPL901007'].map(id=>of(id).nameKind),['','spelling','other','fuller']);
+ assert.match(result.corrections.find(c=>c.kind==='name-fuller').correction,/written fuller on one side/);assert.match(result.corrections.find(c=>c.kind==='name-spelling').correction,/in another spelling/);
  assert.match(result.corrections.find(c=>c.kind==='no-duty'&&c.id==='CMPL901005').correction,/Save the missing card or zero-trip entry, or correct the sheet to A/);
  // HR marks LEFT, the sheet still marks P.
  assert.equal(of('CMPL901006').idIssue,'id-left');assert.equal(result.corrections.find(c=>c.kind==='id-left').pulseSays,'HR marks LEFT');
@@ -139,7 +160,7 @@ test('each kind of mismatch is found, with the correction required',()=>{
  assert.deepEqual(result.notInSheet.map(p=>[p.id,p.name,p.dates]),[['CMLL908888','EXTRA DRIVER',[iso(2)]]],'4 Nov has no column, so its duty is not held against the sheet');
  assert.deepEqual(result.listedOnly.map(p=>[p.id,p.name]),[['907777','LISTED ONLY']]);
  assert.deepEqual(result.noColumn,[{date:iso(4),duties:1,locked:true}]);
- assert.deepEqual(result.counts,{'no-id':1,'id-unreadable':1,'id-not-found':1,'id-twice':2,'id-left':1,name:1,site:1,'no-duty':3,duty:2,'other-site':1,mark:1,blank:1,'no-column':1,'not-in-sheet':1});
+ assert.deepEqual(result.counts,{'no-id':1,'id-unreadable':1,'id-not-found':1,'id-twice':2,'id-left':1,'name-other':1,'name-fuller':1,'name-spelling':1,site:1,'no-duty':3,duty:2,'other-site':1,mark:1,blank:1,'no-column':1,'not-in-sheet':1});
  // The person HR marks LEFT has P marks and no card: that is said as well, in one line.
  assert.deepEqual(result.corrections.filter(c=>c.id==='CMPL901006').map(c=>c.kind),['id-left','no-duty']);
  assert.equal(result.totals.corrections,result.corrections.length);
@@ -178,14 +199,18 @@ test('the Excel given back: the sheet again, each mismatch in its colour, the co
  assert.deepEqual(grid.headerRows.slice(1),SHEET_LEGEND.map(([,textLine])=>textLine));
  assert.match(grid.headerRows[1],/^RED on EMP\. ID = ID mismatch/);assert.match(grid.headerRows[2],/^YELLOW on NAME = name mismatch/);
  assert.deepEqual(grid.headerFills,{1:'id',2:'name',3:'site',4:'noDuty',5:'duty',6:'skip'});
- assert.deepEqual(grid.columns.map(c=>c.label).slice(0,10),['Row in sheet','SR NO','EMP. ID','NAME','Name in Pulse-II','DESIGNATION','01-11','02-11','03-11','05-11']);
+ assert.deepEqual(grid.columns.map(c=>c.label).slice(0,11),['Row in sheet','SR NO','EMP. ID','NAME','Name in Pulse-II','Name mismatch','DESIGNATION','01-11','02-11','03-11','05-11']);
+ assert.match(grid.headerRows[2],/the column "Name mismatch" says which kind: another name, fuller name, or spelling\.$/);
  const at=id=>grid.rows.findIndex(r=>r[2]===id);
  assert.deepEqual(grid.cellFills[at('CMPL901001')],{},'a line with nothing wrong has no colour');
- assert.deepEqual(grid.cellFills[at('CMPL901005')],{3:'name',9:'noDuty'},'name in yellow, the day in orange');
+ assert.deepEqual(grid.cellFills[at('CMPL901005')],{3:'name',10:'noDuty'},'name in yellow, the day in orange');
  assert.equal(grid.rows[at('CMPL901005')][4],'NEW NAME');assert.equal(grid.rows[at('CMPL901001')][4],'Same');assert.equal(grid.rows[at('CMPL909999')][4],'Not in Pulse-II');
+ // One yellow for every name mismatch; the kind is said in the next column.
+ assert.deepEqual(['CMPL901001','CMPL901004','CMPL901005','CMPL901007','CMPL909999'].map(id=>grid.rows[at(id)][5]),['','Spelling','Another name','Fuller name','']);
+ assert.equal(grid.cellFills[at('CMPL901004')][3],'name');
  assert.deepEqual(grid.cellFills[at('CMPL909999')],{2:'id'},'ID in red');
- assert.deepEqual(grid.cellFills[at('CMPL901007')],{2:'site',8:'site'});
- assert.deepEqual(grid.cellFills[at('CMPL901002')],{7:'duty'});
+ assert.deepEqual(grid.cellFills[at('CMPL901007')],{2:'site',3:'name',9:'site'});
+ assert.deepEqual(grid.cellFills[at('CMPL901002')],{8:'duty'});
  assert.equal(book.sheets.every(s=>s.plainSerial),true,'no red or orange serial number beside the colour key');
  assert.deepEqual(list.columns.map(c=>c.label),['Row in sheet','EMP. ID','Name in sheet','Name in Pulse-II','Designation','Date','Mismatch','Sheet says','Pulse-II says','Correction required','Trip cards / log books']);
  assert.equal(list.rows.length,check().corrections.length);

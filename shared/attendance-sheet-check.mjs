@@ -23,7 +23,7 @@ export const SHEET_MAX_PEOPLE=5000;
 export const SHEET_FILLS={id:'FFFF9E9E',name:'FFFFE066',site:'FFD9B8FF',noDuty:'FFFFC78A',duty:'FF9EC9FF',skip:'FFD9D9D9'};
 export const SHEET_LEGEND=[
  ['id','RED on EMP. ID = ID mismatch: the ID is not in Pulse-II Employee Master, cannot be read, is written twice in the sheet, or HR marks the person LEFT.'],
- ['name','YELLOW on NAME = name mismatch: the name in the sheet differs from Pulse-II. The Pulse-II name is in the column "Name in Pulse-II".'],
+ ['name','YELLOW on NAME = name mismatch: the name in the sheet differs from Pulse-II. The Pulse-II name is in the column "Name in Pulse-II"; the column "Name mismatch" says which kind: another name, fuller name, or spelling.'],
  ['site','PURPLE = another site: Pulse-II holds this person at another site (on EMP. ID), or his duty of that date is at another site (on the date).'],
  ['noDuty','ORANGE on a date = the sheet says P, Pulse-II has no trip card, log book or zero-trip entry for that date.'],
  ['duty','BLUE on a date = the sheet says A, PL, - or blank, Pulse-II has a duty saved for that date.'],
@@ -31,7 +31,9 @@ export const SHEET_LEGEND=[
 ];
 export const CORRECTION_KINDS={
  'no-id':'No EMP. ID','id-unreadable':'EMP. ID not readable','id-not-found':'EMP. ID not in Pulse-II','id-twice':'EMP. ID twice in the sheet','id-left':'HR marks LEFT',
- 'name':'Name differs','site':'Held at another site','no-duty':'P in the sheet, no duty in Pulse-II','duty':'Not P in the sheet, duty in Pulse-II',
+ // A name mismatch is one colour in the sheet and three kinds in the lists, the one that matters first (nameDifference).
+ 'name-other':'Name differs: another name','name-fuller':'Name differs: fuller name on one side','name-spelling':'Name differs: spelling or initials',
+ 'site':'Held at another site','no-duty':'P in the sheet, no duty in Pulse-II','duty':'Not P in the sheet, duty in Pulse-II',
  'other-site':'Duty at another site','mark':'Mark not understood','blank':'Blank mark','no-column':'Date missing in the sheet','not-in-sheet':'In Pulse-II, not in the sheet',
 };
 
@@ -120,6 +122,53 @@ export function sameName(sheetName,masterName){
  const full=words(sheetName),own=words(ownName(sheetName)),master=words(masterName),masterOwn=words(ownName(masterName));
  return alike(full,master)||alike(own,master)||alike(own,masterOwn)||alike(full,masterOwn);
 }
+// How far apart two names are when they are not the same. Owner, 23 Nov 2026 ("Yes, group them"): the first sheet run on
+// live gave 299 name mismatches for one site, of which about 257 were the same person written differently; they hid the
+// ones that matter. The sheet keeps one colour for a name mismatch; the lists name the kind:
+//   'spelling'  the same words a letter or two apart ("VITTHAL" / "VITHAL"), or an initial for a word
+//   'fuller'    one side has more words (a surname, a father's name) and the rest pair up
+//   'other'     another name: the EMP. ID may belong to someone else
+// '' when the names are the same (sameName).
+function lettersApart(a,b){
+ const row=Array.from({length:b.length+1},(_,i)=>i);
+ for(let i=1;i<=a.length;i++){
+  let previous=row[0];row[0]=i;
+  for(let j=1;j<=b.length;j++){const keep=row[j];row[j]=Math.min(row[j]+1,row[j-1]+1,previous+(a[i-1]===b[j-1]?0:1));previous=keep;}
+ }
+ return row[b.length];
+}
+// Two words are the same word in another spelling: one letter apart for a short word, two for a longer one, or an initial.
+const nearWord=(a,b)=>a===b||(a.length===1?b.startsWith(a):b.length===1?a.startsWith(b):lettersApart(a,b)<=(Math.min(a.length,b.length)<=4?1:2));
+// Every word of the shorter name has its own partner in the longer one; equal words pair first.
+function pairedWords(shorter,longer){
+ const left=[...longer],open=[];
+ for(const word of shorter){const at=left.indexOf(word);if(at<0)open.push(word);else left.splice(at,1);}
+ for(const word of open){const at=left.findIndex(other=>nearWord(word,other));if(at<0)return false;left.splice(at,1);}
+ return true;
+}
+function namesApart(a,b){
+ if(!a.length||!b.length)return 'other';
+ const [shorter,longer]=a.length<=b.length?[a,b]:[b,a];
+ // With the same number of words each word must pair ("ALI KHAN" is not "ANIL KHAN"); with a different number, a name
+ // that is the same letters with a space moved or a letter or two changed is a spelling ("RAMKUMAR" / "RAM KUMAAR").
+ if(shorter.length===longer.length?pairedWords(shorter,longer):lettersApart(a.join(''),b.join(''))<=2)return 'spelling';
+ return pairedWords(shorter,longer)?'fuller':'other';
+}
+const NAME_GRADE={spelling:1,fuller:2,other:3};
+export function nameDifference(sheetName,masterName){
+ if(sameName(sheetName,masterName))return '';
+ let least='other';
+ for(const a of [words(sheetName),words(ownName(sheetName))])for(const b of [words(masterName),words(ownName(masterName))]){
+  const kind=namesApart(a,b);if(NAME_GRADE[kind]<NAME_GRADE[least])least=kind;
+ }
+ return least;
+}
+const NAME_KIND_WORDS={other:'Another name',fuller:'Fuller name',spelling:'Spelling'};
+const NAME_ADVICE={
+ other:'Pulse-II has another name for this EMP. ID. First check that the ID belongs to this person: it may be wrong in the sheet. If the ID is right, ask HR to correct the name in Employee Master.',
+ fuller:"The same name, written fuller on one side (a surname or a father's name). Write the name in the sheet as Employee Master has it, or ask HR to correct Employee Master.",
+ spelling:'The same name in another spelling. Write the name in the sheet as Employee Master has it, or ask HR to correct the spelling in Employee Master.',
+};
 
 // ---- Comparing -----------------------------------------------------------------------------------------------------
 const drives=designation=>Boolean(text(designation))&&drivesOrOperates({designation});
@@ -162,14 +211,14 @@ export function checkAttendanceSheet({sheet,site,lines=[],lockedDays=[],people=[
   const marked=kind=>p.marks.some((mark,index)=>sheet.filledDates.includes(sheet.dates[index])&&markKind(mark)===kind);
   const idIssue=!p.number?'id-unreadable':!pulse?.found?'id-not-found':twice?'id-twice':!pulse.working&&marked('present')?'id-left':'';
   const known=Boolean(pulse?.found),siteIssue=known&&pulse.working&&!pulse.atSite;
-  const nameDiffers=known&&Boolean(p.name)&&Boolean(pulse.name)&&!sameName(p.name,pulse.name);
+  const nameKind=known&&p.name&&pulse.name?nameDifference(p.name,pulse.name):'',nameDiffers=Boolean(nameKind);
   const onCards=drives(p.designation)||drives(pulse?.designation),hasDuties=known&&active.has(p.number);
   const add=(kind,extra)=>corrections.push({kind,label:CORRECTION_KINDS[kind],row:p.row,id:p.id,name:p.name,pulseName:pulse?.name||'',designation:p.designation,date:'',sheetSays:'',pulseSays:'',books:'',pulseSite:'',...extra});
   if(idIssue==='id-unreadable')add('id-unreadable',{sheetSays:p.id,correction:'This EMP. ID cannot be read as a Caliber ID (CMPL or CMLL and a number). Write the correct ID in the sheet.'});
   if(idIssue==='id-not-found')add('id-not-found',{sheetSays:p.id,pulseSays:'Not in Employee Master',correction:'This EMP. ID is not in Pulse-II Employee Master. Correct the ID in the sheet, or ask HR to add the employee to Employee Master.'});
   if(idIssue==='id-twice')add('id-twice',{sheetSays:'Rows '+rowsOf.get(p.number).join(', '),correction:'This EMP. ID is written on rows '+rowsOf.get(p.number).join(' and ')+' of the sheet. Keep one line, or correct the ID of the other person.'});
   if(idIssue==='id-left')add('id-left',{sheetSays:'P marked',pulseSays:pulse.left?'HR marks LEFT':"Not on HR's list",correction:(pulse.left?'HR marks this person LEFT':"This person is not on HR's list")+', but the sheet marks P. Remove the P marks, or ask HR to correct Employee Master.'});
-  if(nameDiffers)add('name',{sheetSays:p.name,pulseSays:pulse.name,correction:'The name differs. First check that this EMP. ID belongs to this person; then correct the name in the sheet, or ask HR to correct it in Employee Master.'});
+  if(nameKind)add('name-'+nameKind,{sheetSays:p.name,pulseSays:pulse.name,correction:NAME_ADVICE[nameKind]});
   if(siteIssue)add('site',{sheetSays:site,pulseSays:pulse.siteLabel||'No site',pulseSite:pulse.siteLabel||'',correction:'Pulse-II Employee Master holds this person at '+(pulse.siteLabel||'no site')+'. Correct the site on Employee Current Location, or remove the person from this sheet.'});
   // The days. A person Pulse-II does not know has no day to compare.
   const judge=known&&(onCards||hasDuties);
@@ -202,7 +251,7 @@ export function checkAttendanceSheet({sheet,site,lines=[],lockedDays=[],people=[
   else for(const cell of noDuty)add('no-duty',{date:cell.date,sheetSays:cell.mark,pulseSays:'No duty saved',correction:'The sheet says P; Pulse-II has no trip card, log book or zero-trip entry for this date. Save the missing card or zero-trip entry, or correct the sheet to A.'});
   if(blanks.length)add('blank',{date:blanks.length===1?blanks[0]:'',sheetSays:'(blank)',pulseSays:blanks.length===1?'A':'',correction:(blanks.length===1?'This date is':many(blanks.length,'date')+' ('+blanks.map(dayMonth).join(', ')+') are')+' blank in the sheet. Write P, A, PL or - .'});
   const own=corrections.filter(c=>c.row===p.row);
-  return {...p,pulse,idIssue,siteIssue,nameDiffers,onCards,hasDuties,judge,cells,sheetP:judge?sheetP:null,pulseP:judge?pulseP:null,difference:judge&&onCards?sheetP-pulseP:null,corrections:own.length,
+  return {...p,pulse,idIssue,siteIssue,nameDiffers,nameKind,onCards,hasDuties,judge,cells,sheetP:judge?sheetP:null,pulseP:judge?pulseP:null,difference:judge&&onCards?sheetP-pulseP:null,corrections:own.length,
    remark:!p.number||!known?'Days not compared: the EMP. ID is not in Pulse-II.':!judge?'Days not compared: not a driver or operator, and no duty in Pulse-II.':!onCards?'Only days with a duty in Pulse-II are compared: not a driver or operator.':''};
  });
  for(const line of sheet.noId)corrections.push({kind:'no-id',label:CORRECTION_KINDS['no-id'],row:line.row,id:'',name:line.name,pulseName:'',designation:'',date:'',sheetSays:'(blank)',pulseSays:'',books:'',pulseSite:'',correction:'This line has no EMP. ID. Write the ID, or the line cannot be compared.'});
@@ -252,16 +301,16 @@ export function attendanceSheetWorkbook(result,{fileName='',checkedAt=''}={}){
  const {site,rows,corrections,counts,dates,totals}=result;
  const period=dates.compared.length?dmy(dates.compared[0])+' to '+dmy(dates.compared.at(-1)):'no date to compare';
  const title=site+' · Attendance sheet mismatch · '+period;
- const gridColumns=['Row in sheet','SR NO','EMP. ID','NAME','Name in Pulse-II','DESIGNATION',...dates.filled.map(dayMonth),'P days in sheet (locked dates)','P days in Pulse-II (locked dates)','Difference','Corrections','Remark'].map(label=>({label}));
+ const gridColumns=['Row in sheet','SR NO','EMP. ID','NAME','Name in Pulse-II','Name mismatch','DESIGNATION',...dates.filled.map(dayMonth),'P days in sheet (locked dates)','P days in Pulse-II (locked dates)','Difference','Corrections','Remark'].map(label=>({label}));
  const cellFills=[];
  const grid=rows.map((r,index)=>{
   const fills={};
   if(r.idIssue)fills[2]='id';else if(r.siteIssue)fills[2]='site';
   if(r.nameDiffers)fills[3]='name';
-  r.cells.forEach((cell,i)=>{if(cell.state)fills[6+i]=cell.state;});
+  r.cells.forEach((cell,i)=>{if(cell.state)fills[7+i]=cell.state;});
   cellFills[index]=fills;
   const blank=value=>value===null||value===undefined?'':String(value);
-  return [String(r.row),r.sr,r.id,r.name,r.pulse?.found?(r.nameDiffers?r.pulse.name:'Same'):'Not in Pulse-II',r.designation,...r.cells.map(cell=>cell.mark),blank(r.sheetP),blank(r.pulseP),blank(r.difference),String(r.corrections),r.remark];
+  return [String(r.row),r.sr,r.id,r.name,r.pulse?.found?(r.nameDiffers?r.pulse.name:'Same'):'Not in Pulse-II',NAME_KIND_WORDS[r.nameKind]||'',r.designation,...r.cells.map(cell=>cell.mark),blank(r.sheetP),blank(r.pulseP),blank(r.difference),String(r.corrections),r.remark];
  });
  const legend=SHEET_LEGEND.map(([,line])=>line);
  const first={name:'Attendance check',title,plainSerial:true,freezeColumns:5,fills:SHEET_FILLS,cellFills,
