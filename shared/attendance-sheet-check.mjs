@@ -181,6 +181,7 @@ const lineId=(line,number)=>writtenAsId(line?.employeeId)?text(line.employeeId).
 const shiftLetter=code=>({S1:'A',S2:'B',S3:'C',D:'Day',N:'Night'})[code]||text(code);
 const joined=(list,field)=>[...new Set(list.map(l=>text(l[field])).filter(Boolean))].join('; ');
 const siteOfKey=key=>canonicalSiteName(String(key).slice(0,String(key).lastIndexOf('|')));
+const dutyNote=l=>({shift:shiftLetter(l.shift),books:text(l.books)||text(l.logBook),doors:text(l.doors),site:text(l.site)});
 
 // sheet:      parseAttendanceSheet's result.
 // site:       the site chosen on the screen.
@@ -230,6 +231,8 @@ export function checkAttendanceSheet({sheet,site,lines=[],lockedDays=[],people=[
    if(!known)return cell;
    if(!locked.has(date)){if(judge)cell.state='skip';cell.pulse='?';return cell;}
    const all=byDay.get(p.number+'|'+date)||[],here=all.filter(l=>l.here),away=all.filter(l=>!l.here);
+   // The duties of the date, kept on the cell for the date by shift view (shared/site-sheet-days.mjs).
+   cell.duties=here.map(dutyNote);cell.away=away.map(dutyNote);
    cell.pulse=here.length?'P ('+[...new Set(here.map(l=>shiftLetter(l.shift)))].join('+')+')':away.length?'At '+joined(away,'site'):'A';
    if(judge){if(kind==='present')sheetP++;if(here.length)pulseP++;}
    if(kind==='present'){

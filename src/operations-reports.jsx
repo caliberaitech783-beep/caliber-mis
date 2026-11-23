@@ -75,7 +75,7 @@ export default function OperationsReports(props){
  if(['door-production','machine-production'].includes(props.reportId))return <ProductionReports {...props}/>;
  if(props.reportId==='meter-continuity')return <MeterContinuityReport {...props}/>;
  if(props.reportId==='batch-status')return <BatchStatusReport {...props}/>;
- if(['manpower','manpower-reconciliation','employee','attendance','ot','attendance-batch','attendance-month','attendance-sheet'].includes(props.reportId))return <ManpowerReports {...props}/>;
+ if(['manpower','manpower-reconciliation','employee','attendance','ot','attendance-batch','attendance-month','attendance-sheet','attendance-site-sheet'].includes(props.reportId))return <ManpowerReports {...props}/>;
  return <SavedOperationReports {...props}/>;
 }
 // The twelve step reports (owner, 18 Nov 2026, second stage) ask the server only for the lines of the steps that are
