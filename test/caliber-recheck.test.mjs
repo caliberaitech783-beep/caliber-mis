@@ -127,7 +127,7 @@ test('the report: one day judged, the cards to check listed by site with their l
   assert.deepEqual(report.sites.map(site=>[site.site,site.cards,site.listed]),[[MAJRI,5,3],[SASTI,1,0]]);
   assert.deepEqual(report.counts,{'not-listed':0,left:1,unknown:0,'other-site':1,'a-form-differs':0,'not-driver':1,several:0});
   const gone=report.listed.find(row=>row.id==='2');
-  assert.deepEqual([gone.bookNo,gone.book,gone.kind,gone.date,gone.shift,gone.site,gone.door,gone.cardNo,gone.scanned,gone.savedId,gone.savedName,gone.reason,gone.reasonLabel],['BOOK-2','VLB','vehicle','2026-11-20','S1',MAJRI,'V942','900',true,'CMPL1826','GONE MAN','left','Has left']);
+  assert.deepEqual([gone.bookNo,gone.book,gone.kind,gone.date,gone.shift,gone.site,gone.door,gone.cardNo,gone.scanned,gone.scanCardId,gone.savedId,gone.savedName,gone.reason,gone.reasonLabel],['BOOK-2','VLB','vehicle','2026-11-20','S1',MAJRI,'V942','900',true,'s2','CMPL1826','GONE MAN','left','Has left']);
   assert.equal(gone.line,'1826 is GONE MAN, VOLVO DRIVER. Employee Master says this person has resigned. The FORM A box says 900: at Majri OC that is 18126 (REAL MAN).');
   assert.deepEqual(gone.lookAlikes,[{id:'18126',name:'REAL MAN'}]);
   const helper=report.listed.find(row=>row.id==='4');
@@ -523,6 +523,10 @@ test('the page is in the menu, drawn in the report steps, with the Fetch box on 
  for(const title of ["'Step 1 · Caliber ID re-check · All sites · '","'Step 2 · Caliber ID re-check · '","'Step 3 · Caliber ID re-check · '"])assert.ok(page.includes(title),title);
  assert.ok(page.includes('<DateShiftGrid grid={grid}'),'Step 2 is the shared date by shift table');
  assert.ok(page.includes('<EmployeeIdLookup key={row.id+'),'each card has the Fetch box');
+ assert.ok(page.includes("{key:'scan',label:'Trip Card Scanned'"),'the original scan column is beside the right driver');
+ assert.ok(page.includes('>View Original Card</button>'),'a scanned card opens its original image');
+ assert.ok(page.includes("fetch('/api/scan-cards/'+card.scanCardId+'/image'"),'the preview reads the exact saved scan');
+ assert.ok(page.includes('role="dialog" aria-modal="true"'),'the original card opens in a same-page preview');
  // Owner, 23 Nov 2026: a Submit button on every line; what it did is said on that line.
  assert.ok(page.includes(`<EmployeeIdLookup key={row.id+'|'+(row.pick?.id||'')} submitLabel="Submit" scanMode`),'each card has its Submit button');
  assert.ok(page.includes("{said?.id===row.id&&<small className={'cr-said'+(said.bad?' cr-said-bad':'')} role={said.bad?'alert':'status'}>{said.text}</small>}"),'the result of Submit is said on the line');

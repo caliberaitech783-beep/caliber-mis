@@ -21,6 +21,19 @@ import './caliber-recheck.css';
 const count=value=>Number(value||0).toLocaleString('en-IN');
 const isTotal=row=>Boolean(row.total);
 
+function OriginalCardPreview({card,token,onClose}){
+ const [src,setSrc]=useState(''),[error,setError]=useState(''),[zoom,setZoom]=useState(1),[rotation,setRotation]=useState(0);
+ useEffect(()=>{const controller=new AbortController();let url;setSrc('');setError('');fetch('/api/scan-cards/'+card.scanCardId+'/image',{signal:controller.signal,cache:'no-store',headers:{Authorization:'Bearer '+token}}).then(response=>{if(!response.ok)throw Error('The original scanned card is not available.');return response.blob()}).then(blob=>{if(controller.signal.aborted)return;url=URL.createObjectURL(blob);setSrc(url)}).catch(e=>{if(!controller.signal.aborted)setError(e.message)});return()=>{controller.abort();if(url)URL.revokeObjectURL(url)}},[card.scanCardId,token]);
+ useEffect(()=>{const close=event=>{if(event.key==='Escape')onClose()};window.addEventListener('keydown',close);return()=>window.removeEventListener('keydown',close)},[onClose]);
+ return <div className="cr-card-preview" role="dialog" aria-modal="true" aria-label={'Original scanned card '+card.bookNo} onMouseDown={event=>{if(event.target===event.currentTarget)onClose()}}>
+  <section className="cr-card-preview-panel">
+   <header><div><h2>Original Trip Card</h2><p>{card.bookNo} · {card.door}</p></div><button type="button" className="cr-card-preview-close" onClick={onClose} aria-label="Close original card preview">×</button></header>
+   <nav aria-label="Original card preview controls"><button type="button" disabled={!src||zoom<=.5} onClick={()=>setZoom(value=>Math.max(.5,value-.25))}>Zoom out</button><button type="button" disabled={!src||zoom>=3} onClick={()=>setZoom(value=>Math.min(3,value+.25))}>Zoom in</button><button type="button" disabled={!src} onClick={()=>setRotation(value=>(value+90)%360)}>Rotate</button>{src&&<a href={src} target="_blank" rel="noreferrer">Open full size</a>}</nav>
+   <div className="cr-card-preview-image">{src?<img src={src} alt={'Original scanned trip card '+card.bookNo} style={{transform:`rotate(${rotation}deg) scale(${zoom})`}}/>:error?<p role="alert">{error}</p>:<p role="status">Loading original card…</p>}</div>
+  </section>
+ </div>;
+}
+
 export default function CaliberRecheck({session,ReportSection}){
  const [from,setFrom]=useState(OPERATIONAL_START),[to,setTo]=useState(todayInIndia());
  const [held,setHeld]=useState(emptyRecheck),[progress,setProgress]=useState(null),[error,setError]=useState(''),[notice,setNotice]=useState('');
@@ -30,6 +43,7 @@ export default function CaliberRecheck({session,ReportSection}){
  // "This card is right" (owner, 23 Nov 2026): the line being asked "Yes, … drove this vehicle", the card just
  // settled (said above Step 3 with Undo, because a confirmed line leaves the list), and the confirmed cards for HR.
  const [asking,setAsking]=useState(''),[keeping,setKeeping]=useState(false),[kept,setKept]=useState(null),[confirmedList,setConfirmedList]=useState(null);
+ const [previewCard,setPreviewCard]=useState(null);
  const run=useRef(0);
  const api=async(path,options={})=>{
   const response=await fetch(path,{...options,headers:{Authorization:`Bearer ${session.token}`,...(options.body?{'Content-Type':'application/json'}:{})}});
@@ -161,7 +175,8 @@ export default function CaliberRecheck({session,ReportSection}){
   {key:'saved',label:'Saved under',value:row=>row.savedId+' '+row.savedName,render:row=><><strong>{row.savedId}</strong><small className="cr-sub">{row.savedName}</small></>},
   {key:'why',label:'Why it is listed',value:row=>row.reasonLabel+'. '+row.line,render:row=><><strong>{row.reasonLabel}</strong><small className="cr-sub">{row.line}</small></>},
   {key:'alike',label:'Look-alike IDs at the site',value:lookAlikeText},
-  {key:'right',label:'Right driver (from the paper card)',value:row=>row.pick?row.pick.employeeId+' '+row.pick.name:'',render:right}];
+  {key:'right',label:'Right driver (from the paper card)',value:row=>row.pick?row.pick.employeeId+' '+row.pick.name:'',render:right},
+  {key:'scan',label:'Trip Card Scanned',value:row=>row.scanCardId?'Original card available':'Not available',render:row=>row.scanCardId?<button type="button" className="cr-view-card" onClick={()=>setPreviewCard(row)}>View Original Card</button>:<span className="cr-card-unavailable">Not available</span>}];
 
  return <section className="caliber-recheck">
   <header className="cr-head">
@@ -203,6 +218,7 @@ export default function CaliberRecheck({session,ReportSection}){
   {level>=3&&<ReportSection key={'cr-cards-'+site+'|'+slot.key} reportKey="Caliber ID re-check cards" title={'Step 3 · Caliber ID re-check · '+siteLabel+' · '+slot.label} category="caliber-recheck-cards" dataReady={!busy} recordDateFilter={false}
    description="One line per card. Type the right Employee ID or Caliber ID from the paper card, see the name shown under it and press Submit on that line; a look-alike ID of the site is the likeliest. A line listed for its FORM A box also has This card is right: press it when the paper card shows the saved driver. Submit corrects the card at once and its line leaves the list; Undo, on the line shown above this table, puts the earlier person back."
    rows={cards} columns={cardColumns} rowKey={row=>row.id} rowClassName={row=>row.pick?'cr-picked':''} emptyMessage="No card to check in this date and shift."/>}
+  {previewCard&&<OriginalCardPreview card={previewCard} token={session.token} onClose={()=>setPreviewCard(null)}/>}
 
   <details className="cr-record" onToggle={event=>{if(event.currentTarget.open&&!record)void loadRecord();}}>
    <summary>Corrections done{record?` (${count(record.length)})`:''}</summary>

@@ -68,7 +68,7 @@ export const RECHECK_CARDS_SQL=`SELECT l.id,l.book_no,l.book_type,l.book_date::t
   COALESCE(x."employeeId",'') AS employee_id,COALESCE(x."caliberId",'') AS caliber_id,COALESCE(x."employeeName",'') AS employee_name,
   COALESCE(x."aFormNo",'') AS a_form,COALESCE(x."jobCardNo",'') AS job_card,COALESCE(x.door,'') AS door,
   COALESCE(x."bookShiftCode",'') AS book_shift,COALESCE(x."cardShift",'') AS card_shift,COALESCE(x."shiftName",'') AS shift_name,
-  COALESCE(x."scanCardId",'')<>'' AS scanned
+  COALESCE(x."scanCardId",'') AS scan_card_id
  FROM mis_log_books l CROSS JOIN LATERAL jsonb_to_record(l.data) AS x("employeeId" text,"caliberId" text,"employeeName" text,"aFormNo" text,"jobCardNo" text,door text,"bookShiftCode" text,"cardShift" text,"shiftName" text,"scanCardId" text)
  WHERE l.deleted_at IS NULL AND l.book_date>=$1::date AND l.book_date<=$2::date ORDER BY l.book_date,l.id`;
 const PENDING_SQL="SELECT id,logbook_id,new_employee_id,new_caliber_id,new_name,picked_by,picked_name,picked_at,note FROM mis_caliber_corrections WHERE status='pending'";
@@ -187,7 +187,7 @@ export function registerCaliberRecheck(app,{pool,requireSession,requireAdministr
    const pick=publicPick(waiting.get(String(row.id)));
    site.listed++;if(pick)site.picked++;
    listed.push({id:String(row.id),bookNo:row.book_no,book:kindLabel(row.book_type),kind:row.book_type==='equipment'?'equipment':'vehicle',date:row.date,shift:shiftOf(row),siteKey:key,site:site.site,door:row.door,
-    cardNo:row.book_type==='equipment'?row.job_card:row.a_form,scanned:Boolean(row.scanned),savedId:row.caliber_id,savedName:row.employee_name,
+    cardNo:row.book_type==='equipment'?row.job_card:row.a_form,scanned:Boolean(row.scan_card_id),scanCardId:row.scan_card_id||'',savedId:row.caliber_id,savedName:row.employee_name,
     reason:verdict.reason,reasonLabel:RECHECK_REASONS[verdict.reason],line:verdict.line,lookAlikes:verdict.lookAlikes||[],more:verdict.more||0,aForm:verdict.aForm||null,canConfirm:canConfirmSaved(verdict),pick});
   }
   res.json({from,to,cards:judged,listed,counts:recheckCounts(listed),sites:[...sites.values()].sort((a,b)=>b.listed-a.listed||a.site.localeCompare(b.site)),
