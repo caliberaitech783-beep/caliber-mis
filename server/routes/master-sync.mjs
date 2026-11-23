@@ -21,8 +21,9 @@ const HR_RECENT_MS=MASTER_SYNC_INTERVAL_MS-5*60*1000;
 const MINUTE_MS=60*1000;
 const unavailableHr={configured:()=>false,count:async()=>null,preview:async()=>{throw Object.assign(new Error('HR connection is not set up (HR_SYNC_KEY).'),{status:503})},sync:async()=>{throw new Error('HR connection is not set up (HR_SYNC_KEY).')}};
 
-// copy: the minute copy of Employee Master (createHrEmployeeMinuteCopy); null where it is not set up.
-export function registerMasterSync(app,{pool,pulse,erp,hr=unavailableHr,copy=null,requireSession,requireAdministrator}){let busy=false;const protect=[requireSession,requireAdministrator];const ensure=()=>pool.query('CREATE TABLE IF NOT EXISTS mis_master_sync_state(master_name TEXT PRIMARY KEY,last_success TIMESTAMPTZ,error TEXT NOT NULL DEFAULT \'\')');
+// copy: the minute copy of Employee Master (createHrEmployeeMinuteCopy); outbox: the site moves made here that go to
+// HR Pulse (createHrSiteMoveOutbox). Each is null where it is not set up.
+export function registerMasterSync(app,{pool,pulse,erp,hr=unavailableHr,copy=null,outbox=null,requireSession,requireAdministrator}){let busy=false;const protect=[requireSession,requireAdministrator];const ensure=()=>pool.query('CREATE TABLE IF NOT EXISTS mis_master_sync_state(master_name TEXT PRIMARY KEY,last_success TIMESTAMPTZ,error TEXT NOT NULL DEFAULT \'\')');
  const status=async()=>{
   await ensure();
   const p=pulse.status(),e=await erp.status().catch(()=>({configured:false,busy:false,error:'Oracle connection is unavailable. Pulse connection remains available.'}));
@@ -34,6 +35,7 @@ export function registerMasterSync(app,{pool,pulse,erp,hr=unavailableHr,copy=nul
   const transfers=await hr.count(HR_EMPLOYEE_TRANSFER).catch(()=>null);
   const events=(await pool.query('SELECT * FROM mis_master_sync_state')).rows;
   const employeeCopy=copy?await copy.status().catch(()=>null):null;
+  const siteMovesToHr=outbox?await outbox.status().catch(()=>null):null;
   const masters=MASTER_SYNC_ROWS.map(row=>{
    const event=events.find(entry=>entry.master_name===row.name);
    const count=row.name===HR_EMPLOYEE_TRANSFER?Number(transfers||0):Number(counts.find(entry=>entry.master_name===row.name)?.n||0);
@@ -44,7 +46,7 @@ export function registerMasterSync(app,{pool,pulse,erp,hr=unavailableHr,copy=nul
    if(row.name===PULSE_REGION_MASTER)return {...row,count,connected:p.connected,lastSuccess:p.region?.lastSuccess||event?.last_success,error:p.region?.error||''};
    return {...row,count,connected:row.source==='Pulse'?p.connected:e.configured,lastSuccess:event?.last_success||(row.source==='Pulse'?p.lastSuccess:e.last_success),error:event?.error||(row.source==='Oracle'?e.error:'')||''};
   });
-  return {busy:busy||p.busy||e.busy,masters,notSynced:MASTERS_NOT_SYNCED,employeeCopy};
+  return {busy:busy||p.busy||e.busy,masters,notSynced:MASTERS_NOT_SYNCED,employeeCopy,siteMovesToHr};
  };
  const run=async(name,actor,options={})=>{const row=MASTER_SYNC_ROWS.find(r=>r.name===name);if(!row)throw Object.assign(new Error('Unknown master.'),{status:400});
   // Employee Master is applied only after a Preview a person looked at: its key comes with the Apply.
@@ -84,7 +86,9 @@ export function registerMasterSync(app,{pool,pulse,erp,hr=unavailableHr,copy=nul
     if(fresh.length&&!busy){busy=true;try{transfers=await run(HR_EMPLOYEE_TRANSFER,HR_MINUTE_ACTOR);}finally{busy=false;}for(const id of fresh)triedTransfers.set(id,Date.now());}
    }catch(error){transfers={ok:false,error:error?.message||'HR did not answer.'};}
   }
-  return {transfers,employees:copy?await copy.tick():null};
+  // First the way out: a site move made here that HR Pulse has not confirmed yet is sent again.
+  const moves=outbox?await outbox.flush().catch(error=>({failed:1,error:error?.message||'HR Pulse did not answer.'})):null;
+  return {transfers,employees:copy?await copy.tick():null,...(outbox?{moves}:{})};
  };
  let timer=null,first=null,minuteTimer=null,minuteFirst=null;
  const start=({firstDelayMs=2*60*1000,minuteDelayMs=90*1000}={})=>{

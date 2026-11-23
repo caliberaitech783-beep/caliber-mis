@@ -46,6 +46,7 @@ import {sharedMisDashboardIdentity} from './server/rules/mis-dashboard-identity.
 import {registerMasterSync} from './server/routes/master-sync.mjs';
 import {createHrEmployeeSync} from './server/services/hr-employee-sync.mjs';
 import {createHrEmployeeMinuteCopy} from './server/services/hr-employee-minute-copy.mjs';
+import {createHrSiteMoveOutbox} from './server/services/hr-site-move-outbox.mjs';
 import {registerEmployeeMaster} from './server/routes/employee-master.mjs';
 import {createEmployeeMasterDoor,registerEmployeeMasterDoor} from './server/routes/employee-master-door.mjs';
 import {registerHrMasterImport} from './server/routes/hr-master-import.mjs';
@@ -8118,7 +8119,9 @@ const expressOtpDeps={pool,requireSession,accessContext:vehicleTransferAccessCon
 // Project Manager of the site the worker is leaving, by the same delivery as a vehicle transfer.
 // The re-check of saved cards against Employee Master and the one correction run (owner, 22 Nov 2026).
 registerCaliberRecheck(app,{pool,requireSession,requireAdministrator,getSiteScope:logBookScope});
-registerEmployeeSiteMoves(app,{pool,requireSession,requireAdministrator,getSiteScope:logBookScope,pmLogins:vehicleTransferPmLogins,deliver:request=>approvalOtpDelivery.send(request)});
+// Two-way with HR Pulse: a site move made here with an OTP is sent to HR Pulse at once (the outbox is made further down, with the HR connection).
+let hrSiteMoveOutbox=null;
+registerEmployeeSiteMoves(app,{pool,requireSession,requireAdministrator,getSiteScope:logBookScope,pmLogins:vehicleTransferPmLogins,deliver:request=>approvalOtpDelivery.send(request),afterMove:()=>hrSiteMoveOutbox?.flush()});
 registerVehicleTransferExpress(app,{...expressOtpDeps,auditEvent:(req,{action,reference,details})=>{req.audit={eventType:'Vehicle transfer',module:'Vehicle transfers',action,targetType:'Vehicle transfer',targetReference:reference,changedFields:details?.changedFields||[],details};},
   notify:async(client,transfer)=>{const recipients=await vehicleTransferPmLogins(client,transfer.destination);await addTicketNotificationsBestEffort(client,recipients,transfer.transferNo,`Express transfer ${transfer.transferNo}: ${transfer.equipment} joined ${transfer.destination} from ${transfer.source} with source-site PM OTP approval.`,null,{whatsapp:false});}});
 // Written-machine aliases (card "L21" = Pulse DEMO21-00179) learned once in scan review and applied to every later card.
@@ -8200,7 +8203,8 @@ const hrEmployeeSync=createHrEmployeeSync({pool});
 const hrEmployeeCopyTelegram=telegramOutboxSender(pool,{drain:()=>misTelegram.drain(),inChannel:(channel,person)=>misTelegram.inChannel(channel,person)});
 const hrEmployeeCopy=createHrEmployeeMinuteCopy({pool,hr:hrEmployeeSync,
  alert:async(message,key)=>{for(const login of await releaseApproverLogins(pool)){try{await hrEmployeeCopyTelegram.send(login,message,`${key}:${login}`);}catch{/* the next person is still told */}}}});
-const masterSync=registerMasterSync(app,{pool,pulse:pulseMasterSync,erp:erpMasters,hr:hrEmployeeSync,copy:hrEmployeeCopy,requireSession,requireAdministrator});
+hrSiteMoveOutbox=createHrSiteMoveOutbox({pool,hr:hrEmployeeSync});
+const masterSync=registerMasterSync(app,{pool,pulse:pulseMasterSync,erp:erpMasters,hr:hrEmployeeSync,copy:hrEmployeeCopy,outbox:hrSiteMoveOutbox,requireSession,requireAdministrator});
 app.get('/api/masters',requireSession,async(req,res,next)=>{
   try{
     const requestedMasters=[...new Set(String(req.query?.names||'').split('|').map(value=>value.trim()).filter(Boolean))];

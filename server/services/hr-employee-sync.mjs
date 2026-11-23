@@ -100,6 +100,16 @@ export function createHrEmployeeSync({pool,key=process.env.HR_SYNC_KEY,base=proc
   if(!response.ok||!body)throw fail(502,`HR refused the copy (${response.status}${body?.error?': '+body.error:''}). Existing data retained.`);
   return body;
  }
+ // A site move made here with an OTP on a card, told to HR Pulse (caliber-hr server/mis-site-move.mjs).
+ async function sendSiteMove(move){
+  if(!configured())throw fail(503,'HR connection is not set up (HR_SYNC_KEY).');
+  let response;
+  try{response=await request(new URL('/api/integrations/mis/site-move',base),{method:'POST',headers:{'X-MIS-Sync-Key':key,'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify(move),redirect:'error',signal:AbortSignal.timeout(30_000)});}
+  catch{throw fail(502,'HR Pulse did not answer.');}
+  const body=await response.json().catch(()=>null);
+  if(!response.ok||!body)throw fail(502,`HR Pulse refused the site move (${response.status}${body?.error?': '+body.error:''}).`);
+  return body;
+ }
  const sheetOf=async()=>{const data=await read('employees');return readHrMasterSheet(hrEmployeeSheet(data.employees),{leaveOut:true});};
  const leftOut=sheet=>({lines:sheet.problems.length,problems:sheet.problems.slice(0,LIST_LIMIT)});
 
@@ -158,6 +168,7 @@ export function createHrEmployeeSync({pool,key=process.env.HR_SYNC_KEY,base=proc
   employees:()=>read('employees'),
   // The approved transfers HR holds, for a cheap look before the whole transfer copy.
   transfers:()=>read('transfers'),
+  sendSiteMove,
   async count(name){
    if(name!==HR_EMPLOYEE_TRANSFER)return null;
    await ensure();return Number((await pool.query('SELECT count(*) n FROM hr_transfer_sync')).rows[0].n);
