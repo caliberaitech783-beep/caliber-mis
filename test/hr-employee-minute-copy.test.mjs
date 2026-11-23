@@ -297,7 +297,7 @@ test('every minute: a newly approved HR transfer is copied at once, a waiting on
   const hr={configured:()=>true,count:async()=>1,preview:async()=>({}),transfers:async()=>({transfers:approved}),sync:async(name,options)=>{synced.push([name,options.by]);return {summary:{}};}};
   const copy={status:async()=>({started:true,held:[]}),tick:async()=>{ticks.push(1);return {ok:true,changed:0};},start:async()=>{},accept:async()=>({})};
   const sync=registerMasterSync(express(),{pool:f.pool,pulse:{status:()=>({connected:true,busy:false})},erp:{status:async()=>({configured:false})},hr,copy,requireSession:(q,s,n)=>n(),requireAdministrator:(q,s,n)=>n()});
-  assert.deepEqual(await sync.minute(),{transfers:null,employees:{ok:true,changed:0}});
+  assert.deepEqual(await sync.minute(),{transfers:null,employees:{ok:true,changed:0}},'with no outbox set up, nothing about moves');
   assert.deepEqual([synced,ticks.length],[[],1],'every approved transfer is already in Pulse-II: nothing is read');
   approved=[{id:'t-done'},{id:'t-new'}];
   assert.equal((await sync.minute()).transfers.ok,true);
@@ -315,10 +315,10 @@ test('the alert is a line of the Automation Centre, and the server and the page 
  assert.deepEqual(AUTOMATIONS.map(item=>item.code),AUTOMATIONS.map((item,index)=>'A'+String(index+1).padStart(2,'0')));
  const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
  assert.ok(server.includes('const hrEmployeeCopy=createHrEmployeeMinuteCopy({pool,hr:hrEmployeeSync,'));
- assert.ok(server.includes('hr:hrEmployeeSync,copy:hrEmployeeCopy,requireSession,requireAdministrator});'));
+ assert.ok(server.includes('hr:hrEmployeeSync,copy:hrEmployeeCopy,outbox:hrSiteMoveOutbox,requireSession,requireAdministrator});'));
  assert.ok(server.includes("if(process.env.HR_SYNC_SCHEDULE!=='0')masterSync.start();"),'one setting still stops both timers');
  const page=readFileSync(new URL('../src/pulse-master-sync.jsx',import.meta.url),'utf8');
- assert.ok(page.includes('<HrEmployeeCopyPanel copy={data?.employeeCopy} working={working} onAccept={acceptHeld}/>'));
+ assert.ok(page.includes('<HrEmployeeCopyPanel copy={data?.employeeCopy} moves={data?.siteMovesToHr} working={working} onAccept={acceptHeld}/>'));
  assert.ok(page.includes('{!row.minute&&<button onClick={()=>sync(row.name)}'),'Employee Master has no Sync button: only Preview, then Apply');
  assert.ok(page.includes("call('/api/master-sync/employee-copy/accept',{number:item.number})"));
  const panel=readFileSync(new URL('../src/hr-employee-copy-panel.jsx',import.meta.url),'utf8');

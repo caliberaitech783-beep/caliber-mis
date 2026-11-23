@@ -42,6 +42,13 @@ export function employeeSiteOn(record,date){
  return site;
 }
 
+// The day from which HR's master holds the site this worker has today, when no dated move set it: the day HR's
+// Excel was applied or HR Pulse's copy last wrote the line (India time). '' when HR never set it.
+export function hrSiteSince(record){
+ const at=Date.parse(text(record?.hrImportedAt||record?.hrCopiedAt));
+ return Number.isFinite(at)?new Date(at+5.5*60*60*1000).toISOString().slice(0,10):'';
+}
+
 // Works out an approved move without writing: the line for the employee's history and the fields to change.
 // Returns null when the worker already belongs to that site on that date. The site held today changes only when
 // this move is the latest one; a move for an earlier date fills in the history and leaves today's site alone.
@@ -52,9 +59,19 @@ export function planSiteMove(record,{to,fromDate,at=new Date().toISOString(),by=
  if(!target)throw Object.assign(new Error('Choose the site of the card.'),{status:400});
  const from=employeeSiteOn(record,fromDate);
  if(sameSite(from,target))return null;
- const moves=siteMoves(record),latest=!moves.length||fromDate>=moves.at(-1).fromDate;
+ const moves=siteMoves(record),since=moves.length?'':hrSiteSince(record);
  const move={from:displaySiteName(from)||from,to:target,fromDate,at,by:text(by),approvedBy:[...approvedBy],...(card?{card}:{})};
- const patch={siteMoves:siteMoves({siteMoves:[...moves,move]}),siteLockedAt:at,siteLockedBy:text(by),...(latest?{site:target,currentLocation:target}:{})};
+ // An old card (owner's research, 23 Nov 2026): HR's master holds today's site and no dated move was ever made. A card
+ // dated before HR's master says where the worker was then, not where the worker is now. The history gets two
+ // lines, at the card's site from the card's date and back at HR's site from the day HR's master holds it, and
+ // today's site stays HR's. Before this, such a card moved the worker's present site back.
+ if(since&&fromDate<since){
+  const back={from:target,to:move.from,fromDate:since,at,by:'hr-master',approvedBy:['HR master']};
+  return {move,patch:{siteMoves:siteMoves({siteMoves:[move,back]})},latest:false};
+ }
+ const latest=!moves.length||fromDate>=moves.at(-1).fromDate;
+ // The lock says who set the site held today, so only a move that sets it writes the lock.
+ const patch={siteMoves:siteMoves({siteMoves:[...moves,move]}),...(latest?{site:target,currentLocation:target,siteLockedAt:at,siteLockedBy:text(by)}:{})};
  return {move,patch,latest};
 }
 

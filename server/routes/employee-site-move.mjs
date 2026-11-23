@@ -13,6 +13,8 @@ import {hrSiteName} from '../../shared/hr-employee-master.mjs';
 import {employeeDesignation,employeeLeft} from '../../shared/caliber-id-check.mjs';
 import {generateOtp,hashOtp,otpExpiresAt,checkOtpAttempt,resendTooSoon,otpFail,OTP_TTL_MINUTES} from '../../shared/otp-approval.mjs';
 import {EMPLOYEE_FIND_SQL,fetchedEmployee} from './erp-employee-source.mjs';
+// The outbox table for HR Pulse is made with the tables above (the same statement as HR_SITE_MOVE_OUTBOX_SCHEMA in that file).
+import {QUEUE_SITE_MOVE_SQL,siteMovePayload} from '../services/hr-site-move-outbox.mjs';
 
 export const EMPLOYEE_SITE_MOVE_SCHEMA=`
  CREATE TABLE IF NOT EXISTS mis_employee_site_move_otps(
@@ -26,7 +28,10 @@ export const EMPLOYEE_SITE_MOVE_SCHEMA=`
   id BIGSERIAL PRIMARY KEY,employee_id BIGINT NOT NULL,employee_ref TEXT NOT NULL,employee_name TEXT NOT NULL DEFAULT '',designation TEXT NOT NULL DEFAULT '',
   from_site TEXT NOT NULL,to_site TEXT NOT NULL,from_date TEXT NOT NULL,requested_by TEXT NOT NULL,requested_name TEXT NOT NULL DEFAULT '',
   approved_by TEXT[] NOT NULL,approved_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),card JSONB NOT NULL DEFAULT '{}',otp_id UUID);
- CREATE INDEX IF NOT EXISTS mis_employee_site_moves_recent ON mis_employee_site_moves(approved_at DESC);`;
+ CREATE INDEX IF NOT EXISTS mis_employee_site_moves_recent ON mis_employee_site_moves(approved_at DESC);
+ CREATE TABLE IF NOT EXISTS mis_hr_site_move_outbox(
+ move_id BIGINT PRIMARY KEY,payload JSONB NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),tries INTEGER NOT NULL DEFAULT 0,
+ last_try_at TIMESTAMPTZ,sent_at TIMESTAMPTZ,outcome TEXT NOT NULL DEFAULT '',detail TEXT NOT NULL DEFAULT '');`;
 
 const text=value=>String(value??'').trim();
 const uuid=value=>/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value||'');
@@ -62,10 +67,15 @@ export async function applyEmployeeSiteMove(client,{employeeId,to,fromDate,reque
  const identity=employeeIdentity(row.record_data);
  const updated=(await client.query(UPDATE_EMPLOYEE_SQL,[row.id,JSON.stringify(plan.patch),at])).rows[0];
  const registerId=(await client.query(INSERT_MOVE_SQL,[row.id,identity.employeeId,text(row.record_data.name||row.record_data.employee),employeeDesignation(row.record_data),plan.move.from,plan.move.to,fromDate,text(requestedBy),text(requestedName),approvedBy,at,JSON.stringify(card||{}),otpId])).rows[0].id;
+ // Two-way (owner, 23 Nov 2026): a move made in Pulse-II that changes the site held today is told to HR Pulse
+ // (server/services/hr-site-move-outbox.mjs). A move that came from HR Pulse, or one that only fills in history, is not.
+ if(plan.latest&&!/^hr-/i.test(text(requestedBy)))await client.query(QUEUE_SITE_MOVE_SQL,[registerId,JSON.stringify(siteMovePayload({moveId:registerId,employeeId:identity.employeeId,name:row.record_data.name||row.record_data.employee,
+  from:plan.move.from,to:plan.move.to,fromDate,requestedBy,requestedName,approvedBy,card}))]);
  return {row:updated,move:{...plan.move,id:String(registerId),latest:plan.latest}};
 }
 
-export function registerEmployeeSiteMoves(app,{pool,requireSession,requireAdministrator,getSiteScope=async session=>logBookSiteScope(session),pmLogins,deliver}){
+// afterMove: called once a move is saved, to send it to HR Pulse without waiting for the next minute.
+export function registerEmployeeSiteMoves(app,{pool,requireSession,requireAdministrator,getSiteScope=async session=>logBookSiteScope(session),pmLogins,deliver,afterMove=null}){
  let schema=null;
  const ensureSchema=()=>schema??=pool.query(EMPLOYEE_SITE_MOVE_SCHEMA).catch(error=>{schema=null;throw error;});
  const transaction=async fn=>{const client=await pool.connect();try{await client.query('BEGIN');const result=await fn(client);await client.query('COMMIT');return result}catch(e){await client.query('ROLLBACK').catch(()=>{});throw e}finally{client.release()}};
@@ -123,6 +133,7 @@ export function registerEmployeeSiteMoves(app,{pool,requireSession,requireAdmini
   });
   if(result.refused)otpFail(result.refused,400);
   const {row,outcome}=result;
+  if(outcome.move&&afterMove)void Promise.resolve().then(()=>afterMove()).catch(()=>{});
   req.audit={eventType:'Master data',module:'Employee master',action:'Move employee to another site by OTP',targetType:'Employee',targetReference:row.employee_ref,
    changedFields:outcome.move?[{field:'Site',before:outcome.move.from,after:outcome.move.to}]:[],details:{from:row.from_site,to:row.to_site,fromDate:row.from_date,approvedBy:row.sent_to,requestedBy:row.requested_by,card:row.card||{},alreadyThere:!outcome.move}};
   res.json({...fetchedEmployee(outcome.row),moved:outcome.move?{from:outcome.move.from,to:outcome.move.to,fromDate:outcome.move.fromDate,latest:outcome.move.latest}:null});
