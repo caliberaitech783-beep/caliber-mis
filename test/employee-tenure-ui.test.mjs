@@ -84,7 +84,7 @@ test('tenure uses the same Smart Print menu as other reports while retaining exp
   assert.doesNotMatch(source,/smartLabels=\{category === "employee-tenure"\}/);
   assert.match(source,/\{smartPrintItem && <button[^>]+onClick=\{printReport\}[^>]*><Printer \/> Smart Print/);
   assert.match(source,/onClick=\{downloadPdf\}[^>]*><Download \/> Export PDF \(A3\)/);
-  assert.match(source,/onClick=\{downloadExcel\}[^>]*><FileSpreadsheet \/> \{saveAsAvailable\(\) \? "Export Excel \(Save As\)" : "Export Excel"\}/);
+  assert.match(source,/onClick=\{downloadExcel\}[^>]*><FileSpreadsheet \/> Export Excel/);
   const css=readFileSync(new URL('../src/topbar.css',import.meta.url),'utf8');
   assert.match(css,/\.cdir-dropdown \.cdir-clock \{\s*position: relative;\s*top: auto;\s*left: auto;/);
 });
