@@ -74,8 +74,11 @@ export default function SiteSheetTripCard({session,ReportSection}){
  const siteColumns=[col('site','Site'),col('dates','Dates compared (locked)'),col('people','People compared day by day'),
   ...DAY_KINDS.map(k=>({key:k.key,label:k.label,value:r=>r[k.key],render:r=><button type="button" className={'ssc-num ssc-'+k.tone} disabled={!r[k.key]} aria-pressed={pick.kind===k.key} aria-label={k.label+' · '+r[k.key]} onClick={()=>openKind(k.key)}>{r[k.key]}<small>{many(totals[k.key]?.people||0,'person','people')}</small></button>}))];
  const exported=dateShiftExport(grid,{count:r=>r.total,countLabel:'people',boxes,shiftLabel:shiftName,dayColumns});
- const step3Columns=[...(pick.all?[col('dateLabel','Date')]:[]),col('shiftLabel','Shift'),...(pick.box||pick.kind?[]:[col('kindLabel','Mismatch')]),col('id','EMP. ID'),col('name','Name in sheet'),col('pulseName','Name in Pulse-II'),col('designation','Designation'),
-  col('sheetSays','Sheet says'),col('pulseSays','Pulse-II says'),...(listed.some(l=>l.nearest)?[col('nearest','Nearest shift worked here')]:[]),col('books','Trip cards / log books'),col('correction','Correction required')];
+ // A box is one date and shift: those two columns show only when every date is open.
+ const step3Columns=[...(pick.all?[col('dateLabel','Date'),col('shiftLabel','Shift')]:[]),...(pick.box||pick.kind?[]:[col('kindLabel','Mismatch')]),col('id','EMP. ID'),col('name','Name in sheet'),col('pulseName','Name in Pulse-II'),col('designation','Designation'),
+  col('sheetSays','Sheet says'),col('pulseSays','Pulse-II says'),...(listed.some(l=>l.nearest)?[col('nearest','Nearest shift worked here')]:[]),...(listed.some(l=>l.books)?[col('books','Trip cards / log books')]:[])];
+ // The correction is one sentence per way: said once above the table (the Excel keeps it on every line).
+ const advice=[...new Set(listed.map(l=>l.correction))];
  const step4Columns=[col('dateLabel','Date'),col('sheetSays','Sheet says'),col('pulseSays','Pulse-II says'),col('result','Result'),col('books','Trip cards / log books'),col('equipment','Equipment')];
  const where=pick.all?'All dates':dmy(pick.date)+' · '+shiftName(pick.shift);
 
@@ -127,7 +130,7 @@ export default function SiteSheetTripCard({session,ReportSection}){
      isPicked={r=>!pick.all&&pick.date===r.date&&pick.shift===r.shift} pickedBox={pick.box} allPicked={pick.all} ariaLabel="Trip card against the sheet by date and shift"
      emptyMessage={lines.length?'Nothing this way.':'No date of this sheet differs from Pulse-II trip cards.'}/>
    </ReportSection>
-   {opened?<ReportSection key={'ssc-people-'+done.name+'-'+pick.kind+'-'+where+'-'+pick.box} title={'Step 3 · '+result.site+' · '+where+' · '+(pick.box?kindLabel(pick.box):way)+' · people'} category="site-sheet-trip-card-people" description={many(listed.length,'line')+' · '+many(new Set(listed.map(l=>l.id)).size,'person','people')+' · Press a line for that person day by day.'} rows={listed} columns={step3Columns} rowKey={r=>r.key} rowClassName={r=>'ssc-row-'+TONE[r.kind]+(String(pick.person)===String(r.row)?' report-row-picked':'')} onRowClick={r=>setPick(p=>({...p,person:String(r.row)}))} recordDateFilter={false} emptyMessage="Nobody in this box."/>
+   {opened?<ReportSection key={'ssc-people-'+done.name+'-'+pick.kind+'-'+where+'-'+pick.box} title={'Step 3 · '+result.site+' · '+where+' · '+(pick.box?kindLabel(pick.box):way)+' · people'} category="site-sheet-trip-card-people" description={many(listed.length,'line')+' · '+many(new Set(listed.map(l=>l.id)).size,'person','people')+' · Press a line for that person day by day.'+(advice.length===1?' Correction: '+advice[0]:'')} rows={listed} columns={step3Columns} rowKey={r=>r.key} rowClassName={r=>'ssc-row-'+TONE[r.kind]+(String(pick.person)===String(r.row)?' report-row-picked':'')} onRowClick={r=>setPick(p=>({...p,person:String(r.row)}))} recordDateFilter={false} emptyMessage="Nobody in this box."/>
     :lines.length?<p className="ssc-notice">Press a box in the date by shift table to see its people, then a person for his days.</p>:null}
    {person&&<ReportSection key={'ssc-person-'+done.name+'-'+person.row} title={'Step 4 · '+(person.name||person.id)+' · '+person.id+' · day by day'} category="site-sheet-trip-card-person" description={(person.designation||'')+' · Row '+person.row+' of the sheet · every date of the sheet, the mark beside Pulse-II.'} rows={days} columns={step4Columns} rowKey={r=>r.id} rowClassName={r=>STATE_TONE[r.state]?'ssc-row-'+STATE_TONE[r.state]:''} recordDateFilter={false}/>}
   </>}
