@@ -149,3 +149,14 @@
 .logbook-single-sheet .logbook-vehicle-trips{margin:7px 0}
 .logbook-vehicle-trips tr[hidden]{display:none}
 @media print{.logbook-vehicle-trips tr[hidden]{display:table-row!important}.logbook-trip-card-tabs{display:none!important}}
+/* Zero-trip cards (owner, 24 Nov 2026): the vehicles that carry no trips, and the driver's biometric punch on a 0-trip manual card. */
+.logbook-no-trips p{margin:4px 0;font-size:.92rem}
+.logbook-zero-trip-attendance{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:baseline;margin:8px 0;padding:8px 12px;border:2px solid #8aa0bd;border-radius:6px;background:#f3f6fb;color:#1d2b42}
+.logbook-zero-trip-attendance small{flex-basis:100%;opacity:.8}
+.logbook-zero-trip-attendance.is-present{border-color:#2e8b57;background:#e7f6ec;color:#14532d}
+.logbook-zero-trip-attendance.is-absent,.logbook-zero-trip-attendance.is-no-code{border-color:#c62828;background:#fdeaea;color:#7f1d1d}
+.logbook-zero-trip-attendance.is-error{border-color:#c77700;background:#fff4e0;color:#6b3f00}
+:root[data-theme="dark"] .logbook-zero-trip-attendance{background:#17253a;color:#dbe4f3;border-color:#2c415e}
+:root[data-theme="dark"] .logbook-zero-trip-attendance.is-present{background:#12321f;color:#bff0cf;border-color:#2e8b57}
+:root[data-theme="dark"] :is(.logbook-zero-trip-attendance.is-absent,.logbook-zero-trip-attendance.is-no-code){background:#3a1616;color:#ffd0d0;border-color:#e05252}
+:root[data-theme="dark"] .logbook-zero-trip-attendance.is-error{background:#3a2a10;color:#ffe0a8;border-color:#c77700}
