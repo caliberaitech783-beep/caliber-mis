@@ -268,8 +268,8 @@ function fakeApp(){
 }
 test('the reads follow the sites of the login and refuse what cannot be checked',async()=>{
  const app=fakeApp();let asked=0;
- registerAttendanceSheetCheck(app,{pool:{},protect:[(req,res,next)=>next()],readIndex:async()=>{asked++;return INDEX;}});
- assert.deepEqual([...app.routes.keys()],['GET /api/reports/manpower/attendance-sheet/sites','POST /api/reports/manpower/attendance-sheet/people']);
+ registerAttendanceSheetCheck(app,{pool:{},protect:[(req,res,next)=>next()],readIndex:async()=>{asked++;return INDEX;},hrPunches:async()=>({sites:[],punches:[]})});
+ assert.deepEqual([...app.routes.keys()],['POST /api/reports/manpower/attendance-sheet/biometric','GET /api/reports/manpower/attendance-sheet/sites','POST /api/reports/manpower/attendance-sheet/people']);
  const everySite={sites:null},oneSite={sites:['sasti ob'],label:'Sasti OC'};
  assert.equal((await app.call('GET /api/reports/manpower/attendance-sheet/sites',{logBookScope:everySite})).body.sites.length,8);
  assert.deepEqual((await app.call('GET /api/reports/manpower/attendance-sheet/sites',{logBookScope:oneSite})).body.sites,['Sasti OC']);
@@ -322,7 +322,7 @@ test('the tab sits beside Attendance Month-wise, in the tab row and in the Repor
  assert.match(screen,/if\(sheetCheck\)return <section[\s\S]*?<AttendanceSheetCheck session=\{session\}\/>/);
  assert.match(read('../src/operations-reports.jsx'),/'attendance-batch','attendance-month','attendance-sheet'\]\.includes\(props\.reportId\)\)return <ManpowerReports/);
  const page=read('../src/attendance-sheet-check.jsx');
- assert.match(page,/accept="\.xlsx,\.xlsm,\.xlk"/,'an Excel backup file (.xlk) can be chosen too');
- assert.match(page,/Check and download Excel/);assert.match(page,/Nothing is changed in Pulse-II/);
+ assert.match(page,/accept="\.dat,\.txt,\.csv,\.xlsx,\.xlsm"/,'the device attlog .dat or its export');
+ assert.match(page,/Drivers and operators only/);assert.match(page,/Download Excel/);assert.match(page,/Nothing is changed in Pulse-II/);
  assert.match(read('../server/routes/log-book.mjs'),/registerAttendanceSheetCheck\(app,\{pool,protect\}\);/);
 });
