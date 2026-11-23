@@ -87,7 +87,7 @@ test('Lock VLB, Lock LMV, a machine entry, Close, reopen and Unlock VLB give the
  assert.equal(lmv.stage,'elb_open');assert.equal(lmv.fleet.length,31,'every machine of the site is listed');
  assert.deepEqual(lmv,(await call(batch)).data);
 
- const {answer:entry,held:entryHeld}=await act('/fleet/'+ids['VPC-019'],{shiftStatus:'working',employeeId:ids.alice,openingHmr:200,closingHmr:205});
+ const {answer:entry,held:entryHeld}=await act('/fleet/'+ids['VPC-019'],{manualShift:'batch',shiftHours:8,shiftStatus:'working',employeeId:ids.alice,openingHmr:200,closingHmr:205});
  assert.equal(entry.status,200,JSON.stringify(entry.data));
  counts['Machine entry']=entryHeld.length;
  assert.ok(endsAtCommit(entryHeld),'the machine entry gives its connection back straight after the commit');

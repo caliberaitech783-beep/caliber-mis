@@ -97,3 +97,13 @@ Set by the owner on 23 November 2026: "remove the temperature sign from all the 
 - The screen calls no weather service. Do not add the chip, its hook or a weather call back unless the owner asks.
 - The site coordinates the chip used are kept in `src/site-coordinates.mjs`, because the sign-in location names the nearest site from them.
 - `test/no-temperature-chip.test.mjs` checks this.
+
+# Attendance from every trip card, scanned or manual
+
+Set by the owner on 24 November 2026: "attendance should mark whether any process is done through scan or manual entry", and a manual card on 12 Hrs with Day / Night shift must count the punch and mark attendance.
+
+- Every saved VLB, ELB and LMV card with an employee is a duty in the shift it names, whether it was scanned or entered by hand, and counts as present (Attendance Batch-wise / Month-wise, the HR feed, the biometric punch check).
+- The duty's shift is read by `cardDutyShift` (`shared/duty-shift.mjs`): a Day or Night (12-hour) choice on the card wins over the batch's 8-hour label (a "Day, 12 Hrs" ELB in a Shift I batch is a Day duty). Only Day and Night together, or two different Shift I / II / III labels, are a conflict.
+- Shift and Shift Hrs are mandatory on the ELB Manual machine entry: both start blank, the user picks the batch shift, Day or Night, and 8 or 12 Hrs; Day and Night take 12 Hrs. The server refuses a save without them (`manualEntryShiftIssue` in `server/rules/vlb-batch-stages.mjs`). Jayant keeps its Shift Master hours.
+- A manual LMV card needs a shift (Shift Master entry, Day / Night or the card's marked shift); a manual VLB or ELB marked Day / Night needs 12 Hrs (`normalizeLogBook`).
+- Do not remove these rules; `test/duty-shift.test.mjs` checks them.

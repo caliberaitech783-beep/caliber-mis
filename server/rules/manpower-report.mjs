@@ -6,6 +6,7 @@ import {bookShiftCode,selectedMasterShift} from '../../shared/trip-card-rules.mj
 import {operationalDate,OPERATIONAL_START} from '../../shared/operational-start.mjs';
 import {equipmentGroupName} from '../../shared/equipment-group.mjs';
 import {isDummyEmployeeId} from '../../shared/dummy-employee-ids.mjs';
+import {cardDutyShift,TWELVE_HOUR_CODES} from '../../shared/duty-shift.mjs';
 import {batchStage} from './vlb-two-stage.mjs';
 import {fleetAssetKind,assetIdentity} from './fleet-reconciliation.mjs';
 
@@ -32,6 +33,14 @@ function shiftWindow(shifts,site,date,code){
  const a=clock(shift.startTime||shift.start),b=clock(shift.endTime||shift.end);if(!a||!b||a===b)return null;
  const start=Date.parse(`${date}T${a}+05:30`),end=Date.parse(`${b<a?nextReportDate(date):date}T${b}+05:30`);
  return {start,end,hours:(end-start)/3600000,startLabel:`${date} ${a.slice(0,5)}`,endLabel:`${b<a?nextReportDate(date):date} ${b.slice(0,5)}`};
+}
+// The window a card was saved with (its shift start and hours), for a Day / Night duty at a site whose Shift Master lists
+// no Day or Night entry.
+function savedWindow(date,start,hours){
+ const m=text(start).match(/^(d{1,2}):(d{2})/),h=Number(hours);if(!m||+m[1]>23||+m[2]>59||!(h>0&&h<=24))return null;
+ const begin=Date.parse(`${date}T${m[1].padStart(2,'0')}:${m[2]}:00+05:30`),end=begin+h*3600000;
+ const label=at=>new Date(at+19800000).toISOString().slice(0,16).replace('T',' ');
+ return {start:begin,end,hours:h,startLabel:label(begin),endLabel:label(end)};
 }
 function identityIndex(employees){
  const byId=new Map(),aliases=new Map(),caliberMappings=new Map();
@@ -135,9 +144,11 @@ export function buildManpowerReport({records=[],attendance=[],assets=[],employee
    }
   }
   const savedShift=shifts.find(s=>String(s.id)===String(d.shiftId));
-  const codes=unique([d.bookShiftCode,d.cardShift,d.shiftName,savedShift?.shiftCode||savedShift?.shiftName].map(bookShiftCode));
-  if(codes.length>1){r.shift='';r.eligible=false;addIssue(r,'Saved shift labels conflict; excluded from duty totals.');}else r.shift=codes[0]||'';
-  r.schedule=shiftWindow(shifts,site,date,r.shift);
+  // The duty's shift (shared/duty-shift.mjs): a Day / Night (12-hour) choice on a scanned or manual card wins over the
+  // batch's 8-hour label, so the card counts for attendance.
+  const dutyShift=cardDutyShift(d,savedShift);
+  if(dutyShift.conflict){r.shift='';r.eligible=false;addIssue(r,'Saved shift labels conflict; excluded from duty totals.');}else r.shift=dutyShift.code;
+  r.schedule=shiftWindow(shifts,site,date,r.shift)||(TWELVE_HOUR_CODES.includes(r.shift)?savedWindow(date,d.masterShiftStart,d.shiftHours):null);
   if(!r.schedule)addIssue(r,'Effective site shift schedule is missing or ambiguous; timing requires review.');
   else if(d.masterShiftStart&&text(d.masterShiftStart).slice(0,5)!==r.schedule.startLabel.slice(-5))addIssue(r,'Saved shift start differs from the effective Shift Master; timing requires review.');
   r.hours=meter(d,'Hmr');r.km=r.kind==='vehicle'?meter(d,'Kmr'):null;r.trips=r.kind==='vehicle'?number(d.completedTrips??d.totalTrips):null;

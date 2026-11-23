@@ -36,7 +36,7 @@ test('batch Pulse lookup and save use nine hours and reject excess HMR before in
  assert.equal((await readFleetBreakdowns(client,batch,'3',readHours,'mis')).shiftHours,9);
  let inserted=0;
  const ops={readHours,resolve:async(c,k,data)=>normalizeLogBook(k,data,{manualEntry:true}),insert:async(c,k,data)=>{inserted++;return {id:4,data}}};
- const input={entryMode:'working-only',employeeId:'5',openingHmr:100,closingHmr:109,shiftHours:9};
+ const input={entryMode:'working-only',manualShift:'batch',employeeId:'5',openingHmr:100,closingHmr:109,shiftHours:9};
  const record=await saveFleetEntry(client,batch,'3',input,'mis',ops);assert.equal(record.data.shiftHours,9);assert.equal(record.data.idleHours,0);
  await assert.rejects(()=>saveFleetEntry(client,batch,'3',{...input,closingHmr:109.01},'mis',ops),/cannot exceed/);assert.equal(inserted,1);
 });

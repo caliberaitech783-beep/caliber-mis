@@ -1,4 +1,4 @@
-import {validShiftHours,isJayantSecondShift} from '../../shared/site-shift-hours.mjs';
+import {validShiftHours,isJayantSecondShift,isJayantSite} from '../../shared/site-shift-hours.mjs';
 import {sendJsonInChunks} from '../services/chunked-json.mjs';
 import {readReportBreakdowns} from '../rules/report-pulse-breakdowns.mjs';
 import {attachTransferHistory,assetAtSiteOnDate,assetForSiteOnDate} from '../../shared/equipment-transfer-history.mjs';
@@ -91,6 +91,11 @@ export function normalizeLogBook(kind,input={},{manualEntry=false,kmrOnly=false}
  const location=text(input.location);if(!location)fail('Select a location.');
  const optionalShift=kind==='lmv'||manualEntry&&vehicle&&!input.scanCardId;
  const shiftHours=kind==='lmv'?number(input.shiftHours,'Shift hours'):optionalShift&&kind==='vehicle'&&(input.shiftHours==null||input.shiftHours==='')?(CARD_SHIFTS[normalizeCardShift(input.cardShift||input.bookShiftCode)]?.hours||8):manualEntry?manualShiftHours(input):number(input.shiftHours,'Shift hours');if(kind!=='lmv'&&!manualEntry&&!isJayantSecondShift(input)&&kind!=='vehicle'&&input.cardShift&&CARD_SHIFTS[input.cardShift]&&shiftHours!==CARD_SHIFTS[input.cardShift].hours)fail('The marked card shift requires '+CARD_SHIFTS[input.cardShift].hours+' hours.');if(kind!=='lmv'&&!manualEntry&&!validShiftHours(shiftHours,input))fail('Select an 8-hour or 12-hour shift.');
+ // Every card names its shift, so its duty counts for attendance (owner, 24 Nov 2026; shared/duty-shift.mjs): an LMV
+ // card needs a Shift Master entry, Day / Night or the shift marked on the card. Day and Night are 12-hour shifts on a
+ // manual VLB or ELB (an LMV keeps its own hours).
+ if(kind==='lmv'&&!text(input.shiftId)&&!isManualShift(input.manualShift)&&!CARD_SHIFTS[input.cardShift]&&!bookShiftCode(input.bookShiftCode))fail('Select the Shift for this LMV card. Shift is mandatory.');
+ if(kind!=='lmv'&&manualEntry&&isManualShift(input.manualShift)&&!isJayantSite(input)&&Number(shiftHours)!==12)fail('Day and Night are 12-hour shifts. Select 12 Hrs.');
  const shiftStatus=kind==='equipment'&&FLEET_STATUSES[input.shiftStatus]?input.shiftStatus:'',nonWorking=Boolean(shiftStatus)&&NON_WORKING_STATUSES.includes(shiftStatus);
  const assetId=number(input.assetId,'Door number',{integer:true}),employeeId=number(input.employeeId,vehicle?'Driver':'Operator',{integer:true,optional:nonWorking}),shiftId=number(input.shiftId,'Shift',{integer:true,optional:optionalShift});
  if(!assetId||!employeeId&&!nonWorking||!shiftId&&!optionalShift)fail('Select an asset, employee and shift from their masters.');

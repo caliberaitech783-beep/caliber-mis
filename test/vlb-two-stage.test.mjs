@@ -96,7 +96,8 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
  app.use((error,req,res,next)=>res.status(500).json({error:error.message}));
  const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.on('listening',resolve));t.after(()=>{server.closeAllConnections();server.close()});
  const base=`http://127.0.0.1:${server.address().port}`;
- const call=async(route,method='GET',body,auth='alice')=>{const r=await fetch(base+route,{method,headers:{Authorization:auth,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,data:await r.json()}};
+ // A machine entry names its Shift and Shift Hrs (mandatory since 24 Nov 2026); the batch shift at 8 Hrs unless a test says otherwise.
+ const call=async(route,method='GET',body,auth='alice')=>{if(method==='POST'&&/\/fleet\/[^/]+$/.test(route)&&body&&!('manualShift' in body))body={manualShift:'batch',shiftHours:8,...body};const r=await fetch(base+route,{method,headers:{Authorization:auth,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,data:await r.json()}};
  const selection={site:'Sasti OC',date:'2026-12-18',shift:'S1'};
  const created=await call('/api/vlb-batches','POST',{...selection,requestKey:randomUUID()});
  assert.equal(created.status,201,JSON.stringify(created.data));assert.equal(created.data.twoStage,true);assert.equal(created.data.stage,'vlb_open');assert.equal(created.data.canLockVlb,false,'empty batch cannot lock');
@@ -213,6 +214,10 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
  assert.equal((await call(batch+'/lock-vlb','POST',{})).status,409,'cannot lock twice');
  assert.equal((await call('/api/log-books/vehicle','POST',card('V1',[{equipmentName:'V19',tripCount:1}]))).status,409,'VLB frozen after lock');
  const fleet=assetId=>batch+'/fleet/'+assetId;
+ const noShift=await call(fleet(ids['VPC-019']),'POST',{manualShift:'',shiftHours:8,shiftStatus:'working',employeeId:ids.alice,openingHmr:500,closingHmr:505});
+ assert.equal(noShift.status,400);assert.match(noShift.data.error,/Shift is mandatory/);
+ const dayAt8=await call(fleet(ids['VPC-019']),'POST',{manualShift:'day',shiftHours:8,shiftStatus:'working',employeeId:ids.alice,openingHmr:500,closingHmr:505});
+ assert.equal(dayAt8.status,400);assert.match(dayAt8.data.error,/12-hour/);
  const tripsAsBreakdown=await call(fleet(ids['VPC-019']),'POST',{shiftStatus:'breakdown',statusReason:'Engine'});
  assert.equal(tripsAsBreakdown.status,400);assert.match(tripsAsBreakdown.data.error,/loaded 8 trips/);
  const zeroHours=await call(fleet(ids['VPC-019']),'POST',{shiftStatus:'working',employeeId:ids.alice,openingHmr:500,closingHmr:500});

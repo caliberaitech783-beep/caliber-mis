@@ -22,7 +22,8 @@ export const attendanceDayStoreEnabled=(env=process.env)=>env.ATTENDANCE_DAY_STO
 
 const HISTORY_CARD_FIELDS=['bookDate','location','bookShiftCode','cardShift','shiftName','shiftId','masterShiftStart','door','assetId','employeeId','caliberId','employeeName','openingHmr','closingHmr','openingKmr','closingKmr','completedTrips','totalTrips','scanBatchId','scanCardId'];
 // The attendance register needs the duty fields plus the trip rows (trip count), the second operator and ELB trips.
-export const ATTENDANCE_CARD_FIELDS=[...HISTORY_CARD_FIELDS,'trips','timeMode','operatorSplit','fleetTrips'];
+// manualShift and shiftHours: the Day / Night choice of a manual card and its hours (shared/duty-shift.mjs).
+export const ATTENDANCE_CARD_FIELDS=[...HISTORY_CARD_FIELDS,'trips','timeMode','operatorSplit','fleetTrips','manualShift','shiftHours'];
 export {HISTORY_CARD_FIELDS};
 
 const CARD_LIMIT=50000;
