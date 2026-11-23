@@ -130,10 +130,20 @@ export async function lockVlb(client,batch,actor,{assets}={}){
  const blockers=lockBlockers({stage,records,holds,unresolved:snapshot.unresolved,waitingScans:stage==='vlb_open'?await batchWaitingScans(client,batch):[]});
  if(blockers.length)fail(blockers.join(' '),409);
  await client.query('DELETE FROM mis_vlb_batch_machines WHERE batch_id=$1',[batch.id]);
- for(const m of snapshot.machines)await client.query('INSERT INTO mis_vlb_batch_machines(batch_id,asset_id,machine_label,door,trips,source_cards) VALUES($1,$2,$3,$4,$5,$6)',[batch.id,m.assetId,m.label,m.door,m.trips,m.sourceCards]);
+ // The machine list and the site's fleet list are each written in one statement. Until 23 Nov 2026
+ // every line was a statement of its own (a site lists 150 to 300 machines), all inside the site,
+ // date and shift lock, while the card saves of that shift waited.
+ if(snapshot.machines.length)await client.query(`INSERT INTO mis_vlb_batch_machines(batch_id,asset_id,machine_label,door,trips,source_cards)
+  SELECT $1,(r->>'assetId')::bigint,r->>'label',r->>'door',(r->>'trips')::integer,(r->>'sourceCards')::integer
+  FROM jsonb_array_elements($2::jsonb) r`,[batch.id,JSON.stringify(snapshot.machines.map(m=>({assetId:m.assetId,label:m.label,door:m.door,trips:m.trips,sourceCards:m.sourceCards})))]);
  const fleet=buildFleetList(assets,batch.site,snapshot.machines);
- for(const row of fleet)await client.query(`INSERT INTO mis_vlb_batch_fleet(batch_id,asset_id,door,equipment_name,equipment_group,trips,source_cards,draft) VALUES($1,$2,$3,$4,$5,$6,$7,NULL)
-  ON CONFLICT(batch_id,asset_id) DO UPDATE SET door=EXCLUDED.door,equipment_name=EXCLUDED.equipment_name,equipment_group=EXCLUDED.equipment_group,trips=EXCLUDED.trips,source_cards=EXCLUDED.source_cards,draft=NULL`,[batch.id,row.assetId,row.door,row.equipmentName,row.equipmentGroup,row.trips,row.sourceCards]);
+ // One line per machine: a statement may not write the same machine twice, and the last line for a
+ // machine is the one the line-by-line write left in place.
+ const fleetLines=[...new Map(fleet.map(row=>[String(row.assetId),{assetId:row.assetId,door:row.door,equipmentName:row.equipmentName,equipmentGroup:row.equipmentGroup,trips:row.trips,sourceCards:row.sourceCards}])).values()];
+ if(fleetLines.length)await client.query(`INSERT INTO mis_vlb_batch_fleet(batch_id,asset_id,door,equipment_name,equipment_group,trips,source_cards,draft)
+  SELECT $1,(r->>'assetId')::bigint,r->>'door',r->>'equipmentName',r->>'equipmentGroup',(r->>'trips')::integer,(r->>'sourceCards')::integer,NULL
+  FROM jsonb_array_elements($2::jsonb) r
+  ON CONFLICT(batch_id,asset_id) DO UPDATE SET door=EXCLUDED.door,equipment_name=EXCLUDED.equipment_name,equipment_group=EXCLUDED.equipment_group,trips=EXCLUDED.trips,source_cards=EXCLUDED.source_cards,draft=NULL`,[batch.id,JSON.stringify(fleetLines)]);
  await client.query('DELETE FROM mis_vlb_batch_fleet WHERE batch_id=$1 AND logbook_id IS NULL AND NOT (asset_id=ANY($2::bigint[]))',[batch.id,fleet.map(r=>Number(r.assetId))]);
  const locked=(await client.query("UPDATE mis_vlb_batches SET stage='lmv_open',lmv_locked_at=NULL,vlb_locked_at=NOW(),vlb_locked_by=$2 WHERE id=$1 RETURNING *,book_date::text AS report_date",[batch.id,batchLogin(actor)])).rows[0];
  await auditVlbBatch(client,batch,actor,'vlb_locked',{machines:snapshot.machines,fleetCount:fleet.length,linkedElbEntries:fleet.filter(row=>Number(row.trips)>0).length,cards:records.length});
