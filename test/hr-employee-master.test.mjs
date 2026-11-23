@@ -209,8 +209,9 @@ test("the ERP copy writes nothing to Employee Master, before and after HR's mast
   await f.db.exec('CREATE TABLE pulse_master_links(master_name TEXT,source_key TEXT,local_id BIGINT)');
   const sync=registerMasterSync(express(),{pool:f.pool,pulse:{status:()=>({connected:true,busy:false})},erp,requireSession:(q,s,n)=>n(),requireAdministrator:(q,s,n)=>n()});
   const status=await sync.status();
-  assert.equal(status.masters.some(m=>m.name==='Employee master'),false);
-  assert.deepEqual(status.notSynced.map(m=>m.label),['Employee Master']);assert.match(status.notSynced[0].note,/not copied from Oracle \/ ERP/);
+  // Employee Master has a line again since HR Pulse became its final authority; its source is HR, never Oracle / ERP.
+  assert.deepEqual(status.masters.filter(m=>m.name==='Employee master').map(m=>[m.source,m.minute]),[['HR',true]]);
+  assert.deepEqual(status.notSynced,[]);
  }finally{await f.close();}
 });
 

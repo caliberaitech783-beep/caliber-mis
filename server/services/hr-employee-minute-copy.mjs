@@ -1,0 +1,165 @@
+// Employee Master copied from HR Pulse every minute (owner, 23 Nov 2026: "Pulse HR is now the final authority for
+// employee master ... any data entered in Pulse HR should be auto synchronized on minute to minute basis").
+//
+// Every minute Pulse-II asks HR Pulse one small question, "what changed after number N?", and applies only those
+// people (shared/hr-employee-changes.mjs has the rules). When nothing changed, nothing is read from the database.
+//  - It starts only after a person has looked at the whole Preview on Sync all masters and applied it.
+//  - It stops by itself when one minute would switch off more than HR_COPY_STOP_LIMIT people, and waits for a
+//    person to look at the Preview again. Nothing of that minute is applied.
+//  - A change that could put a wrong person on a number is held; an administrator can accept a changed name.
+//  - One server at a time runs it (a database lock), and the owner is told on Telegram when it stops, holds a
+//    change, or has not been able to copy for HR_COPY_SILENT_MINUTES.
+import {planHrChanges,HR_CHANGE_EXISTING_FIELDS,HR_COPY_STOP_LIMIT,nameKey} from '../../shared/hr-employee-changes.mjs';
+import {recordNumber,employeeNumber} from '../../shared/hr-employee-master.mjs';
+import {applyEmployeeSiteMove,EMPLOYEE_SITE_MOVE_SCHEMA} from '../routes/employee-site-move.mjs';
+
+export const HR_COPY_STATE_KEY='hr_employee_copy';
+export const HR_COPY_INTERVAL_MS=60*1000;
+export const HR_COPY_SILENT_MINUTES=10;
+const MAX_ROUNDS=5,HELD_LIMIT=200;
+const SETTINGS_SCHEMA="CREATE TABLE IF NOT EXISTS app_settings(setting_key TEXT PRIMARY KEY,setting_value JSONB NOT NULL DEFAULT '{}'::jsonb,updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())";
+const READ_SQL='SELECT setting_value FROM app_settings WHERE setting_key=$1';
+const SAVE_SQL=`INSERT INTO app_settings (setting_key,setting_value,updated_at) VALUES ($1,$2::jsonb,NOW())
+ ON CONFLICT (setting_key) DO UPDATE SET setting_value=EXCLUDED.setting_value,updated_at=NOW()`;
+// The number of an Employee ID in the database, read like employeeNumber() (CMPL123 = CMLL123 = 123).
+const numberOf=field=>`NULLIF(substring(regexp_replace(upper(COALESCE(record_data->>'${field}','')),'[[:space:]/-]','','g') from '^(?:CMPL|CMLL)?0*([1-9][0-9]{0,8})$'),'')`;
+// Only the fields the plan reads, and only the people asked for: never the whole master (about 44 MB).
+export const EXISTING_FOR_SQL=`SELECT id,master_name,jsonb_build_object(${HR_CHANGE_EXISTING_FIELDS.map(field=>`'${field}',record_data->'${field}'`).join(',')}) AS record_data
+ FROM master_records WHERE master_name IN('Employee master','ERP Employee master')
+ AND COALESCE(${numberOf('caliberId')},${numberOf('employeeId')},${numberOf('caliberCode')})=ANY($1::text[]) ORDER BY id`;
+const UPDATE_SQL=`UPDATE master_records m SET master_name='Employee master',
+ record_data=m.record_data||v.d||jsonb_build_object('employeeMasterRevision',COALESCE((m.record_data->>'employeeMasterRevision')::bigint,0)+1)
+ FROM jsonb_to_recordset($1::jsonb) AS v(id bigint,d jsonb) WHERE m.id=v.id`;
+const INSERT_SQL="INSERT INTO master_records(master_name,record_data) SELECT 'Employee master',d FROM jsonb_array_elements($1::jsonb) AS d";
+const OFF_SQL=`UPDATE master_records SET record_data=record_data||jsonb_build_object('hrListed',false,'hrLeft',false,'hrNotListedAt',$2::text,
+ 'employeeMasterRevision',COALESCE((record_data->>'employeeMasterRevision')::bigint,0)+1) WHERE id=ANY($1::bigint[])`;
+
+const fail=(status,message)=>Object.assign(new Error(message),{status});
+const text=value=>value===null||value===undefined?'':String(value).trim();
+const count=value=>Number(value||0).toLocaleString('en-IN');
+export const istDate=at=>new Date(at+5.5*60*60*1000).toISOString().slice(0,10);
+const istClock=at=>new Intl.DateTimeFormat('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(at));
+
+export function createHrEmployeeMinuteCopy({pool,hr,now=()=>Date.now(),alert=async()=>{}}){
+ let schema=null,running=false,timer=null,first=null;
+ const ensure=()=>schema??=pool.query(SETTINGS_SCHEMA).then(()=>pool.query(EMPLOYEE_SITE_MOVE_SCHEMA)).catch(error=>{schema=null;throw error;});
+ const iso=()=>new Date(now()).toISOString();
+ const readState=async()=>{await ensure();return (await pool.query(READ_SQL,[HR_COPY_STATE_KEY])).rows[0]?.setting_value||{};};
+ const saveState=async patch=>{const state={...await readState(),...patch};await pool.query(SAVE_SQL,[HR_COPY_STATE_KEY,JSON.stringify(state)]);return state;};
+ const tell=async(key,message)=>{try{await alert(message,key);}catch{/* an alert that cannot be sent never stops the copy */}};
+
+ // Plans and writes the changes of these people in one transaction. decide(plan) may refuse (the stop).
+ async function copyPeople(numbers,lines,{accepted={},decide=()=>''}={}){
+  const wanted=[...new Set(numbers.map(value=>employeeNumber(value)).filter(Boolean))];
+  const client=await pool.connect();
+  try{
+   await client.query('BEGIN');
+   // The same lock as every other writer of Employee Master (HR's Excel, an approved site move).
+   await client.query('SELECT pg_advisory_xact_lock(709224109)');
+   const existing=(await client.query(EXISTING_FOR_SQL,[wanted])).rows.filter(row=>wanted.includes(recordNumber(row.record_data)));
+   const at=iso(),plan=planHrChanges(existing,wanted,lines,{now:at,accepted});
+   const refusal=decide(plan);
+   if(refusal){await client.query('ROLLBACK');return {plan,refusal,notMoved:[]};}
+   if(plan.updates.length)await client.query(UPDATE_SQL,[JSON.stringify(plan.updates.map(row=>({id:row.id,d:row.patch})))]);
+   if(plan.inserts.length)await client.query(INSERT_SQL,[JSON.stringify(plan.inserts)]);
+   if(plan.offIds.length)await client.query(OFF_SQL,[plan.offIds,at]);
+   // Another site in HR Pulse: a dated move from today, kept in the site history and on the register of moves.
+   const notMoved=[];
+   for(const move of plan.moves){
+    await client.query('SAVEPOINT hr_copy_move');
+    try{await applyEmployeeSiteMove(client,{employeeId:move.id,to:move.to,fromDate:istDate(now()),requestedBy:'hr-master',requestedName:'HR Pulse Employee Master',approvedBy:['HR Pulse'],card:{hrMaster:true},at});}
+    catch(error){if(!error.status)throw error;await client.query('ROLLBACK TO SAVEPOINT hr_copy_move');notMoved.push({number:move.number,employeeId:move.employeeId,name:move.name,reason:'site-not-moved',detail:`The site could not be moved to ${move.to}: ${error.message}`});}
+   }
+   await client.query('COMMIT');
+   return {plan,refusal:'',notMoved};
+  }catch(error){await client.query('ROLLBACK').catch(()=>{});throw error;}
+  finally{client.release();}
+ }
+
+ // The held list after a copy: the people looked at are replaced by what is held for them now.
+ const heldAfter=(before,looked,nowHeld,at)=>{
+  const kept=(Array.isArray(before)?before:[]).filter(item=>!looked.includes(item.number));
+  const since=new Map((Array.isArray(before)?before:[]).map(item=>[item.number+'|'+item.reason,item.since]));
+  return [...kept,...nowHeld.map(item=>({...item,since:since.get(item.number+'|'+item.reason)||at}))].slice(-HELD_LIMIT);
+ };
+
+ async function tick(){
+  if(running)return {skipped:'running'};
+  if(!hr.configured())return {skipped:'not connected'};
+  let state=await readState();
+  if(!state.started)return {skipped:'not started'};
+  if(state.stopped)return {skipped:'stopped'};
+  running=true;
+  // One server at a time: the others see the lock taken and leave this minute to it.
+  const guard=await pool.connect();let locked=false;
+  try{
+   locked=(await guard.query('SELECT pg_try_advisory_lock(709224112) AS ok')).rows[0]?.ok!==false;
+   if(!locked)return {skipped:'another server'};
+   state=await readState();
+   if(state.lastRunAt&&now()-Date.parse(state.lastRunAt)<HR_COPY_INTERVAL_MS-15000)return {skipped:'recent'};
+   const at=iso();
+   let after=text(state.seq)||'0',latest=after,feed,rounds=0;
+   const numbers=new Set(),lines=[];
+   do{
+    feed=await hr.changes(after);
+    if(feed.ready===false){await saveState({lastRunAt:at,error:"HR Pulse's change list is not ready yet. The nightly match of both lists still runs."});return {ok:false,notReady:true};}
+    for(const number of feed.numbers||[])numbers.add(String(number));
+    lines.push(...(feed.employees||[]));
+    latest=text(feed.latest)||after;after=latest;rounds++;
+   }while(feed.more&&rounds<MAX_ROUNDS);
+   if(!numbers.size){await saveState({lastRunAt:at,lastOkAt:at,seq:latest,error:'',failingSince:null,failureTold:false});return {ok:true,changed:0};}
+   const {plan,refusal,notMoved}=await copyPeople([...numbers],lines,{accepted:state.accepted||{},
+    decide:made=>made.summary.switchedOff>HR_COPY_STOP_LIMIT?`This minute's changes from HR Pulse would switch off ${count(made.summary.switchedOff)} people (removed ${count(made.summary.removed)}, marked LEFT ${count(made.summary.left)}). Nothing was applied. Open Preview on Sync all masters, check and apply.`:''});
+   if(refusal){
+    await saveState({lastRunAt:at,stopped:{at,reason:refusal,switchedOff:plan.summary.switchedOff},error:''});
+    await tell(`hr-employee-copy:stopped:${at}`,`⛔ Pulse-II stopped the Employee Master copy from HR Pulse at ${istClock(at)} IST.\n${refusal}`);
+    return {ok:false,stopped:true,summary:plan.summary};
+   }
+   const nowHeld=[...plan.held,...notMoved],before=Array.isArray(state.held)?state.held:[];
+   const held=heldAfter(before,[...numbers].map(value=>employeeNumber(value)),nowHeld,at);
+   const fresh=nowHeld.filter(item=>!before.some(old=>old.number===item.number&&old.reason===item.reason));
+   const wrote=plan.updates.length+plan.inserts.length+plan.offIds.length+plan.moves.length>0;
+   await saveState({lastRunAt:at,lastOkAt:at,seq:latest,held,error:'',failingSince:null,failureTold:false,...(wrote?{lastChangeAt:at,lastSummary:plan.summary}:{})});
+   if(fresh.length)await tell(`hr-employee-copy:held:${at}`,`⚠️ Employee Master copy from HR Pulse: ${count(fresh.length)} change${fresh.length===1?' is':'s are'} held for a person to look at (Sync all masters).\n${fresh.slice(0,5).map(item=>`${item.employeeId} ${item.name}: ${item.detail}`).join('\n')}`);
+   return {ok:true,changed:numbers.size,summary:plan.summary,held:nowHeld.length};
+  }catch(error){
+   const at=iso(),since=state.failingSince||at,message=error?.status?error.message:'The copy from HR Pulse failed. Existing data retained.';
+   const silent=now()-Date.parse(since)>=HR_COPY_SILENT_MINUTES*60*1000;
+   await saveState({lastRunAt:at,error:message,failingSince:since,...(silent&&!state.failureTold?{failureTold:true}:{})}).catch(()=>{});
+   if(silent&&!state.failureTold)await tell(`hr-employee-copy:silent:${since}`,`⚠️ Pulse-II has not been able to copy Employee Master from HR Pulse since ${istClock(since)} IST.\n${message}`);
+   return {ok:false,error:message};
+  }finally{
+   if(locked)await guard.query('SELECT pg_advisory_unlock(709224112)').catch(()=>{});
+   guard.release();running=false;
+  }
+ }
+
+ // A person has looked at the whole Preview and applied it: the minute copy starts, or starts again after a stop.
+ const start=async({by=''}={})=>{const at=iso(),state=await readState();return saveState({started:true,startedAt:state.startedAt||at,startedBy:state.startedBy||text(by).slice(0,120),stopped:null,resumedAt:state.stopped?at:state.resumedAt||null,error:'',failingSince:null,failureTold:false});};
+
+ // An administrator has looked at a changed name and accepts it: that person is copied now, from HR Pulse's list.
+ async function accept(number,{by=''}={}){
+  const wanted=employeeNumber(number);
+  if(!wanted)throw fail(400,'Choose a held change.');
+  const state=await readState(),item=(state.held||[]).find(entry=>entry.number===wanted);
+  if(!item)throw fail(404,'This change is no longer held.');
+  if(!['other-name','old-person'].includes(item.reason))throw fail(409,'This one is corrected in HR Pulse; it cannot be accepted here.');
+  const lines=((await hr.employees()).employees||[]).filter(line=>employeeNumber(line.employeeId)===wanted);
+  if(lines.length!==1)throw fail(409,lines.length?`CMLL${wanted} is on ${lines.length} lines in HR Pulse. It has to be corrected there.`:`HR Pulse no longer holds CMLL${wanted}.`);
+  const accepted={...(state.accepted||{}),[wanted]:nameKey(lines[0].name)};
+  const {plan,notMoved}=await copyPeople([wanted],lines,{accepted});
+  const at=iso(),held=heldAfter(state.held,[wanted],[...plan.held,...notMoved],at);
+  await saveState({accepted,held,lastChangeAt:at,acceptedBy:text(by).slice(0,120)});
+  return {accepted:true,name:text(lines[0].name),stillHeld:held.some(entry=>entry.number===wanted)};
+ }
+
+ const status=async()=>{
+  const state=await readState();
+  return {started:state.started===true,startedAt:state.startedAt||null,lastRunAt:state.lastRunAt||null,lastOkAt:state.lastOkAt||null,lastChangeAt:state.lastChangeAt||null,lastSummary:state.lastSummary||null,
+   held:Array.isArray(state.held)?state.held:[],stopped:state.stopped||null,error:text(state.error),stopLimit:HR_COPY_STOP_LIMIT,everySeconds:HR_COPY_INTERVAL_MS/1000,connected:hr.configured()};
+ };
+ const run=()=>void tick().catch(error=>console.error('Employee Master copy from HR Pulse failed',error?.message));
+ return {tick,start,accept,status,
+  startTimer({firstDelayMs=90*1000}={}){if(timer||first)return;first=setTimeout(()=>{first=null;run();timer=setInterval(run,HR_COPY_INTERVAL_MS);timer.unref?.();},firstDelayMs);first.unref?.();},
+  stopTimer(){clearTimeout(first);clearInterval(timer);first=null;timer=null;}};
+}

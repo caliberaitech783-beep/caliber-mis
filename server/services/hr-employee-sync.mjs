@@ -1,6 +1,8 @@
-// Employee Master and Employee Transfer, copied from HR (hrpulse.cmll.in) every hour (owner, 23 Nov 2026).
-// Owner, same day: "do not sync Employee Master, sync only Employee Transfer". Sync all masters has only the
-// Employee Transfer line (server/routes/master-sync.mjs); the Employee Master copy below is kept but not wired to any line.
+// Employee Master and Employee Transfer, copied from HR (hrpulse.cmll.in) (owner, 23 Nov 2026).
+// Owner, later the same day: HR Pulse is the final authority for Employee Master and Pulse-II copies every change
+// within a minute. That replaces his morning order "do not sync Employee Master, sync only Employee Transfer".
+// The whole-list copy below is what a person looks at (Preview) and applies once on Sync all masters; after that
+// server/services/hr-employee-minute-copy.mjs takes the changes every minute.
 //
 // HR serves both, read only, at /api/integrations/mis/employees and /transfers (caliber-hr repo,
 // server/mis-employee-sync.mjs). Pulse-II signs in with HR_SYNC_KEY, the same value as HR's MIS_SYNC_KEY.
@@ -148,6 +150,11 @@ export function createHrEmployeeSync({pool,key=process.env.HR_SYNC_KEY,base=proc
 
  return {
   configured,
+  // What changed in HR Pulse's Employee Master after change number `after`, and the whole list (read only).
+  changes:after=>read('employee-changes?after='+encodeURIComponent(/^\d{1,18}$/.test(String(after??''))?String(after):'0')),
+  employees:()=>read('employees'),
+  // The approved transfers HR holds, for a cheap look before the whole transfer copy.
+  transfers:()=>read('transfers'),
   async count(name){
    if(name!==HR_EMPLOYEE_TRANSFER)return null;
    await ensure();return Number((await pool.query('SELECT count(*) n FROM hr_transfer_sync')).rows[0].n);

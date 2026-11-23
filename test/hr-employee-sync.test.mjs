@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {PGlite} from '@electric-sql/pglite';
 import express from 'express';
 import {createHrEmployeeSync,hrEmployeeSheet,planHrTransfers,HR_SYNC_LIMITS} from '../server/services/hr-employee-sync.mjs';
-import {registerMasterSync,MASTER_SYNC_ROWS,HR_SYNC_ACTOR} from '../server/routes/master-sync.mjs';
+import {registerMasterSync,MASTER_SYNC_ROWS,HR_SYNC_ACTOR,EMPLOYEE_MASTER_NEEDS_PREVIEW} from '../server/routes/master-sync.mjs';
 import {EMPLOYEE_MASTER_OWNER_KEY,HR_MASTER_OWNER} from '../shared/hr-employee-master.mjs';
 
 const KEY='s'.repeat(40);
@@ -25,10 +25,9 @@ async function fixture({employees=[],transfers=[],people=[],owner=true}={}){
  return {db,pool,sync,hr,calls,all,close:()=>db.close()};
 }
 
-test('Sync all masters takes only Employee Transfer from HR; Employee Master has no line (owner: do not sync it)',()=>{
+test('Sync all masters has two HR lines: Employee Master (Preview, then copied every minute) and Employee Transfer',()=>{
  const rows=MASTER_SYNC_ROWS.filter(row=>row.source==='HR');
- assert.deepEqual(rows.map(row=>[row.name,row.label,row.preview]),[['Employee transfer','Employee Transfer',true]]);
- assert.equal(MASTER_SYNC_ROWS.some(row=>row.name==='Employee master'),false);
+ assert.deepEqual(rows.map(row=>[row.name,row.label,row.preview,row.minute===true]),[['Employee master','Employee Master',true,true],['Employee transfer','Employee Transfer',true,false]]);
 });
 
 test("HR's lines become the rows of HR's master Excel",()=>{
@@ -113,7 +112,7 @@ test('HR refusing or not answering changes nothing and says so',async()=>{
  await assert.rejects(down.sync('Employee master'),{status:502});
 });
 
-test('the hourly run syncs Employee Transfer only, records the result, and leaves a copy another instance made minutes ago',async()=>{
+test('the hourly run syncs Employee Transfer (Employee Master has its own minute copy), records the result, and leaves a copy another instance made minutes ago',async()=>{
  const synced=[];
  const f=await fixture();
  try{
@@ -121,12 +120,12 @@ test('the hourly run syncs Employee Transfer only, records the result, and leave
   const sync=registerMasterSync(express(),{pool:f.pool,pulse:{status:()=>({connected:true,busy:false})},erp:{status:async()=>({configured:false})},hr,requireSession:(q,s,n)=>n(),requireAdministrator:(q,s,n)=>n()});
   assert.deepEqual((await sync.hourly()).map(r=>[r.name,r.ok]),[['Employee transfer',false]]);
   assert.deepEqual(synced,[['Employee transfer',HR_SYNC_ACTOR]]);
-  let rows=(await sync.status()).masters.filter(m=>m.source==='HR');
+  let rows=(await sync.status()).masters.filter(m=>m.name==='Employee transfer');
   assert.deepEqual(rows.map(m=>[m.label,m.count,m.connected,Boolean(m.lastSuccess),m.error]),[['Employee Transfer',7,true,false,'HR did not answer. Existing data retained.']]);
   hr.sync=async name=>{synced.push([name]);return {summary:{moved:1}};};
   synced.length=0;
   assert.deepEqual((await sync.hourly()).map(r=>[r.name,r.ok]),[['Employee transfer',true]]);
-  rows=(await sync.status()).masters.filter(m=>m.source==='HR');
+  rows=(await sync.status()).masters.filter(m=>m.name==='Employee transfer');
   assert.deepEqual([rows[0].error,Boolean(rows[0].lastSuccess),Boolean(rows[0].nextSync)],['',true,true]);
   synced.length=0;
   await sync.hourly();
@@ -141,30 +140,40 @@ test('the page shows the HR source, a Preview button, and Apply sends the key of
  assert.match(page,/\/api\/master-sync\/preview\?master=/);
  assert.match(page,/sync\(preview\.master,preview\.planKey\)/);
  const server=fs.readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
- assert.match(server,/hr:createHrEmployeeSync\(\{pool\}\)/);
+ assert.match(server,/const hrEmployeeSync=createHrEmployeeSync\(\{pool\}\);/);assert.match(server,/hr:hrEmployeeSync,copy:hrEmployeeCopy/);
  assert.match(server,/masterSync\.start\(\)/);
 });
 
-test('Employee Master is never synced: the hour and Sync all leave it, a Sync or Preview of it is refused',async()=>{
- const synced=[],f=await fixture();
+test('Employee Master: the hour and Sync all leave it; it is applied only with the key of a Preview, which starts the minute copy',async()=>{
+ const synced=[],started=[],f=await fixture();
  try{
-  const hr={configured:()=>true,count:async()=>0,preview:async name=>({master:name}),sync:async name=>{synced.push(name);return {summary:{}};}};
+  const hr={configured:()=>true,count:async()=>0,preview:async name=>({master:name}),sync:async(name,options)=>{synced.push([name,options.planKey||'']);return {summary:{}};}};
+  const copy={status:async()=>({started:started.length>0,held:[],stopped:null,error:'',lastOkAt:null,connected:true}),start:async({by})=>{started.push(by);},tick:async()=>({skipped:'not started'}),accept:async()=>({accepted:true,name:'X'})};
   const app=express();app.use(express.json());
-  const sync=registerMasterSync(app,{pool:f.pool,pulse:{status:()=>({connected:true,busy:false}),sync:async()=>{}},erp:{status:async()=>({configured:false}),sync:async()=>{}},hr,requireSession:(q,s,n)=>{q.session={login:'owner'};n();},requireAdministrator:(q,s,n)=>n()});
+  const sync=registerMasterSync(app,{pool:f.pool,pulse:{status:()=>({connected:true,busy:false}),sync:async()=>{}},erp:{status:async()=>({configured:false}),sync:async()=>{}},hr,copy,requireSession:(q,s,n)=>{q.session={login:'owner'};n();},requireAdministrator:(q,s,n)=>n()});
   await sync.hourly();
-  assert.deepEqual(synced,['Employee transfer']);
+  assert.deepEqual(synced,[['Employee transfer','']]);
   const status=await sync.status();
-  assert.equal(status.masters.some(m=>m.name==='Employee master'),false);
-  assert.deepEqual(status.notSynced.map(m=>m.label),['Employee Master']);
+  assert.deepEqual(status.masters.filter(m=>m.source==='HR').map(m=>[m.label,m.minute===true]),[['Employee Master',true],['Employee Transfer',false]]);
+  assert.deepEqual(status.notSynced,[]);assert.equal(status.employeeCopy.started,false);
   const server=app.listen(0),base='http://127.0.0.1:'+server.address().port;
   try{
-   const post=body=>fetch(base+'/api/master-sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-   assert.equal((await post({master:'Employee master',planKey:'x'})).status,400);
+   const post=async body=>{const r=await fetch(base+'/api/master-sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});return {status:r.status,body:await r.json()};};
    synced.length=0;
    assert.equal((await post({master:'all'})).status,200);
-   assert.deepEqual(synced,['Employee transfer'],'Sync all leaves Employee Master alone');
-   assert.equal((await fetch(base+'/api/master-sync/preview?master=Employee%20master')).status,400);
+   assert.deepEqual(synced,[['Employee transfer','']],'Sync all leaves Employee Master alone');
+   synced.length=0;
+   const bare=await post({master:'Employee master'});
+   assert.deepEqual([bare.status,bare.body.results[0].ok,bare.body.results[0].error],[200,false,EMPLOYEE_MASTER_NEEDS_PREVIEW]);
+   assert.deepEqual([synced,started],[[],[]],'nothing is applied and nothing starts without a Preview');
+   const applied=await post({master:'Employee master',planKey:'key-of-the-preview'});
+   assert.deepEqual([applied.body.results[0].ok,synced,started],[true,[['Employee master','key-of-the-preview']],['owner']]);
+   assert.equal(applied.body.employeeCopy.started,true);
+   assert.equal((await fetch(base+'/api/master-sync/preview?master=Employee%20master')).status,200);
    assert.equal((await fetch(base+'/api/master-sync/preview?master=Employee%20transfer')).status,200);
+   assert.equal((await fetch(base+'/api/master-sync/preview?master=Shift%20Master')).status,400);
+   const accepted=await fetch(base+'/api/master-sync/employee-copy/accept',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({number:'7001'})});
+   assert.equal(accepted.status,200);assert.equal((await accepted.json()).accepted,true);
   }finally{server.close();}
  }finally{await f.close();}
 });
