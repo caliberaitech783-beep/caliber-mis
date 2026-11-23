@@ -12,6 +12,7 @@ import {cdirPersonId} from '../shared/cdir-organisation.mjs';
 import {EMPLOYEE_FIELDS} from '../shared/employee-master-fields.mjs';
 import {ERP_EMPLOYEE_FIELDS,isErpEmployee} from '../shared/erp-employee-fields.mjs';
 import {suggestedCaliberId} from '../shared/employee-identity.mjs';
+import {employeeStatusLabel} from '../shared/hr-employee-master.mjs';
 
 async function compile(file,scope,names){
  const source=readFileSync(new URL('../src/'+file,import.meta.url),'utf8').replace(/^import [\s\S]*?;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function').replaceAll('export const','const');
@@ -71,7 +72,7 @@ test('Caliber Directory lists: profile link, badges and View team kept on the sh
 
 test('Employee Master: the page of 50 on the shared table with View details; search, location and paging stay',async()=>{
  const h=hooks();
- const {EmployeeMaster}=await compile('employee-master.jsx',{React,useState:h.useState,useEffect:()=>{},useRef:value=>({current:value}),SmartSelect:'select',StepBackButton:()=>null,HrMasterImport:()=>null,EmployeeSiteMoves:()=>null,EmployeeMasterDoor:()=>null,DOOR_CLOSED_TITLE:'Switched off',SortableHeader,sortRowsBlanksLast,EMPLOYEE_FIELDS,ERP_EMPLOYEE_FIELDS,isErpEmployee,suggestedCaliberId,fetch:async()=>({ok:true,json:async()=>({})})},['EmployeeMaster']);
+ const {EmployeeMaster}=await compile('employee-master.jsx',{React,useState:h.useState,useEffect:()=>{},useRef:value=>({current:value}),SmartSelect:'select',StepBackButton:()=>null,HrMasterImport:()=>null,EmployeeSiteMoves:()=>null,EmployeeMasterDoor:()=>null,DOOR_CLOSED_TITLE:'Switched off',SortableHeader,sortRowsBlanksLast,EMPLOYEE_FIELDS,ERP_EMPLOYEE_FIELDS,isErpEmployee,suggestedCaliberId,employeeStatusLabel,fetch:async()=>({ok:true,json:async()=>({})})},['EmployeeMaster']);
  const render=props=>{h.reset();return EmployeeMaster({session:{token:'t'},ExportMenu:()=>null,PrintButton:()=>null,parseCsv:()=>[],...props})};
  render({ReportSection});
  const dataSlot=h.slots.findIndex(value=>value&&Array.isArray(value.records)&&Array.isArray(value.sites));
@@ -82,6 +83,11 @@ test('Employee Master: the page of 50 on the shared table with View details; sea
  const site=list.columns.find(column=>column.key==='site');
  assert.deepEqual(sortRowsBlanksLast(list.rows,{key:'site',direction:'desc'},r=>site.value(r)).map(r=>r.name),['Ravi','Mina'],'empty location last');
  assert.equal(list.columns.at(-1).render(list.rows[0]).props.children,'View details');
+ // Owner, 23 Nov 2026: a driver read "Active" here and "not in HR's list" on his card. Status says what the cards go by.
+ const status=list.columns.find(column=>column.key==='status');
+ assert.equal(status.value({status:'Active'}),'Active');assert.equal(status.value({status:'Active',hrListed:true,hrLeft:false}),'Active');
+ assert.equal(status.value({status:'Active',hrListed:false,hrLeft:false}),"Not on HR's list (old master: Active)");
+ assert.equal(status.value({status:'',hrListed:false}),"Not on HR's list");assert.equal(status.value({status:'Left',hrListed:true,hrLeft:true}),'HR marks LEFT');
  assert.ok(nodes(tree,n=>n.props?.className==='employee-pagination').length,'Previous / Next stay');
  assert.ok(nodes(tree,n=>n.type==='input'&&n.props.placeholder==='Employee ID, Caliber ID, name or department').length,'the server search stays');
  assert.equal(report(render({})),undefined,'without the shared table the plain list stays');

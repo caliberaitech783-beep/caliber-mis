@@ -15,7 +15,8 @@ import {buildXlsxSheetsWorkbook} from '../shared/report-xlsx.mjs';
 import {downloadBlob} from './download-history.mjs';
 import {shiftChoiceLabel} from '../shared/report-filter-options.mjs';
 import {OPERATIONAL_START} from '../shared/operational-start.mjs';
-import {EVERY,dmy,when,todayInIndia,recheckDates,emptyRecheck,addRecheckAnswer,recheckSiteRows,cardsOfSite,recheckSlotRows,cardsOfSlot,lookAlikeText,reasonCounts,recheckListSheets,recheckRecordSheets,recheckConfirmedSheets} from './caliber-recheck-model.mjs';
+import {EVERY,dmy,when,todayInIndia,recheckDates,emptyRecheck,addRecheckAnswer,recheckSiteRows,cardsOfSite,recheckSlotRows,cardsOfSlot,lookAlikeText,reasonCounts,recheckListSheets,recheckRecordSheets,recheckConfirmedSheets,recheckHrPeople,recheckWaitingHrSheets} from './caliber-recheck-model.mjs';
+import {SEND_TO_HR_LABEL,sendToHrHint} from '../shared/caliber-recheck.mjs';
 import './caliber-recheck.css';
 
 const count=value=>Number(value||0).toLocaleString('en-IN');
@@ -72,8 +73,9 @@ export default function CaliberRecheck({session,ReportSection}){
 
  const loadConfirmed=async()=>{try{setConfirmedList((await api('/api/caliber-recheck/confirmed')).confirmed);}catch(e){setError(e.message);}};
  // A card that leaves the list: said above Step 3, where its line was. Undo is offered for a confirmation.
- const settled=(row,confirmed)=>{
-  setKept({id:row.id,date:row.date,undo:confirmed?'confirm':'',text:confirmed?'Card '+row.bookNo+' confirmed right: '+row.savedId+' · '+row.savedName+' stays on it. The card has left the list.':'Card '+row.bookNo+' stands now, so it has left the list.'});
+ // sentToHr: "Number is right, send to HR" (owner, 23 Nov 2026): the card waits for HR, off the site's list.
+ const settled=(row,confirmed,sentToHr=false)=>{
+  setKept({id:row.id,date:row.date,undo:confirmed?'confirm':'',text:sentToHr?'Card '+row.bookNo+' sent to HR: '+row.savedId+' · '+row.savedName+' stays on it. It has left your list and is under Waiting for HR, at the foot of this page.':confirmed?'Card '+row.bookNo+' confirmed right: '+row.savedId+' · '+row.savedName+' stays on it. The card has left the list.':'Card '+row.bookNo+' stands now, so it has left the list.'});
   if(confirmedList)void loadConfirmed();
  };
  // A card Submit has corrected: its line leaves the list, so what changed is said above Step 3, with Undo. A card
@@ -113,7 +115,7 @@ export default function CaliberRecheck({session,ReportSection}){
   setKeeping(true);setError('');setNotice('');setSaid(null);setKept(null);
   try{
    const answer=await api('/api/caliber-recheck/confirm',{method:'POST',body:JSON.stringify({logbookId:row.id})});
-   settled(row,Boolean(answer.confirmed));setAsking('');
+   settled(row,Boolean(answer.confirmed),Boolean(answer.sentToHr));setAsking('');
    await recheck([row.date],false);
   }catch(e){setAsking('');setSaid({id:row.id,text:e.message,bad:true});}
   finally{setKeeping(false);}
@@ -140,6 +142,10 @@ export default function CaliberRecheck({session,ReportSection}){
  const loadRecord=async()=>{try{setRecord((await api('/api/caliber-recheck/record')).corrections);}catch(e){setError(e.message);}};
 
  const period=dmy(from)+' to '+dmy(to),busy=Boolean(progress);
+ // The cards sent to HR come with each day's answer, judged afresh: a card HR has since answered is no longer among them.
+ const waitingHr=held.waitingHr||[],hrPeople=recheckHrPeople(waitingHr);
+ // "Cards confirmed right" keeps to the cards a person confirmed; a card sent to HR is on its own list.
+ const rightList=confirmedList?confirmedList.filter(row=>row.kind!=='hr'):null;
  const sites=recheckSiteRows(held),picked=sites.total.picked;
  const {site,slot}=open,manySites=site===EVERY;
  const siteCards=site?cardsOfSite(held,site):[],siteLabel=manySites?'All sites':sites.rows.find(row=>row.key===site)?.site||'';
@@ -157,7 +163,7 @@ export default function CaliberRecheck({session,ReportSection}){
  const back=crumbs.length>1?crumbs.at(-2)[1]:null;
  const level=!site?1:!slot?2:3;
 
- const siteColumns=[{key:'site',label:'Site',value:row=>row.site},{key:'cards',label:'Cards checked',value:row=>row.cards},{key:'confirmed',label:'Confirmed right',value:row=>row.confirmed},{key:'corrected',label:'Corrected',value:row=>row.corrected},{key:'listed',label:'Cards to check',value:row=>row.listed},
+ const siteColumns=[{key:'site',label:'Site',value:row=>row.site},{key:'cards',label:'Cards checked',value:row=>row.cards},{key:'confirmed',label:'Confirmed right',value:row=>row.confirmed},{key:'corrected',label:'Corrected',value:row=>row.corrected},{key:'waitingHr',label:'Waiting for HR',value:row=>row.waitingHr},{key:'listed',label:'Cards to check',value:row=>row.listed},
   ...(picked>0?[{key:'picked',label:'Chosen earlier, waiting',value:row=>row.picked},{key:'open',label:'Still to choose',value:row=>row.open}]:[])];
  const right=row=><div className="cr-right">
   {row.pick&&<p className="cr-chosen"><strong>{row.pick.employeeId} · {row.pick.name}</strong><small>chosen earlier by {row.pick.by}, not on the card yet</small>{row.pick.note&&<small className="cr-note" role="alert">Not corrected in the last run: {row.pick.note}</small>}
@@ -169,11 +175,17 @@ export default function CaliberRecheck({session,ReportSection}){
      <button type="button" className="cr-keep-yes" disabled={keeping} onClick={()=>confirmRight(row)}>{keeping?'Saving…':'Yes, '+(row.savedName||row.savedId)+(row.kind==='equipment'?' operated this machine':' drove this vehicle')}</button>
      <button type="button" disabled={keeping} onClick={()=>setAsking('')}>No</button></div>
    :<button type="button" className="cr-keep" onClick={()=>{setSaid(null);setAsking(row.id);}}>This card is right</button>)}
+  {/* The saved person is not on HR's list, or has left, and the paper card shows that very number: only HR can settle it. */}
+  {row.canSendHr&&(asking===row.id
+   ?<div className="cr-keep-ask" role="group" aria-label="Send this card to HR"><small>Does the paper card show {row.savedId} · {row.savedName}?</small>
+     <button type="button" className="cr-keep-yes" disabled={keeping} onClick={()=>confirmRight(row)}>{keeping?'Sending…':'Yes, send to HR'}</button>
+     <button type="button" disabled={keeping} onClick={()=>setAsking('')}>No</button></div>
+   :<button type="button" className="cr-keep cr-send-hr" onClick={()=>{setSaid(null);setAsking(row.id);}}>{SEND_TO_HR_LABEL}</button>)}
  </div>;
  const cardColumns=[...(manySites||slot?.key===EVERY?[{key:'where',label:'Site · date · shift',value:row=>(manySites?row.site+' · ':'')+dmy(row.date)+' · '+shiftChoiceLabel(row.shift)}]:[]),
   {key:'bookNo',label:'Book NO',value:row=>row.bookNo},{key:'door',label:'Vehicle / machine',value:row=>row.door},{key:'cardNo',label:'Card NO',value:row=>row.cardNo},
   {key:'saved',label:'Saved under',value:row=>row.savedId+' '+row.savedName,render:row=><><strong>{row.savedId}</strong><small className="cr-sub">{row.savedName}</small></>},
-  {key:'why',label:'Why it is listed',value:row=>row.reasonLabel+'. '+row.line,render:row=><><strong>{row.reasonLabel}</strong><small className="cr-sub">{row.line}</small></>},
+  {key:'why',label:'Why it is listed',value:row=>row.reasonLabel+'. '+row.line,render:row=><><strong>{row.reasonLabel}</strong><small className="cr-sub">{row.line}</small>{row.canSendHr&&sendToHrHint(row)&&<small className="cr-sub cr-hr-hint">{sendToHrHint(row)}</small>}</>},
   {key:'alike',label:'Look-alike IDs at the site',value:lookAlikeText},
   {key:'right',label:'Right driver (from the paper card)',value:row=>row.pick?row.pick.employeeId+' '+row.pick.name:'',render:right},
   {key:'scan',label:'Trip Card Scanned',value:row=>row.scanCardId?'Original card available':'Not available',render:row=>row.scanCardId?<button type="button" className="cr-view-card" onClick={()=>setPreviewCard(row)}>View Original Card</button>:<span className="cr-card-unavailable">Not available</span>}];
@@ -181,7 +193,7 @@ export default function CaliberRecheck({session,ReportSection}){
  return <section className="caliber-recheck">
   <header className="cr-head">
    <div><h1>Caliber ID Re-check</h1>
-    <p>Every saved card is judged again against Employee Master, at its own site and date. A card is listed when its driver or operator is not a working driver or operator of that site on that date. Type the right number from the paper card and press Submit on that line: the card is corrected at once and leaves the list.</p></div>
+    <p>Every saved card is judged again against Employee Master, at its own site and date. A card is listed when its driver or operator is not a working driver or operator of that site on that date. Type the right number from the paper card and press Submit on that line: the card is corrected at once and leaves the list. When the paper card shows the very number the card is saved under and that person is not on HR's list, press {SEND_TO_HR_LABEL}: the card leaves your list and waits for HR.</p></div>
    <form className="cr-period" onSubmit={event=>{event.preventDefault();void recheck();}}>
     <label>From<input type="date" min={OPERATIONAL_START} max={to} value={from} disabled={busy} onChange={event=>setFrom(event.target.value)}/></label>
     <label>To<input type="date" min={from} max={todayInIndia()} value={to} disabled={busy} onChange={event=>setTo(event.target.value)}/></label>
@@ -193,7 +205,7 @@ export default function CaliberRecheck({session,ReportSection}){
   {notice&&<p className="cr-notice" role="status">{notice}</p>}
   {refused.length>0&&<ul className="cr-refused">{refused.map((row,i)=><li key={i}><strong>{row.bookNo}</strong>: {row.why}</li>)}</ul>}
   <div className="cr-summary" aria-label="Summary">
-   <span><strong>{count(held.cards)}</strong> cards checked</span><span><strong>{count(sites.total.listed)}</strong> to check</span><span><strong>{count(held.confirmed)}</strong> confirmed right</span><span><strong>{count(held.corrected)}</strong> corrected</span>{picked>0&&<span><strong>{count(picked)}</strong> chosen earlier, waiting for the run</span>}
+   <span><strong>{count(held.cards)}</strong> cards checked</span><span><strong>{count(sites.total.listed)}</strong> to check</span><span><strong>{count(held.confirmed)}</strong> confirmed right</span><span><strong>{count(held.corrected)}</strong> corrected</span>{waitingHr.length>0&&<span><strong>{count(waitingHr.length)}</strong> waiting for HR</span>}{picked>0&&<span><strong>{count(picked)}</strong> chosen earlier, waiting for the run</span>}
    {reasonCounts(held.listed).map(row=><span key={row.reason} className="cr-reason">{row.label}: <strong>{count(row.count)}</strong></span>)}
   </div>
   <div className="cr-actions">
@@ -216,7 +228,7 @@ export default function CaliberRecheck({session,ReportSection}){
   </ReportSection>}
   {level>=3&&kept&&<p className="cr-notice cr-kept" role="status"><span>{kept.text}</span>{kept.undo&&<button type="button" onClick={()=>kept.undo==='correction'?uncorrect(kept.correctionId,kept.date,kept.id):unconfirm(kept.id,kept.date)}>Undo</button>}</p>}
   {level>=3&&<ReportSection key={'cr-cards-'+site+'|'+slot.key} reportKey="Caliber ID re-check cards" title={'Step 3 · Caliber ID re-check · '+siteLabel+' · '+slot.label} category="caliber-recheck-cards" dataReady={!busy} recordDateFilter={false}
-   description="One line per card. Type the right Employee ID or Caliber ID from the paper card, see the name shown under it and press Submit on that line; a look-alike ID of the site is the likeliest. A line listed for its FORM A box also has This card is right: press it when the paper card shows the saved driver. Submit corrects the card at once and its line leaves the list; Undo, on the line shown above this table, puts the earlier person back."
+   description="One line per card. Type the right Employee ID or Caliber ID from the paper card, see the name shown under it and press Submit on that line; a look-alike ID of the site is the likeliest. A line listed for its FORM A box also has This card is right: press it when the paper card shows the saved driver. A line whose person is not on HR's list, or has left, has Number is right, send to HR: press it when the paper card shows that very number. Submit corrects the card at once and its line leaves the list; Undo, on the line shown above this table, puts the earlier person back."
    rows={cards} columns={cardColumns} rowKey={row=>row.id} rowClassName={row=>row.pick?'cr-picked':''} emptyMessage="No card to check in this date and shift."/>}
   {previewCard&&<OriginalCardPreview card={previewCard} token={session.token} onClose={()=>setPreviewCard(null)}/>}
 
@@ -229,12 +241,24 @@ export default function CaliberRecheck({session,ReportSection}){
      <tbody>{record.map(row=><tr key={row.id}><td>{row.site}</td><td>{dmy(row.date)}</td><td>{row.bookNo}</td><td>{row.reason}</td><td>{row.from} {row.fromName}</td><td>{row.to} {row.toName}</td><td>{row.pickedBy}</td><td>{row.appliedBy}</td><td>{when(row.appliedAt)}</td><td><button type="button" onClick={()=>uncorrect(row.id,row.date,row.logbookId)}>Undo</button></td></tr>)}</tbody></table></div></>}
   </details>
   <details className="cr-record" onToggle={event=>{if(event.currentTarget.open&&!confirmedList)void loadConfirmed();}}>
-   <summary>Cards confirmed right{confirmedList?` (${count(confirmedList.length)})`:held.confirmed?` (${count(held.confirmed)})`:''}</summary>
+   <summary>Cards confirmed right{rightList?` (${count(rightList.length)})`:held.confirmed?` (${count(held.confirmed)})`:''}</summary>
    <p>Every card a person confirmed from the paper card: the driver it is saved under stays on it. Undo puts the card back on the list.</p>
-   {confirmedList&&!confirmedList.length&&<p>No card has been confirmed yet.</p>}
-   {confirmedList&&confirmedList.length>0&&<><button type="button" onClick={()=>downloadBlob(buildXlsxSheetsWorkbook('Caliber ID re-check: cards confirmed right',recheckConfirmedSheets(confirmedList)),`Caliber-ID-confirmed-right-${todayInIndia()}.xlsx`,{title:'Caliber ID re-check: cards confirmed right'})}>Download the list (Excel)</button>
+   {rightList&&!rightList.length&&<p>No card has been confirmed yet.</p>}
+   {rightList&&rightList.length>0&&<><button type="button" onClick={()=>downloadBlob(buildXlsxSheetsWorkbook('Caliber ID re-check: cards confirmed right',recheckConfirmedSheets(rightList)),`Caliber-ID-confirmed-right-${todayInIndia()}.xlsx`,{title:'Caliber ID re-check: cards confirmed right'})}>Download the list (Excel)</button>
     <div className="cr-record-table"><table><thead><tr>{['Site','Date','Book NO','Driver kept on the card','FORM A box names','Confirmed by','Confirmed on','Take back'].map(label=><th key={label}>{label}</th>)}</tr></thead>
-     <tbody>{confirmedList.map(row=><tr key={row.id}><td>{row.site}</td><td>{dmy(row.date)}</td><td>{row.bookNo}</td><td>{row.driver} {row.driverName}</td><td>{row.formA?row.formA+': ':''}{row.namedId} {row.namedName}</td><td>{row.by}</td><td>{when(row.at)}</td><td><button type="button" onClick={()=>unconfirm(row.logbookId,row.date)}>Undo</button></td></tr>)}</tbody></table></div></>}
+     <tbody>{rightList.map(row=><tr key={row.id}><td>{row.site}</td><td>{dmy(row.date)}</td><td>{row.bookNo}</td><td>{row.driver} {row.driverName}</td><td>{row.formA?row.formA+': ':''}{row.namedId} {row.namedName}</td><td>{row.by}</td><td>{when(row.at)}</td><td><button type="button" onClick={()=>unconfirm(row.logbookId,row.date)}>Undo</button></td></tr>)}</tbody></table></div></>}
+  </details>
+  {/* Waiting for HR (owner, 23 Nov 2026): the people a site says are right on the paper card but HR's list does not
+      carry as working. HR answers person by person; Undo puts a card back on the site's list. */}
+  <details className="cr-record cr-hr">
+   <summary>Waiting for HR{waitingHr.length?` (${count(waitingHr.length)} card${waitingHr.length===1?'':'s'} · ${count(hrPeople.length)} ${hrPeople.length===1?'person':'people'})`:''}</summary>
+   <p>Cards whose paper card shows the saved number, but HR's list does not have that person as working. Nothing on these cards was changed. When HR adds or corrects the person, the cards pass by themselves and leave this list. If HR says the person is not ours, press Undo: the card goes back on the site's list for the right driver.</p>
+   {!waitingHr.length&&<p>{busy?'Re-checking…':'No card is waiting for HR in these dates.'}</p>}
+   {waitingHr.length>0&&<><button type="button" onClick={()=>downloadBlob(buildXlsxSheetsWorkbook('Caliber ID re-check: waiting for HR',recheckWaitingHrSheets(waitingHr)),`Caliber-ID-waiting-for-HR-${from}-to-${to}.xlsx`,{title:'Caliber ID re-check: waiting for HR'})}>Download the list for HR (Excel)</button>
+    <div className="cr-record-table"><table><thead><tr>{['Site','Employee ID','Name in Employee Master','Why','Cards waiting','First card','Last card','Sent by'].map(label=><th key={label}>{label}</th>)}</tr></thead>
+     <tbody>{hrPeople.map(one=><tr key={one.key}><td>{one.site}</td><td>{one.employeeId}</td><td>{one.name}</td><td>{one.why}</td><td>{count(one.cards)}</td><td>{dmy(one.first)}</td><td>{dmy(one.last)}</td><td>{one.by}</td></tr>)}</tbody></table></div>
+    <div className="cr-record-table"><table><thead><tr>{['Site','Date','Book NO','Saved under','Why','Sent by','Sent on','Take back'].map(label=><th key={label}>{label}</th>)}</tr></thead>
+     <tbody>{waitingHr.map(row=><tr key={row.id}><td>{row.site}</td><td>{dmy(row.date)}</td><td>{row.bookNo}</td><td>{row.savedId} {row.savedName}</td><td>{row.reasonLabel}</td><td>{row.by}</td><td>{when(row.at)}</td><td><button type="button" onClick={()=>unconfirm(row.id,row.date)}>Undo</button></td></tr>)}</tbody></table></div></>}
   </details>
  </section>;
 }

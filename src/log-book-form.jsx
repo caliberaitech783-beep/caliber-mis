@@ -1,4 +1,5 @@
 import {transferPeriodLabel} from '../shared/log-book-transfers.mjs';
+import {DRIVER_SHIFT_CODE,driverShiftQuestion} from '../shared/driver-shift-confirm.mjs';
 import {MANUAL_SHIFTS,manualShiftWindow} from '../shared/manual-shift.mjs';
 import './log-book-readability.css';
 import {compactLogBookLabel,tripSerialNumber} from '../shared/log-book-labels.mjs';
@@ -205,8 +206,12 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
  useEffect(()=>{if(initialRecord)void openEntry(initialRecord,true)},[initialRecord?.id]);
  // A second manual card for the same tipper in the same shift is refused by the server
  // (409, code duplicate_card) until a reason is given. The reason travels with the card.
- const submit=async(duplicateReason='')=>{setWorking(true);setError('');setSuccess('');try{const result=await api(`/api/log-books/${kind}${saved?'/'+saved.id:''}`,{method:saved?'PUT':'POST',body:JSON.stringify({...equipmentValidation.draft,revision:saved?.revision,...(duplicateReason?{duplicateReason}:{})})});setSaved(result);setForm(current=>({...current,manualBreakdownHours:result.data?.manualBreakdownHours??''}));setEditing(false);setSuccess(`${result.book_no} saved successfully.`);if(!initialRecord)void loadRegister().catch(()=>setError('Saved successfully, but the register could not refresh. Reload the register to see the updated record.'));onSaved?.(result);}catch(e){
-  if(e.details?.code==='duplicate_card'&&!duplicateReason){setWorking(false);const reason=window.prompt(e.message+'\n\nTo save an additional card for this tipper, enter the reason (at least 10 characters). Leave empty to cancel.','');if(reason&&reason.trim().length>=10)return submit(reason.trim());setError(e.message);return;}
+ // A card that takes its driver's hours of the shift beyond the shift (he already has a card on another vehicle) is
+ // refused once (409, code driver_shift_hmr_limit) with a question; the person's Yes travels with the card
+ // (owner, 23 Nov 2026: his number stays on every card of the shift and one shift is counted).
+ const submit=async(duplicateReason='',driverShiftConfirmed=false)=>{setWorking(true);setError('');setSuccess('');try{const result=await api(`/api/log-books/${kind}${saved?'/'+saved.id:''}`,{method:saved?'PUT':'POST',body:JSON.stringify({...equipmentValidation.draft,revision:saved?.revision,...(duplicateReason?{duplicateReason}:{}),...(driverShiftConfirmed?{driverShiftConfirmed:true}:{})})});setSaved(result);setForm(current=>({...current,manualBreakdownHours:result.data?.manualBreakdownHours??''}));setEditing(false);setSuccess(`${result.book_no} saved successfully.`);if(!initialRecord)void loadRegister().catch(()=>setError('Saved successfully, but the register could not refresh. Reload the register to see the updated record.'));onSaved?.(result);}catch(e){
+  if(e.details?.code==='duplicate_card'&&!duplicateReason){setWorking(false);const reason=window.prompt(e.message+'\n\nTo save an additional card for this tipper, enter the reason (at least 10 characters). Leave empty to cancel.','');if(reason&&reason.trim().length>=10)return submit(reason.trim(),driverShiftConfirmed);setError(e.message);return;}
+  if(e.details?.code===DRIVER_SHIFT_CODE&&!driverShiftConfirmed){setWorking(false);if(window.confirm(driverShiftQuestion(e.message,e.details.confirm?.driver)))return submit(duplicateReason,true);setError(e.message);return;}
   setError(e.message)}finally{setWorking(false)}};
  const save=async event=>{event.preventDefault();if(initialRecord&&(!saved||!editing||working||loading||!options))return;if(manualShiftError){setError(manualShiftError);return;}if(vlbBatch&&!sameVlbEntryContext(vlbBatch,form)){setError('This entry must use the selected batch site, date and shift.');return;}if(Object.keys(equipmentValidation.issues).length){setError(Object.values(equipmentValidation.issues).join(' '));return;}if(vehicle){const limits=Object.values(meterIssues);if(limits.length){setError(limits.join(' '));return;}setShowSaveConfirm(true);return;}await submit();};
  const confirmSave=async()=>{setShowSaveConfirm(false);await submit();};

@@ -59,6 +59,7 @@ import {randomUUID,randomInt,createHash,timingSafeEqual} from 'node:crypto';
 import {sendDeletionOtp} from '../services/deletion-whatsapp.mjs';
 import {deletionPhone} from '../rules/deletion-otp-routing.mjs';
 import {resolveLogBookData,insertLogBook,joinVlbCardSheet} from './log-book.mjs';
+import {driverShiftMark} from '../rules/log-book-shift-hmr.mjs';
 import {findVlbSheetTarget} from '../rules/vlb-duplicate-card.mjs';
 import {formatTripCardSheet,parseTripCardSheet,savedCardSheets} from '../../shared/trip-card-sheet.mjs';
 import {responseReviewNeeded,recoveredTripNumberIssues} from '../../shared/scan-response-recovery.mjs';
@@ -246,7 +247,7 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
  if(req.body?.draft?.location&&req.body.action!=='reject')requireLogBookSite(req.logBookScope,req.body.draft.location);
  next();
  }catch(error){if(error.status)return res.status(error.status).json({error:error.message});next(error)}}];
- const wrap=fn=>async(req,res,next)=>{try{await fn(req,res)}catch(e){if(e.status)return res.status(e.status).json({error:e.message,...(e.latest?{latest:e.latest}:{})});next(e)}};
+ const wrap=fn=>async(req,res,next)=>{try{await fn(req,res)}catch(e){if(e.status)return res.status(e.status).json({error:e.message,...(e.latest?{latest:e.latest}:{}),...(e.details?.code?{code:e.details.code}:{})});next(e)}};
  const getBatch=async(client,id)=>{if(!uuid(id))fail('Invalid scan batch.');const b=(await client.query('SELECT * FROM mis_scan_batches WHERE id=$1',[id])).rows[0];if(!b||b.expected_context?.deletedVlbBatch||b.expected_context?.deletedScanEntry)fail('Batch not found or deleted.',404);requireOperationalDate(b.expected_context?.bookDate||new Date(b.created_at).toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'}));return b};
  const readCard=async(client,id,lock,columns='*')=>{
   if(!uuid(id))fail('Invalid scan card.');
@@ -813,7 +814,9 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
     const check=await checkScanCard(c,batch.kind,card,undefined,{enforceEmployeeSite:req.logBookScope.sites!==null,context:batch.expected_context,masters});
     const issueOptions=await scanIssueOptions(c,batch,issueMasters,masters.attach);
     if(!canAutoSaveScanCard({...card,checks:check},batch.kind,issueOptions,isLmvScan(batch)))fail('Correct the card before saving: '+[...new Set([...check.errors,...check.warnings,...Object.values(manualScanIssues(card.draft,batch.kind,card.raw_fields,issueOptions,isLmvScan(batch)))])].join(' '),409);
-    const data={...check.data,...scanSheetField(batch,card.draft),meterCorrectionHistory:card.raw_fields?.meterCorrectionHistory||[],scanCardNumber:check.number||null,scanCardId:card.id,scanBatchId:batch.id,scanEntrySource:card.raw_fields?.entrySource||undefined,scanSaveMode:'automatic-validation',autoSavedBy:actor,autoSavedAt:new Date().toISOString()};
+    const data={...check.data,...scanSheetField(batch,card.draft),meterCorrectionHistory:card.raw_fields?.meterCorrectionHistory||[],scanCardNumber:check.number||null,scanCardId:card.id,scanBatchId:batch.id,scanEntrySource:card.raw_fields?.entrySource||undefined,scanSaveMode:'automatic-validation',autoSavedBy:actor,autoSavedAt:new Date().toISOString(),
+     // A person pressed Save on this card and answered "Yes, this driver drove both vehicles" (server/rules/log-book-shift-hmr.mjs).
+     ...(req.body.driverShiftConfirmed===true?{driverShiftConfirmed:driverShiftMark(actor)}:{})};
     const hours={readHours:lockedReadHours(input=>readHours({...input,client:c}),prefetched),actor};
     await applyBreakdownHours(data,hours);
     if(data.breakdownHours===null&&(!isLmvScan(batch)||data.masterShiftStart))fail('Pulse BD hours unavailable. Enter BD hours manually to finish automatic saving.',409);

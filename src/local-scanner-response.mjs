@@ -12,7 +12,8 @@ export async function readScannerResponse(response,{mis=false}={}){
   if(mis)throw failure(service+' returned an unexpected response (HTTP '+response.status+').',gatewayBusy||response.ok);
   throw failure(service+' is starting or reconnecting. This page will retry automatically.',gatewayBusy);
  }
- if(!response.ok)throw Object.assign(failure(data?.error||service+' is unavailable.',data?.transient===true||(mis&&gatewayBusy)),data?.latest?{latest:data.latest}:{});
+ // `code` names a refusal the page answers itself (a question it puts to the person), not only shows.
+ if(!response.ok)throw Object.assign(failure(data?.error||service+' is unavailable.',data?.transient===true||(mis&&gatewayBusy)),data?.latest?{latest:data.latest}:{},typeof data?.code==='string'?{code:data.code}:{});
  if(!data||typeof data!=='object'||(mis&&Array.isArray(data)))throw failure(mis?service+' returned an invalid response.':service+' returned an invalid response. Refresh scanners to retry.',mis);
  return data;
 }
