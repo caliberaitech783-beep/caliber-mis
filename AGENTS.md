@@ -66,6 +66,16 @@ Set by the owner on 23 November 2026: "Pulse HR is now the final authority for e
 - Not behind the door, because they happen while a batch is made or come from HR: the site move with OTP on a card, the "drives this vehicle" mark on Fetch, and transfers approved in HR. The owner wants these to reach HR Pulse too (two-way); that link is not built yet.
 - A new route that adds, edits or deletes an employee must take `door.requireOpen`. `shared/employee-master-door.mjs` holds the rule, `server/routes/employee-master-door.mjs` the lock and the Telegram buttons; `test/employee-master-door.test.mjs` checks it.
 
+# A site move made in Pulse-II is told to HR Pulse
+
+Set by the owner on 23 November 2026: "it should be two-way ... anything which MIS changes during batch creation should get auto updated in HR employee master also", with no second approval in HR Pulse.
+
+- The change the MIS makes to an employee while a batch is made is the site move with an OTP on a card. When it changes the site held today, `applyEmployeeSiteMove` writes one line into `mis_hr_site_move_outbox` in the same transaction; `server/services/hr-site-move-outbox.mjs` sends it to HR Pulse right after the OTP and again every minute until HR Pulse answers. HR Pulse takes a move once, by its id.
+- A move that came from HR Pulse (`requestedBy` starting `hr-`) and a move that only fills in history are never sent. Pulse-II never changes a name, designation, category or status in HR Pulse.
+- HR Pulse answers "applied" or "held" with a reason; Sync all masters shows the moves still waiting and the held ones.
+- An OTP on an old card: when HR's master holds today's site and no dated move was ever made, a card dated before HR's master (`hrSiteSince`) fills in the history only (at the card's site from the card's date, back at HR's site from the day HR's master holds it). Today's site and its lock are not touched. The lock (`siteLockedAt`, `siteLockedBy`) is written only by a move that sets today's site.
+- `test/hr-site-move-outbox.test.mjs` checks this.
+
 # Employee Master and Employee Transfer are copied from HR Pulse
 
 Set by the owner on 23 November 2026: "Pulse HR is now the final authority for employee master ... any data entered in Pulse HR should be auto synchronized on minute to minute basis with Pulse 2." It replaces his morning order of the same day ("do not sync Employee Master, sync only Employee Transfer").

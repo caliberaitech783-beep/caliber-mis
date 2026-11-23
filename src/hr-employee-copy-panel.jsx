@@ -7,7 +7,20 @@ const when=value=>value?new Date(value).toLocaleString('en-IN',{timeZone:'Asia/K
 const ACCEPTABLE=new Set(['other-name','old-person']);
 const n=value=>Number(value||0).toLocaleString('en-IN');
 
-export default function HrEmployeeCopyPanel({copy,working,onAccept}){
+// The site moves made in Pulse-II with an OTP on a card, on their way to HR Pulse (server/services/hr-site-move-outbox.mjs).
+function SiteMovesToHr({moves}){
+ if(!moves||(!moves.waiting&&!(moves.held||[]).length))return null;
+ const lines=[...(moves.notSent||[]),...(moves.held||[])];
+ return <>
+  <p className="master-sync-note"><strong>Site moves made here with an OTP:</strong> {n(moves.waiting)} waiting to reach HR Pulse{moves.waitingSince?` (since ${when(moves.waitingSince)})`:''}, {n((moves.held||[]).length)} held by HR Pulse. A waiting move is sent again every minute. A held one changed nothing in HR Pulse: HR corrects its line there.</p>
+  <div className="master-sync-table"><table><thead><tr><th>Employee ID</th><th>Name</th><th>From → To</th><th>From date</th><th>In HR Pulse</th></tr></thead><tbody>
+   {lines.map(line=><tr key={line.moveId}><td>{line.employeeId}</td><td>{line.name}</td><td>{line.from} → {line.to}</td><td>{line.fromDate?new Date(line.fromDate+'T00:00:00').toLocaleDateString('en-IN'):''}</td>
+    <td>{line.sentAt?`Held: ${line.detail}`:`Not sent yet (${n(line.tries)} tr${line.tries===1?'y':'ies'})${line.detail?': '+line.detail:''}`}</td></tr>)}
+  </tbody></table></div>
+ </>;
+}
+
+export default function HrEmployeeCopyPanel({copy,moves,working,onAccept}){
  if(!copy)return null;
  const held=copy.held||[],last=copy.lastSummary;
  return <section className="hr-copy-panel" aria-label="Employee Master copy from HR Pulse">
@@ -25,5 +38,6 @@ export default function HrEmployeeCopyPanel({copy,working,onAccept}){
      <td>{ACCEPTABLE.has(item.reason)?<button type="button" disabled={Boolean(working)} onClick={()=>onAccept(item)}>{working==='accept:'+item.number?'Accepting…':'Accept this name'}</button>:'Correct in HR Pulse'}</td></tr>)}
    </tbody></table></div>
   </>}
+  <SiteMovesToHr moves={moves}/>
  </section>;
 }
