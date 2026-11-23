@@ -117,7 +117,7 @@ export function judgeCards(cards,{sheet=null,punches=null}={}){
  return cards.map(c=>{
   const issues=[],key=c.number+'|'+c.date;
   let sheetSays='',bioIn='',bioOut='',bioSite='';
-  if(sheet){
+  if(sheet&&(!sheet.dates||sheet.dates.has(c.date))){
    const m=sheet.marks.get(key);
    if(!sheet.people.has(c.number))issues.push('not-in-sheet');
    else if(m){
