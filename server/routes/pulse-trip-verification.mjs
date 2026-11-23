@@ -2,7 +2,8 @@ import {canonicalSiteName} from '../../shared/site-location.mjs';
 import {parseRequestTimelineTimestamp} from '../../shared/request-timeline.mjs';
 import {validTripCardImageDataUrl} from '../../shared/request-workflow.mjs';
 import {scanImageMime} from '../rules/scan-image-format.mjs';
-import {createLogBookSiteCache,requireLogBookSite,siteAllowed} from '../../shared/log-book-access.mjs';
+import {requireLogBookSite,siteAllowed} from '../../shared/log-book-access.mjs';
+import {sharedLogBookSites} from '../services/log-book-site-list.mjs';
 
 export const TRIP_VERIFICATION_SCHEMA=`CREATE TABLE IF NOT EXISTS mis_pulse_trip_verifications(
  logbook_id BIGINT PRIMARY KEY REFERENCES mis_log_books(id),status TEXT NOT NULL DEFAULT 'pending'
@@ -130,7 +131,7 @@ export function createTripVerification({pool,pulse,enabled=true}){
 
 export function registerTripVerification(app,{pool,pulse,requireSession,requireAdministrator,getSiteScope,enabled=true}){
  const service=createTripVerification({pool,pulse,enabled});
- const readScopedSites=createLogBookSiteCache({pool});
+ const readScopedSites=sharedLogBookSites(pool);
  app.get('/api/pulse-trip-verification',requireSession,requireAdministrator,async(req,res,next)=>{try{
   const id=String(req.query.logbookId||'');
   if(id&&!/^\d+$/.test(id))return res.status(400).json({error:'Invalid saved card.'});

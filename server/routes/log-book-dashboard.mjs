@@ -1,6 +1,7 @@
 import {canonicalSiteName} from '../../shared/site-location.mjs';
 import {REGION_DATA,displaySiteName} from '../../shared/region-scope.mjs';
-import {siteAllowed,requireLogBookSite,filterLogBookSites} from '../../shared/log-book-access.mjs';
+import {siteAllowed,requireLogBookSite} from '../../shared/log-book-access.mjs';
+import {sharedLogBookSites} from '../services/log-book-site-list.mjs';
 import {savedLogBookFilters} from '../rules/saved-log-book-filters.mjs';
 import {misPageAllowed} from '../../shared/mis-application-access.mjs';
 import {OPERATIONAL_START} from '../../shared/operational-start.mjs';
@@ -40,6 +41,8 @@ export function summarizeLogBooks({rows,sites,from,to,location='',draftCount=0,k
  return {from,to,sites:allSites,kinds,bySite:siteRows,trend:[...days.values()],totals:{vehicle:siteRows.reduce((sum,r)=>sum+r.vehicle,0),equipment:siteRows.reduce((sum,r)=>sum+r.equipment,0),activeSites:siteRows.filter(r=>r.vehicle+r.equipment>0).length,recoveryDrafts:draftCount}};
 }
 export function registerLogBookDashboard(app,{pool,protect,ensureBooks,now=()=>Date.now()}){
+ // The server's one list of sites that hold cards (server/services/log-book-site-list.mjs).
+ const filterLogBookSites=sharedLogBookSites(pool);
  const handle=fn=>async(req,res,next)=>{try{await ensureBooks();res.set('Cache-Control','no-store');await fn(req,res)}catch(error){if(error.status)return res.status(error.status).json({error:error.message});next(error)}};
  const context=async req=>{
   // With hours (6, 12 or 24) the time of the save decides, so every operational card date is read.
