@@ -45,6 +45,7 @@ import {registerMisSharedSignIn} from './server/routes/mis-shared-signin.mjs';
 import {sharedMisDashboardIdentity} from './server/rules/mis-dashboard-identity.mjs';
 import {registerMasterSync} from './server/routes/master-sync.mjs';
 import {createHrEmployeeSync} from './server/services/hr-employee-sync.mjs';
+import {createHrEmployeeMinuteCopy} from './server/services/hr-employee-minute-copy.mjs';
 import {registerEmployeeMaster} from './server/routes/employee-master.mjs';
 import {createEmployeeMasterDoor,registerEmployeeMasterDoor} from './server/routes/employee-master-door.mjs';
 import {registerHrMasterImport} from './server/routes/hr-master-import.mjs';
@@ -8193,7 +8194,13 @@ app.post('/api/master-sync/connections',requireSession,requireAdministrator,asyn
  res.set('Cache-Control','no-store').json({saved:true,pulseConnected:pulseMasterSync.status().connected,oracleConfigured:Boolean(await savedOracleConfig())});
 }catch(e){res.status(400).json({error:e.code?'Connection failed ('+e.code+'). Saved working credentials were retained.':'Connection could not be verified. Check the source account and connectivity.'})}});
 const erpMasters=registerErpMasters(app,{pool,config:savedOracleConfig,requireSession,requireAdministrator});
-const masterSync=registerMasterSync(app,{pool,pulse:pulseMasterSync,erp:erpMasters,hr:createHrEmployeeSync({pool}),requireSession,requireAdministrator});
+// Employee Master is copied from HR Pulse every minute (owner, 23 Nov 2026; server/services/hr-employee-minute-copy.mjs).
+// When it stops, holds a change or cannot copy, the release approvers (the owner's logins and Mr Mohit Chadda) are told on Telegram.
+const hrEmployeeSync=createHrEmployeeSync({pool});
+const hrEmployeeCopyTelegram=telegramOutboxSender(pool,{drain:()=>misTelegram.drain(),inChannel:(channel,person)=>misTelegram.inChannel(channel,person)});
+const hrEmployeeCopy=createHrEmployeeMinuteCopy({pool,hr:hrEmployeeSync,
+ alert:async(message,key)=>{for(const login of await releaseApproverLogins(pool)){try{await hrEmployeeCopyTelegram.send(login,message,`${key}:${login}`);}catch{/* the next person is still told */}}}});
+const masterSync=registerMasterSync(app,{pool,pulse:pulseMasterSync,erp:erpMasters,hr:hrEmployeeSync,copy:hrEmployeeCopy,requireSession,requireAdministrator});
 app.get('/api/masters',requireSession,async(req,res,next)=>{
   try{
     const requestedMasters=[...new Set(String(req.query?.names||'').split('|').map(value=>value.trim()).filter(Boolean))];
@@ -8965,7 +8972,7 @@ async function initializeDatabase(){
     databaseReady=true;
     databaseError='';
     await pulseMasterSync.start();
-    // Employee Master and Employee Transfer from HR, every hour (server/services/hr-employee-sync.mjs).
+    // From HR Pulse: Employee Transfer every hour, and every minute a new transfer and the changes of Employee Master.
     if(process.env.HR_SYNC_SCHEDULE!=='0')masterSync.start();
     await pulseBreakdownMirror?.start();
     await logBooks.initialize();

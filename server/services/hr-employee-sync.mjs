@@ -1,6 +1,8 @@
-// Employee Master and Employee Transfer, copied from HR (hrpulse.cmll.in) every hour (owner, 23 Nov 2026).
-// Owner, same day: "do not sync Employee Master, sync only Employee Transfer". Sync all masters has only the
-// Employee Transfer line (server/routes/master-sync.mjs); the Employee Master copy below is kept but not wired to any line.
+// Employee Master and Employee Transfer, copied from HR (hrpulse.cmll.in) (owner, 23 Nov 2026).
+// Owner, later the same day: HR Pulse is the final authority for Employee Master and Pulse-II copies every change
+// within a minute. That replaces his morning order "do not sync Employee Master, sync only Employee Transfer".
+// The whole-list copy below is what a person looks at (Preview) and applies once on Sync all masters; after that
+// server/services/hr-employee-minute-copy.mjs takes the changes every minute.
 //
 // HR serves both, read only, at /api/integrations/mis/employees and /transfers (caliber-hr repo,
 // server/mis-employee-sync.mjs). Pulse-II signs in with HR_SYNC_KEY, the same value as HR's MIS_SYNC_KEY.
@@ -24,6 +26,7 @@ import {applyHrMaster,planFor,hrMasterPlanKey} from '../routes/hr-master-import.
 import {employeeMasterOwner} from './employee-master-owner.mjs';
 import {applyEmployeeSiteMove,EMPLOYEE_SITE_MOVE_SCHEMA} from '../routes/employee-site-move.mjs';
 import {employeeSiteOn,sameSite,isBookDate} from '../../shared/employee-site-moves.mjs';
+import {slashedId} from '../../shared/hr-employee-changes.mjs';
 
 export const HR_SYNC_SOURCE='hrpulse.cmll.in';
 export const HR_EMPLOYEE_MASTER='Employee master';
@@ -44,7 +47,9 @@ const text=value=>value===null||value===undefined?'':String(value).trim();
 // HR's lines as the rows of HR's master Excel, so the Excel import's reader takes them as they are.
 export function hrEmployeeSheet(employees){
  if(!Array.isArray(employees))throw fail(502,'HR returned no Employee Master. Nothing was changed.');
- return [SHEET_HEADER,...employees.map(row=>[row.employeeId,row.name,row.region,row.site,row.department,row.designation,row.category,row.status].map(text))];
+ // An ID with a slash between digits ("CMLL6665/1") is written as it is but can never be read as 66651: the sheet
+ // reader then lists the line as "No usable Employee ID" and leaves it out.
+ return [SHEET_HEADER,...employees.map(row=>[slashedId(row.employeeId)?'ID '+text(row.employeeId):row.employeeId,row.name,row.region,row.site,row.department,row.designation,row.category,row.status].map(text))];
 }
 
 // Stops a copy nobody looked at when HR's list would take many people off it at once (a half-loaded HR list).
@@ -148,6 +153,11 @@ export function createHrEmployeeSync({pool,key=process.env.HR_SYNC_KEY,base=proc
 
  return {
   configured,
+  // What changed in HR Pulse's Employee Master after change number `after`, and the whole list (read only).
+  changes:after=>read('employee-changes?after='+encodeURIComponent(/^\d{1,18}$/.test(String(after??''))?String(after):'0')),
+  employees:()=>read('employees'),
+  // The approved transfers HR holds, for a cheap look before the whole transfer copy.
+  transfers:()=>read('transfers'),
   async count(name){
    if(name!==HR_EMPLOYEE_TRANSFER)return null;
    await ensure();return Number((await pool.query('SELECT count(*) n FROM hr_transfer_sync')).rows[0].n);

@@ -66,14 +66,17 @@ Set by the owner on 23 November 2026: "Pulse HR is now the final authority for e
 - Not behind the door, because they happen while a batch is made or come from HR: the site move with OTP on a card, the "drives this vehicle" mark on Fetch, and transfers approved in HR. The owner wants these to reach HR Pulse too (two-way); that link is not built yet.
 - A new route that adds, edits or deletes an employee must take `door.requireOpen`. `shared/employee-master-door.mjs` holds the rule, `server/routes/employee-master-door.mjs` the lock and the Telegram buttons; `test/employee-master-door.test.mjs` checks it.
 
-# Employee Transfer from HR (Employee Master is not synced)
+# Employee Master and Employee Transfer are copied from HR Pulse
 
-Set by the owner on 23 November 2026: "do not sync Employee Master, sync only Employee Transfer".
+Set by the owner on 23 November 2026: "Pulse HR is now the final authority for employee master ... any data entered in Pulse HR should be auto synchronized on minute to minute basis with Pulse 2." It replaces his morning order of the same day ("do not sync Employee Master, sync only Employee Transfer").
 
-- Sync all masters has one HR line, Employee Transfer, copied from HR (hrpulse.cmll.in) every hour and on Sync, with a Preview that writes nothing (`server/services/hr-employee-sync.mjs`, `server/routes/master-sync.mjs`). An HR-approved transfer moves the worker from the transfer date as an approved move (`applyEmployeeSiteMove`), once per HR transfer (`hr_transfer_sync`). A transfer whose person is not in Employee Master, or whose site is not ours, waits and is retried.
-- Employee Master has no line and is not synced from HR or copied from Oracle / ERP; it is kept from HR's master Excel on the Employee Master page. Do not add it back to Sync all masters unless the owner asks. The service still holds the Employee Master copy from HR (unused) for that day.
-- HR serves the data read only at `/api/integrations/mis/transfers` (and `/employees`), caliber-hr repo `server/mis-employee-sync.mjs`. Pulse-II's Azure setting `HR_SYNC_KEY` must equal HR's `MIS_SYNC_KEY` (set 23 Nov 2026, on both Pulse-II slots, not slot-sticky). `HR_SYNC_SCHEDULE=0` stops the hourly run.
-- `test/hr-employee-sync.test.mjs` checks this.
+- Employee Master is copied from HR Pulse every minute (`server/services/hr-employee-minute-copy.mjs`, rules in `shared/hr-employee-changes.mjs`). Pulse-II asks HR Pulse "what changed after number N?" and applies only those people: details taken, a new person added, LEFT and removed people switched off (never deleted), another site as a dated move from that day. When nothing changed the database is not read.
+- It starts only after a person has looked at the Preview of the whole list on Sync all masters and applied it (the line has no Sync button; "Sync all masters" and the hourly run leave it). It stops itself when one minute would switch off more than 50 people, and starts again only after a person applies the Preview again.
+- What could put a wrong person on a number is held and nothing changes for it: the number on two lines in HR Pulse, a completely different name, a number that an old line in Pulse-II holds, a site set by an OTP in Pulse-II that HR Pulse does not show yet. An administrator can accept a changed name on Sync all masters; everything else is corrected in HR Pulse.
+- One server at a time runs it (a database lock). The release approvers are told on Telegram when it stops, holds a change, or has not copied for 10 minutes (Automation Centre line A27, `hr-employee-copy`).
+- Employee Transfer: copied every hour and on Sync, and within a minute when HR approves a new one. An HR-approved transfer moves the worker from the transfer date as an approved move (`applyEmployeeSiteMove`), once per HR transfer (`hr_transfer_sync`). A transfer whose person is not in Employee Master, or whose site is not ours, waits for the hourly run.
+- HR serves the data read only at `/api/integrations/mis/employees`, `/employee-changes?after=N` and `/transfers` (caliber-hr repo `server/mis-employee-sync.mjs`). Pulse-II's Azure setting `HR_SYNC_KEY` must equal HR's `MIS_SYNC_KEY`. `HR_SYNC_SCHEDULE=0` stops both timers.
+- Employee Master is never copied from Oracle / ERP. `test/hr-employee-minute-copy.test.mjs` and `test/hr-employee-sync.test.mjs` check this.
 
 # No temperature sign
 
