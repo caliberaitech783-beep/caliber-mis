@@ -35,20 +35,23 @@ function readSheet(body){
 }
 
 // The first import takes HR's site for everyone. A later one keeps the site Pulse-II holds unless it is asked to take HR's.
-async function planFor(db,sheet,body,owner){
+export async function planFor(db,sheet,body,owner){
  const first=!owner,applySites=first||body?.applySites===true;
  const existing=(await db.query(HR_MASTER_EXISTING_SQL)).rows;
  return {first,applySites,plan:planHrMaster(existing,sheet.records,{applySites,fileName:fileNameOf(body),leftAsIs:sheet.leftAsIs})};
 }
 
-export async function applyHrMaster(pool,sheet,body,{by=''}={}){
+// guard: the hourly copy from HR (server/services/hr-employee-sync.mjs) has no preview a person looked at, so in place of
+// the preview's key it checks the plan itself and throws to stop it.
+export async function applyHrMaster(pool,sheet,body,{by='',guard=null}={}){
  await pool.query(SETTINGS_SCHEMA);
  const owner=await employeeMasterOwner(pool),client=await pool.connect();
  try{
   await client.query('BEGIN');
   await client.query('SELECT pg_advisory_xact_lock(709224109)');
   const {first,applySites,plan}=await planFor(client,sheet,body,owner);
-  if(hrMasterPlanKey(plan,applySites)!==String(body?.planKey||''))throw fail(409,'Employee Master changed after the preview. Look at the changes again, then apply.');
+  if(guard)guard(plan,{first});
+  else if(hrMasterPlanKey(plan,applySites)!==String(body?.planKey||''))throw fail(409,'Employee Master changed after the preview. Look at the changes again, then apply.');
   const now=new Date().toISOString();
   for(let at=0;at<plan.updates.length;at+=CHUNK)await client.query(UPDATE_SQL,[JSON.stringify(plan.updates.slice(at,at+CHUNK).map(row=>({id:row.id,d:row.patch})))]);
   for(let at=0;at<plan.inserts.length;at+=CHUNK)await client.query(INSERT_SQL,[JSON.stringify(plan.inserts.slice(at,at+CHUNK))]);

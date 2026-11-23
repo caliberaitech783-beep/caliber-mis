@@ -44,6 +44,7 @@ import {registerHrModule} from './server/routes/hr-module.mjs';
 import {registerMisSharedSignIn} from './server/routes/mis-shared-signin.mjs';
 import {sharedMisDashboardIdentity} from './server/rules/mis-dashboard-identity.mjs';
 import {registerMasterSync} from './server/routes/master-sync.mjs';
+import {createHrEmployeeSync} from './server/services/hr-employee-sync.mjs';
 import {registerEmployeeMaster} from './server/routes/employee-master.mjs';
 import {registerHrMasterImport} from './server/routes/hr-master-import.mjs';
 import {registerAFormMaster} from './server/routes/a-form-master.mjs';
@@ -8186,7 +8187,7 @@ app.post('/api/master-sync/connections',requireSession,requireAdministrator,asyn
  res.set('Cache-Control','no-store').json({saved:true,pulseConnected:pulseMasterSync.status().connected,oracleConfigured:Boolean(await savedOracleConfig())});
 }catch(e){res.status(400).json({error:e.code?'Connection failed ('+e.code+'). Saved working credentials were retained.':'Connection could not be verified. Check the source account and connectivity.'})}});
 const erpMasters=registerErpMasters(app,{pool,config:savedOracleConfig,requireSession,requireAdministrator});
-registerMasterSync(app,{pool,pulse:pulseMasterSync,erp:erpMasters,requireSession,requireAdministrator});
+const masterSync=registerMasterSync(app,{pool,pulse:pulseMasterSync,erp:erpMasters,hr:createHrEmployeeSync({pool}),requireSession,requireAdministrator});
 app.get('/api/masters',requireSession,async(req,res,next)=>{
   try{
     const requestedMasters=[...new Set(String(req.query?.names||'').split('|').map(value=>value.trim()).filter(Boolean))];
@@ -8958,6 +8959,8 @@ async function initializeDatabase(){
     databaseReady=true;
     databaseError='';
     await pulseMasterSync.start();
+    // Employee Master and Employee Transfer from HR, every hour (server/services/hr-employee-sync.mjs).
+    if(process.env.HR_SYNC_SCHEDULE!=='0')masterSync.start();
     await pulseBreakdownMirror?.start();
     await logBooks.initialize();
     await initializeRowSecurity(pool,{enabled:process.env.MIS_RLS_ENABLED==='true'});
