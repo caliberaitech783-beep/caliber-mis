@@ -187,11 +187,6 @@ export function judgeCaliberId(masters,{read='',readings=null,location='',aForm=
  return stop(left?'left':'not-listed',{read:shown,...about(owner,date),...(left?{left}:{}),...alike()});
 }
 
-// What the person at the card can do when the number is right but HR's list does not carry that worker as working
-// (owner, 23 Nov 2026: a driver shown Active on Employee Master was refused, and "Check the number on the card" sent
-// the site in a circle). Only HR adds or corrects a person, so the line says so.
-export const ASK_HR_TO_ADD=" If the number is right, ask HR to add this person to HR's list.";
-export const ASK_HR_TO_CORRECT=" If the number is right, ask HR to correct this person in HR's list.";
 const person=check=>[check.name,check.designation].filter(Boolean).join(', ')||'an employee';
 function lookAlikeLine(check){
  if(!Array.isArray(check.lookAlikes))return '';
@@ -212,8 +207,8 @@ export function caliberCheckMessage(check,kind='vehicle'){
   case 'readings-differ':return 'The number was read as '+check.read+' and '+check.second+'. Type the number from the card.'+box;
   case 'unknown':return read+'No employee has this number. Check the card.'+box+lookAlikeLine(check);
   case 'other-site':return read+'This is '+[person(check),check.site].filter(Boolean).join(', ')+'. The number may be misread.'+box+lookAlikeLine(check)+' If the number is right, press Fetch to move this person here with OTP.';
-  case 'not-listed':return read+'This is '+person(check)+", who is not in HR's list for any site. Check the number on the card."+ASK_HR_TO_ADD+box+lookAlikeLine(check);
-  case 'left':return read+'This is '+person(check)+'. '+(check.left==='hr'?"HR's list says this person has left.":'Employee Master says this person has resigned.')+' Check the number on the card.'+ASK_HR_TO_CORRECT+box+lookAlikeLine(check);
+  case 'not-listed':return read+'This is '+person(check)+", who is not in HR's list for any site. Check the number on the card."+box+lookAlikeLine(check);
+  case 'left':return read+'This is '+person(check)+'. '+(check.left==='hr'?"HR's list says this person has left.":'Employee Master says this person has resigned.')+' Check the number on the card.'+box+lookAlikeLine(check);
   case 'not-driver':return read+'This is '+person(check)+'. Confirm '+(check.name||'this person')+' '+did+', or correct the number.'+box+lookAlikeLine(check);
   // The two boxes of the card name two working people of this site, one digit apart: only the card can say which.
   case 'a-form-differs':return read+'This is '+person(check)+'. But the FORM A box says '+(check.aForm?.no||'another number')+': at '+check.at+' that is '+(check.aForm?.id||'another person')+(check.aForm?.name?' ('+check.aForm.name+')':'')+', one digit away. Check the card and choose the '+(kind==='vehicle'?'driver':'operator')+' from the list.';
@@ -223,7 +218,7 @@ export function caliberCheckMessage(check,kind='vehicle'){
 // What the Fetch box says about a number a person typed.
 export function fetchRefusal(record,location,date){
  const who=[nameOf(record),employeeDesignation(record)].filter(Boolean).join(', ')||'an employee',site=siteOf(record,date);
- if(!employeeOnHrList(record))return 'This is '+who+(record?.hrLeft===true?". HR's list says this person has left.":", who is not in HR's list for any site.")+' Check the number on the card.'+(record?.hrLeft===true?ASK_HR_TO_CORRECT:ASK_HR_TO_ADD);
+ if(!employeeOnHrList(record))return 'This is '+who+(record?.hrLeft===true?". HR's list says this person has left.":", who is not in HR's list for any site.")+' Check the number on the card.';
  return 'This is '+who+(site?', '+site:'')+(text(location)?'. This number is not at '+text(location)+'.':'.')+' Check the number on the card.';
 }
 export const driverConfirmQuestion=(record,kind='vehicle')=>'This is '+([nameOf(record),employeeDesignation(record)].filter(Boolean).join(', ')||'an employee')+'. Confirm '+(nameOf(record)||'this person')+' '+(kind==='vehicle'?'drove this vehicle':'operated this machine')+', or correct the number.';

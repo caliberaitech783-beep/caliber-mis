@@ -17,10 +17,6 @@
 //                                      driver, so the card leaves the list. Only for a card listed because its FORM A
 //                                      box names a colleague (shared/caliber-recheck.mjs); who said so and when is kept,
 //                                      and DELETE .../confirm/:id takes it back. GET .../confirmed lists them.
-//                                      The same call is "Number is right, send to HR" for a card whose saved person is
-//                                      not on HR's list or has left (owner, 23 Nov 2026): the card leaves the site's
-//                                      list for the Waiting for HR list, which GET /api/caliber-recheck sends with each
-//                                      day. Nothing on the card changes; only HR adds or corrects a person.
 // The run can be repeated at any time: a card that was corrected passes the re-check and leaves the list.
 //
 // A correction changes only who is on the card: employeeId, employeeName and caliberId. It does so in closed and locked
@@ -31,7 +27,7 @@
 import {readScanMasters} from '../services/scan-master-cache.mjs';
 import {SCAN_MASTER_NAMES} from '../services/a-form-people-index.mjs';
 import {logBookSiteScope,siteAllowed,requireLogBookSite,employeeAtLocation,employeeOnHrList} from '../../shared/log-book-access.mjs';
-import {recheckSavedCard,recheckCounts,RECHECK_REASONS,canConfirmSaved,canSendToHr,settleKind,confirmationHolds} from '../../shared/caliber-recheck.mjs';
+import {recheckSavedCard,recheckCounts,RECHECK_REASONS,canConfirmSaved,confirmationHolds} from '../../shared/caliber-recheck.mjs';
 import {needsDriverConfirm,employeeLeft,employeeDesignation,fetchRefusal} from '../../shared/caliber-id-check.mjs';
 import {employeeIdentity} from '../../shared/employee-identity.mjs';
 import {isMisAdministrator} from '../../shared/mis-admin-access.mjs';
@@ -77,10 +73,10 @@ export const RECHECK_CARDS_SQL=`SELECT l.id,l.book_no,l.book_type,l.book_date::t
  WHERE l.deleted_at IS NULL AND l.book_date>=$1::date AND l.book_date<=$2::date ORDER BY l.book_date,l.id`;
 const PENDING_SQL="SELECT id,logbook_id,new_employee_id,new_caliber_id,new_name,picked_by,picked_name,picked_at,note FROM mis_caliber_corrections WHERE status='pending'";
 // The confirmations of the dates asked (book_date is kept as YYYY-MM-DD text, so it compares as a date does).
-const CONFIRMED_OF_DATES_SQL="SELECT logbook_id,employee_id,a_form,reason,confirmed_by,confirmed_name,confirmed_at FROM mis_caliber_confirmed_cards WHERE status='confirmed' AND book_date>=$1 AND book_date<=$2";
+const CONFIRMED_OF_DATES_SQL="SELECT logbook_id,employee_id,a_form FROM mis_caliber_confirmed_cards WHERE status='confirmed' AND book_date>=$1 AND book_date<=$2";
 // The cards of the dates asked that carry a correction (one taken back is 'cancelled', so it is not counted).
 const CORRECTED_OF_DATES_SQL="SELECT DISTINCT logbook_id FROM mis_caliber_corrections WHERE status='applied' AND book_date>=$1 AND book_date<=$2";
-const CONFIRMED_SQL="SELECT id,logbook_id,book_no,book_type,book_date,site,reason,caliber_id,name,a_form,named_id,named_name,confirmed_by,confirmed_name,confirmed_at FROM mis_caliber_confirmed_cards WHERE status='confirmed' ORDER BY confirmed_at DESC,id DESC LIMIT 20000";
+const CONFIRMED_SQL="SELECT id,logbook_id,book_no,book_type,book_date,site,caliber_id,name,a_form,named_id,named_name,confirmed_by,confirmed_name,confirmed_at FROM mis_caliber_confirmed_cards WHERE status='confirmed' ORDER BY confirmed_at DESC,id DESC LIMIT 20000";
 const WITHDRAW_SQL="UPDATE mis_caliber_confirmed_cards SET status='withdrawn',withdrawn_by=$2,withdrawn_at=NOW() WHERE logbook_id=$1 AND status='confirmed'";
 const CANCEL_PICK_SQL="UPDATE mis_caliber_corrections SET status='cancelled' WHERE logbook_id=$1 AND status='pending'";
 const CARD_SQL="SELECT id,book_no,book_type,book_date::text AS date,site,revision,data FROM mis_log_books WHERE id=$1 AND deleted_at IS NULL AND book_date>=$2::date";
@@ -174,36 +170,27 @@ export function registerCaliberRecheck(app,{pool,requireSession,requireAdministr
  app.get('/api/caliber-recheck',...protect,wrap(async(req,res)=>{
   const scope=await getSiteScope(req.session),{from,to}=period(req.query),started=Date.now();
   const [masters,cards,picks,kept,done]=await Promise.all([readMasters(pool).then(result=>result.rows),pool.query(RECHECK_CARDS_SQL,[from,to]).then(result=>result.rows),pool.query(PENDING_SQL).then(result=>result.rows),pool.query(CONFIRMED_OF_DATES_SQL,[from,to]).then(result=>result.rows),pool.query(CORRECTED_OF_DATES_SQL,[from,to]).then(result=>result.rows)]);
-  const waiting=new Map(picks.map(row=>[String(row.logbook_id),row])),right=new Map(kept.map(row=>[String(row.logbook_id),row])),changed=new Set(done.map(row=>String(row.logbook_id))),sites=new Map(),listed=[],waitingHr=[];
+  const waiting=new Map(picks.map(row=>[String(row.logbook_id),row])),right=new Map(kept.map(row=>[String(row.logbook_id),row])),changed=new Set(done.map(row=>String(row.logbook_id))),sites=new Map(),listed=[];
   let judged=0,confirmed=0,corrected=0;
-  // What a line of either list says about its card.
-  const line=(row,site,key,verdict)=>({id:String(row.id),bookNo:row.book_no,book:kindLabel(row.book_type),kind:row.book_type==='equipment'?'equipment':'vehicle',date:row.date,shift:shiftOf(row),siteKey:key,site:site.site,door:row.door,
-   cardNo:row.book_type==='equipment'?row.job_card:row.a_form,scanned:Boolean(row.scan_card_id),scanCardId:row.scan_card_id||'',savedId:row.caliber_id,savedName:row.employee_name,
-   reason:verdict.reason,reasonLabel:RECHECK_REASONS[verdict.reason],line:verdict.line});
   for(const row of cards){
    if(!siteAllowed(scope,row.site))continue;
    judged++;
    const key=canonicalSiteName(row.site)||row.site;
-   if(!sites.has(key))sites.set(key,{key,site:displaySiteName(row.site)||row.site,cards:0,listed:0,picked:0,confirmed:0,corrected:0,waitingHr:0});
+   if(!sites.has(key))sites.set(key,{key,site:displaySiteName(row.site)||row.site,cards:0,listed:0,picked:0,confirmed:0,corrected:0});
    const site=sites.get(key);site.cards++;
    // A card that carries a correction is counted, so the work done shows after its line has left the list.
    if(changed.has(String(row.id))){site.corrected++;corrected++;}
    const verdict=recheckSavedCard(masters,{kind:row.book_type,site:row.site,date:row.date,employeeId:row.employee_id,caliberId:row.caliber_id,aFormNo:row.a_form});
    if(!verdict)continue;
-   // A person settled this card from the paper card, so it is not on the site's list. "This card is right" is
-   // counted; a card sent to HR is shown on the Waiting for HR list until HR's list carries the person as working
-   // (the card then passes and is not judged as listed at all).
-   const settled=right.get(String(row.id));
-   if(confirmationHolds(settled,{employeeId:row.employee_id,aFormNo:row.a_form},verdict)){
-    if(canSendToHr(verdict)){site.waitingHr++;waitingHr.push({...line(row,site,key,verdict),by:settled.confirmed_name||settled.confirmed_by,at:settled.confirmed_at});}
-    else{site.confirmed++;confirmed++;}
-    continue;
-   }
+   // A person confirmed this card from the paper card: it is counted, not listed.
+   if(confirmationHolds(right.get(String(row.id)),{employeeId:row.employee_id,aFormNo:row.a_form},verdict)){site.confirmed++;confirmed++;continue;}
    const pick=publicPick(waiting.get(String(row.id)));
    site.listed++;if(pick)site.picked++;
-   listed.push({...line(row,site,key,verdict),lookAlikes:verdict.lookAlikes||[],more:verdict.more||0,aForm:verdict.aForm||null,canConfirm:canConfirmSaved(verdict),canSendHr:canSendToHr(verdict),pick});
+   listed.push({id:String(row.id),bookNo:row.book_no,book:kindLabel(row.book_type),kind:row.book_type==='equipment'?'equipment':'vehicle',date:row.date,shift:shiftOf(row),siteKey:key,site:site.site,door:row.door,
+    cardNo:row.book_type==='equipment'?row.job_card:row.a_form,scanned:Boolean(row.scan_card_id),scanCardId:row.scan_card_id||'',savedId:row.caliber_id,savedName:row.employee_name,
+    reason:verdict.reason,reasonLabel:RECHECK_REASONS[verdict.reason],line:verdict.line,lookAlikes:verdict.lookAlikes||[],more:verdict.more||0,aForm:verdict.aForm||null,canConfirm:canConfirmSaved(verdict),pick});
   }
-  res.json({from,to,cards:judged,listed,waitingHr,counts:recheckCounts(listed),sites:[...sites.values()].sort((a,b)=>b.listed-a.listed||a.site.localeCompare(b.site)),
+  res.json({from,to,cards:judged,listed,counts:recheckCounts(listed),sites:[...sites.values()].sort((a,b)=>b.listed-a.listed||a.site.localeCompare(b.site)),
    picked:listed.filter(row=>row.pick).length,confirmed,corrected,canApply:isMisAdministrator(req.session),tookMs:Date.now()-started});
  }));
 
@@ -215,13 +202,9 @@ export function registerCaliberRecheck(app,{pool,requireSession,requireAdministr
   const masters=(await readMasters(pool)).rows;
   const verdict=recheckSavedCard(masters,{kind:card.book_type,site:card.site,date:card.date,employeeId:data.employeeId,caliberId:data.caliberId,aFormNo:data.aFormNo});
   if(!verdict){await pool.query(CANCEL_PICK_SQL,[card.id]);return {confirmed:false,stands:true};}
-  // "Number is right, send to HR": the saved person is not on HR's list, or has left, and the paper card shows that number.
-  const toHr=canSendToHr(verdict);
-  if(!canConfirmSaved(verdict)&&!toHr)return {confirmed:false,refused:'This card cannot be confirmed as right. '+verdict.line};
+  if(!canConfirmSaved(verdict))return {confirmed:false,refused:'This card cannot be confirmed as right. '+verdict.line};
   const employee=/^\d{1,18}$/.test(text(data.employeeId))?(await pool.query(EMPLOYEE_SQL,[text(data.employeeId),EMPLOYEE_LISTS])).rows[0]:null;
-  // A card sent to HR is not changed and its person is one no site may be given, so that person only has to be the
-  // one still saved on it. "This card is right" keeps the saved driver, who must stand as a new choice would.
-  const refusal=toHr?(employee?'':"The saved driver's line is no longer in Employee Master, so there is nobody to send to HR. Choose the right driver."):pickRefusal(employee?.record_data,{site:card.site,date:card.date,kind});
+  const refusal=pickRefusal(employee?.record_data,{site:card.site,date:card.date,kind});
   if(refusal)return {confirmed:false,refused:refusal};
   const identity=employeeIdentity(employee.record_data),name=text(employee.record_data.name||employee.record_data.employee);
   await transaction(async client=>{
@@ -230,8 +213,8 @@ export function registerCaliberRecheck(app,{pool,requireSession,requireAdministr
    await client.query('INSERT INTO mis_caliber_confirmed_cards(logbook_id,book_no,book_type,book_date,site,reason,employee_id,caliber_id,name,a_form,named_id,named_name,confirmed_by,confirmed_name) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)',
     [card.id,card.book_no,card.book_type,card.date,card.site,verdict.reason,text(data.employeeId),identity.employeeId,name,text(data.aFormNo),text(verdict.aForm?.id),text(verdict.aForm?.name),login(req),nameOf(req)]);
   });
-  req.audit={eventType:'Log book',module:'Caliber ID re-check',action:toHr?'Send the card to HR':'Confirm the saved driver',targetType:'Log book',targetReference:card.book_no,details:{driver:identity.employeeId,name,site:card.site,date:card.date,why:RECHECK_REASONS[verdict.reason]||'',formA:text(data.aFormNo),formANames:text(verdict.aForm?.id)}};
-  return {confirmed:true,sentToHr:toHr,card:{bookNo:card.book_no,employeeId:identity.employeeId,name}};
+  req.audit={eventType:'Log book',module:'Caliber ID re-check',action:'Confirm the saved driver',targetType:'Log book',targetReference:card.book_no,details:{driver:identity.employeeId,name,site:card.site,date:card.date,formA:text(data.aFormNo),formANames:text(verdict.aForm?.id)}};
+  return {confirmed:true,card:{bookNo:card.book_no,employeeId:identity.employeeId,name}};
  };
 
  // The site names the right driver for one listed card. The employee comes from the Fetch box (its master line id).
@@ -336,9 +319,7 @@ export function registerCaliberRecheck(app,{pool,requireSession,requireAdministr
  app.get('/api/caliber-recheck/confirmed',...protect,wrap(async(req,res)=>{
   const scope=await getSiteScope(req.session);
   const {rows}=await pool.query(CONFIRMED_SQL);
-  // kind: 'right' (This card is right) or 'hr' (sent to HR; the Waiting for HR list itself comes with the re-check,
-  // judged afresh, so a card HR has since answered is no longer on it).
-  res.json({confirmed:rows.filter(row=>siteAllowed(scope,row.site)).map(row=>({id:String(row.id),logbookId:String(row.logbook_id),bookNo:row.book_no,book:kindLabel(row.book_type),date:row.book_date,site:displaySiteName(row.site)||row.site,kind:settleKind(row.reason)||'right',
+  res.json({confirmed:rows.filter(row=>siteAllowed(scope,row.site)).map(row=>({id:String(row.id),logbookId:String(row.logbook_id),bookNo:row.book_no,book:kindLabel(row.book_type),date:row.book_date,site:displaySiteName(row.site)||row.site,
    driver:row.caliber_id,driverName:row.name,formA:row.a_form,namedId:row.named_id,namedName:row.named_name,by:row.confirmed_name||row.confirmed_by,at:row.confirmed_at}))});
  }));
 

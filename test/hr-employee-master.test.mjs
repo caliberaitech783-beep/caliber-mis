@@ -187,8 +187,8 @@ test("preview writes nothing; apply replaces Employee Master in place and makes 
   // The Fetch box on a card: a working person of the site is found, the others are not.
   const fetchEmployee=(caliberId,location)=>f.call('/api/log-books/employee-lookup',{caliberId,location});
   assert.equal((await fetchEmployee('200','Majri OC')).body.name,'SHYAM');
-  const unlisted=await fetchEmployee('400','Majri OC');assert.equal(unlisted.status,403);assert.match(unlisted.body.error,/not in HR's list for any site\. Check the number on the card\. If the number is right, ask HR to add this person to HR's list\.$/);
-  const left=await fetchEmployee('500','Dudhichua East OC');assert.equal(left.status,403);assert.match(left.body.error,/HR's list says this person has left\. Check the number on the card\. If the number is right, ask HR to correct this person in HR's list\.$/);
+  const unlisted=await fetchEmployee('400','Majri OC');assert.equal(unlisted.status,403);assert.match(unlisted.body.error,/not in HR's list for any site\. Check the number on the card\.$/);
+  const left=await fetchEmployee('500','Dudhichua East OC');assert.equal(left.status,403);assert.match(left.body.error,/HR's list says this person has left\. Check the number on the card\.$/);
   assert.equal((await fetchEmployee('CMLL12227','Majri OC')).body.name,'ABC','the dummy ID is still fetched');
  }finally{await f.close();}
 });
@@ -209,8 +209,9 @@ test("the ERP copy writes nothing to Employee Master, before and after HR's mast
   await f.db.exec('CREATE TABLE pulse_master_links(master_name TEXT,source_key TEXT,local_id BIGINT)');
   const sync=registerMasterSync(express(),{pool:f.pool,pulse:{status:()=>({connected:true,busy:false})},erp,requireSession:(q,s,n)=>n(),requireAdministrator:(q,s,n)=>n()});
   const status=await sync.status();
-  assert.equal(status.masters.some(m=>m.name==='Employee master'),false);
-  assert.deepEqual(status.notSynced.map(m=>m.label),['Employee Master']);assert.match(status.notSynced[0].note,/not copied from Oracle \/ ERP/);
+  // Employee Master has a line again since HR Pulse became its final authority; its source is HR, never Oracle / ERP.
+  assert.deepEqual(status.masters.filter(m=>m.name==='Employee master').map(m=>[m.source,m.minute]),[['HR',true]]);
+  assert.deepEqual(status.notSynced,[]);
  }finally{await f.close();}
 });
 

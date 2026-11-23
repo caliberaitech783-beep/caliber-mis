@@ -17,27 +17,26 @@ export function recheckDates(from,to){
 // replaces its earlier answer.
 // corrected: the cards that carry a correction (owner, 23 Nov 2026: Submit corrects the card at once, so its line
 // leaves the list; the count is what shows the work done).
-// waitingHr: the cards a site sent to HR ("Number is right, send to HR"): off the site's list, shown on their own.
-export const emptyRecheck=()=>({cards:0,confirmed:0,corrected:0,listed:[],waitingHr:[],sites:new Map(),days:0,canApply:false,answers:new Map()});
+export const emptyRecheck=()=>({cards:0,confirmed:0,corrected:0,listed:[],sites:new Map(),days:0,canApply:false,answers:new Map()});
 export function addRecheckAnswer(held,answer){
  const answers=new Map(held.answers);
  answers.set(answer.from,answer);
- const sites=new Map(),listed=[],waitingHr=[];let cards=0,confirmed=0,corrected=0;
+ const sites=new Map(),listed=[];let cards=0,confirmed=0,corrected=0;
  for(const one of [...answers.values()].sort((a,b)=>a.from<b.from?-1:1)){
-  cards+=one.cards||0;confirmed+=one.confirmed||0;corrected+=one.corrected||0;listed.push(...(one.listed||[]));waitingHr.push(...(one.waitingHr||[]));
-  for(const site of one.sites||[]){const now=sites.get(site.key)||{key:site.key,site:site.site,cards:0,confirmed:0,corrected:0,waitingHr:0};sites.set(site.key,{...now,cards:now.cards+site.cards,confirmed:now.confirmed+(site.confirmed||0),corrected:now.corrected+(site.corrected||0),waitingHr:now.waitingHr+(site.waitingHr||0)});}
+  cards+=one.cards||0;confirmed+=one.confirmed||0;corrected+=one.corrected||0;listed.push(...(one.listed||[]));
+  for(const site of one.sites||[]){const now=sites.get(site.key)||{key:site.key,site:site.site,cards:0,confirmed:0,corrected:0};sites.set(site.key,{...now,cards:now.cards+site.cards,confirmed:now.confirmed+(site.confirmed||0),corrected:now.corrected+(site.corrected||0)});}
  }
- return {cards,confirmed,corrected,listed,waitingHr,sites,days:answers.size,canApply:Boolean(answer.canApply),answers};
+ return {cards,confirmed,corrected,listed,sites,days:answers.size,canApply:Boolean(answer.canApply),answers};
 }
 const countOf=rows=>({listed:rows.length,picked:rows.filter(row=>row.pick).length});
 // Step 1: one line per site, the most cards to check on top, and the line of all sites.
 export function recheckSiteRows(held){
  const bySite=new Map();
  for(const row of held.listed){if(!bySite.has(row.siteKey))bySite.set(row.siteKey,[]);bySite.get(row.siteKey).push(row);}
- const rows=[...held.sites.values()].map(site=>{const counts=countOf(bySite.get(site.key)||[]);return {id:site.key,key:site.key,site:site.site,cards:site.cards,confirmed:site.confirmed||0,corrected:site.corrected||0,waitingHr:site.waitingHr||0,...counts,open:counts.listed-counts.picked};})
+ const rows=[...held.sites.values()].map(site=>{const counts=countOf(bySite.get(site.key)||[]);return {id:site.key,key:site.key,site:site.site,cards:site.cards,confirmed:site.confirmed||0,corrected:site.corrected||0,...counts,open:counts.listed-counts.picked};})
   .sort((a,b)=>b.listed-a.listed||a.site.localeCompare(b.site));
  const all=countOf(held.listed);
- return {rows,total:{id:EVERY,key:EVERY,total:true,site:'All sites',cards:held.cards,confirmed:held.confirmed||0,corrected:held.corrected||0,waitingHr:(held.waitingHr||[]).length,...all,open:all.listed-all.picked}};
+ return {rows,total:{id:EVERY,key:EVERY,total:true,site:'All sites',cards:held.cards,confirmed:held.confirmed||0,corrected:held.corrected||0,...all,open:all.listed-all.picked}};
 }
 export const cardsOfSite=(held,siteKey)=>siteKey===EVERY?held.listed:held.listed.filter(row=>row.siteKey===siteKey);
 // Step 2: one row per date and shift (and site, when all sites are open) with its cards to check.
@@ -65,22 +64,3 @@ export const recheckRecordSheets=corrections=>[{name:'Corrections done',title:'C
 const CONFIRMED_HEADINGS=['Site','Date','Book','Book NO','Driver kept on the card','Driver name','FORM A box','FORM A box names','Named person','Confirmed by','Confirmed on'];
 export const recheckConfirmedSheets=confirmed=>[{name:'Confirmed right',title:'Caliber ID re-check: cards confirmed right',columns:CONFIRMED_HEADINGS.map(label=>({label})),
  rows:confirmed.map(row=>[row.site,dmy(row.date),row.book,row.bookNo,row.driver,row.driverName,row.formA,row.namedId,row.namedName,row.by,when(row.at)])}];
-// Waiting for HR, person by person: HR answers for a person, not for each of his cards. One line per person and site,
-// the site's people together, the person with the most cards first.
-export function recheckHrPeople(waitingHr=[]){
- const people=new Map();
- for(const row of waitingHr){
-  const key=row.siteKey+'|'+row.savedId;
-  if(!people.has(key))people.set(key,{key,site:row.site,siteKey:row.siteKey,employeeId:row.savedId,name:row.savedName,why:row.reasonLabel,cards:0,first:row.date,last:row.date,senders:new Set()});
-  const one=people.get(key);one.cards++;if(row.date<one.first)one.first=row.date;if(row.date>one.last)one.last=row.date;if(row.by)one.senders.add(row.by);
- }
- return [...people.values()].map(({senders,...one})=>({...one,by:[...senders].join(', ')})).sort((a,b)=>a.site.localeCompare(b.site)||b.cards-a.cards||String(a.employeeId).localeCompare(String(b.employeeId)));
-}
-// The Excel for HR: the people first, with two columns for HR's answer, then their cards.
-const HR_PEOPLE_HEADINGS=['Site','Employee ID','Name in Employee Master','Why','Cards waiting','First card','Last card','Sent by','HR to answer: works at this site? (Yes / No)','HR remark'];
-const HR_CARD_HEADINGS=['Site','Date','Shift','Book','Book NO','Vehicle / machine','Card NO','Entered by','Saved under','Saved name','Why','What Employee Master says','Sent by','Sent on'];
-export const recheckWaitingHrSheets=(waitingHr=[])=>[
- {name:'People for HR',title:'Caliber ID re-check: people waiting for HR',columns:HR_PEOPLE_HEADINGS.map(label=>({label})),
-  rows:recheckHrPeople(waitingHr).map(one=>[one.site,one.employeeId,one.name,one.why,one.cards,dmy(one.first),dmy(one.last),one.by,'',''])},
- {name:'Cards waiting for HR',title:'Caliber ID re-check: cards waiting for HR',columns:HR_CARD_HEADINGS.map(label=>({label})),
-  rows:waitingHr.map(row=>[row.site,dmy(row.date),row.shift,row.book,row.bookNo,row.door,row.cardNo,row.scanned?'Scan':'Manual',row.savedId,row.savedName,row.reasonLabel,row.line,row.by,when(row.at)])}];

@@ -10,12 +10,12 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
-import {recheckSavedCard,recheckLine,recheckCounts,RECHECK_REASONS,canConfirmSaved,confirmationHolds,canSendToHr,settleKind,sendToHrHint,SEND_TO_HR_LABEL} from '../shared/caliber-recheck.mjs';
+import {recheckSavedCard,recheckLine,recheckCounts,RECHECK_REASONS,canConfirmSaved,confirmationHolds} from '../shared/caliber-recheck.mjs';
 import {planSiteMove} from '../shared/employee-site-moves.mjs';
 import {registerCaliberRecheck,pickRefusal,RECHECK_MAX_DAYS,CALIBER_RECHECK_SCHEMA} from '../server/routes/caliber-recheck.mjs';
 import {misPageAllowed,misRequestAllowed} from '../shared/mis-application-access.mjs';
 import {requestedMisPage,misPageUrl} from '../src/mis-navigation.mjs';
-import {recheckDates,emptyRecheck,addRecheckAnswer,recheckSiteRows,cardsOfSite,recheckSlotRows,cardsOfSlot,lookAlikeText,reasonCounts,recheckListSheets,recheckRecordSheets,recheckConfirmedSheets,recheckHrPeople,recheckWaitingHrSheets,EVERY} from '../src/caliber-recheck-model.mjs';
+import {recheckDates,emptyRecheck,addRecheckAnswer,recheckSiteRows,cardsOfSite,recheckSlotRows,cardsOfSlot,lookAlikeText,reasonCounts,recheckListSheets,recheckRecordSheets,recheckConfirmedSheets,EVERY} from '../src/caliber-recheck-model.mjs';
 
 const MAJRI='Majri OC',SASTI='Sasti OC';
 const person=(id,number,name,designation,extra={})=>({id,master_name:'Employee master',record_data:{caliberId:'CMPL'+number,caliberCode:'CMLL'+number,name,currentDesignationName:designation,site:MAJRI,currentLocation:MAJRI,hrListed:true,hrLeft:false,status:'Active',...extra}});
@@ -154,7 +154,7 @@ test('Submit corrects the card at once: the driver goes on the card, its batch c
   const pick=(logbookId,employeeId)=>f.call('/api/caliber-recheck/pick',{logbookId,employeeId});
   // Who may be put on a card: only a working driver or operator of the card's site on its date.
   assert.equal((await pick('2','5')).body.error,'This is SASTI MAN, TIPPER DRIVER, Sasti OC. This number is not at Majri OC. Check the number on the card.');
-  assert.equal((await pick('2','8')).body.error,"This is NOT LISTED, VOLVO DRIVER, who is not in HR's list for any site. Check the number on the card. If the number is right, ask HR to add this person to HR's list.");
+  assert.equal((await pick('2','8')).body.error,"This is NOT LISTED, VOLVO DRIVER, who is not in HR's list for any site. Check the number on the card.");
   assert.equal((await pick('2','7')).body.error,'HELPING HAND is HELPER. Confirm on the Fetch box that this person drove the vehicle, then choose again.');
   assert.equal((await pick('2','3')).body.error,'Employee Master says this person has resigned. Choose the person who drove the vehicle.');
   assert.equal((await pick('2','999')).body.error,'This employee is no longer in Employee Master.');
@@ -356,11 +356,7 @@ test('which card a person may confirm as right, and how long the confirmation ho
  assert.equal(canConfirmSaved(colleague),true,'only the FORM A box points away from the saved driver');
  for(const [number,reason] of [['CMPL2000','not-listed'],['CMPL2100','left'],['CMPL1610','other-site'],['CMPL15970','not-driver'],['CMPL3000','several'],['CMPL21999','unknown']]){
   assert.equal(listed(number).reason,reason);assert.equal(canConfirmSaved(listed(number)),false,reason+' is about the saved person: never settled with a tick');
-  // Owner, 23 Nov 2026: only HR adds or corrects a person, so the two reasons that are HR's go to HR, not to a tick.
-  assert.equal(canSendToHr(listed(number)),['not-listed','left'].includes(reason),reason);
  }
- assert.equal(canSendToHr(colleague),false);assert.equal(canSendToHr(null),false);
- assert.deepEqual(['a-form-differs','not-listed','left','other-site','not-driver','several','unknown',''].map(settleKind),['right','hr','hr','','','','','']);
  assert.equal(canConfirmSaved(null),false);
  const said={employee_id:'1',a_form:'15'};
  assert.equal(confirmationHolds(said,{employeeId:'1',aFormNo:'15'},colleague),true);
@@ -369,17 +365,6 @@ test('which card a person may confirm as right, and how long the confirmation ho
  assert.equal(confirmationHolds(said,{employeeId:'1',aFormNo:'12'},colleague),false,'the FORM A number on the card was changed');
  assert.equal(confirmationHolds(said,{employeeId:'1',aFormNo:'15'},{...colleague,reason:'left'}),false,'the driver has since left: listed again');
  assert.equal(confirmationHolds(null,{employeeId:'1',aFormNo:'15'},colleague),false);
- // A card sent to HR waits while HR's reason lasts, for the same person; "This card is right" never covers it, nor the reverse.
- const unlisted=listed('CMPL2000',{employeeId:'8'}),sent={employee_id:'8',a_form:'',reason:'not-listed'};
- assert.equal(confirmationHolds(sent,{employeeId:'8',aFormNo:''},unlisted),true);
- assert.equal(confirmationHolds(sent,{employeeId:'8',aFormNo:''},{...unlisted,reason:'left'}),true,'HR marked the person LEFT meanwhile: still HR\'s to answer');
- assert.equal(confirmationHolds(sent,{employeeId:'9',aFormNo:''},unlisted),false,'another person is on the card now');
- assert.equal(confirmationHolds(sent,{employeeId:'8',aFormNo:''},{...unlisted,reason:'other-site'}),false,'HR placed the person at another site: listed again');
- assert.equal(confirmationHolds({...said,reason:'a-form-differs'},{employeeId:'1',aFormNo:'15'},{...colleague,reason:'not-listed'}),false);
- assert.equal(confirmationHolds(sent,{employeeId:'8',aFormNo:''},colleague),false);
- // What the line says beside the button; nothing when the FORM A box names somebody else (a likely misread).
- assert.equal(sendToHrHint({}),'If the paper card shows this number, press '+SEND_TO_HR_LABEL+': only HR can add or correct a person.');
- assert.equal(sendToHrHint({aForm:{no:'900',id:'18126'}}),'');
 });
 
 test('"This card is right": the card leaves the list, nothing on it changes, who confirmed is kept, and it can be taken back',async()=>{
@@ -392,10 +377,10 @@ test('"This card is right": the card leaves the list, nothing on it changes, who
   assert.deepEqual(day.listed.map(row=>[row.id,row.reason,row.canConfirm]),[['6','not-listed',false],['8','a-form-differs',true]]);
   assert.equal(day.confirmed,0);
 
-  // Only a card whose saved driver stands may be confirmed. (Not in HR's list and Has left go to HR: the next test.)
-  const refused=await confirm('3');
-  assert.equal(refused.status,409);assert.equal(refused.body.error,'This card cannot be confirmed as right. 1610 is SASTI MAN, TIPPER DRIVER, of Sasti OC on this date.');
-  assert.equal((await confirm('4')).status,409,'a helper');
+  // Only a card whose saved driver stands may be confirmed.
+  const refused=await confirm('6');
+  assert.equal(refused.status,409);assert.equal(refused.body.error,"This card cannot be confirmed as right. 2000 is NOT LISTED, VOLVO DRIVER, who is not in HR's list for any site.");
+  assert.deepEqual([(await confirm('2')).status,(await confirm('3')).status,(await confirm('4')).status],[409,409,409],'has left, another site, a helper');
   const stands=await confirm('1');
   assert.deepEqual([stands.status,stands.body],[200,{confirmed:false,stands:true}],'a card that stands has nothing to confirm');
   assert.equal((await confirm('999')).status,404);assert.equal((await confirm('x')).status,400);
@@ -405,7 +390,7 @@ test('"This card is right": the card leaves the list, nothing on it changes, who
   await f.wait('8',2,'a-form-differs');
   const before=await f.saved(8);
   const done=await confirm('8');
-  assert.equal(done.status,201);assert.deepEqual(done.body,{confirmed:true,sentToHr:false,card:{bookNo:'BOOK-8',employeeId:'CMPL4400',name:'DRIVER ONE'}});
+  assert.equal(done.status,201);assert.deepEqual(done.body,{confirmed:true,card:{bookNo:'BOOK-8',employeeId:'CMPL4400',name:'DRIVER ONE'}});
   assert.equal((await f.db.query("SELECT count(*)::int AS n FROM mis_caliber_corrections WHERE logbook_id=8 AND status='pending'")).rows[0].n,0,'the choice that waited is dropped');
   assert.deepEqual(await f.saved(8),before,'nothing on the card changes');
   day=(await f.day('2026-11-21')).body;
@@ -456,77 +441,6 @@ test('"This card is right": the card leaves the list, nothing on it changes, who
   await f.db.query("UPDATE mis_log_books SET data=data||'{\"employeeId\":\"2\",\"caliberId\":\"CMPL4401\",\"employeeName\":\"DRIVER TWO\",\"aFormNo\":\"12\"}'::jsonb WHERE id=8");
   day=(await f.day('2026-11-21')).body;
   assert.deepEqual([day.listed.find(row=>row.id==='8').reason,day.confirmed],['a-form-differs',0],'FORM A 12 names DRIVER ONE now: listed again');
- }finally{await f.close();}
-});
-
-// Owner, 23 Nov 2026: a tipper driver shown Active on Employee Master had worked eleven nights and was missing from
-// HR's list. His number on the paper cards was right, so the site could neither correct the cards nor finish its
-// re-check ("because of this 11 are showing in my re-check"). Only HR adds or corrects a person, so the site sends
-// such a card to HR: it leaves the site's list, nothing on it changes, and HR's own list settles it.
-test('"Number is right, send to HR": the card leaves the site\'s list and waits for HR; HR\'s list settles it and Undo brings it back',async()=>{
- const f=await fixture();
- try{
-  await f.book(9,'vehicle','2026-11-21',MAJRI,{employeeId:'9',caliberId:'CMPL2100',employeeName:'LEFT MAN',aFormNo:'A-9',assetId:56});
-  const confirm=logbookId=>f.call('/api/caliber-recheck/confirm',{logbookId}),majri=day=>day.sites.find(site=>site.site===MAJRI);
-  let day=(await f.day('2026-11-21')).body;
-  assert.deepEqual(day.listed.map(row=>[row.id,row.reason,row.canConfirm,row.canSendHr]),[['6','not-listed',false,true],['9','left',false,true]]);
-  assert.deepEqual([day.waitingHr,majri(day).waitingHr],[[],0]);
-  assert.deepEqual((await f.day('2026-11-20')).body.listed.map(row=>[row.id,row.canSendHr]),[['2',true],['3',false],['4',false]],'another site is the OTP move and a helper is the Yes on the Fetch box: not HR');
-
-  const before=await f.saved(6);
-  const sent=await confirm('6');
-  assert.equal(sent.status,201);assert.deepEqual(sent.body,{confirmed:true,sentToHr:true,card:{bookNo:'BOOK-6',employeeId:'CMPL2000',name:'NOT LISTED'}});
-  assert.deepEqual(await f.saved(6),before,'nothing on the card changes');
-  day=(await f.day('2026-11-21')).body;
-  assert.deepEqual(day.listed.map(row=>row.id),['9'],"the card is off the site's list");
-  assert.deepEqual([day.confirmed,majri(day).confirmed,majri(day).waitingHr,majri(day).listed],[0,0,1,1],'waiting for HR is not "confirmed right"');
-  assert.deepEqual(day.waitingHr.map(row=>[row.id,row.bookNo,row.book,row.date,row.savedId,row.savedName,row.reason,row.reasonLabel,row.by]),[['6','BOOK-6','VLB','2026-11-21','CMPL2000','NOT LISTED','not-listed',"Not in HR's list",'Majri Operator']]);
-  assert.ok(day.waitingHr[0].at);
-  const audit=f.audits.find(row=>row.action==='Send the card to HR');
-  assert.deepEqual([audit.targetReference,audit.details.driver,audit.details.why],['BOOK-6','CMPL2000',"Not in HR's list"]);
-  assert.deepEqual((await f.call('/api/caliber-recheck/confirmed')).body.confirmed.map(row=>[row.logbookId,row.kind]),[['6','hr']],'the record keeps the two kinds apart');
-  // The run has nothing to do with it.
-  assert.deepEqual([(await f.call('/api/caliber-recheck/apply',{})).body.applied,(await f.saved(6)).data.caliberId],[0,'CMPL2000']);
-
-  // A person HR marks LEFT goes the same way.
-  assert.equal((await confirm('9')).body.sentToHr,true);
-  day=(await f.day('2026-11-21')).body;
-  assert.deepEqual([day.listed.length,day.waitingHr.map(row=>row.id)],[0,['6','9']]);
-
-  // The screen: a count per site, the people one by one for HR, and the Excel with HR's two answer columns.
-  const held=addRecheckAnswer(emptyRecheck(),day),rows=recheckSiteRows(held);
-  assert.deepEqual([held.waitingHr.length,rows.total.waitingHr,rows.rows[0].waitingHr,rows.total.listed],[2,2,2,0]);
-  assert.deepEqual(recheckHrPeople(held.waitingHr).map(one=>[one.site,one.employeeId,one.name,one.why,one.cards,one.first,one.last,one.by]),
-   [[MAJRI,'CMPL2000','NOT LISTED',"Not in HR's list",1,'2026-11-21','2026-11-21','Majri Operator'],[MAJRI,'CMPL2100','LEFT MAN','Has left',1,'2026-11-21','2026-11-21','Majri Operator']]);
-  const sheets=recheckWaitingHrSheets(held.waitingHr);
-  assert.deepEqual(sheets.map(sheet=>[sheet.name,sheet.rows.length]),[['People for HR',2],['Cards waiting for HR',2]]);
-  for(const sheet of sheets)assert.equal(sheet.columns.length,sheet.rows[0].length);
-  assert.deepEqual(sheets[0].rows[0],[MAJRI,'CMPL2000','NOT LISTED',"Not in HR's list",1,'21-11-2026','21-11-2026','Majri Operator','','']);
-  assert.deepEqual(addRecheckAnswer(held,{...day,waitingHr:[],sites:[{...majri(day),waitingHr:0}]}).waitingHr,[],'a date read again replaces its earlier answer');
-
-  // HR adds the person to its list: the card passes by itself and is on neither list.
-  await f.db.query("UPDATE master_records SET record_data=record_data||'{\"hrListed\":true}'::jsonb WHERE id=8");
-  day=(await f.day('2026-11-21')).body;
-  assert.deepEqual([day.listed.length,day.waitingHr.map(row=>row.id),majri(day).waitingHr],[0,['9'],1]);
-
-  // HR says "not ours": Undo puts the card back on the site's list.
-  assert.equal((await f.call('/api/caliber-recheck/confirm/9',null,'DELETE')).body.removed,true);
-  day=(await f.day('2026-11-21')).body;
-  assert.deepEqual([day.listed.map(row=>row.id),day.waitingHr.length],[['9'],0]);
-
-  // Sent to HR, then the paper card turns out to show another driver: the correction takes it off the HR list.
-  assert.equal((await confirm('9')).status,201);
-  const other=await f.call('/api/caliber-recheck/pick',{logbookId:'9',employeeId:'2'});
-  assert.deepEqual([other.status,other.body.corrected],[201,true]);
-  day=(await f.day('2026-11-21')).body;
-  assert.deepEqual([day.listed.length,day.waitingHr.length,day.corrected],[0,0,1]);
-
-  // A card whose saved line is gone from Employee Master has nobody to send.
-  await f.book(10,'vehicle','2026-11-21',MAJRI,{employeeId:'8',caliberId:'CMPL2000',employeeName:'NOT LISTED',aFormNo:'A-10',assetId:57});
-  await f.db.query("UPDATE master_records SET record_data=record_data||'{\"hrListed\":false}'::jsonb WHERE id=8");
-  await f.db.query("UPDATE mis_log_books SET data=data||'{\"employeeId\":\"999\"}'::jsonb WHERE id=10");
-  const nobody=await confirm('10');
-  assert.equal(nobody.status,409);assert.match(nobody.body.error,/no longer in Employee Master, so there is nobody to send to HR/);
  }finally{await f.close();}
 });
 
