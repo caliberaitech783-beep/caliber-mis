@@ -7,11 +7,12 @@ import TableSmartPrint from './table-smart-print.jsx';
 import {SortableHeader,sortRowsBlanksLast} from './sortable-table.jsx';
 import {DateShiftGrid,dateShiftGrid} from './date-shift-grid.jsx';
 import AttendanceRegister from './attendance-register.jsx';
+import AttendanceSheetCheck from './attendance-sheet-check.jsx';
 import {canonicalSiteName} from '../shared/site-location.mjs';
 import {OPERATIONAL_START,monthStartDate} from '../shared/operational-start.mjs';
 import './manpower-reports.css';
 
-const views=[['manpower','Manpower by Category'],['manpower-reconciliation','Manpower by Category Reconciliation'],['employee','Shift Performance'],['attendance','Shift Attendance Equipment Wise'],['ot','OT & Multiple Duties'],['attendance-batch','Attendance Batch-wise'],['attendance-month','Attendance Month-wise']];
+const views=[['manpower','Manpower by Category'],['manpower-reconciliation','Manpower by Category Reconciliation'],['employee','Shift Performance'],['attendance','Shift Attendance Equipment Wise'],['ot','OT & Multiple Duties'],['attendance-batch','Attendance Batch-wise'],['attendance-month','Attendance Month-wise'],['attendance-sheet','Attendance Sheet Mismatch']];
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const columns=entries=>entries.map(([key,label])=>({key,label:compactLogBookLabel(label),value:r=>r[key]??'—'}));
 const context=[['date','Duty date'],['site','Site'],['shift','Shift']];
@@ -612,11 +613,13 @@ export default function ManpowerReports({session,reportId='manpower',onSelect,Re
  // The register has its own lighter read (only its duties, presence and batches); `view` keeps its result apart from the full report's.
  const source=(register?'/api/reports/manpower/attendance?':'/api/reports/manpower?')+query;
  const valid=filters.from>=OPERATIONAL_START&&filters.to>=filters.from&&Date.parse(filters.to)-Date.parse(filters.from)<=30*86400000;
+ // Attendance Sheet Mismatch (src/attendance-sheet-check.jsx) takes its dates from the uploaded sheet and reads for itself.
+ const sheetCheck=reportId==='attendance-sheet';
  useEffect(()=>{
-  const controller=new AbortController();setError('');setData(null);if(!valid){setBusy(false);return ()=>controller.abort();}setBusy(true);
+  const controller=new AbortController();setError('');setData(null);if(!valid||sheetCheck){setBusy(false);return ()=>controller.abort();}setBusy(true);
   fetch(source,{headers:{Authorization:`Bearer ${session.token}`},signal:controller.signal}).then(async response=>{const payload=await response.json();if(!response.ok)throw Error(payload.error||'Unable to load saved manpower records.');return payload;}).then(payload=>{if(!controller.signal.aborted){setData({query,payload});if(!register)setOptions(payload.options);}}).catch(e=>{if(!controller.signal.aborted)setError(e.message);}).finally(()=>{if(!controller.signal.aborted)setBusy(false);});
   return()=>controller.abort();
- },[query,register,session.token,refresh,valid]);
+ },[query,register,session.token,refresh,valid,sheetCheck]);
  const ready=data?.query===query&&valid&&!busy&&!error,report=ready?data.payload:null;
  const siteKey=canonicalSiteName(filters.site),otSites=!report?[]:siteKey?report.otSites.filter(s=>s.siteKey===siteKey):report.otSites;
  // Month and year counts and a driver's history are read for one site at a time, only while that site's drivers are listed.
@@ -663,6 +666,12 @@ export default function ManpowerReports({session,reportId='manpower',onSelect,Re
  // Cards with a data problem are for the MIS team to correct. The attendance and OT pages keep them behind one line.
  const review=report&&<ReportSection key={'exceptions-'+query} title="Manpower Data Review" category="manpower-review" description="Saved cards with a data problem that affects the counts: an employee ID that matches nobody, a machine missing from the Equipment master, the same card saved twice, a shift written two ways or impossible meter hours. Correct the card or the master and the row disappears." rows={exceptions} columns={exceptionColumns} rowKey={r=>r.id} recordDateFilter={false} emptyMessage="No card needs correction in these selections."/>;
  const selectors=<><label>From<input type="date" min={OPERATIONAL_START} value={filters.from} onChange={e=>set('from',e.target.value)}/></label><label>To<input type="date" min={OPERATIONAL_START} value={filters.to} onChange={e=>set('to',e.target.value)}/></label>{choice('site','Site',(options.sites||[]).filter(isSiteName))}{choice('shift','Shift',(options.shifts||[]).map(code=>({value:code,label:shiftName(code)})).sort((x,y)=>compareShiftLabels(x.label,y.label)))}{choice('batch','Saved batch',options.batches)}{choice('employee','Employee',options.employees)}{choice('asset','Door / equipment',options.assets)}<button type="button" onClick={()=>{const date=today();setFilters(f=>({...f,from:date,to:date}));}}>Today</button><button type="button" onClick={()=>setFilters(f=>({...f,site:'',shift:'',batch:'',employee:'',asset:''}))}>Clear selections</button></>;
+ // Attendance Sheet Mismatch: the same heading and tabs, then its own upload; no date or site selectors of this page.
+ if(sheetCheck)return <section className="mp-reports" aria-label="Manpower and OT reports">
+  <header className="mp-heading"><div><small>REPORTS / MANPOWER & OT</small><h1>{title}</h1><p>The site's own attendance Excel against Pulse-II; the corrections needed come back as an Excel.</p></div></header>
+  <nav className="mp-tabs" aria-label="Manpower report views">{views.map(([id,label])=><button key={id} type="button" aria-current={reportId===id?'page':undefined} onClick={()=>onSelect(id)}>{label}</button>)}</nav>
+  <AttendanceSheetCheck session={session}/>
+ </section>;
  // On the dashboard the heading and the selectors share one row; the list for the MIS team and the rules stay on the Reports page.
  return <section className="mp-reports" aria-label="Manpower and OT reports">
   {embedded?<div className="mp-compact">
