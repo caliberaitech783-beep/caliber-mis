@@ -303,7 +303,7 @@ export function scanCardsForOperations(cards){
  return cards.map(card=>({...pick(card,OPERATIONS_SCAN_CARD_FIELDS),draft:card.draft&&typeof card.draft==='object'?pick(card.draft,OPERATIONS_SCAN_DRAFT_FIELDS):card.draft??null}));
 }
 // lane: the report lane that the heavy report readings (operations, Manpower, Batch Status) go through; tests may pass their own.
-export function registerLogBooks(app,{pool,requireSession,requireAdministrator,pulseMasterSync,breakdownMirror=null,sendDeletionOtp,imageStorage,approvalOtp={},getSiteScope=async session=>logBookSiteScope(session),lane=reportLane,hrPunches=createHrEmployeeSync({pool}).biometricPunches}){
+export function registerLogBooks(app,{pool,requireSession,requireAdministrator,pulseMasterSync,breakdownMirror=null,sendDeletionOtp,imageStorage,approvalOtp={},hrPunches=createHrEmployeeSync({pool}).biometricPunches,getSiteScope=async session=>logBookSiteScope(session),lane=reportLane}){
  let ready;
  // The sites that hold cards: one list for the whole server, read once a minute as the server and
  // filtered by each login's own scope (server/services/log-book-site-list.mjs).
