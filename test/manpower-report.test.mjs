@@ -403,7 +403,10 @@ test('equipment-wise duties count a driver on each equipment group, actual dutie
 });
 // One driver, one shift, one payment (owner, 23 Nov 2026): "there can be a person working in 3 different door in a
 // shift, but he will get only one payment … if a driver works for more than 8 hours, then also he will get single
-// shift payment only."
+// shift payment only." This is the payment (attendance) rule alone. The same day he said the two are different
+// issues: "that doesn't mean we will remove the 8-hour clause for batch creation". The rules that save a card
+// (server/rules/log-book-shift-hmr.mjs) are not touched by it; whatever cards are saved for a driver in one shift,
+// by whatever way, count as one duty here.
 test('three vehicles and more than 8 hours in one shift are one duty, one attendance and no OT',()=>{
  const r=report([card(1,1,{closingHmr:105}),card(2,1,{assetId:2,door:'V2',openingHmr:300,closingHmr:304}),card(3,1,{assetId:3,door:'V3',openingHmr:500,closingHmr:503})]);
  assert.equal(r.shiftAttendance.length,1,'one attendance line for the shift');
