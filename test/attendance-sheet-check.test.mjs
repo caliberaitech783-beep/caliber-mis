@@ -317,10 +317,10 @@ test('the tab sits beside Attendance Month-wise, in the tab row and in the Repor
  const ids=operationReports.map(r=>r.id);assert.equal(ids.indexOf('attendance-sheet'),ids.indexOf('attendance-month')+1);
  const read=name=>fs.readFileSync(new URL(name,import.meta.url),'utf8');
  const screen=read('../src/manpower-reports.jsx');
- assert.match(screen,/\['attendance-month','Attendance Month-wise'\],\['attendance-sheet','Attendance Sheet Mismatch'\],\['attendance-site-sheet','Site Sheet vs Trip Card'\]\];/);
+ assert.match(screen,/\['attendance-month','Attendance Month-wise'\],\['attendance-sheet','Attendance Sheet Mismatch'\],\['attendance-site-sheet','Site Sheet vs Trip Card'\],\['attendance-trip-bio','Trip Card vs Bio-punch'\]\];/);
  assert.match(screen,/if\(!valid\|\|sheetCheck\)\{setBusy\(false\)/,'the tab does not start the Manpower read');
  assert.match(screen,/if\(sheetCheck\)return <section[\s\S]*?<AttendanceSheetCheck session=\{session\}\/>/);
- assert.match(read('../src/operations-reports.jsx'),/'attendance-batch','attendance-month','attendance-sheet','attendance-site-sheet'\]\.includes\(props\.reportId\)\)return <ManpowerReports/);
+ assert.match(read('../src/operations-reports.jsx'),/'attendance-batch','attendance-month','attendance-sheet','attendance-site-sheet','attendance-trip-bio'\]\.includes\(props\.reportId\)\)return <ManpowerReports/);
  const page=read('../src/attendance-sheet-check.jsx');
  assert.match(page,/accept="\.dat,\.txt,\.csv,\.xlsx,\.xlsm"/,'the device attlog .dat or its export');
  assert.match(page,/Drivers and operators only/);assert.match(page,/Download Excel/);assert.match(page,/Nothing is changed in Pulse-II/);

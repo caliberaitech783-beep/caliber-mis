@@ -28,6 +28,9 @@ async function slimCards(client,range,sites,fields=HISTORY_CARD_FIELDS,{withBatc
 const REPORT_CARD_FIELDS=[...ATTENDANCE_CARD_FIELDS,'remark'];
 // What the register reads of a duty line and of a presence line.
 const DUTY_FIELDS=['id','date','shift','site','siteKey','employeeKey','employeeId','caliberCode','employeeName','category','equipment','doors','makeModel','logBook','flag','flagLabel','hours','trips','km','books'];
+// The log book, how the duty came in (scanned, manual, zero-trip entry) and its batches: Site Sheet vs Trip Card and
+// Trip Card vs Bio-punch filter and count by them.
+const CARD_FIELDS=['logBooks','source','batches'];
 const PRESENCE_FIELDS=['date','shift','site','siteKey','employeeKey','employeeId','caliberCode','employeeName','equipment','doors','makeModel','flag','flagLabel','trips','actual'];
 const pick=(row,fields)=>Object.fromEntries(fields.map(k=>[k,row[k]]));
 const MASTER_NAMES=['Equipment master','Shift Master','Employee master','ERP Employee master','C-Dir Employee master','Users & employees'];
@@ -178,9 +181,9 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
    const dutyKey=d=>[d.employeeKey,d.siteKey,d.date,d.shift].join('|'),held=new Set(report.otDuties.map(dutyKey));
    // The locked site-days of the selected dates, so the register marks a day ? or counts it by the same rule as the server.
    const lockedDays=[...locked].filter(k=>{const date=k.slice(k.lastIndexOf('|')+1);return date>=filters.from&&date<=filters.to&&siteAllowed(req.logBookScope,k.slice(0,k.lastIndexOf('|')));}).sort();
-   return {filters:report.filters,lockedDays,otDuties:report.otDuties.map(d=>pick(d,DUTY_FIELDS)),
+   return {filters:report.filters,lockedDays,otDuties:report.otDuties.map(d=>pick(d,[...DUTY_FIELDS,...CARD_FIELDS])),
     // Only presence the duty lines do not already hold: a zero-trip entry without a card, or the second operator of a card.
-    attendanceEquipment:report.attendanceEquipment.filter(r=>r.actual&&r.employeeKey&&r.shift&&!held.has(dutyKey(r))).map(r=>pick(r,PRESENCE_FIELDS)),
+    attendanceEquipment:report.attendanceEquipment.filter(r=>r.actual&&r.employeeKey&&r.shift&&!held.has(dutyKey(r))).map(r=>pick(r,[...PRESENCE_FIELDS,...CARD_FIELDS])),
     attendanceShifts:report.attendanceShifts.filter(s=>siteAllowed(req.logBookScope,s.siteKey)),
     otSites:report.otSites.filter(s=>siteAllowed(req.logBookScope,s.site)),attendanceSites:report.attendanceSites.filter(s=>siteAllowed(req.logBookScope,s.site)),
     exceptions:report.exceptions,notes:report.notes,generatedAt:new Date().toISOString()};

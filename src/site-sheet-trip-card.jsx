@@ -9,12 +9,16 @@
 //   Step 4  one person day by day
 // The Excel has the site's sheet coloured, the date by shift counts, the lines of each way, and the corrections.
 // Nothing is saved in Pulse-II. Rules: shared/attendance-sheet-check.mjs and shared/site-sheet-days.mjs.
+// Owner, 24 Nov 2026: a log book tab (VLB / ELB / LMV), a batch and From / To choose what is seen, at once, without
+// reading Pulse-II again; every trip card of the selection is judged against the sheet: the OK ones are only counted
+// ("need no attention") and only the ones that need attention are listed, each with its problem (TripCardVerdict).
 import React,{useEffect,useMemo,useState} from 'react';
 import {Download,Upload} from 'lucide-react';
+import {TripCardFilters,TripCardVerdict} from './trip-card-verdict.jsx';
 import {dmy,CORRECTION_KINDS} from '../shared/attendance-sheet-check.mjs';
 import {DAY_KINDS,dayShiftRows,kindLabel,kindTotals,personDays,shiftName} from '../shared/site-sheet-days.mjs';
 import {readAttendanceFile,sheetApi} from './attendance-sheet-run.mjs';
-import {runSiteSheetCheck} from './site-sheet-run.mjs';
+import {readSiteSheetData,siteSheetView,siteSheetWorkbook} from './site-sheet-run.mjs';
 import {DateShiftGrid,dateShiftExport,dateShiftGrid} from './date-shift-grid.jsx';
 import {downloadBlob} from './download-history.mjs';
 import './attendance-sheet-check.css';
@@ -33,6 +37,7 @@ export default function SiteSheetTripCard({session,ReportSection}){
  const [file,setFile]=useState({busy:false,name:'',sheet:null,error:''});
  const [run,setRun]=useState({busy:false,error:'',done:null});
  const [pick,setPick]=useState(noPick);
+ const [filter,setFilter]=useState({from:'',to:'',logBook:'',batch:''});
  useEffect(()=>{
   let live=true;
   sheetApi('/api/reports/manpower/attendance-sheet/sites',session).then(p=>{if(!live)return;setSites({list:p.sites||[],error:''});if(p.sites?.length===1)setSite(p.sites[0]);},e=>live&&setSites({list:[],error:e.message}));
@@ -41,20 +46,29 @@ export default function SiteSheetTripCard({session,ReportSection}){
  const choose=async event=>{
   const picked=event.target.files?.[0];event.target.value='';if(!picked)return;
   setRun({busy:false,error:'',done:null});setPick(noPick);setFile({busy:true,name:picked.name,sheet:null,error:''});
-  try{setFile({busy:false,name:picked.name,sheet:await readAttendanceFile(picked),error:''});}
+  try{const read=await readAttendanceFile(picked);setFile({busy:false,name:picked.name,sheet:read,error:''});setFilter(f=>({...f,from:read.filledDates[0]||'',to:read.filledDates.at(-1)||'',batch:''}));}
   catch(error){setFile({busy:false,name:picked.name,sheet:null,error:error.message});}
  };
  const check=async()=>{
   setRun({busy:true,error:'',done:null});setPick(noPick);
   try{
-   const done=await runSiteSheetCheck({sheet:file.sheet,fileName:file.name,site,session});
-   downloadBlob(done.blob,done.name,{title:done.title});
-   setRun({busy:false,error:'',done});
+   const data=await readSiteSheetData({sheet:file.sheet,site,session});
+   const from=filter.from&&filter.from>=data.range.from&&filter.from<=data.range.to?filter.from:data.range.from;
+   const to=filter.to&&filter.to<=data.range.to&&filter.to>=from?filter.to:data.range.to;
+   const first=siteSheetView({sheet:file.sheet,data,site,from,to,logBook:filter.logBook,batch:''});
+   const book=siteSheetWorkbook(first,{fileName:file.name});
+   downloadBlob(book.blob,book.name,{title:book.title});
+   setFilter(f=>({...f,from,to,batch:''}));
+   setRun({busy:false,error:'',done:{data,name:book.name}});
   }catch(error){setRun({busy:false,error:error.message,done:null});}
  };
  const sheet=file.sheet,ready=Boolean(sheet&&site&&!run.busy);
- const done=run.done,result=done?.result;
- const lines=done?.lines||[];
+ const data=run.done?.data;
+ const view=useMemo(()=>data&&sheet?siteSheetView({sheet,data,site,...filter}):null,[data,sheet,site,filter]);
+ const done=view?{...view,name:run.done.name}:null,result=view?.result;
+ const lines=view?.lines||[];
+ const setChoice=change=>{setFilter(f=>({...f,...change}));setPick(noPick);};
+ const download=()=>{const book=siteSheetWorkbook(view,{fileName:file.name});downloadBlob(book.blob,book.name,{title:book.title});setRun(r=>({...r,done:{...r.done,name:book.name}}));};
  const totals=useMemo(()=>kindTotals(lines),[lines]);
  const shown=useMemo(()=>pick.kind?lines.filter(l=>l.kind===pick.kind):lines,[lines,pick.kind]);
  const grid=useMemo(()=>dateShiftGrid(dayShiftRows(shown),{sumKeys:['total','card','noCard','away']}),[shown]);
@@ -91,7 +105,7 @@ export default function SiteSheetTripCard({session,ReportSection}){
     {file.error&&<p className="asc-error" role="alert">{file.name}: {file.error}</p>}
    </section>
    <section className="asc-step"><h2>2 · Site of this sheet</h2>
-    <select aria-label="Site of this attendance sheet" value={site} disabled={run.busy||!sites.list} onChange={e=>{setSite(e.target.value);setRun({busy:false,error:'',done:null});setPick(noPick);}}>
+    <select aria-label="Site of this attendance sheet" value={site} disabled={run.busy||!sites.list} onChange={e=>{setSite(e.target.value);setRun({busy:false,error:'',done:null});setPick(noPick);setFilter(f=>({...f,batch:''}));}}>
      <option value="">{sites.list?'Select the site':'Reading your sites…'}</option>{(sites.list||[]).map(name=><option key={name} value={name}>{name}</option>)}
     </select>
     {sites.error&&<p className="asc-error" role="alert">{sites.error}</p>}
@@ -103,11 +117,15 @@ export default function SiteSheetTripCard({session,ReportSection}){
     {!sheet&&!file.busy&&<p className="asc-hint">Choose the Excel file first.</p>}{sheet&&!site&&<p className="asc-hint">Select the site.</p>}
    </section>
   </div>
+  {sheet&&<TripCardFilters filter={filter} onChange={setChoice} min={data?.range.from||sheet.filledDates[0]} max={data?.range.to||sheet.filledDates.at(-1)}
+   logBooks={view?.logBooks} batches={view?.batches} disabled={run.busy} checked={Boolean(view)} onDownload={view?download:null}/>}
   {run.error&&<p className="asc-error" role="alert">{run.error}</p>}
+  {result&&<TripCardVerdict key={'ssc-verdict-'+done.name} view={view} ReportSection={ReportSection} withSheet against="the site sheet" site={result.site} period={period}/>}
   {result&&<>
    <section className="asc-result" aria-label="Result of the check">
     <h2>{result.site} · {period||'no date to compare'} · {many(result.totals.corrections,'correction')} for {many(result.totals.peopleWithCorrections,'employee')}</h2>
-    <p className="asc-note" role="status">The Excel <strong>{done.name}</strong> is in your Downloads folder and in Download History (the folder button at the top). <button type="button" className="asc-again" onClick={()=>downloadBlob(done.blob,done.name,{title:done.title})}>Download again</button></p>
+    <p className="asc-note" role="status">The Excel <strong>{done.name}</strong> is in your Downloads folder and in Download History (the folder button at the top). <button type="button" className="asc-again" onClick={download}>Download again</button></p>
+    {(filter.logBook||filter.batch)&&<p className="asc-hint">These counts are the whole sheet from {dmy(view.from)} to {dmy(view.to)}, every log book. The trip card lines and the date by shift below are {filter.logBook||'every log book'}{filter.batch?' · batch '+filter.batch:''} only; "Sheet P, no trip card" has no card, so it shows under All log books.</p>}
     <table className="asc-counts"><tbody>
      <tr><th scope="row">Employees in the sheet</th><td>{result.totals.people}</td></tr>
      <tr><th scope="row">Compared day by day (drivers and operators, or a duty in Pulse-II)</th><td>{result.totals.judged}</td></tr>

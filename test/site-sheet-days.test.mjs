@@ -85,7 +85,7 @@ test('the run reads Pulse-II once and puts the new sheets after the site sheet',
   return url.includes('/people')?{site:SITE,people:PEOPLE,sitePeople:[]}:{otDuties:LINES,attendanceEquipment:[],lockedDays:LOCKED};};
  const done=await runSiteSheetCheck({sheet:parseAttendanceSheet(SHEET),fileName:'site.xlsx',site:SITE,session:{token:'T'},today:iso(23),read,build:(title,sheets)=>({title,sheets})});
  assert.deepEqual(calls,[['/api/reports/manpower/attendance?from=2026-11-01&to=2026-11-03&view=attendance','T','GET'],['/api/reports/manpower/attendance-sheet/people','T','POST']]);
- assert.deepEqual(done.blob.sheets.map(s=>s.name),['Attendance check','Date x shift','Trip card, sheet not P','Sheet P, no trip card','Corrections','Not in sheet','Summary']);
+ assert.deepEqual(done.blob.sheets.map(s=>s.name),['Attendance check','Needs attention','OK cards','Date x shift','Trip card, sheet not P','Sheet P, no trip card','Corrections','Not in sheet','Summary']);
  assert.equal(done.name,'Site-sheet-vs-trip-card-Sasti-OC-2026-11-01-to-2026-11-03.xlsx');
  assert.equal(done.lines.length,5);
 });
@@ -96,8 +96,8 @@ test('the tab sits beside Attendance Sheet Mismatch, which stays as it is',()=>{
  assert.equal(ids.indexOf('attendance-site-sheet'),ids.indexOf('attendance-sheet')+1);
  const read=name=>fs.readFileSync(new URL(name,import.meta.url),'utf8');
  const screen=read('../src/manpower-reports.jsx');
- assert.match(screen,/siteSheet\?<SiteSheetTripCard session=\{session\} ReportSection=\{ReportSection\}\/>:<AttendanceSheetCheck session=\{session\}\/>/);
- assert.match(screen,/sheetCheck=reportId==='attendance-sheet'\|\|siteSheet/,'neither upload tab starts the Manpower read');
+ assert.match(screen,/:siteSheet\?<SiteSheetTripCard session=\{session\} ReportSection=\{ReportSection\}\/>:<AttendanceSheetCheck session=\{session\}\/>/);
+ assert.match(screen,/sheetCheck=reportId==='attendance-sheet'\|\|siteSheet\|\|tripBio/,'neither upload tab starts the Manpower read');
  const page=read('../src/site-sheet-trip-card.jsx');
  assert.match(page,/accept="\.xlsx,\.xlsm,\.xlk"/);assert.match(page,/Nothing is changed in Pulse-II/);
  for(const step of ["'Step 1 · '","'Step 2 · '","'Step 3 · '","'Step 4 · '"])assert.ok(page.includes(step),step);

@@ -12,7 +12,7 @@ const records=[rec(1,'1','V103','2026-11-01',1,'Shift A'),rec(2,'2','V104','2026
 const filters={from:'2026-11-01',to:'2026-11-02'};
 
 test('every Operations report that was one long table now opens in steps',()=>{
- const own=['timing','loading','batch-status','meter-continuity','manpower','manpower-reconciliation','employee','attendance','ot','attendance-batch','attendance-month','attendance-sheet','attendance-site-sheet','door-production','machine-production'];
+ const own=['timing','loading','batch-status','meter-continuity','manpower','manpower-reconciliation','employee','attendance','ot','attendance-batch','attendance-month','attendance-sheet','attendance-site-sheet','attendance-trip-bio','door-production','machine-production'];
  const left=operationReports.map(r=>r.id).filter(id=>!own.includes(id)&&!requirements[id]&&!hasReportSteps(id));
  assert.deepEqual(left,[],'reports with no steps: '+left.join(', '));
  for(const id of Object.keys(LINE_REPORTS))assert.ok(STEP_REPORTS.includes(id));
