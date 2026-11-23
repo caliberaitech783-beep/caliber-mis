@@ -17,4 +17,8 @@
 .ssc-page tr.ssc-row-orange td{background:#fff1e3;color:#3b2410}
 .ssc-page tr.ssc-row-purple td{background:#f1e9fb;color:#2a1d40}
 .ssc-page tr.ssc-row-grey td{background:#f3f3f3;color:#444}
+/* Owner, 24 Nov 2026: the three steps stand one under the other; Step 2 holds the site with the log book, batch and dates. */
+.ssc-steps{grid-template-columns:1fr}
+.ssc-steps .tcv-filters{align-self:stretch;padding:0;border:0;background:none}
+.ssc-run-row{display:flex;flex-wrap:wrap;gap:10px}
 .ssc-notice{margin:0;padding:10px 12px;border:1px dashed #c7b5dd;border-radius:10px;background:#faf7fe;color:#3d2a5c}

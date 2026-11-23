@@ -103,3 +103,13 @@ test('the tab sits beside Attendance Sheet Mismatch, which stays as it is',()=>{
  for(const step of ["'Step 1 · '","'Step 2 · '","'Step 3 · '","'Step 4 · '"])assert.ok(page.includes(step),step);
  assert.match(page,/<DateShiftGrid /);
 });
+
+test('Step 2 holds the site with the log book, batch and dates; Check is the last step (owner, 24 Nov 2026)',()=>{
+ const page=fs.readFileSync(new URL('../src/site-sheet-trip-card.jsx',import.meta.url),'utf8');
+ const two=page.indexOf('<h2>2 · Site, log book, batch and dates</h2>'),bar=page.indexOf('<TripCardFilters '),three=page.indexOf('<h2>3 · Check</h2>');
+ assert.ok(two>0&&two<bar&&bar<three,'the choice bar sits in Step 2, before Check');
+ assert.equal(page.split('<TripCardFilters ').length,2,'one choice bar');
+ assert.ok(page.slice(bar,three).includes('aria-label="Site of this attendance sheet"'),'the site is chosen in the same bar');
+ assert.ok(page.slice(three).includes('Download Excel of this selection'),'the download of a selection sits with Check');
+ assert.doesNotMatch(page,/onDownload=/,'no second download button in the bar');
+});

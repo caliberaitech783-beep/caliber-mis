@@ -97,28 +97,34 @@ export default function SiteSheetTripCard({session,ReportSection}){
  const where=pick.all?'All dates':dmy(pick.date)+' · '+shiftName(pick.shift);
 
  return <div className="asc-page ssc-page">
-  <p className="asc-intro">Upload the attendance Excel the site keeps by hand: one line per employee with EMP. ID, NAME and DESIGNATION, and one column per date marked P or A. Choose the site and press Check. Pulse-II compares it with its trip cards, log books and zero-trip entries of the locked dates and shows, date by shift, both ways: <b>trip card present, sheet not P</b>, and <b>sheet P, no trip card</b>. Press a box for its people and a person for his days. The Excel has the same, with every mismatch coloured and the corrections required. Nothing is changed in Pulse-II.</p>
-  <div className="asc-steps">
+  <p className="asc-intro">Upload the attendance Excel the site keeps by hand: one line per employee with EMP. ID, NAME and DESIGNATION, and one column per date marked P or A. Choose the site, the log book and the dates, then press Check; after Check the batch can be chosen too, and every choice changes the view at once. Pulse-II compares it with its trip cards, log books and zero-trip entries of the locked dates and shows, date by shift, both ways: <b>trip card present, sheet not P</b>, and <b>sheet P, no trip card</b>. Press a box for its people and a person for his days. The Excel has the same, with every mismatch coloured and the corrections required. Nothing is changed in Pulse-II.</p>
+  <div className="asc-steps ssc-steps">
    <section className="asc-step"><h2>1 · Attendance Excel of the site</h2>
     <label className={'asc-upload'+(file.busy?' busy':'')}><Upload size={16}/>{file.busy?'Reading the file…':sheet?'Choose another file':'Choose the Excel file'}<input type="file" accept=".xlsx,.xlsm,.xlk" disabled={file.busy||run.busy} onChange={choose}/></label>
     {sheet&&<p className="asc-note" role="status"><strong>{file.name}</strong> · sheet “{sheet.sheetName}” · {many(sheet.people.length,'employee')} · {sheet.filledDates.length?'marks from '+dmy(sheet.filledDates[0])+' to '+dmy(sheet.filledDates.at(-1)):'no date is marked'}{sheet.missingDates.length?' · no column for '+sheet.missingDates.map(dmy).join(', '):''}</p>}
     {file.error&&<p className="asc-error" role="alert">{file.name}: {file.error}</p>}
    </section>
-   <section className="asc-step"><h2>2 · Site of this sheet</h2>
-    <select aria-label="Site of this attendance sheet" value={site} disabled={run.busy||!sites.list} onChange={e=>{setSite(e.target.value);setRun({busy:false,error:'',done:null});setPick(noPick);setFilter(f=>({...f,batch:''}));}}>
-     <option value="">{sites.list?'Select the site':'Reading your sites…'}</option>{(sites.list||[]).map(name=><option key={name} value={name}>{name}</option>)}
-    </select>
+   {/* Owner, 24 Nov 2026: the log book, batch and dates sit in Step 2 with the site, so Check is the last step. */}
+   <section className="asc-step"><h2>2 · Site, log book, batch and dates</h2>
+    <TripCardFilters filter={filter} onChange={setChoice} min={data?.range.from||sheet?.filledDates[0]} max={data?.range.to||sheet?.filledDates.at(-1)}
+     logBooks={view?.logBooks} batches={view?.batches} disabled={run.busy||!sheet} checked={Boolean(view)}>
+     <label>Site<select aria-label="Site of this attendance sheet" value={site} disabled={run.busy||!sites.list} onChange={e=>{setSite(e.target.value);setRun({busy:false,error:'',done:null});setPick(noPick);setFilter(f=>({...f,batch:''}));}}>
+      <option value="">{sites.list?'Select the site':'Reading your sites…'}</option>{(sites.list||[]).map(name=><option key={name} value={name}>{name}</option>)}
+     </select></label>
+    </TripCardFilters>
     {sites.error&&<p className="asc-error" role="alert">{sites.error}</p>}
     {sites.list&&!sites.list.length&&!sites.error&&<p className="asc-error" role="alert">No site is assigned to your login.</p>}
+    {!sheet&&<p className="asc-hint">The log book and the dates open once the Excel file is chosen in Step 1.</p>}
    </section>
    <section className="asc-step"><h2>3 · Check</h2>
-    <button type="button" className="asc-run" disabled={!ready} onClick={check}><Download size={16}/>{run.busy?'Comparing with Pulse-II…':'Check and download Excel'}</button>
+    <div className="ssc-run-row">
+     <button type="button" className="asc-run" disabled={!ready} onClick={check}><Download size={16}/>{run.busy?'Comparing with Pulse-II…':'Check and download Excel'}</button>
+     {view&&<button type="button" className="asc-run light" disabled={run.busy} onClick={download}><Download size={16}/>Download Excel of this selection</button>}
+    </div>
     {run.busy&&<p className="asc-note" role="status">Reading Pulse-II attendance of these dates. A full month takes up to a minute.</p>}
     {!sheet&&!file.busy&&<p className="asc-hint">Choose the Excel file first.</p>}{sheet&&!site&&<p className="asc-hint">Select the site.</p>}
    </section>
   </div>
-  {sheet&&<TripCardFilters filter={filter} onChange={setChoice} min={data?.range.from||sheet.filledDates[0]} max={data?.range.to||sheet.filledDates.at(-1)}
-   logBooks={view?.logBooks} batches={view?.batches} disabled={run.busy} checked={Boolean(view)} onDownload={view?download:null}/>}
   {run.error&&<p className="asc-error" role="alert">{run.error}</p>}
   {result&&<TripCardVerdict key={'ssc-verdict-'+done.name} view={view} ReportSection={ReportSection} withSheet against="the site sheet" site={result.site} period={period}/>}
   {result&&<>
