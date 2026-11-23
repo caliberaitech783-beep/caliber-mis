@@ -9,12 +9,20 @@ import './log-book-dashboard.css';
 import {scanImageExtensionForType} from '../public/scan-image-type.mjs';
 import {OPERATIONAL_START} from '../shared/operational-start.mjs';
 import {sitesLowToHigh} from '../shared/site-entry-ranking.mjs';
+import {misPageAllowed} from '../shared/mis-application-access.mjs';
 import BatchStatusReport from './batch-status-report.jsx';
 import ManpowerReports from './manpower-reports.jsx';
 import RecentActivityPanel,{useRecentActivity,windowLabel} from './log-book-recent-activity.jsx';
 // Trip Timing & Gap and Loading Equipment-wise are the same screens as on the Reports page; they load after the cards so the
 // dashboard opens quickly, and they share one reading of the month's log books.
 const OperationsReports=lazy(()=>import('./operations-reports.jsx'));
+// The Caliber ID re-check, Step 1 onwards, is the same screen as the Caliber ID Re-check page (owner, 24 Nov 2026: "add
+// this in serial number one dashboard ... second in line"). It stands second in Sr 1: under the last 6, 12 and 24 hours,
+// above Batch Status & Turnaround. It loads after the cards and reads one day at a time.
+const CaliberRecheck=lazy(()=>import('./caliber-recheck.jsx'));
+// Who is shown it: the logins the server lets read the re-check (misRequestAllowed in shared/mis-application-access.mjs).
+// A login with its own MIS pages needs the Caliber ID Re-check page among them; the other dashboard logins are administrators.
+export const recheckAllowed=session=>!session?.permissions?.separateMisCredentials||misPageAllowed(session,'Caliber ID Re-check');
 export const LOGBOOK_COLOURS={vehicle:'#56309A',equipment:'#F34856'};
 const number=n=>Number(n||0).toLocaleString('en-IN');
 const todayIst=()=>new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'});
@@ -52,7 +60,7 @@ function RecordDetails({selection,filters,session,fetcher,close,ReportSection}){
 }
 // The dashboard on A3 landscape sheets, one report to a sheet: the cards (with the last 24 hours when Sr 1 is shown),
 // then each Sr No on screen, each drawn as large as its sheet allows. A report too long for one sheet runs on to the next.
-// With All chosen that is every report: the last 24 hours with Batch Status & Turnaround, Trip Timing & Gap,
+// With All chosen that is every report: the last 24 hours with the Caliber ID re-check and Batch Status & Turnaround, Trip Timing & Gap,
 // OT & Multiple Duties, the Loading Equipment-wise Report (Chart), Attendance Month-wise, then Attendance Shift-wise.
 const A3_PAGE={widthMm:420,heightMm:297};
 const displayDay=value=>value.slice(8,10)+'-'+value.slice(5,7)+'-'+value.slice(2,4);
@@ -108,7 +116,7 @@ export default function LogBookDashboard({session,goto,fetcher=fetch,initialFilt
  const smartPrint=()=>{
   setPrintError('');
   openSmartPrint({title:printTitle,snapshot:sr===ALL_PANELS
-    ?'The complete dashboard prints as it looks on screen: the cards, the last 6, 12 and 24 hours, Batch Status & Turnaround, Trip Timing & Gap, OT & Multiple Duties, the Loading Equipment-wise Report (Chart), Attendance Month-wise and Attendance Shift-wise, over as many pages as it needs. Wait until every report has finished reading. Choose the paper (A3 suits it best) and the printer next.'
+    ?'The complete dashboard prints as it looks on screen: the cards, the last 6, 12 and 24 hours, the Caliber ID re-check, Batch Status & Turnaround, Trip Timing & Gap, OT & Multiple Duties, the Loading Equipment-wise Report (Chart), Attendance Month-wise and Attendance Shift-wise, over as many pages as it needs. Wait until every report has finished reading. Choose the paper (A3 suits it best) and the printer next.'
     :'The cards and '+printedPanel+' print as they look on screen. For the complete dashboard, choose All in the Sr No strip first. Choose the paper (A3 suits it best) and the printer next.',
    onPrint:({pageSize,printOptions})=>{
     const dashboard=printTarget();
@@ -148,12 +156,14 @@ export default function LogBookDashboard({session,goto,fetcher=fetch,initialFilt
   {selection?.sites&&<Dialog title="Sites with saved entries" close={()=>setSelection(null)} actions={<TableSmartPrint title={'Sites with saved entries · '+displayDay(applied.from)+' to '+displayDay(applied.to)}/>}><p className="lb-muted">Sites with zero entries are included for comparison.</p><div className="lb-table-wrap"><table><thead><tr><th>Site</th><th>VLB</th><th>ELB</th></tr></thead><tbody>{sitesLowToHigh(data?.bySite,['vehicle','equipment'].filter(k=>data?.kinds?.includes(k))).map(r=><tr key={r.site}><td>{r.site}</td>{['vehicle','equipment'].map(k=><td key={k}><button disabled={!r[k]} onClick={()=>choose(k,{location:r.site})}>{number(r[k])}</button></td>)}</tr>)}</tbody></table></div></Dialog>}
   {selection?.drafts&&<Dialog title="My recovery drafts" close={()=>setSelection(null)}><p>{number(data.totals.recoveryDrafts)} active server recovery copies match these filters. Copies saved only on another laptop are not counted here.</p><p>These copies are separate from saved logbook totals. Completed recovery copies are removed after their batch is saved and locked.</p>{goto?<button className="lb-apply" onClick={()=>goto('Drafts')}>Open Draft recovery</button>:<p className="lb-muted">Open MIS → Draft recovery in the live app to resume work.</p>}</Dialog>}
  </section>
-  {/* Below the cards and the Sr No strip: Batch Status & Turnaround (the second half of Sr 1, under the last 24 hours),
-      Sr 2 Trip Timing & Gap, Sr 3 OT & Multiple Duties, Sr 4 the Loading Equipment-wise Report (Chart), Sr 5 Attendance
+  {/* Below the cards and the Sr No strip: the rest of Sr 1 under the last 24 hours (the Caliber ID re-check, then
+      Batch Status & Turnaround), Sr 2 Trip Timing & Gap, Sr 3 OT & Multiple Duties, Sr 4 the Loading Equipment-wise Report (Chart), Sr 5 Attendance
       Month-wise and Sr 6 Attendance Shift-wise. Each report keeps its own dates. A report is put on the page the first time
       its Sr No is opened. */}
   <div className="lb-reports" aria-label="Reports on the dashboard">
-   {ReportSection&&<SrPanel sr={1} chosen={sr} opened={opened}><BatchStatusReport session={session} ReportSection={ReportSection} embedded paused={!shown(1)}/></SrPanel>}
+   {ReportSection&&<SrPanel sr={1} chosen={sr} opened={opened}>
+    {recheckAllowed(session)&&<Suspense fallback={<p role="status" className="lb-muted">Loading the Caliber ID re-check…</p>}><CaliberRecheck session={session} ReportSection={ReportSection} embedded onOpenPage={goto?()=>goto('Caliber ID Re-check'):undefined}/></Suspense>}
+    <BatchStatusReport session={session} ReportSection={ReportSection} embedded paused={!shown(1)}/></SrPanel>}
    {ReportSection&&<SrPanel sr={2} chosen={sr} opened={opened}><Suspense fallback={<p role="status" className="lb-muted">Loading Trip Timing &amp; Gap Report…</p>}><OperationsReports session={session} reportId="timing" ReportSection={ReportSection}/></Suspense></SrPanel>}
    {ReportSection&&<SrPanel sr={3} chosen={sr} opened={opened}><ManpowerReports session={session} reportId="ot" ReportSection={ReportSection} embedded initialFrom={monthToDate().from}/></SrPanel>}
    {ReportSection&&<SrPanel sr={4} chosen={sr} opened={opened}><Suspense fallback={<p role="status" className="lb-muted">Loading the Loading Equipment-wise Report (Chart)…</p>}><OperationsReports session={session} reportId="loading" ReportSection={ReportSection}/></Suspense></SrPanel>}

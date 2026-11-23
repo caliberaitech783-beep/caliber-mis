@@ -28,6 +28,24 @@ export function addRecheckAnswer(held,answer){
  }
  return {cards,confirmed,corrected,listed,sites,days:answers.size,canApply:Boolean(answer.canApply),answers};
 }
+// The dashboard shows Step 1 too, in Sr 1 (owner, 24 Nov 2026), and the dashboard is opened far more often than the
+// page. So a day's answer is kept in the browser for a few minutes, for the login that read it: going back to the
+// dashboard does not ask the server for every day again. Only the dashboard's own first reading takes a kept day; the
+// page, Refresh and the day read again after a Submit always ask the server, and what they read replaces what was
+// kept, so the dashboard never shows an older figure than the page has just shown.
+export const RECHECK_KEEP_MS=5*60000;
+const keptDays=new Map();
+export function keepRecheckAnswer(token,answer,now=Date.now()){
+ if(!token||!answer?.from)return;
+ // One login at a time: another login's days are dropped, not shown.
+ if(!keptDays.has(token)){keptDays.clear();keptDays.set(token,new Map());}
+ keptDays.get(token).set(answer.from,{answer,at:now});
+}
+export function keptRecheckAnswer(token,date,now=Date.now()){
+ const kept=keptDays.get(token)?.get(date);
+ return kept&&now-kept.at<RECHECK_KEEP_MS&&now>=kept.at?kept:null;
+}
+export const forgetRecheckAnswers=()=>keptDays.clear();
 const countOf=rows=>({listed:rows.length,picked:rows.filter(row=>row.pick).length});
 // Step 1: one line per site, the most cards to check on top, and the line of all sites.
 export function recheckSiteRows(held){

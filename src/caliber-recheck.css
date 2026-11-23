@@ -88,3 +88,13 @@
 /* Save shift (owner, 24 Nov 2026): the shift box on a card that names no shift. */
 .caliber-recheck .cr-shift{display:flex;gap:6px;align-items:stretch;margin:4px 0}
 .caliber-recheck .cr-shift select{flex:1 1 40%;min-height:38px;border:1px solid #c9ced6;border-radius:6px;padding:0 8px}
+/* On the dashboard, in Sr 1 under the last 6, 12 and 24 hours (owner, 24 Nov 2026): one line with the name, when the
+   figures were read, Refresh and the way to the full page; the steps below it are the page's own. */
+.caliber-recheck.cr-embedded{padding:0}
+.caliber-recheck .cr-compact{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin:0 0 10px}
+.caliber-recheck .cr-compact h2{margin:0 auto 0 0;font-size:20px;line-height:1.3}
+.caliber-recheck .cr-compact .cr-asof{color:var(--muted,#71809d);font-size:13px}
+.caliber-recheck .cr-compact button{padding:6px 12px;border:1px solid #c7b5dd;border-radius:9px;background:var(--card,#fff);color:inherit;font:inherit;font-size:13px;font-weight:650;cursor:pointer}
+.caliber-recheck .cr-compact button:disabled{opacity:.55;cursor:default}
+.caliber-recheck .cr-compact .cr-open-page{border-color:#56309a;background:#56309a;color:#fff}
+.caliber-recheck .cr-compact button:focus-visible{outline:2px solid #56309a;outline-offset:2px}
