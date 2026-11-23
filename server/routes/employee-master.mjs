@@ -25,7 +25,10 @@ export async function importEmployees(pool,records){const normalized=records.map
     d.site=d.currentLocation||saved.site||saved.locationName||'';
   }
   const record={...prev?.record_data,...d,source:'Employee Master Report.xlsx',importedAt:new Date().toISOString(),employeeMasterRevision:Number(prev?.record_data?.employeeMasterRevision||0)+1};if(prev){await c.query("UPDATE master_records SET master_name='Employee master',record_data=$1::jsonb WHERE id=$2",[JSON.stringify(record),prev.id]);updated++}else{await c.query("INSERT INTO master_records(master_name,record_data) VALUES('Employee master',$1::jsonb)",[JSON.stringify(record)]);added++}}await c.query('COMMIT');return {added,updated,total:normalized.length}}catch(e){await c.query('ROLLBACK');throw e}finally{c.release()}}
-export function registerEmployeeMaster(app,{pool,requireSession,requireAdministrator}){const protect=[requireSession,requireAdministrator];const wrap=fn=>async(req,res,next)=>{try{await fn(req,res)}catch(e){if(e.status)return res.status(e.status).json({error:e.message});next(e)}};
+// door: the lock on every route here that adds or edits an employee (server/routes/employee-master-door.mjs).
+// Employees are created, edited and deleted only in HR Pulse; these routes answer only while the owner has
+// allowed it on Telegram.
+export function registerEmployeeMaster(app,{pool,requireSession,requireAdministrator,door=null}){const protect=[requireSession,requireAdministrator];const open=door?.requireOpen||((req,res,next)=>next());const wrap=fn=>async(req,res,next)=>{try{await fn(req,res)}catch(e){if(e.status)return res.status(e.status).json({error:e.message});next(e)}};
 
  const locationRecord=({id,record_data:record})=>{
    const {employeeId,name,currentLocation,employeeMasterRevision}=employeeIdentity(record);
@@ -43,7 +46,7 @@ export function registerEmployeeMaster(app,{pool,requireSession,requireAdministr
    if(rows.length>1)return res.status(409).json({error:'Multiple employees match. Enter the full Employee ID.'});
    res.set('Cache-Control','no-store').json(locationRecord(rows[0]));
  }));
- app.put('/api/employee-master/location/:id',requireSession,wrap(async(req,res)=>{
+ app.put('/api/employee-master/location/:id',requireSession,open,wrap(async(req,res)=>{
    const {currentLocation,revision}=req.body||{};
    if(!/^\d{1,18}$/.test(req.params.id)||typeof currentLocation!=='string'||currentLocation.length>4000||!Number.isSafeInteger(revision)||revision<0)
      return res.status(400).json({error:'Invalid employee location update.'});
@@ -113,7 +116,8 @@ export function registerEmployeeMaster(app,{pool,requireSession,requireAdministr
    });
  }));
  const save=async(req,res)=>{const data=normalizeEmployee(req.body);const c=await pool.connect();try{await c.query('BEGIN');await c.query('SELECT pg_advisory_xact_lock(709224109)');const duplicate=await c.query("SELECT id FROM master_records WHERE master_name='Employee master' AND upper(record_data->>'caliberId')=$1 AND id<>COALESCE($2::bigint,0)",[data.caliberId,req.params.id||null]);if(duplicate.rowCount)throw Object.assign(new Error('Employee ID already exists.'),{status:409});let row;if(req.params.id){const prior=(await c.query("SELECT record_data FROM master_records WHERE id=$1 AND master_name='Employee master' FOR UPDATE",[req.params.id])).rows[0]?.record_data;if(!prior||prior.employeeMasterRevision!==req.body.employeeMasterRevision)throw Object.assign(new Error('Employee changed. Reload before editing.'),{status:409});keepEmployeeSite(prior,data);row=(await c.query('UPDATE master_records SET record_data=$1::jsonb WHERE id=$2 RETURNING id,record_data',[JSON.stringify({...prior,...data,employeeMasterRevision:prior.employeeMasterRevision+1,updatedAt:new Date().toISOString()}),req.params.id])).rows[0]}else row=(await c.query("INSERT INTO master_records(master_name,record_data) VALUES('Employee master',$1::jsonb) RETURNING id,record_data",[JSON.stringify({...data,source:'Local entry',employeeMasterRevision:1})])).rows[0];await c.query('COMMIT');res.json({...employeeIdentity(row.record_data),id:String(row.id)})}catch(e){await c.query('ROLLBACK');throw e}finally{c.release()}};
- app.post('/api/employee-master',...protect,wrap(save));app.put('/api/employee-master/:id',...protect,wrap(async(req,res)=>{if(!/^\d+$/.test(req.params.id))return res.status(400).json({error:'Invalid employee.'});await save(req,res)}));
- app.post('/api/employee-master/import',...protect,wrap(async(req,res)=>{if(!Array.isArray(req.body.records)||!req.body.records.length||req.body.records.length>25000)return res.status(400).json({error:'Import 1–25,000 employee records.'});res.json(await importEmployees(pool,req.body.records))}));
- app.use('/api/masters/:master',(req,res,next)=>req.params.master==='Employee master'&&!['GET','HEAD'].includes(req.method)?res.status(409).json({error:'Use the Employee Master page to edit employees.'}):next());
+ app.post('/api/employee-master',...protect,open,wrap(save));app.put('/api/employee-master/:id',...protect,open,wrap(async(req,res)=>{if(!/^\d+$/.test(req.params.id))return res.status(400).json({error:'Invalid employee.'});await save(req,res)}));
+ app.post('/api/employee-master/import',...protect,open,wrap(async(req,res)=>{if(!Array.isArray(req.body.records)||!req.body.records.length||req.body.records.length>25000)return res.status(400).json({error:'Import 1–25,000 employee records.'});res.json(await importEmployees(pool,req.body.records))}));
+ // The general master routes never add, edit or delete an employee, whatever the door says.
+ app.use('/api/masters/:master',(req,res,next)=>['Employee master','ERP Employee master'].includes(req.params.master)&&!['GET','HEAD'].includes(req.method)?res.status(409).json({error:'Employees are created, edited and deleted only in HR Pulse.'}):next());
 }

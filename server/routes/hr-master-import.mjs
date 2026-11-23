@@ -64,8 +64,10 @@ export async function applyHrMaster(pool,sheet,body,{by='',guard=null}={}){
  finally{client.release();}
 }
 
-export function registerHrMasterImport(app,{pool,requireSession,requireAdministrator}){
- const protect=[requireSession,requireAdministrator];
+// door: Apply answers only while the owner has allowed it on Telegram (server/routes/employee-master-door.mjs).
+// The preview writes nothing and stays open.
+export function registerHrMasterImport(app,{pool,requireSession,requireAdministrator,door=null}){
+ const protect=[requireSession,requireAdministrator],open=door?.requireOpen||((req,res,next)=>next());
  const wrap=handler=>async(req,res,next)=>{
   try{await handler(req,res);}
   catch(error){if(error.status)return res.status(error.status).json({error:error.message,...error.extra});next(error);}
@@ -81,7 +83,7 @@ export function registerHrMasterImport(app,{pool,requireSession,requireAdministr
   res.set('Cache-Control','no-store').json({lines:sheet.lines,first,applySites,owner,summary:plan.summary,lists:plan.lists,planKey:hrMasterPlanKey(plan,applySites),
    leftOut:{lines:sheet.problems.length,problems:sheet.problems.slice(0,500)}});
  }));
- app.post('/api/employee-master/hr-import/apply',...protect,wrap(async(req,res)=>{
+ app.post('/api/employee-master/hr-import/apply',...protect,open,wrap(async(req,res)=>{
   const sheet=readSheet(req.body);
   const result=await applyHrMaster(pool,sheet,req.body,{by:req.session?.login||req.session?.name||''});
   req.audit={eventType:'Master data',module:'Employee master',action:'Apply HR master',targetType:'Employee master',targetReference:fileNameOf(req.body)||'HR master',
