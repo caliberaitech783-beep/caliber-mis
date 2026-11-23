@@ -24,8 +24,6 @@ export function buildAFormPeople(rows=[]){
   if(!number)continue;
   const sites=displaySiteSelection(record.site||record.location||record.currentLocation);
   const person={id:String(row.id),master:row.master_name,number,name:text(record.name||record.employee),designation:text(record.currentDesignationName||record.designationName||record.designation),
-   // HR Pulse's department and category (copied every minute), for the department and category steps of Site Sheet vs Trip Card.
-   department:text(record.currentDepartmentName||record.departmentName||record.department),category:text(record.hrCategory),
    siteLabel:sites.join(', '),siteKeys:sites.map(site=>canonicalSiteName(site)).filter(Boolean),listed:employeeOnHrList(record),left:record.hrLeft===true};
   const held=byNumber.get(number);if(held)held.push(person);else byNumber.set(number,[person]);
  }

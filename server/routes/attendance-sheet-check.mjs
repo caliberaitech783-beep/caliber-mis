@@ -27,7 +27,7 @@ export function sheetPeopleAnswer(index,site,numbers){
  const people=numbers.map(number=>{
   const everyone=index.byNumber.get(number)||[],listed=preferredPeople(everyone.filter(person=>person.listed));
   const working=listed.find(person=>person.siteKeys.includes(siteKey))||listed[0]||null,known=working||preferredPeople(everyone)[0]||null;
-  return {number,found:Boolean(known),name:known?.name||'',designation:known?.designation||'',department:known?.department||'',category:known?.category||'',siteLabel:known?.siteLabel||'',
+  return {number,found:Boolean(known),name:known?.name||'',designation:known?.designation||'',siteLabel:known?.siteLabel||'',
    atSite:Boolean(working?.siteKeys.includes(siteKey)),working:Boolean(working),left:Boolean(known?.left)};
  });
  const sitePeople=[];
