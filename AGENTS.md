@@ -65,3 +65,12 @@ Set by the owner on 23 November 2026: "do not sync Employee Master, sync only Em
 - Employee Master has no line and is not synced from HR or copied from Oracle / ERP; it is kept from HR's master Excel on the Employee Master page. Do not add it back to Sync all masters unless the owner asks. The service still holds the Employee Master copy from HR (unused) for that day.
 - HR serves the data read only at `/api/integrations/mis/transfers` (and `/employees`), caliber-hr repo `server/mis-employee-sync.mjs`. Pulse-II's Azure setting `HR_SYNC_KEY` must equal HR's `MIS_SYNC_KEY` (set 23 Nov 2026, on both Pulse-II slots, not slot-sticky). `HR_SYNC_SCHEDULE=0` stops the hourly run.
 - `test/hr-employee-sync.test.mjs` checks this.
+
+# No temperature sign
+
+Set by the owner on 23 November 2026: "remove the temperature sign from all the websites. I don't require that."
+
+- No page shows the outside temperature: not the top bar, not the Help & Training window. The same was removed from Pulse and HR Pulse.
+- The screen calls no weather service. Do not add the chip, its hook or a weather call back unless the owner asks.
+- The site coordinates the chip used are kept in `src/site-coordinates.mjs`, because the sign-in location names the nearest site from them.
+- `test/no-temperature-chip.test.mjs` checks this.
