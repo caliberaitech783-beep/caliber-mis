@@ -156,7 +156,8 @@ test('the Refresh of the Fetch box: ID not found until HR Pulse has it, then the
   assert.deepEqual(await refresh('7001'),{status:502,body:{error:'HR Pulse did not answer. Press Refresh again in a minute.',refresh:true}});
   f.state.fail=null;copy=null;
   const off=await refresh('7001');
-  assert.deepEqual([off.status,off.body.refresh],[503,true]);assert.match(off.body.error,/not connected.*Please contact your HR team\.$/);
+  // Not connected is not for HR to settle: the person is sent to the MIS administrator (test/hr-pulse-not-connected-alert.test.mjs).
+  assert.deepEqual([off.status,off.body.refresh],[503,true]);assert.match(off.body.error,/^Pulse-II is not connected to HR Pulse right now.*Please tell your MIS administrator\.$/);
 
   // The same guards as the lookup beside it: the site of the login, and a number that can be one.
   copy=f.copy;scope={sites:['sasti ob'],label:SASTI};

@@ -75,7 +75,9 @@ export function registerMasterSync(app,{pool,pulse,erp,hr=unavailableHr,copy=nul
  // changes of Employee Master. A transfer that had to wait is tried again by the hourly run, not every minute.
  const triedTransfers=new Map();
  const minute=async()=>{
-  if(!hr.configured())return {skipped:'not connected'};
+  // No key for HR Pulse on this server: nothing can be copied from here. The live server tells the release approvers
+  // once that has lasted ten minutes (server/services/hr-employee-minute-copy.mjs, notConnected).
+  if(!hr.configured()){const told=copy?.notConnected?await copy.notConnected().catch(()=>null):null;return {skipped:'not connected',...(told?.told?{told:true}:{})};}
   let transfers=null;
   if(!busy&&typeof hr.transfers==='function'){
    try{
