@@ -27,7 +27,7 @@
 import {readScanMasters} from '../services/scan-master-cache.mjs';
 import {SCAN_MASTER_NAMES} from '../services/a-form-people-index.mjs';
 import {logBookSiteScope,siteAllowed,requireLogBookSite,employeeAtLocation,employeeOnHrList} from '../../shared/log-book-access.mjs';
-import {recheckSavedCard,recheckCounts,RECHECK_REASONS,canConfirmSaved,confirmationHolds} from '../../shared/caliber-recheck.mjs';
+import {recheckSavedCard,recheckCounts,RECHECK_REASONS,canConfirmSaved,canRefreshFromHr,confirmationHolds} from '../../shared/caliber-recheck.mjs';
 import {needsDriverConfirm,employeeLeft,employeeDesignation,fetchRefusal} from '../../shared/caliber-id-check.mjs';
 import {employeeIdentity} from '../../shared/employee-identity.mjs';
 import {isMisAdministrator} from '../../shared/mis-admin-access.mjs';
@@ -188,7 +188,9 @@ export function registerCaliberRecheck(app,{pool,requireSession,requireAdministr
    site.listed++;if(pick)site.picked++;
    listed.push({id:String(row.id),bookNo:row.book_no,book:kindLabel(row.book_type),kind:row.book_type==='equipment'?'equipment':'vehicle',date:row.date,shift:shiftOf(row),siteKey:key,site:site.site,door:row.door,
     cardNo:row.book_type==='equipment'?row.job_card:row.a_form,scanned:Boolean(row.scan_card_id),scanCardId:row.scan_card_id||'',savedId:row.caliber_id,savedName:row.employee_name,
-    reason:verdict.reason,reasonLabel:RECHECK_REASONS[verdict.reason],line:verdict.line,lookAlikes:verdict.lookAlikes||[],more:verdict.more||0,aForm:verdict.aForm||null,canConfirm:canConfirmSaved(verdict),pick});
+    reason:verdict.reason,reasonLabel:RECHECK_REASONS[verdict.reason],line:verdict.line,lookAlikes:verdict.lookAlikes||[],more:verdict.more||0,aForm:verdict.aForm||null,canConfirm:canConfirmSaved(verdict),
+    // HR settles this one: the line says so and has a Refresh that asks HR Pulse for the saved number.
+    canRefresh:canRefreshFromHr(verdict),pick});
   }
   res.json({from,to,cards:judged,listed,counts:recheckCounts(listed),sites:[...sites.values()].sort((a,b)=>b.listed-a.listed||a.site.localeCompare(b.site)),
    picked:listed.filter(row=>row.pick).length,confirmed,corrected,canApply:isMisAdministrator(req.session),tookMs:Date.now()-started});

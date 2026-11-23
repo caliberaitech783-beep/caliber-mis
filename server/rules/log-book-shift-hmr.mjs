@@ -23,17 +23,6 @@ function shiftHmrLimit(data,shift){
  return CARD_SHIFTS[normalizeCardShift(shift)]?.hours;
 }
 
-// One driver, one shift, one payment (owner, 23 Nov 2026): "in a shift he has worked in 2 different trucks … in both
-// his number should be there … the payment only will be calculated for one … if a driver works for more than 8 hours,
-// then also he will get single shift payment only." A driver's cards of one shift are one duty in every attendance
-// view (server/rules/manpower-report.mjs, dutiesOf), whatever number of vehicles and whatever hours they add up to,
-// so hours beyond the shift never keep the driver's number off a card and never add a payment.
-// They are still a doubt about the number: the second card is most often a colleague's whose number was misread.
-// So such a card waits for one answer from a person, "did this driver also drive this vehicle?". The answer is kept on
-// the card (driverShiftConfirmed: who and when). A card being edited is not asked again when it, or another card of
-// that driver and shift, already carries the answer; every further vehicle added to the shift is asked once.
-export const driverShiftConfirmed=data=>Boolean(data?.driverShiftConfirmed);
-export const driverShiftMark=(by,at=new Date().toISOString())=>({by:String(by||'').slice(0,120),at});
 async function assertVlbDriverShiftHmr(client,data,recordId){
  const shift=vlbRecordShift(data);
  const limit=shiftHmrLimit(data,shift);
@@ -53,11 +42,9 @@ async function assertVlbDriverShiftHmr(client,data,recordId){
  const saved=peers.reduce((sum,row)=>sum+hmrUnits(row.data),0);
  const total=saved+hmrUnits(data);
  if(total<=limit*1000)return;
- if(driverShiftConfirmed(data)||recordId&&peers.some(row=>driverShiftConfirmed(row.data)))return;
  const conflicts=peers.map(row=>({id:String(row.id),bookNo:row.book_no}));
- const driver=String(data.employeeName||data.caliberId||employeeId).trim(),cards=conflicts.map(row=>row.bookNo).join(', ');
- throw Object.assign(new Error(`${driver} already has card ${cards} on another vehicle in this shift (${data.bookDate}, shift ${shift}). With this card the working HMR comes to ${total/1000} hours (${saved/1000} already saved); the shift is ${limit} hours. If ${driver} also drove this vehicle, save this card and answer Yes: it stays under ${driver} and one shift is counted. If not, correct the driver on this card.`),
-  {status:409,details:{code:'driver_shift_hmr_limit',conflicts,confirm:{driver,hours:total/1000,limit}}});
+ throw Object.assign(new Error(`Combined working HMR for driver ${data.employeeName||data.caliberId||employeeId} across vehicles on ${data.bookDate}, shift ${shift}, would be ${total/1000} hours (${saved/1000} already saved on ${conflicts.map(row=>row.bookNo).join(', ')}). The shift limit is ${limit} hours. Check the driver and HMR on the cards.`),
+  {status:409,details:{code:'driver_shift_hmr_limit',conflicts}});
 }
 
 // Writers must hold the log-book transaction locks through validation and save.

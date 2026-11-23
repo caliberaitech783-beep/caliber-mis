@@ -30,7 +30,7 @@ import {registerMeterContinuityReport} from '../../shared/meter-continuity-repor
 import {registerBatchStatusReport} from './batch-status-report-api.mjs';
 import {assetCapacityPair} from '../../shared/production-report.mjs';
 import {VLB_BATCH_SCHEMA,assertVlbBatchWrite,lockVlbBatchWrites,lockVlbBatchScope,vlbBatchScope,vlbRecordScope,syncVlbBatchRecord,isOpenBatchForDeletion,auditVlbBatch} from '../rules/vlb-batch-policy.mjs';
-import {assertCombinedShiftMeters,driverShiftMark} from '../rules/log-book-shift-hmr.mjs';
+import {assertCombinedShiftMeters} from '../rules/log-book-shift-hmr.mjs';
 import {assertSingleVlbCardPerShift} from '../rules/vlb-duplicate-card.mjs';
 import {formatTripCardSheet,savedCardSheets} from '../../shared/trip-card-sheet.mjs';
 import {twoStageEnabled,FLEET_STATUSES,NON_WORKING_STATUSES} from '../rules/vlb-two-stage.mjs';
@@ -242,8 +242,6 @@ export async function joinVlbCardSheet(client,target,sheetData,{actor='',applyHo
  const next={...saved,...normalized,joinedSheets:[...(Array.isArray(saved.joinedSheets)?saved.joinedSheets:[]),joined],siteHolds:[...(saved.siteHolds||[]),...loaderHolds]};
  // The first sheet saved before its box was read: with two sheets, it is sheet 1 of 2.
  if(!heldNumbers.length&&sheet.sheetTotal===2)next.tripCardSheet='1/2';
- // The person's answer given while saving this sheet belongs to the card it joins.
- if(sheetData.driverShiftConfirmed)next.driverShiftConfirmed=sheetData.driverShiftConfirmed;
  if(applyHours)await applyHours(next);
  const batch=await assertVlbBatchWrite(client,next,actor,row.id);
  await assertSingleVlbCardPerShift(client,next,{recordId:row.id,batch,actor});
@@ -504,8 +502,6 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
        }
        if(kind==='equipment'&&prior?.entrySource==='batch-fleet'&&req.query?.siteBatchEdit!=='1'&&!isMisAdministrator(req.session)&&!(await vlbBatchActor(client,req.session)).mis)fail('Only an MIS user or MIS administrator can edit a saved manual ELB.',403);if(kind==='equipment'&&prior?.operatorSplit)fail('Open ELB Manual for this batch to edit the Surface Miner operator split.',409);if(prior?.scanCardId){for(const key of ['scanCardId','scanBatchId','scanEntrySource','reviewedBy','reviewedAt','meterCorrectionHistory'])data[key]=prior[key];data.scanCardNumber=String(kind==='equipment'?data.jobCardNo:data.aFormNo).toUpperCase().replace(/[^A-Z0-9]/g,'')||null;}if(prior)for(const key of ['tripCardSheet','joinedSheets'])if(prior[key]!==undefined)data[key]=prior[key];if(prior)data.meterCorrectionHistory=recordMeterCorrection(prior.meterCorrectionHistory,prior,data,kind==='lmv'?'vehicle':kind,req.session.login||req.session.name);
        if(kind==='vehicle'&&!data.scanCardId)data.duplicateReason=text(req.body.duplicateReason)||text(prior?.duplicateReason);
-       // "Yes, this driver drove both vehicles" (server/rules/log-book-shift-hmr.mjs): a new answer, or the one the card already carries while its driver is the same.
-       if(kind==='vehicle'){const said=req.body.driverShiftConfirmed===true?driverShiftMark(req.session.login||req.session.name):prior&&String(prior.employeeId)===String(data.employeeId)?prior.driverShiftConfirmed:null;if(said)data.driverShiftConfirmed=said;}
        if(kind==='vehicle'){const batch=await assertVlbBatchWrite(client,data,req.session.login||req.session.name,req.params.id);await assertSingleVlbCardPerShift(client,data,{recordId:req.params.id,batch,actor:req.session.login||req.session.name});}
        else if(kind==='lmv'){
          if(twoStageEnabled()&&prior&&vlbBatchScope(vlbRecordScope(prior))!==vlbBatchScope(vlbRecordScope(data)))fail('An existing LMV must stay in its original batch.',409);
@@ -530,7 +526,6 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
        const previous=(await client.query('SELECT id,book_no,book_type,data,revision,created_at,updated_at,created_by FROM mis_log_books WHERE request_key=$1 AND book_date>=$$2026-11-01$$',[requestKey])).rows[0];
        if(previous){requireLogBookSite(req.logBookScope,previous.data.location);if(previous.created_by!==(req.session.login||req.session.name)||previous.book_type!==kind)throw Object.assign(new Error('Save reference already used.'),{status:409});const response=kind==='vehicle'?(await withVlbTripHandovers(client,[previous],await filterLogBookSites(client,req.logBookScope)))[0]:previous;await client.query('COMMIT');return res.json(response);}
        if(kind==='vehicle')data.duplicateReason=text(req.body.duplicateReason);
-       if(kind==='vehicle'&&req.body.driverShiftConfirmed===true)data.driverShiftConfirmed=driverShiftMark(req.session.login||req.session.name);
        result={rows:[await insertLogBook(client,kind,data,requestKey,req.session.login||req.session.name)]};
      }
      if(updating){await enqueueTripVerification(client,result.rows[0]);await syncVlbBatchRecord(client,result.rows[0],req.session.login||req.session.name);await syncElbBatchRecord(client,result.rows[0],req.session.login||req.session.name);}

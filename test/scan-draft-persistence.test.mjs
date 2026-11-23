@@ -59,6 +59,5 @@ test('the card save answers a stale revision with the card it holds',async()=>{
  const {readFile}=await import('node:fs/promises');
  const route=await readFile(new URL('../server/routes/bulk-card-scanning.mjs',import.meta.url),'utf8');
  assert.match(route,/if\(req\.body\.revision!==card\.revision\)throw Object\.assign\(new Error\('Card changed\. Reload before saving\.'\),\{status:409,latest:\{id:card\.id,revision:card\.revision,status:card\.status,draft:card\.draft\}\}\)/);
- // The answer also names a refusal the page answers itself (its code), after the latest card.
- assert.match(route,/json\(\{error:e\.message,\.\.\.\(e\.latest\?\{latest:e\.latest\}:\{\}\),\.\.\.\(e\.details\?\.code\?\{code:e\.details\.code\}:\{\}\)\}\)/);
+ assert.match(route,/json\(\{error:e\.message,\.\.\.\(e\.latest\?\{latest:e\.latest\}:\{\}\)\}\)/);
 });

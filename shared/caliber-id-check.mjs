@@ -187,6 +187,16 @@ export function judgeCaliberId(masters,{read='',readings=null,location='',aForm=
  return stop(left?'left':'not-listed',{read:shown,...about(owner,date),...(left?{left}:{}),...alike()});
 }
 
+// A number HR's employee list does not carry as working (owner, 23 Nov 2026): "If a Caliber ID is not found in HR
+// employee list ... it should say ID not found. Please contact your HR team. And there one refresh button should be
+// there. If [it] is added and then the refresh button is done and it is showing from HR Pulse, then it should allow
+// to move further." An employee is created, corrected and removed only in HR Pulse, so the line sends the person at
+// the card to HR, and Refresh asks HR Pulse for that number at once (server/services/hr-employee-minute-copy.mjs).
+export const ID_NOT_FOUND='ID not found. Please contact your HR team.';
+export const CONTACT_HR=' Please contact your HR team.';
+// The reasons of a held or listed card that HR settles, so a Refresh from HR Pulse can clear them.
+export const HR_REFRESH_REASONS=['unknown','not-listed','left'];
+export const REFRESH_HINT='Check the number on the card first. Press Refresh after HR has added or corrected this ID in HR Pulse.';
 const person=check=>[check.name,check.designation].filter(Boolean).join(', ')||'an employee';
 function lookAlikeLine(check){
  if(!Array.isArray(check.lookAlikes))return '';
@@ -205,10 +215,10 @@ export function caliberCheckMessage(check,kind='vehicle'){
  switch(check.reason){
   case 'unreadable':return 'Caliber ID could not be read. Type the number from the card.'+box;
   case 'readings-differ':return 'The number was read as '+check.read+' and '+check.second+'. Type the number from the card.'+box;
-  case 'unknown':return read+'No employee has this number. Check the card.'+box+lookAlikeLine(check);
+  case 'unknown':return read+ID_NOT_FOUND+box+lookAlikeLine(check);
   case 'other-site':return read+'This is '+[person(check),check.site].filter(Boolean).join(', ')+'. The number may be misread.'+box+lookAlikeLine(check)+' If the number is right, press Fetch to move this person here with OTP.';
-  case 'not-listed':return read+'This is '+person(check)+", who is not in HR's list for any site. Check the number on the card."+box+lookAlikeLine(check);
-  case 'left':return read+'This is '+person(check)+'. '+(check.left==='hr'?"HR's list says this person has left.":'Employee Master says this person has resigned.')+' Check the number on the card.'+box+lookAlikeLine(check);
+  case 'not-listed':return read+ID_NOT_FOUND+box+lookAlikeLine(check);
+  case 'left':return read+'This is '+person(check)+'. '+(check.left==='hr'?"HR's list says this person has left.":'Employee Master says this person has resigned.')+CONTACT_HR+box+lookAlikeLine(check);
   case 'not-driver':return read+'This is '+person(check)+'. Confirm '+(check.name||'this person')+' '+did+', or correct the number.'+box+lookAlikeLine(check);
   // The two boxes of the card name two working people of this site, one digit apart: only the card can say which.
   case 'a-form-differs':return read+'This is '+person(check)+'. But the FORM A box says '+(check.aForm?.no||'another number')+': at '+check.at+' that is '+(check.aForm?.id||'another person')+(check.aForm?.name?' ('+check.aForm.name+')':'')+', one digit away. Check the card and choose the '+(kind==='vehicle'?'driver':'operator')+' from the list.';
@@ -218,7 +228,7 @@ export function caliberCheckMessage(check,kind='vehicle'){
 // What the Fetch box says about a number a person typed.
 export function fetchRefusal(record,location,date){
  const who=[nameOf(record),employeeDesignation(record)].filter(Boolean).join(', ')||'an employee',site=siteOf(record,date);
- if(!employeeOnHrList(record))return 'This is '+who+(record?.hrLeft===true?". HR's list says this person has left.":", who is not in HR's list for any site.")+' Check the number on the card.';
+ if(!employeeOnHrList(record))return record?.hrLeft===true?'This is '+who+". HR's list says this person has left."+CONTACT_HR:ID_NOT_FOUND;
  return 'This is '+who+(site?', '+site:'')+(text(location)?'. This number is not at '+text(location)+'.':'.')+' Check the number on the card.';
 }
 export const driverConfirmQuestion=(record,kind='vehicle')=>'This is '+([nameOf(record),employeeDesignation(record)].filter(Boolean).join(', ')||'an employee')+'. Confirm '+(nameOf(record)||'this person')+' '+(kind==='vehicle'?'drove this vehicle':'operated this machine')+', or correct the number.';

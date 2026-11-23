@@ -71,8 +71,7 @@ test('a relief driver can save a separate manual card within the shared shift li
  const otherVehicle={...input,assetId:5,openingHmr:500,closingHmr:502};
  const driverOver=await call('/api/log-books/vehicle','POST',{...otherVehicle,closingHmr:502.001,requestKey:randomUUID()});
  assert.equal(driverOver.status,409);assert.equal(driverOver.data.code,'driver_shift_hmr_limit');
- assert.match(driverOver.data.error,/on another vehicle in this shift.*8\.001 hours.*shift is 8 hours.*answer Yes.*one shift is counted/);
- assert.equal(driverOver.data.confirm.limit,8);assert.ok(driverOver.data.confirm.driver);
+ assert.match(driverOver.data.error,/8\.001 hours.*shift limit is 8 hours/);
  const other=await call('/api/log-books/vehicle','POST',{...otherVehicle,requestKey:randomUUID()});assert.equal(other.status,201,JSON.stringify(other.data));
  assert.equal(other.data.data.employeeId,first.data.data.employeeId);
  assert.notEqual(other.data.book_no,first.data.book_no);
@@ -80,22 +79,7 @@ test('a relief driver can save a separate manual card within the shared shift li
  assert.equal(driverOverEdit.status,409);assert.equal(driverOverEdit.data.code,'driver_shift_hmr_limit');
  const duplicateEdit=await call('/api/log-books/vehicle/'+other.data.id,'PUT',{...input,revision:other.data.revision});
  assert.equal(duplicateEdit.status,409);assert.equal(duplicateEdit.data.code,'duplicate_card');
- const within=await call('/api/log-books/vehicle/'+other.data.id,'PUT',{...otherVehicle,revision:other.data.revision});
- assert.equal(within.status,200);assert.equal(within.data.data.driverShiftConfirmed,undefined,'hours within the shift need no answer');
- // One driver, one shift, one payment (owner, 23 Nov 2026): hours beyond the shift never keep his number off the
- // card. The person's Yes saves it under the same driver, and the answer stays with the card.
- const yes=await call('/api/log-books/vehicle/'+other.data.id,'PUT',{...otherVehicle,closingHmr:503,driverShiftConfirmed:true,revision:within.data.revision});
- assert.equal(yes.status,200,JSON.stringify(yes.data));assert.equal(yes.data.data.employeeId,first.data.data.employeeId);
- assert.equal(yes.data.data.totalWorkingHmr,3);assert.ok(yes.data.data.driverShiftConfirmed.by);assert.ok(yes.data.data.driverShiftConfirmed.at);
- const later=await call('/api/log-books/vehicle/'+other.data.id,'PUT',{...otherVehicle,closingHmr:503.5,revision:yes.data.revision});
- assert.equal(later.status,200,'a card that carries the answer is not asked again');
- assert.deepEqual(later.data.data.driverShiftConfirmed,yes.data.data.driverShiftConfirmed);
- // The driver's other card of the shift is not asked either when it is edited; a new vehicle in the shift is asked once.
- const firstNow=(await db.query('SELECT revision FROM mis_log_books WHERE id=$1',[first.data.id])).rows[0].revision;
- assert.equal((await call('/api/log-books/vehicle/'+first.data.id,'PUT',{...input,revision:firstNow})).status,200);
- // The answer belongs to the driver it was given for: with another driver on the card it is dropped.
- const otherDriver=await call('/api/log-books/vehicle/'+other.data.id,'PUT',{...otherVehicle,employeeId:6,closingHmr:500.5,revision:later.data.revision});
- assert.equal(otherDriver.status,200,JSON.stringify(otherDriver.data));assert.equal(otherDriver.data.data.driverShiftConfirmed,undefined);
+ assert.equal((await call('/api/log-books/vehicle/'+other.data.id,'PUT',{...otherVehicle,revision:other.data.revision})).status,200);
  // a different shift or site is a different card
  await prepareVlbFixture(db,{...input,cardShift:'II'},'alice');
  assert.equal((await call('/api/log-books/vehicle','POST',{...input,shiftId:4,cardShift:'II',requestKey:randomUUID()})).status,201);

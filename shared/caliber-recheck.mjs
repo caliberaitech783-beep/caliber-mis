@@ -14,11 +14,13 @@
 //     (A Form Master): the misread that lands on a colleague.
 // Each listed card carries the look-alike IDs of its site and whom the FORM A box names. Nothing here reads the
 // name written on the card or the vehicle's other drivers: the owner removed those checks.
-import {judgeCaliberId,caliberNumber,EMPLOYEE_LISTS} from './caliber-id-check.mjs';
+import {judgeCaliberId,caliberNumber,EMPLOYEE_LISTS,ID_NOT_FOUND,CONTACT_HR,HR_REFRESH_REASONS} from './caliber-id-check.mjs';
 
 const text=value=>String(value??'').replace(/\s+/g,' ').trim();
+// 'not-listed' is the number Employee Master still holds from the old list but HR's employee list does not: for the
+// person at the card it is simply an ID that was not found (owner, 23 Nov 2026).
 export const RECHECK_REASONS={
- 'unknown':'No such number','not-listed':"Not in HR's list",'left':'Has left','other-site':'Another site',
+ 'unknown':'No such number','not-listed':'ID not found','left':'Has left','other-site':'Another site',
  'not-driver':'Not a driver or operator','several':'Number on two people','a-form-differs':'FORM A names a colleague',
 };
 // The order a list of reasons is shown in: the surest first.
@@ -37,9 +39,9 @@ export function recheckLine(check,kind='vehicle'){
  const who=[check.name,check.designation].filter(Boolean).join(', '),is=who?check.read+' is '+who:'';
  const box=check.aForm?.no&&check.aForm?.id?' The FORM A box says '+check.aForm.no+': at '+check.at+' that is '+check.aForm.id+(check.aForm.name?' ('+check.aForm.name+')':'')+'.':'';
  switch(check.reason){
-  case 'unknown':return (check.read?'No employee has number '+check.read+'.':"The saved driver's line is no longer in Employee Master.")+box;
-  case 'not-listed':return is+", who is not in HR's list for any site."+box;
-  case 'left':return is+'. '+(check.left==='hr'?"HR's list says this person has left.":'Employee Master says this person has resigned.')+box;
+  case 'unknown':return (check.read?ID_NOT_FOUND:"The saved driver's line is no longer in Employee Master.")+box;
+  case 'not-listed':return ID_NOT_FOUND+box;
+  case 'left':return is+'. '+(check.left==='hr'?"HR's list says this person has left.":'Employee Master says this person has resigned.')+CONTACT_HR+box;
   case 'other-site':return is+(check.site?', of '+check.site+' on this date.':', of another site on this date.')+box;
   case 'not-driver':return is+': not a driver or operator.'+box;
   case 'several':return 'More than one employee at '+check.at+' has number '+check.read+'.'+box;
@@ -80,6 +82,11 @@ export const canConfirmSaved=verdict=>Boolean(verdict&&CONFIRMABLE_REASONS.inclu
 // changed afterwards, or whose driver stops standing for another reason, is judged afresh and listed again.
 export const confirmationHolds=(confirmation,card,verdict)=>Boolean(confirmation&&canConfirmSaved(verdict)
  &&String(confirmation.employee_id??'')===String(card.employeeId??'')&&text(confirmation.a_form)===text(card.aFormNo));
+
+// A listed card HR settles (owner, 23 Nov 2026): its number was not found in HR's employee list, or HR's list says the
+// person has left. The line has a Refresh button: it asks HR Pulse for that number now, and when HR Pulse has the
+// person as working the card passes by itself and leaves the list. Nothing on the card is changed.
+export const canRefreshFromHr=verdict=>Boolean(verdict&&HR_REFRESH_REASONS.includes(verdict.reason));
 
 // Counts for the top of the report: every reason, in the fixed order.
 export function recheckCounts(listed){

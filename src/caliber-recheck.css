@@ -58,6 +58,13 @@
 .caliber-recheck .employee-id-submit{border:1px solid #1f7a4d;border-radius:6px;background:#1f7a4d;color:#fff;font-weight:700;cursor:pointer}
 .caliber-recheck .employee-id-submit:hover:not(:disabled),.caliber-recheck .employee-id-submit:focus-visible{background:#17603c;outline:2px solid #1f7a4d;outline-offset:1px}
 .caliber-recheck .employee-id-submit:disabled{opacity:.55;cursor:default}
+/* Refresh for an ID HR settles (owner, 23 Nov 2026: "ID not found. Please contact your HR team", with a Refresh): HR Pulse
+   is asked for that number now. Blue, apart from the green Submit and the grey Fetch. */
+.caliber-recheck .employee-id-refresh{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin-top:6px}
+.caliber-recheck .employee-id-refresh-button{padding:6px 16px;border:1px solid #1d4ed8;border-radius:6px;background:#1d4ed8;color:#fff;font-weight:700;cursor:pointer}
+.caliber-recheck .employee-id-refresh-button:hover:not(:disabled),.caliber-recheck .employee-id-refresh-button:focus-visible{background:#1e40af;outline:2px solid #1d4ed8;outline-offset:1px}
+.caliber-recheck .employee-id-refresh-button:disabled{opacity:.55;cursor:default}
+.caliber-recheck .employee-id-refresh small{flex:1 1 160px;font-size:12px;line-height:1.4;opacity:.85;white-space:normal}
 .caliber-recheck .employee-id-lookup small.employee-id-found{padding:2px 6px;border-radius:4px;background:#eaf7f0;color:#14532d}
 .caliber-recheck .employee-id-lookup input{min-width:0;flex:1 1 120px;padding:6px 8px}
 .caliber-recheck .employee-id-lookup small{display:block;margin-top:4px;font-size:12px;line-height:1.4;white-space:normal}

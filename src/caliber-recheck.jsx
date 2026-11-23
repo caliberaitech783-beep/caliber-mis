@@ -15,6 +15,7 @@ import {buildXlsxSheetsWorkbook} from '../shared/report-xlsx.mjs';
 import {downloadBlob} from './download-history.mjs';
 import {shiftChoiceLabel} from '../shared/report-filter-options.mjs';
 import {OPERATIONAL_START} from '../shared/operational-start.mjs';
+import {REFRESH_HINT} from '../shared/caliber-id-check.mjs';
 import {EVERY,dmy,when,todayInIndia,recheckDates,emptyRecheck,addRecheckAnswer,recheckSiteRows,cardsOfSite,recheckSlotRows,cardsOfSlot,lookAlikeText,reasonCounts,recheckListSheets,recheckRecordSheets,recheckConfirmedSheets} from './caliber-recheck-model.mjs';
 import './caliber-recheck.css';
 
@@ -44,6 +45,8 @@ export default function CaliberRecheck({session,ReportSection}){
  // settled (said above Step 3 with Undo, because a confirmed line leaves the list), and the confirmed cards for HR.
  const [asking,setAsking]=useState(''),[keeping,setKeeping]=useState(false),[kept,setKept]=useState(null),[confirmedList,setConfirmedList]=useState(null);
  const [previewCard,setPreviewCard]=useState(null);
+ // Refresh (owner, 23 Nov 2026): the line whose saved number HR Pulse is being asked about.
+ const [refreshing,setRefreshing]=useState('');
  const run=useRef(0);
  const api=async(path,options={})=>{
   const response=await fetch(path,{...options,headers:{Authorization:`Bearer ${session.token}`,...(options.body?{'Content-Type':'application/json'}:{})}});
@@ -122,6 +125,19 @@ export default function CaliberRecheck({session,ReportSection}){
   setError('');setKept(null);
   try{await api('/api/caliber-recheck/confirm/'+logbookId,{method:'DELETE'});if(confirmedList)await loadConfirmed();await recheck([date],false);}catch(e){setError(e.message);}
  };
+ // Refresh on a line HR settles ("ID not found. Please contact your HR team."): HR Pulse is asked for the saved number
+ // now. When HR has added or corrected the person, every card saved under that number is judged again and leaves the
+ // list by itself; nothing on a card is changed. Any other answer is said on the card's own line.
+ const refreshRow=async row=>{
+  setRefreshing(row.id);setError('');setNotice('');setSaid(null);setAsking('');
+  try{
+   const person=await api('/api/log-books/employee-refresh',{method:'POST',body:JSON.stringify({caliberId:row.savedId,location:row.site,bookDate:row.date,kind:row.kind})});
+   const dates=[...new Set(held.listed.filter(card=>card.savedId===row.savedId&&card.siteKey===row.siteKey).map(card=>card.date))].sort();
+   await recheck(dates.length?dates:[row.date],false);
+   setKept({id:row.id,date:row.date,undo:'',text:'HR Pulse has '+[person.caliberId||row.savedId,person.name||row.savedName].filter(Boolean).join(' · ')+' now. The cards saved under this ID were checked again; the ones that stand have left the list.'});
+  }catch(e){setSaid({id:row.id,text:e.message,bad:true});}
+  finally{setRefreshing('');}
+ };
  const unchoose=async row=>{
   setError('');setNotice('');setSaid(null);
   try{await api('/api/caliber-recheck/pick/'+row.id,{method:'DELETE'});await recheck([row.date],false);}catch(e){setError(e.message);}
@@ -163,6 +179,7 @@ export default function CaliberRecheck({session,ReportSection}){
   {row.pick&&<p className="cr-chosen"><strong>{row.pick.employeeId} · {row.pick.name}</strong><small>chosen earlier by {row.pick.by}, not on the card yet</small>{row.pick.note&&<small className="cr-note" role="alert">Not corrected in the last run: {row.pick.note}</small>}
    <button type="button" onClick={()=>unchoose(row)}>Remove</button></p>}
   {said?.id===row.id&&<small className={'cr-said'+(said.bad?' cr-said-bad':'')} role={said.bad?'alert':'status'}>{said.text}</small>}
+  {row.canRefresh&&<div className="employee-id-refresh cr-refresh"><button type="button" className="employee-id-refresh-button" disabled={Boolean(refreshing)||busy} onClick={()=>refreshRow(row)}>{refreshing===row.id?'Checking HR Pulse…':'Refresh'}</button><small>{REFRESH_HINT}</small></div>}
   <EmployeeIdLookup key={row.id+'|'+(row.pick?.id||'')} submitLabel="Submit" scanMode submitHint="to put this person on the card" token={session.token} location={row.site} bookDate={row.date} role={row.kind==='equipment'?'operator':'driver'} card={{door:row.door,cardNo:row.cardNo,book:row.bookNo}} onResolved={employee=>choose(row,employee)}/>
   {row.canConfirm&&(asking===row.id
    ?<div className="cr-keep-ask" role="group" aria-label="Confirm that this card is right"><small>Does the paper card show {row.savedId} · {row.savedName}?</small>
@@ -181,7 +198,7 @@ export default function CaliberRecheck({session,ReportSection}){
  return <section className="caliber-recheck">
   <header className="cr-head">
    <div><h1>Caliber ID Re-check</h1>
-    <p>Every saved card is judged again against Employee Master, at its own site and date. A card is listed when its driver or operator is not a working driver or operator of that site on that date. Type the right number from the paper card and press Submit on that line: the card is corrected at once and leaves the list.</p></div>
+    <p>Every saved card is judged again against Employee Master, at its own site and date. A card is listed when its driver or operator is not a working driver or operator of that site on that date. Type the right number from the paper card and press Submit on that line: the card is corrected at once and leaves the list. A line that says ID not found is for HR: contact your HR team, and press Refresh on that line once HR has added the ID in HR Pulse.</p></div>
    <form className="cr-period" onSubmit={event=>{event.preventDefault();void recheck();}}>
     <label>From<input type="date" min={OPERATIONAL_START} max={to} value={from} disabled={busy} onChange={event=>setFrom(event.target.value)}/></label>
     <label>To<input type="date" min={from} max={todayInIndia()} value={to} disabled={busy} onChange={event=>setTo(event.target.value)}/></label>
@@ -216,7 +233,7 @@ export default function CaliberRecheck({session,ReportSection}){
   </ReportSection>}
   {level>=3&&kept&&<p className="cr-notice cr-kept" role="status"><span>{kept.text}</span>{kept.undo&&<button type="button" onClick={()=>kept.undo==='correction'?uncorrect(kept.correctionId,kept.date,kept.id):unconfirm(kept.id,kept.date)}>Undo</button>}</p>}
   {level>=3&&<ReportSection key={'cr-cards-'+site+'|'+slot.key} reportKey="Caliber ID re-check cards" title={'Step 3 · Caliber ID re-check · '+siteLabel+' · '+slot.label} category="caliber-recheck-cards" dataReady={!busy} recordDateFilter={false}
-   description="One line per card. Type the right Employee ID or Caliber ID from the paper card, see the name shown under it and press Submit on that line; a look-alike ID of the site is the likeliest. A line listed for its FORM A box also has This card is right: press it when the paper card shows the saved driver. Submit corrects the card at once and its line leaves the list; Undo, on the line shown above this table, puts the earlier person back."
+   description="One line per card. Type the right Employee ID or Caliber ID from the paper card, see the name shown under it and press Submit on that line; a look-alike ID of the site is the likeliest. A line listed for its FORM A box also has This card is right: press it when the paper card shows the saved driver. A line that says ID not found, or that the person has left, has Refresh: it asks HR Pulse for that ID now, and the card leaves the list once HR has it as working. Submit corrects the card at once and its line leaves the list; Undo, on the line shown above this table, puts the earlier person back."
    rows={cards} columns={cardColumns} rowKey={row=>row.id} rowClassName={row=>row.pick?'cr-picked':''} emptyMessage="No card to check in this date and shift."/>}
   {previewCard&&<OriginalCardPreview card={previewCard} token={session.token} onClose={()=>setPreviewCard(null)}/>}
 

@@ -83,18 +83,18 @@ test('the six stops: each holds the card and says why in one plain line',()=>{
 
  assert.equal(say(''),'Caliber ID could not be read. Type the number from the card.');
 
- assert.equal(say('21999'),'Scan read 21999. No employee has this number. Check the card. No look-alike ID at Majri OC.');
- assert.equal(say('4409'),'Scan read 4409. No employee has this number. Check the card. Look-alike IDs at Majri OC: 4400 (DRIVER ONE), 4401 (DRIVER TWO).');
+ assert.equal(say('21999'),'Scan read 21999. ID not found. Please contact your HR team. No look-alike ID at Majri OC.');
+ assert.equal(say('4409'),'Scan read 4409. ID not found. Please contact your HR team. Look-alike IDs at Majri OC: 4400 (DRIVER ONE), 4401 (DRIVER TWO).');
 
  const other=held('1610');
  assert.deepEqual([other.reason,other.read,other.name,other.designation,other.site,other.at],['other-site','1610','SASTI MAN','TIPPER DRIVER','Sasti OC','Majri OC']);
  assert.deepEqual(other.lookAlikes,[{id:'1618',name:'LOOK ALIKE'},{id:'1619',name:'HELPER MAN'}],'drivers and operators first, then by number');
  assert.equal(caliberCheckMessage(other),'Scan read 1610. This is SASTI MAN, TIPPER DRIVER, Sasti OC. The number may be misread. Look-alike IDs at Majri OC: 1618 (LOOK ALIKE), 1619 (HELPER MAN). If the number is right, press Fetch to move this person here with OTP.');
 
- assert.equal(say('2000'),"Scan read 2000. This is NOT LISTED, VOLVO DRIVER, who is not in HR's list for any site. Check the number on the card. No look-alike ID at Majri OC.");
- assert.equal(say('2100'),"Scan read 2100. This is LEFT MAN, DRIVER. HR's list says this person has left. Check the number on the card. No look-alike ID at Majri OC.");
+ assert.equal(say('2000'),'Scan read 2000. ID not found. Please contact your HR team. No look-alike ID at Majri OC.');
+ assert.equal(say('2100'),"Scan read 2100. This is LEFT MAN, DRIVER. HR's list says this person has left. Please contact your HR team. No look-alike ID at Majri OC.");
  // The case that started this work: a five-digit number read with its thin 1 dropped lands on a person who has resigned.
- assert.equal(say('1826'),'Scan read 1826. This is GONE MAN, VOLVO DRIVER. Employee Master says this person has resigned. Check the number on the card. Look-alike IDs at Majri OC: 18126 (REAL MAN).');
+ assert.equal(say('1826'),'Scan read 1826. This is GONE MAN, VOLVO DRIVER. Employee Master says this person has resigned. Please contact your HR team. Look-alike IDs at Majri OC: 18126 (REAL MAN).');
 
  assert.equal(say('14970'),'Scan read 14970. This is HELPING HAND, HELPER. Confirm HELPING HAND drove this vehicle, or correct the number. No look-alike ID at Majri OC.');
  assert.equal(say('14970',{},'equipment'),'Scan read 14970. This is HELPING HAND, HELPER. Confirm HELPING HAND operated this machine, or correct the number. No look-alike ID at Majri OC.');
@@ -204,10 +204,10 @@ test('the Fetch box on a scanned card: plain answers, and one question for a hel
  const f=await lookupFixture();
  try{
   assert.equal((await f.fetchId('4401')).body.name,'DRIVER TWO');
-  const nobody=await f.fetchId('21999');assert.equal(nobody.status,404);assert.equal(nobody.body.error,'No employee has this number. Check the card.');
+  const nobody=await f.fetchId('21999');assert.equal(nobody.status,404);assert.equal(nobody.body.error,'ID not found. Please contact your HR team.');
   const other=await f.fetchId('1610');assert.equal(other.status,403);assert.equal(other.body.error,'This is SASTI MAN, TIPPER DRIVER, Sasti OC. This number is not at Majri OC. Check the number on the card.');
-  const unlisted=await f.fetchId('2000');assert.equal(unlisted.status,403);assert.equal(unlisted.body.error,"This is NOT LISTED, VOLVO DRIVER, who is not in HR's list for any site. Check the number on the card.");
-  const left=await f.fetchId('2100','Dudhichua East OC');assert.equal(left.status,403);assert.equal(left.body.error,"This is LEFT MAN, DRIVER. HR's list says this person has left. Check the number on the card.");
+  const unlisted=await f.fetchId('2000');assert.equal(unlisted.status,403);assert.equal(unlisted.body.error,'ID not found. Please contact your HR team.');
+  const left=await f.fetchId('2100','Dudhichua East OC');assert.equal(left.status,403);assert.equal(left.body.error,"This is LEFT MAN, DRIVER. HR's list says this person has left. Please contact your HR team.");
   assert.equal((await f.fetchId('12227')).body.name,'ABC','the dummy ID is fetched without a question');
 
   const asked=await f.fetchId('14970');

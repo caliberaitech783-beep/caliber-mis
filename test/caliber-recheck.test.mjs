@@ -44,9 +44,9 @@ test('a saved card stands when its driver is a working driver of that site on th
 test('a card is listed, with one plain line, when its driver does not stand',()=>{
  const masters=lists(),listed=(caliberId,more)=>recheckSavedCard(masters,card(caliberId,more));
  const pair=row=>[row.reason,row.line];
- assert.deepEqual(pair(listed('CMPL21999')),['unknown','No employee has number 21999.']);
- assert.deepEqual(pair(listed('CMPL2000')),['not-listed',"2000 is NOT LISTED, VOLVO DRIVER, who is not in HR's list for any site."]);
- assert.deepEqual(pair(listed('CMPL2100')),['left',"2100 is LEFT MAN, DRIVER. HR's list says this person has left."]);
+ assert.deepEqual(pair(listed('CMPL21999')),['unknown','ID not found. Please contact your HR team.']);
+ assert.deepEqual(pair(listed('CMPL2000')),['not-listed','ID not found. Please contact your HR team.']);
+ assert.deepEqual(pair(listed('CMPL2100')),['left',"2100 is LEFT MAN, DRIVER. HR's list says this person has left. Please contact your HR team."]);
  assert.deepEqual(pair(listed('CMPL1610')),['other-site','1610 is SASTI MAN, TIPPER DRIVER, of Sasti OC on this date.']);
  assert.deepEqual(pair(listed('CMPL15970')),['not-driver','15970 is HELPING HAND, HELPER: not a driver or operator.']);
  assert.deepEqual(pair(listed('CMPL3000')),['several','More than one employee at Majri OC has number 3000.']);
@@ -54,7 +54,7 @@ test('a card is listed, with one plain line, when its driver does not stand',()=
  // The case that started this work: a number with its thin 1 dropped, saved under a person who had resigned.
  const gone=listed('CMPL1826',{aFormNo:'900'});
  assert.equal(gone.reason,'left');
- assert.equal(gone.line,'1826 is GONE MAN, VOLVO DRIVER. Employee Master says this person has resigned. The FORM A box says 900: at Majri OC that is 18126 (REAL MAN).');
+ assert.equal(gone.line,'1826 is GONE MAN, VOLVO DRIVER. Employee Master says this person has resigned. Please contact your HR team. The FORM A box says 900: at Majri OC that is 18126 (REAL MAN).');
  assert.deepEqual(gone.lookAlikes,[{id:'18126',name:'REAL MAN'}]);
  assert.deepEqual(gone.aForm,{no:'900',id:'18126',name:'REAL MAN'});
  // The misread that lands on a colleague of the same site: only the FORM A box shows it.
@@ -128,7 +128,7 @@ test('the report: one day judged, the cards to check listed by site with their l
   assert.deepEqual(report.counts,{'not-listed':0,left:1,unknown:0,'other-site':1,'a-form-differs':0,'not-driver':1,several:0});
   const gone=report.listed.find(row=>row.id==='2');
   assert.deepEqual([gone.bookNo,gone.book,gone.kind,gone.date,gone.shift,gone.site,gone.door,gone.cardNo,gone.scanned,gone.scanCardId,gone.savedId,gone.savedName,gone.reason,gone.reasonLabel],['BOOK-2','VLB','vehicle','2026-11-20','S1',MAJRI,'V942','900',true,'s2','CMPL1826','GONE MAN','left','Has left']);
-  assert.equal(gone.line,'1826 is GONE MAN, VOLVO DRIVER. Employee Master says this person has resigned. The FORM A box says 900: at Majri OC that is 18126 (REAL MAN).');
+  assert.equal(gone.line,'1826 is GONE MAN, VOLVO DRIVER. Employee Master says this person has resigned. Please contact your HR team. The FORM A box says 900: at Majri OC that is 18126 (REAL MAN).');
   assert.deepEqual(gone.lookAlikes,[{id:'18126',name:'REAL MAN'}]);
   const helper=report.listed.find(row=>row.id==='4');
   assert.deepEqual([helper.book,helper.kind,helper.cardNo,helper.scanned,helper.reason],['ELB','equipment','J-4',false,'not-driver']);
@@ -154,7 +154,7 @@ test('Submit corrects the card at once: the driver goes on the card, its batch c
   const pick=(logbookId,employeeId)=>f.call('/api/caliber-recheck/pick',{logbookId,employeeId});
   // Who may be put on a card: only a working driver or operator of the card's site on its date.
   assert.equal((await pick('2','5')).body.error,'This is SASTI MAN, TIPPER DRIVER, Sasti OC. This number is not at Majri OC. Check the number on the card.');
-  assert.equal((await pick('2','8')).body.error,"This is NOT LISTED, VOLVO DRIVER, who is not in HR's list for any site. Check the number on the card.");
+  assert.equal((await pick('2','8')).body.error,'ID not found. Please contact your HR team.');
   assert.equal((await pick('2','7')).body.error,'HELPING HAND is HELPER. Confirm on the Fetch box that this person drove the vehicle, then choose again.');
   assert.equal((await pick('2','3')).body.error,'Employee Master says this person has resigned. Choose the person who drove the vehicle.');
   assert.equal((await pick('2','999')).body.error,'This employee is no longer in Employee Master.');
@@ -379,7 +379,7 @@ test('"This card is right": the card leaves the list, nothing on it changes, who
 
   // Only a card whose saved driver stands may be confirmed.
   const refused=await confirm('6');
-  assert.equal(refused.status,409);assert.equal(refused.body.error,"This card cannot be confirmed as right. 2000 is NOT LISTED, VOLVO DRIVER, who is not in HR's list for any site.");
+  assert.equal(refused.status,409);assert.equal(refused.body.error,'This card cannot be confirmed as right. ID not found. Please contact your HR team.');
   assert.deepEqual([(await confirm('2')).status,(await confirm('3')).status,(await confirm('4')).status],[409,409,409],'has left, another site, a helper');
   const stands=await confirm('1');
   assert.deepEqual([stands.status,stands.body],[200,{confirmed:false,stands:true}],'a card that stands has nothing to confirm');
