@@ -64,7 +64,7 @@ export default function AttendanceSheetCheck({session}){
   </div>
   {run.error&&<p className="asc-error" role="alert">{run.error}</p>}
   {result&&<section className="asc-result" aria-label="Result of the check">
-   <h2>{result.site} · {dmy(done.range.from)} to {dmy(done.range.to)} · {many(result.totals.corrections,'correction')} for {many(result.totals.peopleWithCorrections,'employee')}</h2>
+   <h2>{result.site} · {result.dates.compared.length?dmy(result.dates.compared[0])+' to '+dmy(result.dates.compared.at(-1)):'no date to compare'} · {many(result.totals.corrections,'correction')} for {many(result.totals.peopleWithCorrections,'employee')}</h2>
    <p className="asc-note" role="status">The Excel <strong>{done.name}</strong> is in your Downloads folder and in Download History (the folder button at the top). <button type="button" className="asc-again" onClick={()=>downloadBlob(done.blob,done.name,{title:done.title})}>Download again</button></p>
    <table className="asc-counts"><tbody>
     <tr><th scope="row">Employees in the sheet</th><td>{result.totals.people}</td></tr>

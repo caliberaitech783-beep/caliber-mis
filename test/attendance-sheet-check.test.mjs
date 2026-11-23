@@ -91,9 +91,10 @@ test('the same name written two ways is not a name mismatch; another name is',()
  for(const [a,b] of [['OLD NAME','NEW NAME'],['RAM KUMAR','RAM KUMAR YADAV'],['RAM','SHYAM'],['RAM','']])assert.equal(sameName(a,b),false,a+' / '+b);
 });
 
-test('a Pulse-II duty belongs to its Caliber ID; an Employee ID counts only when written as an ID',()=>{
+test('a Pulse-II duty belongs to its Employee ID when written as an ID, else to its Caliber ID',()=>{
+ assert.equal(lineNumber({caliberCode:'CMLL77',employeeId:'CMPL901003'}),'901003','the sheet writes the Employee ID');
  assert.equal(lineNumber({caliberCode:'CMLL901001',employeeId:'55'}),'901001');
- assert.equal(lineNumber({caliberCode:'',employeeId:'CMPL901002'}),'901002');
+ assert.equal(lineNumber({caliberCode:'',employeeId:'cmll 901002'}),'901002');
  assert.equal(lineNumber({caliberCode:'',employeeId:'55'}),'','a bare code could be another person');
 });
 
@@ -136,7 +137,7 @@ test('each kind of mismatch is found, with the correction required',()=>{
  assert.deepEqual([never.length,never[0].kind,never[0].sheetSays,never[0].pulseSays,cells('CMPL901013')],[1,'no-duty','P on 3 dates','No duty on any date',['noDuty','noDuty','noDuty','']]);
  // In Pulse-II with a duty here, not in the sheet; and the date the sheet has no column for.
  assert.deepEqual(result.notInSheet.map(p=>[p.id,p.name,p.dates]),[['CMLL908888','EXTRA DRIVER',[iso(2)]]],'4 Nov has no column, so its duty is not held against the sheet');
- assert.deepEqual(result.listedOnly.map(p=>[p.id,p.name]),[['CMLL907777','LISTED ONLY']]);
+ assert.deepEqual(result.listedOnly.map(p=>[p.id,p.name]),[['907777','LISTED ONLY']]);
  assert.deepEqual(result.noColumn,[{date:iso(4),duties:1,locked:true}]);
  assert.deepEqual(result.counts,{'no-id':1,'id-unreadable':1,'id-not-found':1,'id-twice':2,'id-left':1,name:1,site:1,'no-duty':3,duty:2,'other-site':1,mark:1,blank:1,'no-column':1,'not-in-sheet':1});
  // The person HR marks LEFT has P marks and no card: that is said as well, in one line.
@@ -188,7 +189,7 @@ test('the Excel given back: the sheet again, each mismatch in its colour, the co
  assert.equal(book.sheets.every(s=>s.plainSerial),true,'no red or orange serial number beside the colour key');
  assert.deepEqual(list.columns.map(c=>c.label),['Row in sheet','EMP. ID','Name in sheet','Name in Pulse-II','Designation','Date','Mismatch','Sheet says','Pulse-II says','Correction required','Trip cards / log books']);
  assert.equal(list.rows.length,check().corrections.length);
- assert.deepEqual(others.rows.map(r=>[r[0],r[3]]),[['CMLL908888','Has a duty at this site in Pulse-II'],['CMLL907777','Employee Master holds this person at this site']]);
+ assert.deepEqual(others.rows.map(r=>[r[0],r[3]]),[['CMLL908888','Has a duty at this site in Pulse-II'],['907777','Employee Master holds this person at this site']]);
  assert.ok(summary.rows.some(r=>r[0]==='Dates the sheet has no column for'&&r[1]==='1'&&r[2]==='04-11-2026'));
  // The workbook itself: the colours are in the styles, on the key lines and on the cells; the first columns stay in view.
  const files=await stored(buildXlsxSheetsWorkbook(book.title,book.sheets)),styles=files.get('xl/styles.xml'),sheet1=files.get('xl/worksheets/sheet1.xml');

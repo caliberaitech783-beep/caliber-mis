@@ -123,8 +123,12 @@ export function sameName(sheetName,masterName){
 
 // ---- Comparing -----------------------------------------------------------------------------------------------------
 const drives=designation=>Boolean(text(designation))&&drivesOrOperates({designation});
-// The number a Pulse-II duty line belongs to. The Caliber ID decides; an Employee ID counts only when written as an ID.
-export const lineNumber=line=>employeeNumber(line?.caliberCode)||(/^(?:CMPL|CMLL)/i.test(text(line?.employeeId))?employeeNumber(line.employeeId):'');
+// The number a Pulse-II duty line belongs to. The sheet's EMP. ID is the Employee ID, so the line's Employee ID decides
+// when it is written as an ID (CMPL or CMLL and a number); a bare code could be another person's number, so then the
+// Caliber ID is taken. Employee Master answers by the same number (recordNumber in shared/hr-employee-master.mjs).
+const writtenAsId=value=>/^(?:CMPL|CMLL)[\s/-]*\d/i.test(text(value));
+export const lineNumber=line=>(writtenAsId(line?.employeeId)?employeeNumber(line.employeeId):'')||employeeNumber(line?.caliberCode);
+const lineId=(line,number)=>writtenAsId(line?.employeeId)?text(line.employeeId).toUpperCase():text(line?.caliberCode).toUpperCase()||number;
 const shiftLetter=code=>({S1:'A',S2:'B',S3:'C',D:'Day',N:'Night'})[code]||text(code);
 const joined=(list,field)=>[...new Set(list.map(l=>text(l[field])).filter(Boolean))].join('; ');
 const siteOfKey=key=>canonicalSiteName(String(key).slice(0,String(key).lastIndexOf('|')));
@@ -207,7 +211,7 @@ export function checkAttendanceSheet({sheet,site,lines=[],lockedDays=[],people=[
  for(const [key,list] of byDay){
   const [number,date]=key.split('|');if(inSheet.has(number)||!judgedSet.has(date))continue;
   const here=list.filter(l=>l.here);if(!here.length)continue;
-  const held=dutyPeople.get(number)||dutyPeople.set(number,{number,id:text(here[0].caliberCode)||'CMLL'+number,name:text(here[0].employeeName),dates:[],books:[]}).get(number);
+  const held=dutyPeople.get(number)||dutyPeople.set(number,{number,id:lineId(here[0],number),name:text(here[0].employeeName),dates:[],books:[]}).get(number);
   held.dates.push(date);held.books.push(joined(here,'books'));
  }
  const designationOf=new Map(sitePeople.map(p=>[String(p.number),text(p.designation)]));
@@ -215,7 +219,7 @@ export function checkAttendanceSheet({sheet,site,lines=[],lockedDays=[],people=[
   .sort((a,b)=>b.dates.length-a.dates.length||a.name.localeCompare(b.name));
  for(const p of notInSheet)corrections.push({kind:'not-in-sheet',label:CORRECTION_KINDS['not-in-sheet'],row:'',id:p.id,name:'',pulseName:p.name,designation:p.designation,date:p.dates.length===1?p.dates[0]:dmy(p.dates[0])+' to '+dmy(p.dates.at(-1)),sheetSays:'Not in the sheet',pulseSays:many(p.dates.length,'duty date')+' at this site',books:p.books,pulseSite:site,
   correction:'Pulse-II has '+many(p.dates.length,'duty date')+' at this site for this person, who is not in the sheet. Add the person to the sheet, or correct the Caliber ID on those cards.'});
- const listedOnly=sitePeople.filter(p=>!inSheet.has(String(p.number))&&!dutyPeople.has(String(p.number))).map(p=>({number:String(p.number),id:'CMLL'+p.number,name:text(p.name),designation:text(p.designation),dates:[],books:'',kind:'listed'}))
+ const listedOnly=sitePeople.filter(p=>!inSheet.has(String(p.number))&&!dutyPeople.has(String(p.number))).map(p=>({number:String(p.number),id:String(p.number),name:text(p.name),designation:text(p.designation),dates:[],books:'',kind:'listed'}))
   .sort((a,b)=>a.name.localeCompare(b.name));
  // A date the sheet has no column for.
  const noColumn=sheet.missingDates.filter(date=>date>=OPERATIONAL_START&&(!today||date<=today)).map(date=>{
@@ -267,7 +271,7 @@ export function attendanceSheetWorkbook(result,{fileName='',checkedAt=''}={}){
   rows:corrections.map(c=>[String(c.row),c.id,c.name,c.pulseName,c.designation,/^\d{4}-\d{2}-\d{2}$/.test(c.date)?dmy(c.date):c.date,c.label,c.sheetSays,c.pulseSays,c.correction,c.books])};
  const absent=[...result.notInSheet,...result.listedOnly];
  const others={name:'Not in sheet',title:site+' · In Pulse-II, not in the sheet · '+period,plainSerial:true,
-  columns:['Caliber ID','Name in Pulse-II','Designation','Why listed','Duty dates at this site','Dates','Trip cards / log books'].map(label=>({label})),
+  columns:['EMP. ID','Name in Pulse-II','Designation','Why listed','Duty dates at this site','Dates','Trip cards / log books'].map(label=>({label})),
   rows:absent.map(p=>[p.id,p.name,p.designation,p.kind==='duty'?'Has a duty at this site in Pulse-II':'Employee Master holds this person at this site',p.dates.length?String(p.dates.length):'',p.dates.map(dayMonth).join(', '),p.books]),
   highlightedRows:new Set(result.notInSheet.map((_,index)=>index))};
  const say=list=>list.length?list.map(dmy).join(', '):'None';
