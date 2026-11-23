@@ -20,6 +20,10 @@ import {applyEmployeeSiteMove,EMPLOYEE_SITE_MOVE_SCHEMA} from '../routes/employe
 export const HR_COPY_STATE_KEY='hr_employee_copy';
 export const HR_COPY_INTERVAL_MS=60*1000;
 export const HR_COPY_SILENT_MINUTES=10;
+// A Refresh at a card reads HR Pulse's whole list; several presses within this time share one read.
+export const HR_REFRESH_KEEP_MS=20*1000;
+// What is held for a number and changes nothing for it: the person at the card is sent to HR.
+export const HR_REFRESH_BLOCKS=['bad-id','two-lines','no-name','other-name','old-person'];
 // The nightly match of both whole lists: once a day, from 02:00 in India; after a failure it is tried again every 15 minutes.
 export const HR_MATCH_HOUR=2;
 export const HR_MATCH_RETRY_MINUTES=15;
@@ -210,6 +214,36 @@ export function createHrEmployeeMinuteCopy({pool,hr,now=()=>Date.now(),alert=asy
   return {accepted:true,name:text(lines[0].name),stillHeld:held.some(entry=>entry.number===wanted)};
  }
 
+ // One person now, asked for at a card (owner, 23 Nov 2026: "ID not found. Please contact your HR team. And there one
+ // refresh button should be there. If [it] is added and then the refresh button is done and it is showing from HR
+ // Pulse, then it should allow to move further"). The rules are the minute copy's own, for that number alone, on HR
+ // Pulse's list as it is at this moment: the person at the card does not wait for the minute, and Refresh works
+ // before the minute copy has been started or while it is stopped (the stop is about many people at once).
+ // A number HR Pulse does not hold changes nothing here: a Refresh never switches anyone off.
+ let list=null;
+ const hrLines=()=>{
+  if(!list||now()-list.at>=HR_REFRESH_KEEP_MS){
+   const mine={at:now(),lines:hr.employees().then(data=>Array.isArray(data?.employees)?data.employees:[])};
+   mine.lines.catch(()=>{if(list===mine)list=null;});
+   list=mine;
+  }
+  return list.lines;
+ };
+ async function person(number,{by=''}={}){
+  const wanted=employeeNumber(number);
+  if(!wanted)throw fail(400,'Enter a valid Employee ID or Caliber ID.');
+  if(!hr.configured())throw fail(503,'HR Pulse is not connected to Pulse-II yet, so it could not be asked.');
+  const lines=(await hrLines()).filter(line=>employeeNumber(line.employeeId)===wanted);
+  if(!lines.length)return {found:false,changed:false,blocked:null};
+  const state=await readState();
+  const {plan,notMoved}=await copyPeople([wanted],lines,{accepted:state.accepted||{}});
+  const at=iso(),nowHeld=[...plan.held,...notMoved],before=Array.isArray(state.held)?state.held:[];
+  const changed=plan.updates.length+plan.inserts.length+plan.offIds.length+plan.moves.length>0;
+  // What is held shows on Sync all masters, as after a minute's copy; nothing is written when nothing is new.
+  if(changed||nowHeld.length||before.some(item=>item.number===wanted))await saveState({held:heldAfter(before,[wanted],nowHeld,at),...(changed?{lastChangeAt:at,lastRefreshBy:text(by).slice(0,120)}:{})});
+  return {found:true,changed,added:plan.inserts.length>0,blocked:nowHeld.find(item=>HR_REFRESH_BLOCKS.includes(item.reason))||null,held:nowHeld};
+ }
+
  const status=async()=>{
   const state=await readState();
   return {started:state.started===true,startedAt:state.startedAt||null,lastRunAt:state.lastRunAt||null,lastOkAt:state.lastOkAt||null,lastChangeAt:state.lastChangeAt||null,lastSummary:state.lastSummary||null,
@@ -217,7 +251,7 @@ export function createHrEmployeeMinuteCopy({pool,hr,now=()=>Date.now(),alert=asy
    lastMatch:state.lastMatch||null,matchHour:HR_MATCH_HOUR};
  };
  const run=()=>void tick().catch(error=>console.error('Employee Master copy from HR Pulse failed',error?.message));
- return {tick,start,accept,match,status,
+ return {tick,start,accept,person,match,status,
   startTimer({firstDelayMs=90*1000}={}){if(timer||first)return;first=setTimeout(()=>{first=null;run();timer=setInterval(run,HR_COPY_INTERVAL_MS);timer.unref?.();},firstDelayMs);first.unref?.();},
   stopTimer(){clearTimeout(first);clearInterval(timer);first=null;timer=null;}};
 }

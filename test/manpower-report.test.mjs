@@ -401,6 +401,21 @@ test('equipment-wise duties count a driver on each equipment group, actual dutie
  const same=equipmentWise([card(1,1,{closingHmr:103}),card(2,1,{assetId:2,door:'V2',openingHmr:300,closingHmr:304})]).attendanceEquipment;
  assert.equal(same.length,1,'two machines of one group in a shift are one equipment-wise duty');assert.equal(same[0].doors,'V1; V2');
 });
+// One driver, one shift, one payment (owner, 23 Nov 2026): "there can be a person working in 3 different door in a
+// shift, but he will get only one payment … if a driver works for more than 8 hours, then also he will get single
+// shift payment only." This is the payment (attendance) rule alone. The same day he said the two are different
+// issues: "that doesn't mean we will remove the 8-hour clause for batch creation". The rules that save a card
+// (server/rules/log-book-shift-hmr.mjs) are not touched by it; whatever cards are saved for a driver in one shift,
+// by whatever way, count as one duty here.
+test('three vehicles and more than 8 hours in one shift are one duty, one attendance and no OT',()=>{
+ const r=report([card(1,1,{closingHmr:105}),card(2,1,{assetId:2,door:'V2',openingHmr:300,closingHmr:304}),card(3,1,{assetId:3,door:'V3',openingHmr:500,closingHmr:503})]);
+ assert.equal(r.shiftAttendance.length,1,'one attendance line for the shift');
+ assert.equal(r.otDuties.length,1,'one duty for the shift');assert.equal(r.otDuties[0].doors,'V1; V2; V3');assert.equal(r.otDuties[0].flag,'normal');
+ assert.equal(r.otDuties[0].books,'CARD-1; CARD-2; CARD-3','his number stays on every card');
+ assert.equal(r.ot.length,0,'12 hours inside one shift are not OT');
+ assert.equal(r.attendanceEquipment.filter(row=>row.actual).length,1,'one actual duty');
+ assert.equal(r.totals.duties,1);
+});
 test('equipment names follow the master group, merge spelling differences and report a missing group',()=>{
  const rows=equipmentWise([card(1,1,{assetId:51,door:'WT1'}),card(2,2,{assetId:52,door:'WT2',...by(23)}),card(3,3,{assetId:53,door:'X9',...by(24)})]).attendanceEquipment;
  assert.deepEqual(rows.map(x=>x.equipment).sort(),['Group missing in master','Water Tanker','Water Tanker']);

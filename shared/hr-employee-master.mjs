@@ -28,6 +28,16 @@ export const HR_MASTER_OWNER='hr-master';
 
 const text=value=>value===null||value===undefined?'':String(value).trim();
 const heading=value=>text(value).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+
+// What the Status column of Employee Master shows (owner, 23 Nov 2026). A person who is not in HR's file keeps the
+// status the old master gave ("Active"), yet is never matched on a card: a site saw "Active" there and "not in HR's
+// list" on the card, and could not tell why. The column now says what the cards go by, with the old word beside it.
+export function employeeStatusLabel(record={}){
+ const status=text(record?.status);
+ if(record?.hrLeft===true)return 'HR marks LEFT';
+ if(record?.hrListed===false)return "Not on HR's list"+(status?' (old master: '+status+')':'');
+ return status;
+}
 const HEADINGS={
  employeeId:['employee id','emp id','caliber id','employee code'],
  name:['name','employee name'],

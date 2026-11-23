@@ -8080,7 +8080,8 @@ const logBookScope=session=>{
   }
   return req.logBookScopeRead.scope;
 };
-registerErpEmployees(app,{pool,requireSession,requireAdministrator,getSiteScope:logBookScope});
+// hrCopy is read when a person presses Refresh at a card, by which time the copy from HR Pulse (below) exists.
+registerErpEmployees(app,{pool,requireSession,requireAdministrator,getSiteScope:logBookScope,hrCopy:()=>hrEmployeeCopy});
 registerEmployeeMasterDoor(app,{door:employeeMasterDoor,requireSession,requireAdministrator});
 registerEmployeeMaster(app,{pool,requireSession,requireAdministrator,door:employeeMasterDoor});
 // HR's all-sites Excel as the Employee Master: preview and apply (shared/hr-employee-master.mjs).
