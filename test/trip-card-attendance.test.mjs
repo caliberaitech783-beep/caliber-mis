@@ -97,7 +97,7 @@ test('Trip Card vs Bio-punch: each card beside its punch, the other way, and the
  assert.equal(vlb.summary.total,6);assert.equal(vlb.punchOnly.length,0);
  assert.equal(Object.fromEntries(bioPunchSummary(vlb).map(r=>[r.id,r.value]))['no-trip-card'],'—');
  const book=bioPunchWorkbook(vlb,{build:(title,sheets)=>({title,sheets}),checkedAt:'x'});
- assert.deepEqual(book.blob.sheets.map(s=>s.name),['Summary','Needs attention','OK cards','Every difference','Per employee']);
+ assert.deepEqual(book.blob.sheets.map(s=>s.name),['Summary','Date-wise','Pulse-II sheet','Every person-day difference','Needs attention','OK cards','Every difference','Per employee']);
 });
 
 test('the dates first offered and the limits',()=>{
@@ -130,4 +130,45 @@ test('a batch name keeps its "+" and its letters; log books split on "+"',()=>{
  const cards=cardAttendances([{date:iso(1),shift:'S1',site:SITE,siteKey:KEY,caliberCode:'CMLL903001',logBook:'VLB + ELB',batches:'GP2 Shifts A+B; Spares',books:'TC1'}],{site:SITE});
  assert.deepEqual(cards[0].logBooks,['VLB','ELB']);
  assert.deepEqual(cards[0].batches,['GP2 Shifts A+B','Spares']);
+});
+
+test('Trip Card vs Bio-punch with your sheet: date-wise, person-days side by side, and the sheet Pulse-II would write',async()=>{
+ const punches=[
+  {caliberCode:'903001',date:iso(1),inTime:'06:00',outTime:'14:05',site:SITE},   // all three agree
+  {caliberCode:'903002',date:iso(1),inTime:'14:00',outTime:'22:00',site:SITE},   // all three agree
+  {caliberCode:'903002',date:iso(2),inTime:'14:00',outTime:'22:00',site:SITE},   // card, sheet A
+  {caliberCode:'903003',date:iso(1),inTime:'06:00',outTime:'',site:SITE},        // miss punch
+  {caliberCode:'903005',date:iso(3),inTime:'06:00',outTime:'14:00',site:SITE},   // punch, no card, not in sheet
+ ];
+ const asked=[];
+ const reader=async(url,session,options)=>{
+  if(url.includes('/biometric')){asked.push(JSON.parse(options.body).numbers);return {days:punches,machine:{asked:true,connected:true},imported:{asked:true}};}
+  if(url.includes('/people'))return {site:SITE,people:[...PEOPLE,master(903005,'NEW DRIVER'),master(903006,'SHEET ONLY')]};
+  return {otDuties:LINES,attendanceEquipment:[],lockedDays:LOCKED};};
+ const SHEET3=[...SHEET,[4,'CMPL903006','SHEET ONLY','TIPPER DRIVER','P',null,null]];
+ const sheet=parseAttendanceSheet(SHEET3);
+ const data=await readBioPunchData({site:SITE,from:iso(1),to:iso(3),sheet,session:{token:'T'},read:reader});
+ assert.ok(asked[0].includes('903006'),'the sheet people are asked for their punches too');
+ const view=bioPunchView({data,sheet,today:iso(23)});
+ const d1=view.dateRows.find(r=>r.date===iso(1));
+ assert.equal(d1.sheetP,4);assert.equal(d1.cards,3);assert.equal(d1.scanned,3);assert.equal(d1.bio,3);assert.equal(d1.agree,2);
+ assert.equal(d1.sheetNoCard,1,'903006 is P in the sheet with no card');assert.equal(d1.missPunch,1);
+ const d2=view.dateRows.find(r=>r.date===iso(2));
+ assert.equal(d2.cardNotP,1);assert.equal(d2.manual,1);assert.equal(d2.cardNotInSheet,1,'903004 has an LMV zero-trip entry and is not in the sheet');
+ const d3=view.dateRows.find(r=>r.date===iso(3));
+ assert.equal(d3.bioNoCard,1);
+ const line=view.lines.find(l=>l.number==='903001'&&l.date===iso(1));
+ assert.equal(line.result,'All three agree');assert.equal(line.sheetSays,'P');assert.match(line.cardSays,/Shift A · VLB · Scanned/);assert.equal(line.bioSays,'06:00 → 14:05');
+ assert.equal(view.judged.find(c=>c.number==='903002'&&c.date===iso(2)).issues.join(),'sheet-not-p');
+ const rows=Object.fromEntries(bioPunchSummary(view).map(r=>[r.id,r.value]));
+ assert.equal(rows.sheetPeople,4);assert.equal(rows.agree3,view.dateTotal.agree);
+ const book=bioPunchWorkbook(view,{build:(title,sheets)=>({title,sheets}),checkedAt:'x'});
+ assert.deepEqual(book.blob.sheets.map(s=>s.name),['Summary','Date-wise','Pulse-II sheet','Every person-day difference','Needs attention','OK cards','Every difference','Per employee']);
+ const pulse=book.blob.sheets[2],ram=pulse.rows.findIndex(r=>r[0]==='CMPL903001');
+ assert.deepEqual(pulse.rows[ram].slice(4,7),['P-S B','P-M','P-S']);
+ assert.equal(pulse.cellFills[ram][4],'same');
+ const only=pulse.rows.findIndex(r=>r[0]==='CMPL903006');
+ assert.equal(pulse.rows[only][4],'A');assert.equal(pulse.cellFills[only][4],'missing');
+ const vlb=bioPunchView({data,sheet,logBook:'VLB',today:iso(23)});
+ assert.ok(vlb.lines.every(l=>l.card),'with a log book chosen only its cards are compared');
 });

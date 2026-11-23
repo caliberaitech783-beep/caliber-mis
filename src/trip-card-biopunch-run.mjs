@@ -10,6 +10,7 @@
 import {tripBiometricCheck,tripBiometricWorkbook,MAX_DAYS} from '../shared/trip-biometric-check.mjs';
 import {batchChoices,cardAttendances,cardSheets,cardSummary,judgeCards,logBookCounts,punchDays,selectCards,SOURCES} from '../shared/trip-card-attendance.mjs';
 import {lineNumber,dmy} from '../shared/attendance-sheet-check.mjs';
+import {sheetFromFile,personDays,dateRows,dateTotals,pulseSheet,dateSheet,differenceSheet,DAY_DIFFERENCES} from '../shared/three-way-attendance.mjs';
 import {canonicalSiteName} from '../shared/site-location.mjs';
 import {OPERATIONAL_START} from '../shared/operational-start.mjs';
 import {buildXlsxSheetsWorkbook} from '../shared/report-xlsx.mjs';
@@ -36,27 +37,32 @@ export function rangeProblem(from,to,today=todayIst()){
 }
 
 // Reads Pulse-II once: trip card attendance, the punches and Employee Master. Returns {site, from, to, attendance, biometric, master}.
-export async function readBioPunchData({site,from,to,session,read=sheetApi}){
+// sheet: your attendance Excel (parseAttendanceSheet) or null; its people are asked too.
+export async function readBioPunchData({site,from,to,session,sheet=null,read=sheetApi}){
+ const sheetNumbers=(sheet?.people||[]).map(p=>p.number).filter(Boolean);
  const attendance=await read('/api/reports/manpower/attendance?'+new URLSearchParams({from,to,view:'attendance'}),session);
  const lines=[...(attendance.otDuties||[]),...(attendance.attendanceEquipment||[])];
  const siteKey=canonicalSiteName(site);
  const onCards=[...new Set(lines.filter(l=>canonicalSiteName(l.siteKey||l.site)===siteKey).map(lineNumber).filter(Boolean))];
- const biometric=await read('/api/reports/manpower/attendance-sheet/biometric',session,{method:'POST',body:JSON.stringify({site,from,to,source:'both',numbers:onCards})});
+ const biometric=await read('/api/reports/manpower/attendance-sheet/biometric',session,{method:'POST',body:JSON.stringify({site,from,to,source:'both',numbers:[...new Set([...onCards,...sheetNumbers])].slice(0,5000)})});
  if(!biometric.machine?.connected&&biometric.machine?.asked&&!biometric.imported?.asked)throw Error(biometric.machine.error||'The machine punches could not be read.');
- const numbers=[...new Set([...(biometric.days||[]).map(d=>d.caliberCode),...lines.map(lineNumber).filter(Boolean)])];
+ const numbers=[...new Set([...sheetNumbers,...(biometric.days||[]).map(d=>d.caliberCode),...lines.map(lineNumber).filter(Boolean)])];
  const master=numbers.length?await read('/api/reports/manpower/attendance-sheet/people',session,{method:'POST',body:JSON.stringify({site,ids:numbers.slice(0,5000)})}):{site,people:[]};
  return {site:master.site||site,from,to,attendance,biometric,master};
 }
 
 // What the screen shows for a selection inside the dates read.
-export function bioPunchView({data,from='',to='',logBook='',batch='',today=todayIst()}){
+// sheet: your attendance Excel (parseAttendanceSheet) or null: then every card is also judged against it, and the
+// date-wise table and the person-days set your sheet, the trip card and the bio-punch side by side.
+export function bioPunchView({data,sheet=null,from='',to='',logBook='',batch='',today=todayIst()}){
  const lo=from&&from>data.from?from:data.from,hi=to&&to<data.to?to:data.to;
  const {attendance,biometric,master,site}=data;
  const lines=[...(attendance.otDuties||[]),...(attendance.attendanceEquipment||[])];
  const days=(biometric.days||[]).filter(d=>d.date>=lo&&d.date<=hi);
  const result=tripBiometricCheck({days,lines,lockedDays:attendance.lockedDays||[],people:master.people||[],site,from:lo,to:hi});
  const cards=cardAttendances(lines,{site,from:lo,to:hi});
- const judged=judgeCards(selectCards(cards,{logBook,batch}),{punches:punchDays(days,site)});
+ const mine=sheet?sheetFromFile(sheet):null,punches=punchDays(days,site),chosen=selectCards(cards,{logBook,batch});
+ const judged=judgeCards(chosen,{punches,sheet:mine});
  const summary=cardSummary(judged);
  const siteKey=canonicalSiteName(site),locked=new Set((attendance.lockedDays||[]).filter(k=>canonicalSiteName(k.slice(0,k.lastIndexOf('|')))===siteKey).map(k=>k.slice(k.lastIndexOf('|')+1)));
  const dates=[];for(let d=lo;d<=hi&&d<=today;d=addDays(d,1))dates.push(d);
@@ -65,8 +71,11 @@ export function bioPunchView({data,from='',to='',logBook='',batch='',today=today
  // book or batch: it is listed under All log books only.
  const punchOnly=logBook||batch?[]:result.findings.filter(f=>f.type==='no-trip-card');
  const otherWay={shift:result.findings.filter(f=>f.type==='shift-mismatch').length};
+ const lockedSet=new Set(dates.filter(d=>locked.has(d)));
+ const personLines=personDays({cards:chosen,sheet:mine,punches,people:master.people||[],dates,locked:lockedSet,all:!logBook&&!batch});
+ const days_=dateRows({lines:personLines,cards:chosen,sheet:mine,dates,locked:lockedSet});
  return {site,from:lo,to:hi,logBook,batch,result,cards,judged,summary,punchOnly,otherWay,dates,pending,lockedDates:dates.length-pending.length,
-  logBooks:logBookCounts(cards),batches:batchChoices(cards,logBook),biometric};
+  logBooks:logBookCounts(cards),batches:batchChoices(cards,logBook),biometric,sheet:mine,sheetFile:sheet,lines:personLines,dateRows:days_,dateTotal:dateTotals(days_),locked:lockedSet};
 }
 
 // The summary table, in the order of the Site Sheet vs Trip Card counts: what was compared, how the attendance came in,
@@ -81,6 +90,12 @@ export function bioPunchSummary(view){
   {id:'cards',label:'Trip card attendances ('+choice+')',value:s.total,note:s.people+' people · one per person per shift'},
   ...SOURCES.filter(x=>x.key!=='scanned+manual'||s.sources[x.key]).map(x=>({id:'src-'+x.key,label:x.label,value:s.sources[x.key],note:x.key==='zero-trip'?'Present with 0 trips, saved without a trip card.':''})),
   {id:'withBio',label:'Attendance with biometric (IN and OUT at this site)',value:s.fullPunch,note:'Trip card and bio-punch agree.',tone:'ok'},
+  ...(view.sheet?[
+   {id:'sheetPeople',label:'Employees in your sheet',value:view.sheet.people.size,note:view.sheetFile?.sheetName?'Sheet "'+view.sheetFile.sheetName+'"':''},
+   {id:'sheetP',label:'Your sheet P (drivers and operators, person-days)',value:view.dateTotal.sheetP,note:'Dates of your sheet inside '+dmy(view.from)+' to '+dmy(view.to)+'.'},
+   {id:'agree3',label:'All three agree (your sheet P, trip card, bio-punch IN and OUT)',value:view.dateTotal.agree,note:'Person-days.',tone:'ok'},
+   ...DAY_DIFFERENCES.filter(d=>d.key.startsWith('sheet')||d.key==='cardNotP'||d.key==='cardNotInSheet').map(d=>({id:'d-'+d.key,label:d.label,value:d.needsAll&&!all?'—':view.dateTotal[d.key],note:'Person-days'+(d.needsAll&&!all?' · has no card, so no log book: see All log books.':'.'),tone:'bad'})),
+  ]:[]),
   {id:'ok',label:'OK · need no attention',value:s.ok,note:'',tone:'ok'},
   {id:'attention',label:'Need attention',value:s.attention,note:s.peopleAttention+' people',tone:'bad'},
   {id:'no-punch',label:'Trip card, no bio-punch',value:s.issues['no-punch'],tone:'bad'},
@@ -100,7 +115,11 @@ export function bioPunchWorkbook(view,{build=buildXlsxSheetsWorkbook,checkedAt=f
  const summary={name:'Summary',title,plainSerial:true,headerRows:[title+' · checked '+checkedAt,'Biometric: machine direct (HR Pulse) and imported on Attendance Management.'],
   columns:['Check','Count','Note'].map(label=>({label})),rows:bioPunchSummary(view).map(x=>[x.label,String(x.value),x.note])};
  const other=tripBiometricWorkbook(view.result,{fileName:'biometric: machine direct + imported',checkedAt});
- const sheets=[summary,...cardSheets(view.judged,{title:view.site+' · '+choice,withBio:true}),
+ const three=view.site+' · '+(view.sheet?'your sheet vs trip card vs bio-punch':'trip card vs bio-punch')+' · '+choice+' · '+dmy(view.from)+' to '+dmy(view.to);
+ const sheets=[summary,dateSheet(view.dateRows,{sheet:view.sheet,title:three+' · date-wise'}),
+  pulseSheet({lines:view.lines,sheet:view.sheet,dates:view.dates,locked:view.locked,title:view.site+' · the sheet Pulse-II would have written · '+choice+' · '+dmy(view.from)+' to '+dmy(view.to)}),
+  differenceSheet(view.lines,{title:three+' · every person-day that differs',sheet:view.sheet}),
+  ...cardSheets(view.judged,{title:view.site+' · '+choice,withBio:true,withSheet:Boolean(view.sheet)}),
   {...other.sheets[0],name:'Every difference'},other.sheets[1]];
  const slug=value=>String(value).replace(/[^A-Za-z0-9]+/g,'-').replace(/^-|-$/g,'');
  const tag=slug([view.logBook,view.batch].filter(Boolean).join('-'));
