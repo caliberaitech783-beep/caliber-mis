@@ -91,9 +91,10 @@ export function misRequestAllowed(session,req){
  // the correction run is for MIS administrators only. Listed route by route: anything else under it fails closed.
  if(route==='/api/caliber-recheck'||route.startsWith('/api/caliber-recheck/')){
   if(!allowed('Caliber ID Re-check'))return false;
-  if(route==='/api/caliber-recheck'||route==='/api/caliber-recheck/record')return read;
-  if(route==='/api/caliber-recheck/pick')return req.method==='POST';
-  if(/^\/api\/caliber-recheck\/pick\/\d{1,18}$/.test(route))return req.method==='DELETE';
+  if(route==='/api/caliber-recheck'||route==='/api/caliber-recheck/record'||route==='/api/caliber-recheck/confirmed')return read;
+  // Choosing the right driver, and "This card is right" (confirm): the same people, the same sites.
+  if(route==='/api/caliber-recheck/pick'||route==='/api/caliber-recheck/confirm')return req.method==='POST';
+  if(/^\/api\/caliber-recheck\/(?:pick|confirm)\/\d{1,18}$/.test(route))return req.method==='DELETE';
   if(route==='/api/caliber-recheck/apply')return req.method==='POST'&&isMisAdministrator(session);
   return false;
  }

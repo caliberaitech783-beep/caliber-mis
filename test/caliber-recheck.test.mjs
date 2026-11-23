@@ -7,12 +7,12 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
-import {recheckSavedCard,recheckLine,recheckCounts,RECHECK_REASONS} from '../shared/caliber-recheck.mjs';
+import {recheckSavedCard,recheckLine,recheckCounts,RECHECK_REASONS,canConfirmSaved,confirmationHolds} from '../shared/caliber-recheck.mjs';
 import {planSiteMove} from '../shared/employee-site-moves.mjs';
 import {registerCaliberRecheck,pickRefusal,RECHECK_MAX_DAYS} from '../server/routes/caliber-recheck.mjs';
 import {misPageAllowed,misRequestAllowed} from '../shared/mis-application-access.mjs';
 import {requestedMisPage,misPageUrl} from '../src/mis-navigation.mjs';
-import {recheckDates,emptyRecheck,addRecheckAnswer,recheckSiteRows,cardsOfSite,recheckSlotRows,cardsOfSlot,lookAlikeText,reasonCounts,recheckListSheets,recheckRecordSheets,EVERY} from '../src/caliber-recheck-model.mjs';
+import {recheckDates,emptyRecheck,addRecheckAnswer,recheckSiteRows,cardsOfSite,recheckSlotRows,cardsOfSlot,lookAlikeText,reasonCounts,recheckListSheets,recheckRecordSheets,recheckConfirmedSheets,EVERY} from '../src/caliber-recheck-model.mjs';
 
 const MAJRI='Majri OC',SASTI='Sasti OC';
 const person=(id,number,name,designation,extra={})=>({id,master_name:'Employee master',record_data:{caliberId:'CMPL'+number,caliberCode:'CMLL'+number,name,currentDesignationName:designation,site:MAJRI,currentLocation:MAJRI,hrListed:true,hrLeft:false,status:'Active',...extra}});
@@ -105,7 +105,7 @@ const fixture=async({scope={sites:null,label:'All sites'}}={})=>{
  const call=async(path,body,method=body?'POST':'GET')=>{const r=await fetch(base+path,{method,headers:{'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,body:await r.json().catch(()=>({}))};};
  const saved=async id=>(await db.query('SELECT data,revision FROM mis_log_books WHERE id=$1',[id])).rows[0];
  const day=date=>call('/api/caliber-recheck?from='+date+'&to='+date);
- return {db,call,saved,day,state,audits,close:async()=>{server.close();await db.close();}};
+ return {db,call,saved,day,state,audits,book,close:async()=>{server.close();await db.close();}};
 };
 
 test('the report: one day judged, the cards to check listed by site with their line and look-alike IDs',async()=>{
@@ -148,7 +148,7 @@ test('choosing the right driver changes nothing on the card; the correction run 
   assert.equal((await pick('2','3')).body.error,'Employee Master says this person has resigned. Choose the person who drove the vehicle.');
   assert.equal((await pick('2','999')).body.error,'This employee is no longer in Employee Master.');
   assert.equal((await pick('999','4')).status,404);assert.equal((await pick('x','4')).status,400);
-  assert.deepEqual((await pick('1','2')).body,{same:true,pick:null},'the person already on the card: nothing to correct');
+  assert.deepEqual((await pick('1','2')).body,{same:true,pick:null,confirmed:false},'the person already on a card that stands: nothing to correct, nothing to confirm');
 
   const first=await pick('3','1');
   assert.equal(first.status,201);assert.deepEqual([first.body.pick.employeeId,first.body.pick.name,first.body.pick.by],['CMPL4400','DRIVER ONE','Majri Operator']);
@@ -212,6 +212,106 @@ test('an operator card is corrected in its ELB batch copy, and a confirmed helpe
  }finally{await f.close();}
 });
 
+// Owner, 23 Nov 2026: "Yes add it" to a "This card is right" button for lines where the saved driver is correct.
+test('which card a person may confirm as right, and how long the confirmation holds',()=>{
+ const masters=lists(),listed=(caliberId,more)=>recheckSavedCard(masters,card(caliberId,more));
+ const colleague=listed('CMPL4400',{aFormNo:'15',employeeId:'1'});
+ assert.equal(canConfirmSaved(colleague),true,'only the FORM A box points away from the saved driver');
+ for(const [number,reason] of [['CMPL2000','not-listed'],['CMPL2100','left'],['CMPL1610','other-site'],['CMPL15970','not-driver'],['CMPL3000','several'],['CMPL21999','unknown']]){
+  assert.equal(listed(number).reason,reason);assert.equal(canConfirmSaved(listed(number)),false,reason+' is about the saved person: never settled with a tick');
+ }
+ assert.equal(canConfirmSaved(null),false);
+ const said={employee_id:'1',a_form:'15'};
+ assert.equal(confirmationHolds(said,{employeeId:'1',aFormNo:'15'},colleague),true);
+ assert.equal(confirmationHolds(said,{employeeId:1,aFormNo:' 15 '},colleague),true);
+ assert.equal(confirmationHolds(said,{employeeId:'2',aFormNo:'15'},colleague),false,'another driver is on the card now');
+ assert.equal(confirmationHolds(said,{employeeId:'1',aFormNo:'12'},colleague),false,'the FORM A number on the card was changed');
+ assert.equal(confirmationHolds(said,{employeeId:'1',aFormNo:'15'},{...colleague,reason:'left'}),false,'the driver has since left: listed again');
+ assert.equal(confirmationHolds(null,{employeeId:'1',aFormNo:'15'},colleague),false);
+});
+
+test('"This card is right": the card leaves the list, nothing on it changes, who confirmed is kept, and it can be taken back',async()=>{
+ const f=await fixture();
+ try{
+  // Card 8: saved under DRIVER ONE (4400), a working driver of Majri; its FORM A box 15 names DRIVER TWO (4401).
+  await f.book(8,'vehicle','2026-11-21',MAJRI,{employeeId:'1',caliberId:'CMPL4400',employeeName:'DRIVER ONE',aFormNo:'15',scanCardId:'s8',assetId:55});
+  const confirm=logbookId=>f.call('/api/caliber-recheck/confirm',{logbookId});
+  let day=(await f.day('2026-11-21')).body;
+  assert.deepEqual(day.listed.map(row=>[row.id,row.reason,row.canConfirm]),[['6','not-listed',false],['8','a-form-differs',true]]);
+  assert.equal(day.confirmed,0);
+
+  // Only a card whose saved driver stands may be confirmed.
+  const refused=await confirm('6');
+  assert.equal(refused.status,409);assert.equal(refused.body.error,"This card cannot be confirmed as right. 2000 is NOT LISTED, VOLVO DRIVER, who is not in HR's list for any site.");
+  assert.deepEqual([(await confirm('2')).status,(await confirm('3')).status,(await confirm('4')).status],[409,409,409],'has left, another site, a helper');
+  const stands=await confirm('1');
+  assert.deepEqual([stands.status,stands.body],[200,{confirmed:false,stands:true}],'a card that stands has nothing to confirm');
+  assert.equal((await confirm('999')).status,404);assert.equal((await confirm('x')).status,400);
+
+  // A driver had been chosen for card 8; the paper card then shows the saved driver is right.
+  assert.equal((await f.call('/api/caliber-recheck/pick',{logbookId:'8',employeeId:'2'})).status,201);
+  const before=await f.saved(8);
+  const done=await confirm('8');
+  assert.equal(done.status,201);assert.deepEqual(done.body,{confirmed:true,card:{bookNo:'BOOK-8',employeeId:'CMPL4400',name:'DRIVER ONE'}});
+  assert.equal((await f.db.query("SELECT count(*)::int AS n FROM mis_caliber_corrections WHERE logbook_id=8 AND status='pending'")).rows[0].n,0,'the choice that waited is dropped');
+  assert.deepEqual(await f.saved(8),before,'nothing on the card changes');
+  day=(await f.day('2026-11-21')).body;
+  assert.deepEqual(day.listed.map(row=>row.id),['6'],'the card has left the list');
+  assert.deepEqual([day.confirmed,day.sites.find(site=>site.site===MAJRI).confirmed,day.cards],[1,1,2]);
+  assert.equal((await f.day('2026-11-20')).body.confirmed,0,'counted on its own date only');
+  const audit=f.audits.find(row=>row.action==='Confirm the saved driver');
+  assert.deepEqual([audit.targetReference,audit.details.driver,audit.details.formA,audit.details.formANames],['BOOK-8','CMPL4400','15','4401']);
+
+  // The record for HR.
+  const record=(await f.call('/api/caliber-recheck/confirmed')).body.confirmed;
+  assert.equal(record.length,1);
+  assert.deepEqual([record[0].logbookId,record[0].bookNo,record[0].book,record[0].date,record[0].site,record[0].driver,record[0].driverName,record[0].formA,record[0].namedId,record[0].namedName,record[0].by],['8','BOOK-8','VLB','2026-11-21',MAJRI,'CMPL4400','DRIVER ONE','15','4401','DRIVER TWO','Majri Operator']);
+  assert.deepEqual(recheckConfirmedSheets(record)[0].rows[0].slice(0,10),[MAJRI,'21-11-2026','VLB','BOOK-8','CMPL4400','DRIVER ONE','15','4401','DRIVER TWO','Majri Operator']);
+  assert.equal(recheckConfirmedSheets(record)[0].columns.length,recheckConfirmedSheets(record)[0].rows[0].length);
+
+  // The run has nothing to do with a confirmed card.
+  assert.deepEqual([(await f.call('/api/caliber-recheck/apply',{})).body.applied,(await f.saved(8)).data.caliberId],[0,'CMPL4400']);
+
+  // Taken back: listed again. Twice is harmless.
+  assert.equal((await f.call('/api/caliber-recheck/confirm/8',null,'DELETE')).body.removed,true);
+  assert.equal((await f.call('/api/caliber-recheck/confirm/8',null,'DELETE')).body.removed,false);
+  assert.equal((await f.call('/api/caliber-recheck/confirm/x',null,'DELETE')).status,400);
+  day=(await f.day('2026-11-21')).body;
+  assert.deepEqual([day.listed.map(row=>row.id),day.confirmed],[['6','8'],0]);
+  assert.equal((await f.call('/api/caliber-recheck/confirmed')).body.confirmed.length,0);
+
+  // Typing the saved driver's own number and pressing Submit is the same answer.
+  assert.deepEqual((await f.call('/api/caliber-recheck/pick',{logbookId:'8',employeeId:'1'})).body,{same:true,pick:null,confirmed:true});
+  assert.deepEqual((await f.day('2026-11-21')).body.listed.map(row=>row.id),['6']);
+  // Confirming again changes nothing: one confirmation per card.
+  assert.equal((await confirm('8')).status,201);
+  assert.equal((await f.db.query("SELECT count(*)::int AS n FROM mis_caliber_confirmed_cards WHERE logbook_id=8 AND status='confirmed'")).rows[0].n,1);
+
+  // Another driver chosen afterwards: the confirmation no longer stands and the choice waits as usual.
+  assert.equal((await f.call('/api/caliber-recheck/pick',{logbookId:'8',employeeId:'2'})).status,201);
+  day=(await f.day('2026-11-21')).body;
+  assert.deepEqual([day.listed.find(row=>row.id==='8').pick.employeeId,day.confirmed],['CMPL4401',0]);
+  assert.equal((await f.call('/api/caliber-recheck/pick/8',null,'DELETE')).body.removed,true);
+
+  // A confirmation is for the card as it was: when the card is saved again under another driver it is judged afresh.
+  assert.equal((await confirm('8')).status,201);
+  await f.db.query("UPDATE mis_log_books SET data=data||'{\"employeeId\":\"2\",\"caliberId\":\"CMPL4401\",\"employeeName\":\"DRIVER TWO\",\"aFormNo\":\"12\"}'::jsonb WHERE id=8");
+  day=(await f.day('2026-11-21')).body;
+  assert.deepEqual([day.listed.find(row=>row.id==='8').reason,day.confirmed],['a-form-differs',0],'FORM A 12 names DRIVER ONE now: listed again');
+ }finally{await f.close();}
+});
+
+test('a login of one site cannot confirm, or take back, a card of another site',async()=>{
+ const f=await fixture({scope:{sites:['sasti ob'],label:SASTI}});
+ try{
+  await f.book(8,'vehicle','2026-11-21',MAJRI,{employeeId:'1',caliberId:'CMPL4400',employeeName:'DRIVER ONE',aFormNo:'15',assetId:55});
+  assert.equal((await f.call('/api/caliber-recheck/confirm',{logbookId:'8'})).status,403);
+  await f.db.query("INSERT INTO mis_caliber_confirmed_cards(logbook_id,book_no,book_type,book_date,site,reason,employee_id,caliber_id,name,a_form,confirmed_by) VALUES(8,'BOOK-8','vehicle','2026-11-21',$1,'a-form-differs','1','CMPL4400','DRIVER ONE','15','majri.operator')",[MAJRI]);
+  assert.equal((await f.call('/api/caliber-recheck/confirm/8',null,'DELETE')).status,403);
+  assert.deepEqual((await f.call('/api/caliber-recheck/confirmed')).body.confirmed,[],'and does not see it');
+ }finally{await f.close();}
+});
+
 test('MIS logins: the page and each action are on the allowed list, the run for administrators only',()=>{
  const login=(pages,extra={})=>({...extra,permissions:{separateMisCredentials:true,misDesktopAccess:pages,misMobileAccess:[]}});
  const admin=pages=>login([...pages,'Users & employees'],{role:'super'});
@@ -221,6 +321,10 @@ test('MIS logins: the page and each action are on the allowed list, the run for 
  const site=login(['Trip Card Bulk Scan']);
  assert.equal(allowed(site,'/api/caliber-recheck','GET'),true);assert.equal(allowed(site,'/api/caliber-recheck/record','GET'),true);
  assert.equal(allowed(site,'/api/caliber-recheck/pick','POST'),true);assert.equal(allowed(site,'/api/caliber-recheck/pick/12','DELETE'),true);
+ assert.equal(allowed(site,'/api/caliber-recheck/confirm','POST'),true,'"This card is right" follows choosing the driver');
+ assert.equal(allowed(site,'/api/caliber-recheck/confirm/12','DELETE'),true);assert.equal(allowed(site,'/api/caliber-recheck/confirmed','GET'),true);
+ assert.equal(allowed(site,'/api/caliber-recheck/confirm','GET'),false);assert.equal(allowed(site,'/api/caliber-recheck/confirm/12','POST'),false);assert.equal(allowed(site,'/api/caliber-recheck/confirmed','POST'),false);
+ assert.equal(allowed(login(['Reports']),'/api/caliber-recheck/confirm','POST'),false);
  assert.equal(allowed(site,'/api/caliber-recheck/apply','POST'),false,'a site login cannot run the corrections');
  assert.equal(allowed(admin(['Trip Card Bulk Scan']),'/api/caliber-recheck/apply','POST'),true);
  assert.equal(allowed(site,'/api/caliber-recheck','POST'),false);assert.equal(allowed(site,'/api/caliber-recheck/pick','GET'),false);
@@ -238,6 +342,12 @@ test('the screen adds the days up, and a day asked again replaces its earlier an
  // 20 Nov asked again after a driver was chosen for card 1.
  held=addRecheckAnswer(held,{from:'2026-11-20',to:'2026-11-20',cards:150,sites,listed:[line('1','2026-11-20','S1','majri ob',MAJRI,{employeeId:'CMPL1618',name:'LOOK ALIKE',by:'Operator'}),line('2','2026-11-20','S2','majri ob',MAJRI)],canApply:true});
  assert.deepEqual([held.cards,held.listed.length,held.days],[300,3,2],'not counted twice');
+ // The cards confirmed right are added up by day and by site, and a day asked again replaces its earlier count.
+ let counted=addRecheckAnswer(emptyRecheck(),{from:'2026-11-20',cards:10,confirmed:2,sites:[{key:'majri ob',site:MAJRI,cards:10,confirmed:2}],listed:[]});
+ counted=addRecheckAnswer(counted,{from:'2026-11-21',cards:5,confirmed:1,sites:[{key:'majri ob',site:MAJRI,cards:3,confirmed:0},{key:'sasti ob',site:SASTI,cards:2,confirmed:1}],listed:[]});
+ counted=addRecheckAnswer(counted,{from:'2026-11-20',cards:10,confirmed:3,sites:[{key:'majri ob',site:MAJRI,cards:10,confirmed:3}],listed:[]});
+ assert.deepEqual([counted.confirmed,recheckSiteRows(counted).total.confirmed,recheckSiteRows(counted).rows.map(row=>[row.site,row.confirmed])],[4,4,[[MAJRI,3],[SASTI,1]]]);
+ assert.equal(recheckSiteRows(held).total.confirmed,0,'an older server answer without the count reads as none');
  const step1=recheckSiteRows(held);
  assert.deepEqual(step1.rows.map(row=>[row.site,row.cards,row.listed,row.picked,row.open]),[[MAJRI,200,2,1,1],[SASTI,100,1,0,1]]);
  assert.deepEqual([step1.total.site,step1.total.cards,step1.total.listed,step1.total.picked,step1.total.open,step1.total.total],['All sites',300,3,1,2,true]);
@@ -266,7 +376,15 @@ test('the page is in the menu, drawn in the report steps, with the Fetch box on 
  assert.ok(page.includes('<EmployeeIdLookup key={row.id+'),'each card has the Fetch box');
  // Owner, 23 Nov 2026: a Submit button on every line; what it did is said on that line.
  assert.ok(page.includes(`<EmployeeIdLookup key={row.id+'|'+(row.pick?.id||'')} submitLabel="Submit" scanMode`),'each card has its Submit button');
- assert.ok(page.includes('{said?.id===row.id&&<small className="cr-said" role="status">{said.text}</small>}'),'the result of Submit is said on the line');
+ assert.ok(page.includes("{said?.id===row.id&&<small className={'cr-said'+(said.bad?' cr-said-bad':'')} role={said.bad?'alert':'status'}>{said.text}</small>}"),'the result of Submit is said on the line');
+ // Owner, 23 Nov 2026: "This card is right" on a line whose saved driver can stand, asked once by name, with Undo.
+ assert.ok(page.includes('{row.canConfirm&&(asking===row.id'),'the button is only on a line the server says may be confirmed');
+ assert.ok(page.includes('>This card is right</button>'));
+ assert.ok(page.includes("'Yes, '+(row.savedName||row.savedId)+(row.kind==='equipment'?' operated this machine':' drove this vehicle')"),'the yes names the driver');
+ assert.ok(page.includes("api('/api/caliber-recheck/confirm',{method:'POST',body:JSON.stringify({logbookId:row.id})})"));
+ assert.ok(page.includes('{level>=3&&kept&&<p className="cr-notice cr-kept" role="status">'),'what happened to a card that left the list is said above Step 3');
+ assert.ok(page.includes("{key:'confirmed',label:'Confirmed right',value:row=>row.confirmed}"),'Step 1 counts them');
+ assert.ok(page.includes('<summary>Cards confirmed right'),'and HR has the list, with Undo');
  assert.ok(page.includes('const mine=fresh?++run.current:run.current;'),'reading one date again after a Submit does not stop a full read');
  assert.ok(page.includes("'/api/caliber-recheck?from='+dates[i]+'&to='+dates[i]"),'the server is asked day by day');
  assert.ok(readFileSync(new URL('../server.mjs',import.meta.url),'utf8').includes('registerCaliberRecheck(app,{pool,requireSession,requireAdministrator,getSiteScope:logBookScope});'));

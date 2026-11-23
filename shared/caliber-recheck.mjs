@@ -70,6 +70,17 @@ export function recheckSavedCard(masters,card){
  return listed({...check,...(named?{aForm:named}:{})});
 }
 
+// "This card is right" (owner, 23 Nov 2026). A listed card a person may confirm from the paper card is one whose saved
+// driver stands on every other count: only the FORM A box points at a colleague. Every other reason is about the
+// saved person (left, not in HR's list, another site, a helper, two people with the number): those need the right
+// driver, the helper's "Yes", an approved move or HR, never a tick.
+export const CONFIRMABLE_REASONS=['a-form-differs'];
+export const canConfirmSaved=verdict=>Boolean(verdict&&CONFIRMABLE_REASONS.includes(verdict.reason));
+// A confirmation holds for the card as it was confirmed: the same driver and the same FORM A number. A card that is
+// changed afterwards, or whose driver stops standing for another reason, is judged afresh and listed again.
+export const confirmationHolds=(confirmation,card,verdict)=>Boolean(confirmation&&canConfirmSaved(verdict)
+ &&String(confirmation.employee_id??'')===String(card.employeeId??'')&&text(confirmation.a_form)===text(card.aFormNo));
+
 // Counts for the top of the report: every reason, in the fixed order.
 export function recheckCounts(listed){
  const counts=Object.fromEntries(RECHECK_REASON_ORDER.map(reason=>[reason,0]));
