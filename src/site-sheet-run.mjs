@@ -31,6 +31,15 @@ export async function readSiteSheetData({sheet,site,session,today=todayIst(),rea
  return {range,attendance,master};
 }
 
+// Owner, 24 Nov 2026: three ways to choose what is seen. Date to date: From / To, every batch. Batch wise: one batch on
+// every date read. Batch + dates: a batch within From / To. selectionOf turns the screen's choice into siteSheetView's.
+export const SELECT_BY=[{key:'dates',label:'Date to date'},{key:'batch',label:'Batch wise'},{key:'both',label:'Batch + dates'}];
+export function selectionOf({by='dates',from='',to='',logBook='',batch=''}){
+ if(by==='batch')return {logBook,batch,from:'',to:''};
+ if(by==='both')return {logBook,batch,from,to};
+ return {logBook,batch:'',from,to};
+}
+
 // What the screen shows for a selection. from/to: '' = the whole range read; logBook: '' | VLB | ELB | LMV; batch: '' = all.
 export function siteSheetView({sheet,data,site,from='',to='',logBook='',batch='',today=todayIst()}){
  const {range,attendance,master}=data;

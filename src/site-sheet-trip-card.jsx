@@ -18,7 +18,7 @@ import {TripCardFilters,TripCardVerdict} from './trip-card-verdict.jsx';
 import {dmy,CORRECTION_KINDS} from '../shared/attendance-sheet-check.mjs';
 import {DAY_KINDS,dayShiftRows,kindLabel,kindTotals,personDays,shiftName} from '../shared/site-sheet-days.mjs';
 import {readAttendanceFile,sheetApi} from './attendance-sheet-run.mjs';
-import {readSiteSheetData,siteSheetView,siteSheetWorkbook} from './site-sheet-run.mjs';
+import {SELECT_BY,readSiteSheetData,selectionOf,siteSheetView,siteSheetWorkbook} from './site-sheet-run.mjs';
 import {DateShiftGrid,dateShiftExport,dateShiftGrid} from './date-shift-grid.jsx';
 import {downloadBlob} from './download-history.mjs';
 import './attendance-sheet-check.css';
@@ -37,7 +37,7 @@ export default function SiteSheetTripCard({session,ReportSection}){
  const [file,setFile]=useState({busy:false,name:'',sheet:null,error:''});
  const [run,setRun]=useState({busy:false,error:'',done:null});
  const [pick,setPick]=useState(noPick);
- const [filter,setFilter]=useState({from:'',to:'',logBook:'',batch:''});
+ const [filter,setFilter]=useState({by:'dates',from:'',to:'',logBook:'',batch:''});
  useEffect(()=>{
   let live=true;
   sheetApi('/api/reports/manpower/attendance-sheet/sites',session).then(p=>{if(!live)return;setSites({list:p.sites||[],error:''});if(p.sites?.length===1)setSite(p.sites[0]);},e=>live&&setSites({list:[],error:e.message}));
@@ -55,7 +55,7 @@ export default function SiteSheetTripCard({session,ReportSection}){
    const data=await readSiteSheetData({sheet:file.sheet,site,session});
    const from=filter.from&&filter.from>=data.range.from&&filter.from<=data.range.to?filter.from:data.range.from;
    const to=filter.to&&filter.to<=data.range.to&&filter.to>=from?filter.to:data.range.to;
-   const first=siteSheetView({sheet:file.sheet,data,site,from,to,logBook:filter.logBook,batch:''});
+   const first=siteSheetView({sheet:file.sheet,data,site,...selectionOf({...filter,from,to,batch:''})});
    const book=siteSheetWorkbook(first,{fileName:file.name});
    downloadBlob(book.blob,book.name,{title:book.title});
    setFilter(f=>({...f,from,to,batch:''}));
@@ -64,7 +64,7 @@ export default function SiteSheetTripCard({session,ReportSection}){
  };
  const sheet=file.sheet,ready=Boolean(sheet&&site&&!run.busy);
  const data=run.done?.data;
- const view=useMemo(()=>data&&sheet?siteSheetView({sheet,data,site,...filter}):null,[data,sheet,site,filter]);
+ const view=useMemo(()=>data&&sheet?siteSheetView({sheet,data,site,...selectionOf(filter)}):null,[data,sheet,site,filter]);
  const done=view?{...view,name:run.done.name}:null,result=view?.result;
  const lines=view?.lines||[];
  const setChoice=change=>{setFilter(f=>({...f,...change}));setPick(noPick);};
@@ -107,7 +107,7 @@ export default function SiteSheetTripCard({session,ReportSection}){
    {/* Owner, 24 Nov 2026: the log book, batch and dates sit in Step 2 with the site, so Check is the last step. */}
    <section className="asc-step"><h2>2 · Site, log book, batch and dates</h2>
     <TripCardFilters filter={filter} onChange={setChoice} min={data?.range.from||sheet?.filledDates[0]} max={data?.range.to||sheet?.filledDates.at(-1)}
-     logBooks={view?.logBooks} batches={view?.batches} disabled={run.busy||!sheet} checked={Boolean(view)}>
+     logBooks={view?.logBooks} batches={view?.batches} disabled={run.busy||!sheet} checked={Boolean(view)} ways={SELECT_BY}>
      <label>Site<select aria-label="Site of this attendance sheet" value={site} disabled={run.busy||!sites.list} onChange={e=>{setSite(e.target.value);setRun({busy:false,error:'',done:null});setPick(noPick);setFilter(f=>({...f,batch:''}));}}>
       <option value="">{sites.list?'Select the site':'Reading your sites…'}</option>{(sites.list||[]).map(name=><option key={name} value={name}>{name}</option>)}
      </select></label>
@@ -115,6 +115,8 @@ export default function SiteSheetTripCard({session,ReportSection}){
     {sites.error&&<p className="asc-error" role="alert">{sites.error}</p>}
     {sites.list&&!sites.list.length&&!sites.error&&<p className="asc-error" role="alert">No site is assigned to your login.</p>}
     {!sheet&&<p className="asc-hint">The log book and the dates open once the Excel file is chosen in Step 1.</p>}
+    {sheet&&filter.by==='batch'&&<p className="asc-hint">Batch wise: every date of the sheet{period?' ('+period+')':''}.{view?'':' The batches are listed after Check.'}</p>}
+    {sheet&&filter.by==='both'&&!view&&<p className="asc-hint">The batches are listed after Check.</p>}
    </section>
    <section className="asc-step"><h2>3 · Check</h2>
     <div className="ssc-run-row">
@@ -131,7 +133,7 @@ export default function SiteSheetTripCard({session,ReportSection}){
    <section className="asc-result" aria-label="Result of the check">
     <h2>{result.site} · {period||'no date to compare'} · {many(result.totals.corrections,'correction')} for {many(result.totals.peopleWithCorrections,'employee')}</h2>
     <p className="asc-note" role="status">The Excel <strong>{done.name}</strong> is in your Downloads folder and in Download History (the folder button at the top). <button type="button" className="asc-again" onClick={download}>Download again</button></p>
-    {(filter.logBook||filter.batch)&&<p className="asc-hint">These counts are the whole sheet from {dmy(view.from)} to {dmy(view.to)}, every log book. The trip card lines and the date by shift below are {filter.logBook||'every log book'}{filter.batch?' · batch '+filter.batch:''} only; "Sheet P, no trip card" has no card, so it shows under All log books.</p>}
+    {(view.logBook||view.batch)&&<p className="asc-hint">These counts are the whole sheet from {dmy(view.from)} to {dmy(view.to)}, every log book. The trip card lines and the date by shift below are {view.logBook||'every log book'}{view.batch?' · batch '+view.batch:''} only; "Sheet P, no trip card" has no card, so it shows under All log books.</p>}
     <table className="asc-counts"><tbody>
      <tr><th scope="row">Employees in the sheet</th><td>{result.totals.people}</td></tr>
      <tr><th scope="row">Compared day by day (drivers and operators, or a duty in Pulse-II)</th><td>{result.totals.judged}</td></tr>

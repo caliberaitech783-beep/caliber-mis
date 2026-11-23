@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import test from 'node:test';
 import {parseAttendanceSheet,checkAttendanceSheet} from '../shared/attendance-sheet-check.mjs';
 import {UNKNOWN_SHIFT,DAY_KINDS,sheetDayLines,dayShiftRows,kindTotals,personDays,sheetDaySheets,shiftName,nearestShift} from '../shared/site-sheet-days.mjs';
-import {runSiteSheetCheck} from '../src/site-sheet-run.mjs';
+import {runSiteSheetCheck,SELECT_BY,selectionOf} from '../src/site-sheet-run.mjs';
 import {operationReports} from '../src/operations-report-model.mjs';
 
 const day=n=>new Date(Date.UTC(2026,10,n));
@@ -112,4 +112,20 @@ test('Step 2 holds the site with the log book, batch and dates; Check is the las
  assert.ok(page.slice(bar,three).includes('aria-label="Site of this attendance sheet"'),'the site is chosen in the same bar');
  assert.ok(page.slice(three).includes('Download Excel of this selection'),'the download of a selection sits with Check');
  assert.doesNotMatch(page,/onDownload=/,'no second download button in the bar');
+});
+
+test('Select by: Date to date, Batch wise or Batch + dates (owner, 24 Nov 2026)',()=>{
+ assert.deepEqual(SELECT_BY.map(w=>[w.key,w.label]),[['dates','Date to date'],['batch','Batch wise'],['both','Batch + dates']]);
+ const chosen={logBook:'VLB',batch:'Sasti VLB Batch 1',from:iso(5),to:iso(9)};
+ assert.deepEqual(selectionOf({...chosen,by:'dates'}),{logBook:'VLB',batch:'',from:iso(5),to:iso(9)},'dates: every batch');
+ assert.deepEqual(selectionOf({...chosen,by:'batch'}),{logBook:'VLB',batch:'Sasti VLB Batch 1',from:'',to:''},'batch: every date read');
+ assert.deepEqual(selectionOf({...chosen,by:'both'}),{...chosen},'both: the batch within the dates');
+ assert.deepEqual(selectionOf(chosen),selectionOf({...chosen,by:'dates'}),'Date to date is the first choice');
+ const read=name=>fs.readFileSync(new URL(name,import.meta.url),'utf8');
+ assert.match(read('../src/site-sheet-trip-card.jsx'),/ways=\{SELECT_BY\}/);
+ assert.match(read('../src/site-sheet-trip-card.jsx'),/siteSheetView\(\{sheet,data,site,\.\.\.selectionOf\(filter\)\}\)/);
+ const bar=read('../src/trip-card-verdict.jsx');
+ assert.match(bar,/\{by!=='dates'&&<label>Batch/,'Date to date hides the batch');
+ assert.equal(bar.split("{by!=='batch'&&<label>").length,3,'Batch wise hides From and To');
+ assert.doesNotMatch(read('../src/trip-card-biopunch.jsx'),/ways=/,'Trip Card vs Bio-punch keeps batch and dates together');
 });
