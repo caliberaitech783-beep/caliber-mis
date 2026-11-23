@@ -173,7 +173,7 @@ export default function CaliberRecheck({session,ReportSection}){
  const back=crumbs.length>1?crumbs.at(-2)[1]:null;
  const level=!site?1:!slot?2:3;
 
- const siteColumns=[{key:'site',label:'Site',value:row=>row.site},{key:'cards',label:'Cards checked',value:row=>row.cards},{key:'confirmed',label:'Confirmed right',value:row=>row.confirmed},{key:'corrected',label:'Corrected',value:row=>row.corrected},{key:'listed',label:'Cards to check',value:row=>row.listed},
+ const siteColumns=[{key:'site',label:'Site',value:row=>row.site},{key:'cards',label:'Cards checked',value:row=>row.cards},{key:'confirmed',label:'Confirmed right (done)',value:row=>row.confirmed},{key:'corrected',label:'Corrected',value:row=>row.corrected},{key:'listed',label:'Cards to check',value:row=>row.listed},
   ...(picked>0?[{key:'picked',label:'Chosen earlier, waiting',value:row=>row.picked},{key:'open',label:'Still to choose',value:row=>row.open}]:[])];
  const right=row=><div className="cr-right">
   {row.pick&&<p className="cr-chosen"><strong>{row.pick.employeeId} · {row.pick.name}</strong><small>chosen earlier by {row.pick.by}, not on the card yet</small>{row.pick.note&&<small className="cr-note" role="alert">Not corrected in the last run: {row.pick.note}</small>}

@@ -547,7 +547,7 @@ test('the page is in the menu, drawn in the report steps, with the Fetch box on 
  assert.ok(page.includes("'Yes, '+(row.savedName||row.savedId)+(row.kind==='equipment'?' operated this machine':' drove this vehicle')"),'the yes names the driver');
  assert.ok(page.includes("api('/api/caliber-recheck/confirm',{method:'POST',body:JSON.stringify({logbookId:row.id})})"));
  assert.ok(page.includes('{level>=3&&kept&&<p className="cr-notice cr-kept" role="status">'),'what happened to a card that left the list is said above Step 3');
- assert.ok(page.includes("{key:'confirmed',label:'Confirmed right',value:row=>row.confirmed}"),'Step 1 counts them');
+ assert.ok(page.includes("{key:'confirmed',label:'Confirmed right (done)',value:row=>row.confirmed}"),'Step 1 counts them');
  assert.ok(page.includes('<summary>Cards confirmed right'),'and HR has the list, with Undo');
  assert.ok(page.includes('const mine=fresh?++run.current:run.current;'),'reading one date again after a Submit does not stop a full read');
  assert.ok(page.includes("'/api/caliber-recheck?from='+dates[i]+'&to='+dates[i]"),'the server is asked day by day');
