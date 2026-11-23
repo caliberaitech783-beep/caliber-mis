@@ -27,7 +27,10 @@
 import {readScanMasters} from '../services/scan-master-cache.mjs';
 import {SCAN_MASTER_NAMES} from '../services/a-form-people-index.mjs';
 import {logBookSiteScope,siteAllowed,requireLogBookSite,employeeAtLocation,employeeOnHrList} from '../../shared/log-book-access.mjs';
-import {recheckSavedCard,recheckCounts,RECHECK_REASONS,canConfirmSaved,canRefreshFromHr,confirmationHolds} from '../../shared/caliber-recheck.mjs';
+import {recheckSavedCard,recheckCard,recheckCounts,RECHECK_REASONS,SHIFT_REASONS,canConfirmSaved,canRefreshFromHr,confirmationHolds} from '../../shared/caliber-recheck.mjs';
+import {cardDutyShift} from '../../shared/duty-shift.mjs';
+import {bookShiftCode,selectedMasterShift} from '../../shared/trip-card-rules.mjs';
+import {matchesEmployeeReference} from '../../shared/employee-identity.mjs';
 import {needsDriverConfirm,employeeLeft,employeeDesignation,fetchRefusal} from '../../shared/caliber-id-check.mjs';
 import {employeeIdentity} from '../../shared/employee-identity.mjs';
 import {isMisAdministrator} from '../../shared/mis-admin-access.mjs';
@@ -68,8 +71,11 @@ export const RECHECK_CARDS_SQL=`SELECT l.id,l.book_no,l.book_type,l.book_date::t
   COALESCE(x."employeeId",'') AS employee_id,COALESCE(x."caliberId",'') AS caliber_id,COALESCE(x."employeeName",'') AS employee_name,
   COALESCE(x."aFormNo",'') AS a_form,COALESCE(x."jobCardNo",'') AS job_card,COALESCE(x.door,'') AS door,
   COALESCE(x."bookShiftCode",'') AS book_shift,COALESCE(x."cardShift",'') AS card_shift,COALESCE(x."shiftName",'') AS shift_name,
-  COALESCE(x."scanCardId",'') AS scan_card_id
- FROM mis_log_books l CROSS JOIN LATERAL jsonb_to_record(l.data) AS x("employeeId" text,"caliberId" text,"employeeName" text,"aFormNo" text,"jobCardNo" text,door text,"bookShiftCode" text,"cardShift" text,"shiftName" text,"scanCardId" text)
+  COALESCE(x."scanCardId",'') AS scan_card_id,COALESCE(x."manualShift",'') AS manual_shift,COALESCE(x."shiftId",'') AS shift_id,
+  COALESCE(x."totalTrips",'') AS total_trips,COALESCE(x."completedTrips",'') AS completed_trips,COALESCE(x."fleetTrips",'') AS fleet_trips,
+  COALESCE(x."openingHmr",'') AS opening_hmr,COALESCE(x."closingHmr",'') AS closing_hmr,COALESCE(x."openingKmr",'') AS opening_kmr,COALESCE(x."closingKmr",'') AS closing_kmr
+ FROM mis_log_books l CROSS JOIN LATERAL jsonb_to_record(l.data) AS x("employeeId" text,"caliberId" text,"employeeName" text,"aFormNo" text,"jobCardNo" text,door text,"bookShiftCode" text,"cardShift" text,"shiftName" text,"scanCardId" text,
+  "manualShift" text,"shiftId" text,"totalTrips" text,"completedTrips" text,"fleetTrips" text,"openingHmr" text,"closingHmr" text,"openingKmr" text,"closingKmr" text)
  WHERE l.deleted_at IS NULL AND l.book_date>=$1::date AND l.book_date<=$2::date ORDER BY l.book_date,l.id`;
 const PENDING_SQL="SELECT id,logbook_id,new_employee_id,new_caliber_id,new_name,picked_by,picked_name,picked_at,note FROM mis_caliber_corrections WHERE status='pending'";
 // The confirmations of the dates asked (book_date is kept as YYYY-MM-DD text, so it compares as a date does).
@@ -90,6 +96,17 @@ const RECORD_SQL="SELECT id,logbook_id,book_no,book_type,book_date,site,reason,o
 
 const shiftOf=row=>vlbRecordShift({bookShiftCode:row.book_shift,cardShift:row.card_shift,shiftName:row.shift_name})||text(row.shift_name)||'';
 const kindLabel=type=>type==='equipment'?'ELB':type==='lmv'?'LMV':'VLB';
+// What the attendance check of a card needs (shared/caliber-recheck.mjs attendanceGap), from a card's saved data.
+const amount=value=>{const n=Number(value);return text(value)!==''&&Number.isFinite(n)?n:null;};
+const runs=(a,b)=>{const x=amount(a),y=amount(b);return x!==null&&y!==null&&y>x;};
+export function attendanceFacts(data,masters){
+ const worked=[data.totalTrips,data.completedTrips,data.fleetTrips].some(v=>amount(v)>0)||runs(data.openingHmr,data.closingHmr)||runs(data.openingKmr,data.closingKmr);
+ const savedShift=text(data.shiftId)?masters.find(row=>row.master_name==='Shift Master'&&String(row.id)===text(data.shiftId))?.record_data||null:null;
+ return {worked,savedShift,shift:{bookShiftCode:data.bookShiftCode,cardShift:data.cardShift,shiftName:data.shiftName,manualShift:data.manualShift}};
+}
+const rowData=row=>({bookShiftCode:row.book_shift,cardShift:row.card_shift,shiftName:row.shift_name,manualShift:row.manual_shift,shiftId:row.shift_id,totalTrips:row.total_trips,completedTrips:row.completed_trips,fleetTrips:row.fleet_trips,openingHmr:row.opening_hmr,closingHmr:row.closing_hmr,openingKmr:row.opening_kmr,closingKmr:row.closing_kmr});
+// The shift a person chooses on a 'no-shift' line, and the labels written on the card for it (all agreeing).
+export const SHIFT_CHOICES={S1:{cardShift:'I',shiftName:'Shift I',manualShift:''},S2:{cardShift:'II',shiftName:'Shift II',manualShift:''},S3:{cardShift:'III',shiftName:'Shift III',manualShift:''},D:{cardShift:'Day',shiftName:'Day',manualShift:'day'},N:{cardShift:'Night',shiftName:'Night',manualShift:'night'}};
 const publicPick=row=>row?{id:String(row.id),employeeId:row.new_caliber_id,name:row.new_name,by:row.picked_name||row.picked_by,at:row.picked_at,note:row.note||''}:null;
 
 // May this employee be put on a card of this site and date? Returns '' when yes, or the plain reason why not.
@@ -180,7 +197,7 @@ export function registerCaliberRecheck(app,{pool,requireSession,requireAdministr
    const site=sites.get(key);site.cards++;
    // A card that carries a correction is counted, so the work done shows after its line has left the list.
    if(changed.has(String(row.id))){site.corrected++;corrected++;}
-   const verdict=recheckSavedCard(masters,{kind:row.book_type,site:row.site,date:row.date,employeeId:row.employee_id,caliberId:row.caliber_id,aFormNo:row.a_form});
+   const verdict=recheckCard(masters,{kind:row.book_type,site:row.site,date:row.date,employeeId:row.employee_id,caliberId:row.caliber_id,aFormNo:row.a_form,...attendanceFacts(rowData(row),masters)});
    if(!verdict)continue;
    // A person confirmed this card from the paper card: it is counted, not listed.
    if(confirmationHolds(right.get(String(row.id)),{employeeId:row.employee_id,aFormNo:row.a_form},verdict)){site.confirmed++;confirmed++;continue;}
@@ -190,7 +207,7 @@ export function registerCaliberRecheck(app,{pool,requireSession,requireAdministr
     cardNo:row.book_type==='equipment'?row.job_card:row.a_form,scanned:Boolean(row.scan_card_id),scanCardId:row.scan_card_id||'',savedId:row.caliber_id,savedName:row.employee_name,
     reason:verdict.reason,reasonLabel:RECHECK_REASONS[verdict.reason],line:verdict.line,lookAlikes:verdict.lookAlikes||[],more:verdict.more||0,aForm:verdict.aForm||null,canConfirm:canConfirmSaved(verdict),
     // HR settles this one: the line says so and has a Refresh that asks HR Pulse for the saved number.
-    canRefresh:canRefreshFromHr(verdict),pick});
+    canRefresh:canRefreshFromHr(verdict),pickShift:SHIFT_REASONS.includes(verdict.reason),pick});
   }
   res.json({from,to,cards:judged,listed,counts:recheckCounts(listed),sites:[...sites.values()].sort((a,b)=>b.listed-a.listed||a.site.localeCompare(b.site)),
    picked:listed.filter(row=>row.pick).length,confirmed,corrected,canApply:isMisAdministrator(req.session),tookMs:Date.now()-started});
@@ -233,13 +250,14 @@ export function registerCaliberRecheck(app,{pool,requireSession,requireAdministr
   // The same person as on the card: nothing to correct. Typing the saved driver's own number from the paper card is
   // the same answer as "This card is right", so a card listed for its FORM A box is confirmed and leaves the list.
   // (After a helper's "Yes" or an approved site move the card passes the re-check by itself.)
-  if(String(data.employeeId??'')===String(employee.id)){
+  // A card whose Caliber ID names someone else than its employee line is not "the same person": Submit writes both.
+  if(String(data.employeeId??'')===String(employee.id)&&(!text(data.caliberId)||matchesEmployeeReference(employee.record_data,data.caliberId))){
    await pool.query(CANCEL_PICK_SQL,[card.id]);
    const outcome=await confirmSaved(req,card);
    return res.json({same:true,pick:null,confirmed:outcome.confirmed});
   }
   const masters=(await readMasters(pool)).rows;
-  const verdict=recheckSavedCard(masters,{kind:card.book_type,site:card.site,date:card.date,employeeId:data.employeeId,caliberId:data.caliberId,aFormNo:data.aFormNo});
+  const verdict=recheckCard(masters,{kind:card.book_type,site:card.site,date:card.date,employeeId:data.employeeId,caliberId:data.caliberId,aFormNo:data.aFormNo,...attendanceFacts(data,masters)});
   // Submit changes the card at once, so it changes only a card that is on the list: one whose driver stands is not
   // this page's to change. (A card just corrected by someone else, or pressed twice, ends here too.)
   if(!verdict)fail('Card '+card.book_no+' is not on the list: its '+(kind==='equipment'?'operator':'driver')+' stands at this site on this date. Nothing was changed.',409);
@@ -266,6 +284,36 @@ export function registerCaliberRecheck(app,{pool,requireSession,requireAdministr
   });
   req.audit={eventType:'Log book',module:'Caliber ID re-check',action:'Correct the driver',targetType:'Log book',targetReference:card.book_no,details:{from:text(data.caliberId),fromName:text(data.employeeName),to:identity.employeeId,toName:name,site:card.site,date:card.date,correction:done.id}};
   res.status(201).json({same:false,pick:null,corrected:true,still:done.still,correction:{id:done.id,bookNo:card.book_no,from:text(data.caliberId),fromName:text(data.employeeName),to:identity.employeeId,toName:name}});
+ }));
+
+ // Save shift (owner, 24 Nov 2026): a card listed because it names no shift, or two that disagree, takes the shift
+ // chosen from the paper card. Every shift label on the card is written to agree (and its Shift Master entry when the
+ // site has one), so the card counts for attendance. What the card said before is kept on it (shiftCorrection).
+ app.post('/api/caliber-recheck/shift',...protect,wrap(async(req,res)=>{
+  const scope=await getSiteScope(req.session),logbookId=text(req.body?.logbookId),code=text(req.body?.shift);
+  if(!/^\d{1,18}$/.test(logbookId)||!SHIFT_CHOICES[code])fail('Choose a card and its shift (Shift I, II, III, Day or Night).');
+  const card=(await pool.query(CARD_SQL,[logbookId,OPERATIONAL_START])).rows[0];
+  if(!card)fail('This card is no longer saved.',404);
+  requireLogBookSite(scope,card.site);
+  const masters=(await readMasters(pool)).rows,data=card.data||{};
+  if(cardDutyShift(data,attendanceFacts(data,masters).savedShift).code)fail('Card '+card.book_no+' already names its shift. Nothing was changed.',409);
+  const shiftRows=masters.filter(row=>row.master_name==='Shift Master').map(row=>({...row.record_data,id:String(row.id)}));
+  const master=selectedMasterShift(shiftRows,card.site,code,card.date);
+  if(!master&&!['D','N'].includes(code))fail('The Shift Master has no '+SHIFT_CHOICES[code].shiftName+' entry for '+(displaySiteName(card.site)||card.site)+'. Add it in the Shift Master first.',409);
+  const choice=SHIFT_CHOICES[code],by=login(req),at=new Date().toISOString();
+  const patch={bookShiftCode:code,cardShift:choice.cardShift,manualShift:choice.manualShift,
+   shiftName:master&&bookShiftCode(master.shiftName||master.name)===code?text(master.shiftName||master.name):choice.shiftName,
+   ...(master?{shiftId:String(master.id),masterShiftStart:text(master.startTime||master.start)}:{}),
+   shiftCorrection:{from:{bookShiftCode:text(data.bookShiftCode),cardShift:text(data.cardShift),shiftName:text(data.shiftName),manualShift:text(data.manualShift),shiftId:text(data.shiftId)},to:code,by,byName:nameOf(req),at}};
+  const saved=await transaction(async client=>{
+   const live=(await client.query(CARD_SQL+' FOR UPDATE',[card.id,OPERATIONAL_START])).rows[0];
+   if(!live||Number(live.revision)!==Number(card.revision))fail('The card was changed meanwhile. Check the list again.',409);
+   const row=(await client.query(UPDATE_CARD_SQL,[card.id,JSON.stringify(patch)])).rows[0];
+   await followBatchCopy(client,card,row);
+   return row;
+  });
+  req.audit={eventType:'Log book',module:'Caliber ID re-check',action:'Correct the shift',targetType:'Log book',targetReference:card.book_no,details:{from:patch.shiftCorrection.from,to:code,site:card.site,date:card.date}};
+  res.json({corrected:true,bookNo:saved.book_no,shift:code});
  }));
 
  // Undo of a correction: the earlier person goes back on the card. The same people and sites as choosing the driver.

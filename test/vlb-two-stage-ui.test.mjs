@@ -1,6 +1,7 @@
 import {SortableHeader,sortRowsBlanksLast} from './helpers/sortable-table-stub.mjs';
 import {TableSmartPrint} from './helpers/smart-print-stub.mjs';
 import {isJayantSite} from '../shared/site-shift-hours.mjs';
+import {manualEntryShiftIssue} from '../shared/duty-shift.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -23,11 +24,13 @@ const cells=(report,row)=>report.columns.map(column=>String(column.value(row)??'
 async function compile(file,scope,names){
  scope={StepBackButton:()=>null,TableSmartPrint,SortableHeader,sortRowsBlanksLast,WaitingScans:()=>null,SmartSearchReport,...scope};
  scope={activeWorkOrders,WorkOrderJobSelect:()=>null,...scope};
- scope={isJayantSite,employeeAtLocation,matchesSmartSearch,splitEquipmentOperatorHmr,...scope};
+ scope={isJayantSite,manualEntryShiftIssue,employeeAtLocation,matchesSmartSearch,splitEquipmentOperatorHmr,...scope};
  const source=readFileSync(new URL('../src/'+file,import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function').replaceAll('export const','const');
  const {code}=await transformWithOxc(source,file,{jsx:{runtime:'classic'}});
  return new Function(...Object.keys(scope),code+';return {'+names.join(',')+'}')(...Object.values(scope));
 }
+// Shift and Shift Hrs are mandatory on the ELB Manual machine entry (owner, 24 Nov 2026).
+const chooseShift=(tree,shift='batch',hours=8)=>{nodes(tree,n=>n.props['aria-label']==='Manual ELB Shift')[0].props.onChange({target:{value:shift}});nodes(tree,n=>n.props['aria-label']==='Manual ELB Shift Hrs')[0].props.onChange({target:{value:String(hours)}});};
 const nodes=(tree,predicate)=>{const found=[];const visit=node=>{if(Array.isArray(node))return node.forEach(visit);if(!React.isValidElement(node))return;if(predicate(node))found.push(node);visit(node.props.children)};visit(tree);return found};
 const button=(tree,label)=>nodes(tree,n=>n.type==='button'&&renderToStaticMarkup(n).includes(label))[0];
 const hooks=()=>{const slots=[];let cursor=0;const useState=initial=>{const i=cursor++;if(!(i in slots))slots[i]=typeof initial==='function'?initial():initial;return [slots[i],value=>slots[i]=typeof value==='function'?value(slots[i]):value]};return {slots,useState,useRef:value=>useState(()=>({current:value}))[0],reset:()=>{cursor=0}}};
@@ -71,6 +74,8 @@ test('ELB has Working and Breakdown details tabs and fetches Pulse for each mach
  closing.props.onChange({target:{value:'1206.5'}});
  tree=render();
  assert.doesNotMatch(renderToStaticMarkup(tree),/id="elb-hours-conflict"/);
+ await button(tree,'Next').props.onClick();assert.equal(calls.filter(c=>c.method==='POST').length,0,'no save before Shift and Shift Hrs are picked');
+ tree=render();assert.match(renderToStaticMarkup(tree),/Shift is mandatory/);chooseShift(tree);tree=render();
  await button(tree,'Next').props.onClick();const save=calls.find(c=>c.method==='POST');assert.equal(save.body.entryMode,'working-only');assert.equal(save.body.openingHmr,'1200');assert.equal(save.body.employeeId,'5');assert.equal(save.body.idleHours,'0');
  tree=render();assert.match(renderToStaticMarkup(tree),/G-08/);assert.equal(button(tree,'Next').props.disabled,true,'the previous equipment total is not reused');
  await new Promise(setImmediate);tree=render();assert.match(renderToStaticMarkup(tree),/No breakdown found/);assert.ok(calls.some(c=>c.url.startsWith('/api/vlb-batches/batch1/fleet/8/breakdowns?manualShift=')));
@@ -331,6 +336,7 @@ test('saved ELB buttons stay disabled after saving and unsaved machines remain s
  button(tree,'Saved').props.onClick();tree=render();
  assert.match(renderToStaticMarkup(nodes(tree,n=>n.type==='tr'&&n.props['aria-selected']===true)[0]),/VPC-019/,'saved rows cannot be selected even through the handler');
  h.slots[9]={key:['batch1','19','','','','',8].join(':'),loading:false,data:{breakdownHours:0,breakdowns:[]},error:''};tree=render();
+ chooseShift(tree);tree=render();
  await button(tree,'Next').props.onClick();tree=render();
  const savedButtons=nodes(tree,n=>n.type==='button'&&n.props.children==='Saved');
  assert.equal(savedButtons.length,2);
@@ -349,6 +355,7 @@ test('admins can open saved ELBs, edit prefilled values and save the current rev
  const remark=nodes(tree,n=>n.type==='input'&&n.props.value==='Original')[0];assert.ok(remark,'saved data pre-fills the editor');remark.props.onChange({target:{value:'Corrected'}});
  h.slots[9]={key:['batch1','7','','','','',8].join(':'),loading:false,data:{breakdownHours:0,breakdowns:[]},error:''};tree=render();
  assert.equal(button(tree,'Skip').props.disabled,true);
+ chooseShift(tree);tree=render();
  await button(tree,'Save changes').props.onClick();
  assert.equal(calls[0].url,'/api/vlb-batches/batch1/fleet/7');assert.equal(calls[0].body.revision,4);assert.equal(calls[0].body.statusReason,'Corrected');
 });
@@ -401,7 +408,7 @@ test('machine report headers toggle numeric sorting and keep missing values last
 
 test('a batch owner can start an additional ELB card from the same machine row',async()=>{
  const h=hooks(),calls=[];
- const savedFleet=fleet.map(item=>item.assetId==='7'?{...item,logbook_revision:4,logbook:{employeeId:'1',openingHmr:100,closingHmr:104}}:item);
+ const savedFleet=fleet.map(item=>item.assetId==='7'?{...item,logbook_revision:4,logbook:{employeeId:'1',openingHmr:100,closingHmr:104,shiftHours:8}}:item);
  const fetch=async(url,init)=>{calls.push({url,body:JSON.parse(init.body)});return {ok:true,json:async()=>({fleet:savedFleet})}};
  const {VlbFleetStepper}=await compile('vlb-fleet-stepper.jsx',{React,SmartSelect:'select',useState:h.useState,useEffect:()=>{},fetch,crypto:{randomUUID:()=>'relief-key'}},['VlbFleetStepper']);
  const render=()=>{h.reset();return VlbFleetStepper({session:{token:'t'},batch:{id:'batch1',stage:'elb_open',fleet:savedFleet,statuses,canEnterFleet:true},options:{employees:[]},embedded:true})};
@@ -418,13 +425,13 @@ test('a batch owner can start an additional ELB card from the same machine row',
 });
 
 test('Jayant OC displays its server-provided Shift Master duration without an editable 8/12 restriction',async()=>{
- for(const [site,shift,expected,disabled] of [['Jayant OC','S2',[8],true],['jayant ob','S2',[8],true],['Jayant OC','S1',[8],true],['Sasti OC','S2',[8,12],false]]){
+ for(const [site,shift,expected,disabled] of [['Jayant OC','S2',[8],true],['jayant ob','S2',[8],true],['Jayant OC','S1',[8],true],['Sasti OC','S2',['',8,12],false]]){
   const h=hooks();
   const {VlbFleetStepper}=await compile('vlb-fleet-stepper.jsx',{React,SmartSelect:'select',useState:h.useState,useEffect:()=>{}},['VlbFleetStepper']);
   const tree=VlbFleetStepper({session:{token:'t'},batch:{id:'batch1',site,shift,fleet:[{...fleet[0],logbook:{shiftHours:8}}]},options:{employees:[]},embedded:true});
   const select=nodes(tree,n=>n.props['aria-label']==='Manual ELB Shift Hrs')[0];
   assert.deepEqual(nodes(select,n=>n.type==='option').map(n=>n.props.value),expected);
-  assert.equal(select.props.value,expected[0]);
+  assert.equal(select.props.value,8);
   assert.equal(select.props.disabled,disabled);
  }
 });

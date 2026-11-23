@@ -62,7 +62,7 @@ test('a card is listed, with one plain line, when its driver does not stand',()=
  assert.deepEqual(pair(colleague),['a-form-differs','4400 is DRIVER ONE, VOLVO DRIVER. But the FORM A box says 15: at Majri OC that is 4401 (DRIVER TWO), one digit away.']);
  assert.equal(listed('CMPL4400',{kind:'equipment',aFormNo:'15'}),null,'a job card has no FORM A box');
  assert.deepEqual(listed('CMPL1610').lookAlikes,[{id:'1618',name:'LOOK ALIKE'}]);
- assert.deepEqual(recheckCounts([listed('CMPL2000'),listed('CMPL2100'),listed('CMPL1610'),listed('CMPL1610')]),{'not-listed':1,left:1,unknown:0,'other-site':2,'a-form-differs':0,'not-driver':0,several:0});
+ assert.deepEqual(recheckCounts([listed('CMPL2000'),listed('CMPL2100'),listed('CMPL1610'),listed('CMPL1610')]),{'not-listed':1,left:1,unknown:0,'other-site':2,'a-form-differs':0,'not-driver':0,several:0,'no-driver':0,'id-mismatch':0,'no-shift':0});
  for(const reason of Object.keys(RECHECK_REASONS))assert.notEqual(recheckLine({reason,read:'1',at:MAJRI,name:'A'},'vehicle'),'',reason);
 });
 
@@ -125,7 +125,7 @@ test('the report: one day judged, the cards to check listed by site with their l
   const report=(await f.day('2026-11-20')).body;
   assert.deepEqual([report.cards,report.listed.length,report.picked,report.canApply],[6,3,0,true]);
   assert.deepEqual(report.sites.map(site=>[site.site,site.cards,site.listed]),[[MAJRI,5,3],[SASTI,1,0]]);
-  assert.deepEqual(report.counts,{'not-listed':0,left:1,unknown:0,'other-site':1,'a-form-differs':0,'not-driver':1,several:0});
+  assert.deepEqual(report.counts,{'not-listed':0,left:1,unknown:0,'other-site':1,'a-form-differs':0,'not-driver':1,several:0,'no-driver':0,'id-mismatch':0,'no-shift':0});
   const gone=report.listed.find(row=>row.id==='2');
   assert.deepEqual([gone.bookNo,gone.book,gone.kind,gone.date,gone.shift,gone.site,gone.door,gone.cardNo,gone.scanned,gone.scanCardId,gone.savedId,gone.savedName,gone.reason,gone.reasonLabel],['BOOK-2','VLB','vehicle','2026-11-20','S1',MAJRI,'V942','900',true,'s2','CMPL1826','GONE MAN','left','Has left']);
   assert.equal(gone.line,'1826 is GONE MAN, VOLVO DRIVER. Employee Master says this person has resigned. Please contact your HR team. The FORM A box says 900: at Majri OC that is 18126 (REAL MAN).');
@@ -552,4 +552,55 @@ test('the page is in the menu, drawn in the report steps, with the Fetch box on 
  assert.ok(page.includes('const mine=fresh?++run.current:run.current;'),'reading one date again after a Submit does not stop a full read');
  assert.ok(page.includes("'/api/caliber-recheck?from='+dates[i]+'&to='+dates[i]"),'the server is asked day by day');
  assert.ok(readFileSync(new URL('../server.mjs',import.meta.url),'utf8').includes('registerCaliberRecheck(app,{pool,requireSession,requireAdministrator,getSiteScope:logBookScope});'));
+});
+
+// Owner, 24 Nov 2026: "this type of correction for any trip card (VLB, ELB & LMV) manually inserted that does not fetch
+// the attendance". A card whose driver stands can still mark no attendance; it is listed here and fixed on its line.
+test('manual cards that mark no attendance are listed: no driver on a working card, IDs that differ, no shift',async()=>{
+ const f=await fixture();
+ try{
+  // 22 Nov at Majri, all manual (no scanCardId): an ELB that worked with nobody on it, an LMV whose Caliber ID names
+  // another person than its employee line, a VLB with two shifts, a good LMV, and an idle ELB with nobody (not listed).
+  await f.book(20,'equipment','2026-11-22',MAJRI,{employeeId:'',caliberId:'',jobCardNo:'J-20',openingHmr:100,closingHmr:106,assetId:70});
+  await f.book(21,'lmv','2026-11-22',MAJRI,{employeeId:'1',caliberId:'CMPL4401',employeeName:'DRIVER ONE',assetId:71});
+  await f.book(22,'vehicle','2026-11-22',MAJRI,{employeeId:'2',caliberId:'CMPL4401',employeeName:'DRIVER TWO',bookShiftCode:'S1',shiftName:'Shift B',assetId:72});
+  await f.book(23,'lmv','2026-11-22',MAJRI,{employeeId:'1',caliberId:'CMPL4400',employeeName:'DRIVER ONE',assetId:73});
+  await f.book(24,'equipment','2026-11-22',MAJRI,{employeeId:'',caliberId:'',openingHmr:100,closingHmr:100,trips:[],openingKmr:null,closingKmr:null,assetId:74});
+  const report=(await f.day('2026-11-22')).body;
+  const why=Object.fromEntries(report.listed.map(row=>[row.id,row.reason]));
+  assert.deepEqual(why,{20:'no-driver',21:'id-mismatch',22:'no-shift'});
+  assert.deepEqual([report.counts['no-driver'],report.counts['id-mismatch'],report.counts['no-shift']],[1,1,1]);
+  const noShift=report.listed.find(row=>row.id==='22');
+  assert.equal(noShift.pickShift,true);assert.equal(noShift.reasonLabel,'Shift missing or two shifts');
+  assert.match(noShift.line,/two different shifts.*no attendance/);
+  assert.equal(report.listed.find(row=>row.id==='20').pickShift,false);
+  assert.equal(report.listed.find(row=>row.id==='20').book,'ELB');
+  // Submit puts the operator on the ELB, and writes both IDs on the LMV even though its employee line was already him.
+  assert.equal((await f.call('/api/caliber-recheck/pick',{logbookId:'20',employeeId:'2'})).status,201);
+  assert.deepEqual([(await f.saved(20)).data.employeeId,(await f.saved(20)).data.caliberId],['2','CMPL4401']);
+  assert.equal((await f.call('/api/caliber-recheck/pick',{logbookId:'21',employeeId:'1'})).status,201);
+  assert.equal((await f.saved(21)).data.caliberId,'CMPL4400');
+  // Save shift: every label is written to agree; what the card said before is kept on it.
+  assert.equal((await f.call('/api/caliber-recheck/shift',{logbookId:'22',shift:'X'})).status,400);
+  assert.equal((await f.call('/api/caliber-recheck/shift',{logbookId:'22',shift:'S2'})).status,409,'no Shift II in the Shift Master of this site');
+  const day=await f.call('/api/caliber-recheck/shift',{logbookId:'22',shift:'D'});
+  assert.equal(day.status,200,JSON.stringify(day.body));
+  const fixed=await f.saved(22);
+  assert.deepEqual([fixed.data.bookShiftCode,fixed.data.cardShift,fixed.data.shiftName,fixed.data.manualShift,fixed.revision],['D','Day','Day','day',4]);
+  assert.deepEqual(fixed.data.shiftCorrection.from,{bookShiftCode:'S1',cardShift:'',shiftName:'Shift B',manualShift:'',shiftId:''});
+  assert.equal((await f.db.query('SELECT snapshot FROM mis_vlb_batch_entries WHERE logbook_id=22')).rows[0].snapshot.data.shiftName,'Day','the batch copy follows');
+  assert.equal((await f.call('/api/caliber-recheck/shift',{logbookId:'22',shift:'N'})).status,409,'a card that names its shift is not changed');
+  assert.deepEqual((await f.day('2026-11-22')).body.listed,[],'every card now marks attendance');
+  assert.ok(f.audits.some(audit=>audit.action==='Correct the shift'&&audit.targetReference==='BOOK-22'));
+ }finally{await f.close();}
+});
+
+test('Save shift is on the allowed list and on the screen',()=>{
+ const session={login:'site.user',role:'site',permissions:{applications:['Caliber ID Re-check']}};
+ const source=readFileSync(new URL('../src/caliber-recheck.jsx',import.meta.url),'utf8');
+ assert.ok(source.includes('row.pickShift&&<div className="cr-shift"'));
+ assert.ok(source.includes("'/api/caliber-recheck/shift'"));
+ const access=readFileSync(new URL('../shared/mis-application-access.mjs',import.meta.url),'utf8');
+ assert.ok(access.includes("route==='/api/caliber-recheck/shift')return req.method==='POST'"));
+ assert.ok(session);
 });

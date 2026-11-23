@@ -30,13 +30,13 @@ function fixture({bd=0,trips=0,unavailable=false,surfaceMiner=false,secondSite='
 }
 test('Working-only saves use authoritative Pulse hours and preserve event details without trusting manual BD totals',async()=>{
  const f=fixture({bd:2,trips:5,shiftHours:12});
- const record=await saveFleetEntry(f.client,batch,'19',{entryMode:'working-only',shiftStatus:'working',employeeId:'7',openingHmr:100,closingHmr:105,manualBreakdownHours:99,shiftHours:12,requestKey:'test'},'mis',f.ops);
+ const record=await saveFleetEntry(f.client,batch,'19',{entryMode:'working-only',manualShift:'batch',shiftHours:8,shiftStatus:'working',employeeId:'7',openingHmr:100,closingHmr:105,manualBreakdownHours:99,shiftHours:12,requestKey:'test'},'mis',f.ops);
  assert.equal(record.data.shiftStatus,'working_partial_breakdown');assert.equal(record.data.breakdownHours,2);assert.equal(record.data.shiftHours,12);assert.equal(record.data.manualBreakdownHours,null);assert.equal(record.data.statusReason,'Engine fault');assert.equal(record.data.hoursSource.breakdownHours,2);assert.equal(record.data.pulseBreakdowns[0].reference,'BD-1');assert.equal(record.data.breakdownHoursSource,'pulse');
 });
 
 test('Conflicting Pulse and working hours leave ELB idle hours unset and preserve the source values',async()=>{
  const f=fixture({bd:8});
- const record=await saveFleetEntry(f.client,batch,'19',{entryMode:'working-only',employeeId:'7',openingHmr:3731.4,closingHmr:3737.5,shiftHours:8},'mis',f.ops);
+ const record=await saveFleetEntry(f.client,batch,'19',{entryMode:'working-only',manualShift:'batch',shiftHours:8,employeeId:'7',openingHmr:3731.4,closingHmr:3737.5,shiftHours:8},'mis',f.ops);
  assert.equal(record.data.totalWorkingHmr,6.1);
  assert.equal(record.data.breakdownHours,8);
  assert.equal(record.data.idleHours,null);
@@ -44,7 +44,7 @@ test('Conflicting Pulse and working hours leave ELB idle hours unset and preserv
 
 test('Excavator operator handover saves two portions on one ELB with one equipment HMR total',async()=>{
  const f=fixture();
- const input={entryMode:'working-only',employeeId:'7',secondOperatorId:'8',openingHmr:100,handoverHmr:104,closingHmr:108,requestKey:'test'};
+ const input={entryMode:'working-only',manualShift:'batch',shiftHours:8,employeeId:'7',secondOperatorId:'8',openingHmr:100,handoverHmr:104,closingHmr:108,requestKey:'test'};
  const record=await saveFleetEntry(f.client,batch,'19',input,'mis',{...f.ops,resolve:resolveLogBookData});
  assert.equal(record.data.totalWorkingHmr,8);
  assert.equal(record.data.employeeName,'Operator A');
@@ -53,7 +53,7 @@ test('Excavator operator handover saves two portions on one ELB with one equipme
 });
 
 test('operator handover rejects excess HMR, an invalid reading, duplicate operators and ineligible operators or entry modes',async()=>{
- const input={entryMode:'working-only',employeeId:'7',secondOperatorId:'8',openingHmr:100,handoverHmr:104,closingHmr:108,requestKey:'test'};
+ const input={entryMode:'working-only',manualShift:'batch',shiftHours:8,employeeId:'7',secondOperatorId:'8',openingHmr:100,handoverHmr:104,closingHmr:108,requestKey:'test'};
  for(const [fixtureOptions,patch,error] of [
   [{surfaceMiner:true},{closingHmr:108.01},/cannot exceed 8 hours/],
   [{surfaceMiner:true},{handoverHmr:109},/below closing HMR/],
@@ -68,12 +68,12 @@ test('operator handover rejects excess HMR, an invalid reading, duplicate operat
 });
 test('full-shift breakdown and zero-work machines save through Working without requiring an operator',async()=>{
  for(const [bd,status,idle] of [[8,'breakdown',0],[0,'not_in_use',8],[2,'not_in_use',6]]){
-  const f=fixture({bd});const record=await saveFleetEntry(f.client,batch,'19',{entryMode:'working-only',openingHmr:100,closingHmr:100,requestKey:'test'},'mis',f.ops);
+  const f=fixture({bd});const record=await saveFleetEntry(f.client,batch,'19',{entryMode:'working-only',manualShift:'batch',shiftHours:8,openingHmr:100,closingHmr:100,requestKey:'test'},'mis',f.ops);
   assert.equal(record.data.shiftStatus,status);assert.equal(record.data.employeeId,null);assert.equal(record.data.breakdownHours,bd);assert.equal(record.data.idleHours,idle);assert.equal(record.data.totalWorkingHmr,0);
  }
 });
 test('Pulse failure and invalid Pulse totals never save an invented zero; loaded trips still require positive working hours',async()=>{
- const f=fixture({unavailable:true});await assert.rejects(()=>saveFleetEntry(f.client,batch,'19',{entryMode:'working-only',openingHmr:100,closingHmr:100},'mis',f.ops),/Pulse disconnected/);assert.equal(f.writes.length,0);
+ const f=fixture({unavailable:true});await assert.rejects(()=>saveFleetEntry(f.client,batch,'19',{entryMode:'working-only',manualShift:'batch',shiftHours:8,openingHmr:100,closingHmr:100},'mis',f.ops),/Pulse disconnected/);assert.equal(f.writes.length,0);
  const bad=fixture({bd:9});await assert.rejects(()=>readFleetBreakdowns(bad.client,batch,'19',bad.ops.readHours,'mis'),/invalid breakdown/);
- const loaded=fixture({trips:2});await assert.rejects(()=>saveFleetEntry(loaded.client,batch,'19',{entryMode:'working-only',employeeId:'7',openingHmr:100,closingHmr:100},'mis',loaded.ops),/greater than zero/);
+ const loaded=fixture({trips:2});await assert.rejects(()=>saveFleetEntry(loaded.client,batch,'19',{entryMode:'working-only',manualShift:'batch',shiftHours:8,employeeId:'7',openingHmr:100,closingHmr:100},'mis',loaded.ops),/greater than zero/);
 });

@@ -5,6 +5,7 @@ import {validShiftHours,isJayantSite} from '../../shared/site-shift-hours.mjs';
 import {cardWorkingHmr,shareCardOperator} from '../../shared/log-book-shared-shift.mjs';
 import {assertCombinedShiftMeters} from './log-book-shift-hmr.mjs';
 import {manualShiftHours,manualShiftWindow} from '../../shared/manual-shift.mjs';
+import {manualEntryShiftIssue} from '../../shared/duty-shift.mjs';
 import {canonicalSiteName} from '../../shared/site-location.mjs';
 import {withEquipmentAliases} from '../../shared/equipment-aliases.mjs';
 import {displaySiteName} from '../../shared/region-scope.mjs';
@@ -210,6 +211,11 @@ export async function saveFleetEntry(client,batch,assetId,input,actor,ops){
   if(!prior)fail('This ELB is unavailable. Reload the batch.',409);
   if(Number(input.revision)!==Number(prior.revision))fail('This ELB changed. Reload the batch before editing.',409);
  }
+ // Shift and Shift Hrs are mandatory on every manual ELB (owner, 24 Nov 2026; shared/duty-shift.mjs): the user picks the
+ // batch shift, Day or Night, and 8 or 12 Hrs; Day and Night are 12 hours. 'batch' is saved as no override ('').
+ const shiftIssue=manualEntryShiftIssue({choice:text(input.manualShift),shiftHours:input.shiftHours,flexibleHours:isJayantSite({site:batch.site}),batchShift:batch.shift});
+ if(shiftIssue)throw Object.assign(new Error(shiftIssue),{status:400,fields:{manualShift:shiftIssue}});
+ input={...input,manualShift:input.manualShift==='batch'?'':input.manualShift};
  let operatorSplit;
  if(text(input.secondOperatorId)||text(input.handoverHmr)){
   if(input.entryMode!=='working-only')fail('Two operators can share a shift only in ELB Manual working entry.',400);
