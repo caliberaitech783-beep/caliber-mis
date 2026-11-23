@@ -41,7 +41,8 @@ test('with the OTP rule on a pair starts pending, does not resolve cards, and be
  await assert.rejects(issueAliasOtp(pool,{aliasId:created.alias.id,route:'nitish',requestedBy:'mohit',approver:{login:'nitish'},telegram:linked}),/less than a minute/,'one request per minute per route');
  assert.equal((await loadEquipmentAliases(pool,{statuses:['pending']}))[0].nitish_otp_count,1);
  await assert.rejects(verifyAliasOtp(pool,{aliasId:created.alias.id,otpId:otp.id,otp:'000000',login:'bob'}),/no longer available/,'only the requester enters the code');
- await assert.rejects(verifyAliasOtp(pool,{aliasId:created.alias.id,otpId:otp.id,otp:'000000',login:'mohit'}),/4 attempts left/);
+ // A wrong code is handed back, not thrown: the caller commits the wrong-try count, then answers 400.
+ assert.match((await verifyAliasOtp(pool,{aliasId:created.alias.id,otpId:otp.id,otp:'000000',login:'mohit'})).refused,/4 attempts left/);
  // The emergency route is available at the same time; approval on one cancels the other.
  const deliveries=[];const deliver=async({logins,message,otp})=>{deliveries.push({logins,message,otp});return {sentTo:logins,channels:['whatsapp'],failures:[]}};
  await assert.rejects(issueAliasOtp(pool,{aliasId:created.alias.id,route:'site_pm',requestedBy:'mohit',pmLogins:async()=>['pm1'],deliver}),/why the mapping approver cannot be reached/);

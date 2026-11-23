@@ -52,13 +52,16 @@ export async function issueApprovalOtp(client,{batch,purpose,reason,requestId=nu
 
 // Locks the row, applies the attempt rules and marks it used on success. Only the MIS user who
 // asked for the code can enter it, and only against the batch it was issued for.
+// A code that is refused (wrong, expired, cancelled, already used) comes back as {refused:message}
+// and is never thrown: the caller's transaction must commit the wrong-try count first, then
+// answer 400. A throw here would roll the count back, and the five-tries limit would never end.
 export async function consumeApprovalOtp(client,{otpId,batchId,login,otp}){
  const row=/^[0-9a-f-]{36}$/i.test(otpId||'')?(await client.query('SELECT * FROM mis_vlb_approval_otps WHERE id=$1 FOR UPDATE',[otpId])).rows[0]:null;
  if(!row||row.purpose!=='reopen'||row.batch_id!==batchId||row.requested_by!==login)otpFail('This approval request is no longer available. Request a new OTP.',404);
  const check=checkOtpAttempt(row,otp);
  if(!check.ok){
-  if(check.status!=='missing'&&(check.status!==row.status||check.attempts!==undefined&&check.attempts!==row.attempts))await client.query('UPDATE mis_vlb_approval_otps SET status=$2,attempts=$3 WHERE id=$1',[row.id,check.status,check.attempts??row.attempts]);
-  otpFail(check.message,400);
+  if(check.status!=='missing'&&(check.status!==row.status||(check.attempts??row.attempts)!==row.attempts))await client.query('UPDATE mis_vlb_approval_otps SET status=$2,attempts=$3 WHERE id=$1',[row.id,check.status,check.attempts??row.attempts]);
+  return {refused:check.message};
  }
  return (await client.query("UPDATE mis_vlb_approval_otps SET status='used',used_at=NOW(),approved_by=$2 WHERE id=$1 RETURNING *",[row.id,row.sent_to.join(', ')])).rows[0];
 }

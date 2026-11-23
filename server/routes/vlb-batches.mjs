@@ -366,8 +366,10 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
   fail('PM approval is no longer needed. Reopen the batch directly.',409);
  }));
  app.post('/api/vlb-batches/:id/approval-otp/:otpId/verify',...protect,handle(async(req,res)=>{
-  await batchTransaction(req,async(client,batch)=>{
+  // A refused code comes back from the transaction and is answered after the commit, so the wrong-try count is kept.
+  const outcome=await batchTransaction(req,async(client,batch)=>{
    const row=await consumeApprovalOtp(client,{otpId:req.params.otpId,batchId:batch.id,login:req.batchActor.login,otp:req.body?.otp});
+   if(row.refused)return row;
    const note='Approved by OTP sent to '+row.sent_to.join(', ');
    const request=(await client.query('SELECT * FROM mis_vlb_reopen_requests WHERE id=$1 AND batch_id=$2 FOR UPDATE',[row.request_id,batch.id])).rows[0];
    if(!request||!batch.closed_at||request.closure_revision!==batch.closure_revision)fail('This reopening request is no longer pending for the current closure. Request a new OTP.',409);
@@ -375,6 +377,7 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
    else if(request.status!=='approved')fail('This reopening request was already decided. Request a new OTP.',409);
    await auditVlbBatch(client,batch,req.batchActor.login,'reopen_approved',{requestId:request.id,requestedBy:request.requested_by,via:'otp',otpId:row.id,sentTo:row.sent_to,note});
   },{exclusive:true});
+  if(outcome?.refused)fail(outcome.refused,400);
   try{const batch=await batchTransaction(req,(client,current)=>performReopen(client,current,req));return res.json({approved:true,reopened:true,batch});}
   catch(error){if(!error.status)throw error;const batch=await details(pool,await visible(pool,req.params.id,req),req);return res.json({approved:true,reopened:false,error:error.message,batch});}
  }));
