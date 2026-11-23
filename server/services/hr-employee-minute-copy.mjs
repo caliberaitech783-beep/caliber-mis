@@ -9,8 +9,12 @@
 //  - A change that could put a wrong person on a number is held; an administrator can accept a changed name.
 //  - One server at a time runs it (a database lock), and the owner is told on Telegram when it stops, holds a
 //    change, or has not been able to copy for HR_COPY_SILENT_MINUTES.
+//  - Every night, from HR_MATCH_HOUR in India, both whole lists are matched once: whatever the minute copy missed
+//    is corrected, and the result ("the same" or what was corrected) is kept for the screen and told on Telegram
+//    when the lists were not the same. A site HR Pulse has no line for (Lalpeth) is left as it is.
 import {planHrChanges,HR_CHANGE_EXISTING_FIELDS,HR_COPY_STOP_LIMIT,nameKey} from '../../shared/hr-employee-changes.mjs';
-import {recordNumber,employeeNumber} from '../../shared/hr-employee-master.mjs';
+import {recordNumber,employeeNumber,hrSiteName} from '../../shared/hr-employee-master.mjs';
+import {canonicalSiteName} from '../../shared/site-location.mjs';
 import {applyEmployeeSiteMove,EMPLOYEE_SITE_MOVE_SCHEMA} from '../routes/employee-site-move.mjs';
 
 export const HR_COPY_STATE_KEY='hr_employee_copy';
@@ -20,7 +24,10 @@ export const HR_COPY_SILENT_MINUTES=10;
 export const HR_REFRESH_KEEP_MS=20*1000;
 // What is held for a number and changes nothing for it: the person at the card is sent to HR.
 export const HR_REFRESH_BLOCKS=['bad-id','two-lines','no-name','other-name','old-person'];
-const MAX_ROUNDS=5,HELD_LIMIT=200;
+// The nightly match of both whole lists: once a day, from 02:00 in India; after a failure it is tried again every 15 minutes.
+export const HR_MATCH_HOUR=2;
+export const HR_MATCH_RETRY_MINUTES=15;
+const MAX_ROUNDS=5,HELD_LIMIT=200,CHUNK=500;
 const SETTINGS_SCHEMA="CREATE TABLE IF NOT EXISTS app_settings(setting_key TEXT PRIMARY KEY,setting_value JSONB NOT NULL DEFAULT '{}'::jsonb,updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())";
 const READ_SQL='SELECT setting_value FROM app_settings WHERE setting_key=$1';
 const SAVE_SQL=`INSERT INTO app_settings (setting_key,setting_value,updated_at) VALUES ($1,$2::jsonb,NOW())
@@ -31,6 +38,10 @@ const numberOf=field=>`NULLIF(substring(regexp_replace(upper(COALESCE(record_dat
 export const EXISTING_FOR_SQL=`SELECT id,master_name,jsonb_build_object(${HR_CHANGE_EXISTING_FIELDS.map(field=>`'${field}',record_data->'${field}'`).join(',')}) AS record_data
  FROM master_records WHERE master_name IN('Employee master','ERP Employee master')
  AND COALESCE(${numberOf('caliberId')},${numberOf('employeeId')},${numberOf('caliberCode')})=ANY($1::text[]) ORDER BY id`;
+// The people Pulse-II lists as on HR's list, with their site: the other half of the nightly match.
+export const LISTED_SQL=`SELECT COALESCE(${numberOf('caliberId')},${numberOf('employeeId')},${numberOf('caliberCode')}) AS number,
+ COALESCE(NULLIF(record_data->>'site',''),NULLIF(record_data->>'currentLocation',''),record_data->>'location','') AS site
+ FROM master_records WHERE master_name IN('Employee master','ERP Employee master') AND COALESCE(record_data->>'hrListed','')<>'false'`;
 const UPDATE_SQL=`UPDATE master_records m SET master_name='Employee master',
  record_data=m.record_data||v.d||jsonb_build_object('employeeMasterRevision',COALESCE((m.record_data->>'employeeMasterRevision')::bigint,0)+1)
  FROM jsonb_to_recordset($1::jsonb) AS v(id bigint,d jsonb) WHERE m.id=v.id`;
@@ -42,10 +53,16 @@ const fail=(status,message)=>Object.assign(new Error(message),{status});
 const text=value=>value===null||value===undefined?'':String(value).trim();
 const count=value=>Number(value||0).toLocaleString('en-IN');
 export const istDate=at=>new Date(at+5.5*60*60*1000).toISOString().slice(0,10);
+export const istHour=at=>new Date(at+5.5*60*60*1000).getUTCHours();
+// Is the nightly match due? Once per India day, from HR_MATCH_HOUR, and not within HR_MATCH_RETRY_MINUTES of a try that
+// failed. Not on the day the copy was started or started again: a person has just looked at the whole Preview.
+export const matchDue=(state,at)=>state?.started===true&&!state.stopped&&istHour(at)>=HR_MATCH_HOUR&&state.lastMatch?.day!==istDate(at)
+ &&istDate(Date.parse(state.resumedAt||state.startedAt||0))!==istDate(at)
+ &&!(state.matchTriedAt&&at-Date.parse(state.matchTriedAt)<HR_MATCH_RETRY_MINUTES*60*1000);
 const istClock=at=>new Intl.DateTimeFormat('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(at));
 
 export function createHrEmployeeMinuteCopy({pool,hr,now=()=>Date.now(),alert=async()=>{}}){
- let schema=null,running=false,timer=null,first=null;
+ let schema=null,running=false,timer=null,first=null,matching=null;
  const ensure=()=>schema??=pool.query(SETTINGS_SCHEMA).then(()=>pool.query(EMPLOYEE_SITE_MOVE_SCHEMA)).catch(error=>{schema=null;throw error;});
  const iso=()=>new Date(now()).toISOString();
  const readState=async()=>{await ensure();return (await pool.query(READ_SQL,[HR_COPY_STATE_KEY])).rows[0]?.setting_value||{};};
@@ -54,18 +71,18 @@ export function createHrEmployeeMinuteCopy({pool,hr,now=()=>Date.now(),alert=asy
 
  // Plans and writes the changes of these people in one transaction. decide(plan) may refuse (the stop).
  async function copyPeople(numbers,lines,{accepted={},decide=()=>''}={}){
-  const wanted=[...new Set(numbers.map(value=>employeeNumber(value)).filter(Boolean))];
+  const wanted=[...new Set(numbers.map(value=>employeeNumber(value)).filter(Boolean))],asked=new Set(wanted);
   const client=await pool.connect();
   try{
    await client.query('BEGIN');
    // The same lock as every other writer of Employee Master (HR's Excel, an approved site move).
    await client.query('SELECT pg_advisory_xact_lock(709224109)');
-   const existing=(await client.query(EXISTING_FOR_SQL,[wanted])).rows.filter(row=>wanted.includes(recordNumber(row.record_data)));
+   const existing=(await client.query(EXISTING_FOR_SQL,[wanted])).rows.filter(row=>asked.has(recordNumber(row.record_data)));
    const at=iso(),plan=planHrChanges(existing,wanted,lines,{now:at,accepted});
    const refusal=decide(plan);
    if(refusal){await client.query('ROLLBACK');return {plan,refusal,notMoved:[]};}
-   if(plan.updates.length)await client.query(UPDATE_SQL,[JSON.stringify(plan.updates.map(row=>({id:row.id,d:row.patch})))]);
-   if(plan.inserts.length)await client.query(INSERT_SQL,[JSON.stringify(plan.inserts)]);
+   for(let from=0;from<plan.updates.length;from+=CHUNK)await client.query(UPDATE_SQL,[JSON.stringify(plan.updates.slice(from,from+CHUNK).map(row=>({id:row.id,d:row.patch})))]);
+   for(let from=0;from<plan.inserts.length;from+=CHUNK)await client.query(INSERT_SQL,[JSON.stringify(plan.inserts.slice(from,from+CHUNK))]);
    if(plan.offIds.length)await client.query(OFF_SQL,[plan.offIds,at]);
    // Another site in HR Pulse: a dated move from today, kept in the site history and on the register of moves.
    const notMoved=[];
@@ -102,6 +119,8 @@ export function createHrEmployeeMinuteCopy({pool,hr,now=()=>Date.now(),alert=asy
    state=await readState();
    if(state.lastRunAt&&now()-Date.parse(state.lastRunAt)<HR_COPY_INTERVAL_MS-15000)return {skipped:'recent'};
    const at=iso();
+   // Once a night both whole lists are matched, before this minute's changes.
+   if(matchDue(state,now())){await match({by:'Nightly match'}).catch(()=>{});state=await readState();if(state.stopped)return {skipped:'stopped'};}
    let after=text(state.seq)||'0',latest=after,feed,rounds=0;
    const numbers=new Set(),lines=[];
    do{
@@ -136,6 +155,44 @@ export function createHrEmployeeMinuteCopy({pool,hr,now=()=>Date.now(),alert=asy
    if(locked)await guard.query('SELECT pg_advisory_unlock(709224112)').catch(()=>{});
    guard.release();running=false;
   }
+ }
+
+ // Both whole lists matched: HR Pulse's people, and the people Pulse-II lists at the sites HR Pulse covers. What the
+ // minute copy missed is corrected by the same rules. `force`: a person asked for it now.
+ async function match({by='',force=false}={}){
+  if(!hr.configured())throw fail(503,'HR connection is not set up (HR_SYNC_KEY).');
+  const state=await readState();
+  if(!state.started)throw fail(409,'Employee Master is not being copied yet. Open Preview on its line and apply it first.');
+  if(state.stopped)throw fail(409,'The copy is stopped. Open Preview on the Employee Master line, check and apply.');
+  if(matching)return matching;
+  return matching=(async()=>{
+   const at=iso(),day=istDate(now());
+   try{
+    const lines=(await hr.employees()).employees||[];
+    if(!lines.length)throw fail(502,'HR Pulse returned no Employee Master. Nothing was changed.');
+    const covered=new Set(lines.map(line=>canonicalSiteName(hrSiteName(line.site))).filter(Boolean));
+    const numbers=new Set(lines.map(line=>employeeNumber(line.employeeId)).filter(Boolean)),hrPeople=numbers.size;
+    let listedHere=0;
+    // A site of ours that HR Pulse has no line for is not covered by it: its people are left as they are.
+    for(const row of (await pool.query(LISTED_SQL)).rows){if(row.number&&covered.has(canonicalSiteName(text(row.site)))){listedHere++;numbers.add(String(row.number));}}
+    const {plan,refusal,notMoved}=await copyPeople([...numbers],lines,{accepted:state.accepted||{},
+     decide:made=>made.summary.switchedOff>HR_COPY_STOP_LIMIT?`The match of both lists would switch off ${count(made.summary.switchedOff)} people (removed ${count(made.summary.removed)}, marked LEFT ${count(made.summary.left)}). Nothing was applied. Open Preview on Sync all masters, check and apply.`:''});
+    if(refusal){
+     await saveState({matchTriedAt:at,stopped:{at,reason:refusal,switchedOff:plan.summary.switchedOff},lastMatch:{at,day,by:text(by).slice(0,120),stopped:true,hrLines:lines.length,hrPeople,listedHere}});
+     await tell(`hr-employee-copy:stopped:${at}`,`⛔ Pulse-II stopped the Employee Master copy from HR Pulse at ${istClock(at)} IST.\n${refusal}`);
+     return {ok:false,stopped:true,summary:plan.summary};
+    }
+    const nowHeld=[...plan.held,...notMoved],held=heldAfter(state.held,[...numbers],nowHeld,at),s=plan.summary;
+    const corrected=s.added+s.updated+s.removed+s.left+s.moved,same=corrected===0;
+    const lastMatch={at,day,by:text(by).slice(0,120),same,hrLines:lines.length,hrPeople,listedHere,summary:s,held:nowHeld.length};
+    await saveState({matchTriedAt:at,lastMatch,held,...(same?{}:{lastChangeAt:at,lastSummary:s})});
+    if(!same&&!force)await tell(`hr-employee-copy:match:${day}`,`⚠️ Employee Master, nightly match with HR Pulse (${day}): the two lists were not the same. Corrected in Pulse-II: ${count(s.added)} added, ${count(s.updated)} updated, ${count(s.removed)} removed, ${count(s.left)} marked LEFT, ${count(s.moved)} moved. Held for a person: ${count(nowHeld.length)}.`);
+    return {ok:true,...lastMatch};
+   }catch(error){
+    await saveState({matchTriedAt:at,matchError:error?.status?error.message:'The match with HR Pulse failed. Existing data retained.'}).catch(()=>{});
+    throw error;
+   }
+  })().finally(()=>{matching=null;});
  }
 
  // A person has looked at the whole Preview and applied it: the minute copy starts, or starts again after a stop.
@@ -190,10 +247,11 @@ export function createHrEmployeeMinuteCopy({pool,hr,now=()=>Date.now(),alert=asy
  const status=async()=>{
   const state=await readState();
   return {started:state.started===true,startedAt:state.startedAt||null,lastRunAt:state.lastRunAt||null,lastOkAt:state.lastOkAt||null,lastChangeAt:state.lastChangeAt||null,lastSummary:state.lastSummary||null,
-   held:Array.isArray(state.held)?state.held:[],stopped:state.stopped||null,error:text(state.error),stopLimit:HR_COPY_STOP_LIMIT,everySeconds:HR_COPY_INTERVAL_MS/1000,connected:hr.configured()};
+   held:Array.isArray(state.held)?state.held:[],stopped:state.stopped||null,error:text(state.error),stopLimit:HR_COPY_STOP_LIMIT,everySeconds:HR_COPY_INTERVAL_MS/1000,connected:hr.configured(),
+   lastMatch:state.lastMatch||null,matchHour:HR_MATCH_HOUR};
  };
  const run=()=>void tick().catch(error=>console.error('Employee Master copy from HR Pulse failed',error?.message));
- return {tick,start,accept,person,status,
+ return {tick,start,accept,person,match,status,
   startTimer({firstDelayMs=90*1000}={}){if(timer||first)return;first=setTimeout(()=>{first=null;run();timer=setInterval(run,HR_COPY_INTERVAL_MS);timer.unref?.();},firstDelayMs);first.unref?.();},
   stopTimer(){clearTimeout(first);clearInterval(timer);first=null;timer=null;}};
 }

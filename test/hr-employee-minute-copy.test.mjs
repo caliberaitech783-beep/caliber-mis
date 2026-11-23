@@ -318,7 +318,7 @@ test('the alert is a line of the Automation Centre, and the server and the page 
  assert.ok(server.includes('hr:hrEmployeeSync,copy:hrEmployeeCopy,outbox:hrSiteMoveOutbox,requireSession,requireAdministrator});'));
  assert.ok(server.includes("if(process.env.HR_SYNC_SCHEDULE!=='0')masterSync.start();"),'one setting still stops both timers');
  const page=readFileSync(new URL('../src/pulse-master-sync.jsx',import.meta.url),'utf8');
- assert.ok(page.includes('<HrEmployeeCopyPanel copy={data?.employeeCopy} moves={data?.siteMovesToHr} working={working} onAccept={acceptHeld}/>'));
+ assert.ok(page.includes('<HrEmployeeCopyPanel copy={data?.employeeCopy} moves={data?.siteMovesToHr} working={working} onAccept={acceptHeld} onMatch={matchNow}/>'));
  assert.ok(page.includes('{!row.minute&&<button onClick={()=>sync(row.name)}'),'Employee Master has no Sync button: only Preview, then Apply');
  assert.ok(page.includes("call('/api/master-sync/employee-copy/accept',{number:item.number})"));
  const panel=readFileSync(new URL('../src/hr-employee-copy-panel.jsx',import.meta.url),'utf8');
