@@ -42,6 +42,15 @@ export function nearestShift(worked,date){
  return [before,after].filter(Boolean).map(say).join(' · ')||'No duty at this site on any compared date';
 }
 
+// The log books and batches of a line's duties (for the VLB / ELB / LMV tab and the batch choice).
+const tags=duties=>({logBooks:uniq(duties.flatMap(d=>d.logBooks||[])),batches:uniq(duties.flatMap(d=>d.batches||[]))});
+// The lines of a log book tab and a batch. "Sheet P, no trip card" has no card, so no log book or batch: it is shown only
+// when every log book and batch is chosen.
+export function selectDayLines(lines,{logBook='',batch=''}={}){
+ if(!logBook&&!batch)return lines;
+ return lines.filter(l=>l.kind!=='noCard'&&(!logBook||l.logBooks.includes(logBook))&&(!batch||(batch==='(no batch)'?!l.batches.length:l.batches.includes(batch))));
+}
+
 // One line per person, date and shift for the three kinds.
 export function sheetDayLines(result){
  const lines=[];
@@ -54,15 +63,15 @@ export function sheetDayLines(result){
     const duties=c.duties||[];
     for(const shift of uniq(duties.map(d=>d.shift)).length?uniq(duties.map(d=>d.shift)):['']){
      const own=duties.filter(d=>d.shift===shift);
-     lines.push({...base,kind:'card',date:c.date,shift,sheetSays:c.mark||'(blank)',pulseSays:'Duty in '+(shiftName(shift)||'a shift')+(joined(own,'doors')?' on '+joined(own,'doors'):''),books:joined(own,'books'),equipment:joined(own,'doors'),site:result.site,nearest:'',correction:ADVICE.card});
+     lines.push({...base,...tags(own),kind:'card',date:c.date,shift,sheetSays:c.mark||'(blank)',pulseSays:'Duty in '+(shiftName(shift)||'a shift')+(joined(own,'doors')?' on '+joined(own,'doors'):''),books:joined(own,'books'),equipment:joined(own,'doors'),site:result.site,nearest:'',correction:ADVICE.card});
     }
    }else if(c.state==='noDuty'){
-    lines.push({...base,kind:'noCard',date:c.date,shift:UNKNOWN_SHIFT,sheetSays:c.mark,pulseSays:'No duty saved',books:'',equipment:'',site:'',nearest:nearestShift(worked,c.date),correction:ADVICE.noCard});
+    lines.push({...base,logBooks:[],batches:[],kind:'noCard',date:c.date,shift:UNKNOWN_SHIFT,sheetSays:c.mark,pulseSays:'No duty saved',books:'',equipment:'',site:'',nearest:nearestShift(worked,c.date),correction:ADVICE.noCard});
    }else if(c.state==='site'){
     const away=c.away||[];
     for(const shift of uniq(away.map(d=>d.shift)).length?uniq(away.map(d=>d.shift)):['']){
      const own=away.filter(d=>d.shift===shift);
-     lines.push({...base,kind:'away',date:c.date,shift,sheetSays:c.mark,pulseSays:'Duty at '+(joined(own,'site')||'another site')+(shift?' in '+shiftName(shift):''),books:joined(own,'books'),equipment:joined(own,'doors'),site:joined(own,'site'),nearest:nearestShift(worked,c.date),correction:ADVICE.away});
+     lines.push({...base,...tags(own),kind:'away',date:c.date,shift,sheetSays:c.mark,pulseSays:'Duty at '+(joined(own,'site')||'another site')+(shift?' in '+shiftName(shift):''),books:joined(own,'books'),equipment:joined(own,'doors'),site:joined(own,'site'),nearest:nearestShift(worked,c.date),correction:ADVICE.away});
     }
    }
   }

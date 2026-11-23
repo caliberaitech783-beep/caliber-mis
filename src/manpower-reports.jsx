@@ -9,11 +9,12 @@ import {DateShiftGrid,dateShiftGrid} from './date-shift-grid.jsx';
 import AttendanceRegister from './attendance-register.jsx';
 import AttendanceSheetCheck from './attendance-sheet-check.jsx';
 import SiteSheetTripCard from './site-sheet-trip-card.jsx';
+import TripCardBioPunch from './trip-card-biopunch.jsx';
 import {canonicalSiteName} from '../shared/site-location.mjs';
 import {OPERATIONAL_START,monthStartDate} from '../shared/operational-start.mjs';
 import './manpower-reports.css';
 
-const views=[['manpower','Manpower by Category'],['manpower-reconciliation','Manpower by Category Reconciliation'],['employee','Shift Performance'],['attendance','Shift Attendance Equipment Wise'],['ot','OT & Multiple Duties'],['attendance-batch','Attendance Batch-wise'],['attendance-month','Attendance Month-wise'],['attendance-sheet','Attendance Sheet Mismatch'],['attendance-site-sheet','Site Sheet vs Trip Card']];
+const views=[['manpower','Manpower by Category'],['manpower-reconciliation','Manpower by Category Reconciliation'],['employee','Shift Performance'],['attendance','Shift Attendance Equipment Wise'],['ot','OT & Multiple Duties'],['attendance-batch','Attendance Batch-wise'],['attendance-month','Attendance Month-wise'],['attendance-sheet','Attendance Sheet Mismatch'],['attendance-site-sheet','Site Sheet vs Trip Card'],['attendance-trip-bio','Trip Card vs Bio-punch']];
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const columns=entries=>entries.map(([key,label])=>({key,label:compactLogBookLabel(label),value:r=>r[key]??'—'}));
 const context=[['date','Duty date'],['site','Site'],['shift','Shift']];
@@ -619,7 +620,8 @@ export default function ManpowerReports({session,reportId='manpower',onSelect,Re
  const valid=filters.from>=OPERATIONAL_START&&filters.to>=filters.from&&Date.parse(filters.to)-Date.parse(filters.from)<=30*86400000;
  // Attendance Sheet Mismatch (src/attendance-sheet-check.jsx) takes its dates from the uploaded sheet and reads for itself.
  // Two upload tabs that read no saved report: Attendance Sheet Mismatch and Site Sheet vs Trip Card (owner, 23 Nov 2026).
- const siteSheet=reportId==='attendance-site-sheet',sheetCheck=reportId==='attendance-sheet'||siteSheet;
+ // Trip Card vs Bio-punch (owner, 24 Nov 2026) reads for itself too.
+ const siteSheet=reportId==='attendance-site-sheet',tripBio=reportId==='attendance-trip-bio',sheetCheck=reportId==='attendance-sheet'||siteSheet||tripBio;
  useEffect(()=>{
   const controller=new AbortController();setError('');setData(null);if(!valid||sheetCheck){setBusy(false);return ()=>controller.abort();}setBusy(true);
   fetch(source,{headers:{Authorization:`Bearer ${session.token}`},signal:controller.signal}).then(async response=>{const payload=await response.json();if(!response.ok)throw Error(payload.error||'Unable to load saved manpower records.');return payload;}).then(payload=>{if(!controller.signal.aborted){setData({query,payload});if(register)setOptions(current=>({...current,sites:registerSites(payload)}));else setOptions(payload.options);}}).catch(e=>{if(!controller.signal.aborted)setError(e.message);}).finally(()=>{if(!controller.signal.aborted)setBusy(false);});
@@ -673,9 +675,9 @@ export default function ManpowerReports({session,reportId='manpower',onSelect,Re
  const selectors=<><label>From<input type="date" min={OPERATIONAL_START} value={filters.from} onChange={e=>set('from',e.target.value)}/></label><label>To<input type="date" min={OPERATIONAL_START} value={filters.to} onChange={e=>set('to',e.target.value)}/></label>{choice('site','Site',(options.sites||[]).filter(isSiteName))}{choice('shift','Shift',(options.shifts||[]).map(code=>({value:code,label:shiftName(code)})).sort((x,y)=>compareShiftLabels(x.label,y.label)))}{choice('batch','Saved batch',options.batches)}{choice('employee','Employee',options.employees)}{choice('asset','Door / equipment',options.assets)}<button type="button" onClick={()=>{const date=today();setFilters(f=>({...f,from:date,to:date}));}}>Today</button><button type="button" onClick={()=>setFilters(f=>({...f,site:'',shift:'',batch:'',employee:'',asset:''}))}>Clear selections</button></>;
  // Attendance Sheet Mismatch: the same heading and tabs, then its own upload; no date or site selectors of this page.
  if(sheetCheck)return <section className="mp-reports" aria-label="Manpower and OT reports">
-  <header className="mp-heading"><div><small>REPORTS / MANPOWER & OT</small><h1>{title}</h1><p>{siteSheet?"The site's own attendance Excel against Pulse-II trip cards, date by shift, both ways; the corrections needed come back as an Excel.":"The site's own attendance Excel against Pulse-II; the corrections needed come back as an Excel."}</p></div></header>
+  <header className="mp-heading"><div><small>REPORTS / MANPOWER & OT</small><h1>{title}</h1><p>{tripBio?"Trip cards against the biometric punches Pulse-II holds: OK cards counted, only the ones that need attention listed; the summary comes back as an Excel.":siteSheet?"The site's own attendance Excel against Pulse-II trip cards, date by shift, both ways; the corrections needed come back as an Excel.":"The site's own attendance Excel against Pulse-II; the corrections needed come back as an Excel."}</p></div></header>
   <nav className="mp-tabs" aria-label="Manpower report views">{views.map(([id,label])=><button key={id} type="button" aria-current={reportId===id?'page':undefined} onClick={()=>onSelect(id)}>{label}</button>)}</nav>
-  {siteSheet?<SiteSheetTripCard session={session} ReportSection={ReportSection}/>:<AttendanceSheetCheck session={session}/>}
+  {tripBio?<TripCardBioPunch session={session} ReportSection={ReportSection}/>:siteSheet?<SiteSheetTripCard session={session} ReportSection={ReportSection}/>:<AttendanceSheetCheck session={session}/>}
  </section>;
  // On the dashboard the heading and the selectors share one row; the list for the MIS team and the rules stay on the Reports page.
  return <section className="mp-reports" aria-label="Manpower and OT reports">

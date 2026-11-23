@@ -1,0 +1,33 @@
+/* Trip card attendance, card by card (src/trip-card-verdict.jsx): the filter bar and the OK / needs attention tiles. */
+.tcv-filters{display:flex;flex-direction:column;gap:12px;padding:16px;border:1px solid #ddd1ea;border-radius:12px;background:var(--card,#fff)}
+.tcv-tabs{display:flex;flex-wrap:wrap;gap:8px}
+.tcv-tabs button{display:inline-flex;align-items:center;gap:8px;padding:8px 16px;border:1px solid #c7b5dd;border-radius:10px;background:#fff;color:#2a1d40;font:inherit;font-weight:700;cursor:pointer}
+.tcv-tabs button[aria-selected="true"]{background:#5b2d91;color:#fff;border-color:#5b2d91}
+.tcv-tabs button small{padding:1px 8px;border-radius:999px;background:#efe7f8;color:#3d2a5c;font-size:12px}
+.tcv-tabs button[aria-selected="true"] small{background:rgba(255,255,255,.22);color:#fff}
+.tcv-tabs button:disabled{opacity:.6;cursor:default}
+.tcv-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(190px,100%),1fr));gap:12px;align-items:end}
+.tcv-fields label{display:flex;flex-direction:column;gap:5px;font-weight:600;font-size:14px;min-width:0}
+.tcv-fields input,.tcv-fields select{width:100%;padding:9px 10px;border:1px solid #c7b5dd;border-radius:8px;background:var(--card,#fff);color:inherit;font:inherit;font-weight:400}
+.tcv-download{justify-self:start}
+.tcv{display:flex;flex-direction:column;gap:12px;padding:16px;border:1px solid #ddd1ea;border-radius:12px;background:var(--card,#fff)}
+.tcv h2{margin:0;font-size:16px}
+.tcv-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(200px,100%),1fr));gap:12px}
+.tcv-tile{display:grid;grid-template-columns:auto 1fr;grid-template-rows:auto auto auto;column-gap:10px;align-items:center;padding:14px 16px;border:2px solid transparent;border-radius:12px;text-align:left;font:inherit;color:inherit}
+.tcv-tile svg{grid-row:1/4}
+.tcv-tile b{font-size:28px;line-height:1.1}
+.tcv-tile span{font-weight:700}
+.tcv-tile small{color:#555;font-size:12px}
+button.tcv-tile{cursor:pointer}
+.tcv-tile.ok{background:#e9f8ef;border-color:#9fd8b4;color:#14532d}
+.tcv-tile.bad{background:#fff1e6;border-color:#f3b27a;color:#7c2d12}
+.tcv-tile.all{background:#f5f1fb;border-color:#ddd1ea;color:#2a1d40;grid-template-columns:1fr}
+.tcv-tile.all b,.tcv-tile.all span,.tcv-tile.all small{grid-column:1}
+.tcv-tile[aria-pressed="true"]{outline:3px solid #2a1d40;outline-offset:1px}
+.tcv-sources{display:flex;flex-wrap:wrap;gap:6px 18px;margin:0;font-size:14px;color:#3d2a5c}
+.tcv-sources b{margin-left:4px}
+.tcv tr.tcv-row-bad td{background:#fff7f0}
+.tcv-allok{display:flex;align-items:center;gap:8px;margin:0;padding:12px;border-radius:10px;background:#e9f8ef;color:#14532d;font-weight:600}
+.tcv-check{justify-self:start}
+.ssc-page tr.tcb-row-ok td{background:#eefaf2}
+.ssc-page tr.tcb-row-bad td{background:#fff5ec}

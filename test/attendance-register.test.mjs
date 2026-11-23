@@ -94,7 +94,7 @@ test('the two tabs are listed under Manpower & OT and routed to the manpower rep
   assert.deepEqual(operationReports.find(r=>r.id===id),{id,title,group:'Manpower & OT'});
  }
  const route=fs.readFileSync(new URL('../src/operations-reports.jsx',import.meta.url),'utf8');
- assert.match(route,/'attendance-batch','attendance-month','attendance-sheet','attendance-site-sheet'\]\.includes\(props\.reportId\)\)return <ManpowerReports/);
+ assert.match(route,/'attendance-batch','attendance-month','attendance-sheet','attendance-site-sheet','attendance-trip-bio'\]\.includes\(props\.reportId\)\)return <ManpowerReports/);
  const screen=fs.readFileSync(new URL('../src/manpower-reports.jsx',import.meta.url),'utf8');
  assert.match(screen,/register\?\{from:filters\.from,to:filters\.to,view:'attendance'\}/,'the register reads every shift and site');
  assert.match(screen,/register\?'\/api\/reports\/manpower\/attendance\?'/,'through its own lighter read');

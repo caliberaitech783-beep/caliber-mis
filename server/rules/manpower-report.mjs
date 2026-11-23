@@ -66,6 +66,13 @@ const meter=(data,kind)=>{const a=number(data['opening'+kind]),b=number(data['cl
 // The three log books a duty can be saved in, in the order they are shown.
 export const LOG_BOOKS=[['vehicle','VLB'],['equipment','ELB'],['lmv','LMV']];
 const logBookCode=kind=>LOG_BOOKS.find(([id])=>id===kind)?.[1]||'ELB';
+// Site Sheet vs Trip Card and Trip Card vs Bio-punch (owner, 24 Nov 2026): how a duty came into Pulse-II. A card read from
+// a scan carries its scan card id, a card typed in by hand has none, and a duty with no card is a zero-trip entry.
+export const cardSource=cards=>{
+ if(!cards.length)return 'zero-trip';
+ const scanned=cards.some(c=>c.data?.scanCardId),manual=cards.some(c=>!c.data?.scanCardId);
+ return scanned&&manual?'scanned+manual':scanned?'scanned':'manual';
+};
 const flagTally=events=>Object.fromEntries(['red','orange','review'].map(severity=>[severity,events.filter(e=>e.severity===severity).length]));
 const activeShiftRow=s=>!s.sourceMissing&&text(s.status).toLowerCase()!=='inactive';
 // The shifts a site runs on a date by the Shift Master; Shift 1 to 3 when the master holds none for it.
@@ -201,6 +208,7 @@ export function buildManpowerReport({records=[],attendance=[],assets=[],employee
   return {id:d.key,date:d.date,shift:d.shift,site:siteName(d.site),siteKey:canonicalSiteName(d.site),employeeKey:d.employeeKey,employeeId:d.employeeId,caliberCode:d.caliberCode,employeeName:d.employeeName,category:d.designation||'Category not in Employee master',
    equipment:equipmentName(main.group),doors:unique(d.cards.map(r=>r.door)).join('; '),makeModel:unique(d.cards.map(makeModelName)).join('; '),logBooks,logBook:logBooks.join(' + '),
    flag:mark?.severity||'normal',flagLabel:mark?unique(mark.reasons).join('; '):'Normal duty',others:others.length?'Also worked '+others.join(', '):'',hours:d.hours,trips:d.trips,km:d.km,books:d.cards.map(r=>r.book).join('; '),
+   source:cardSource(d.cards),batches:unique(d.cards.flatMap(r=>r.batchNames||[])).join('; '),
    ...(hr?{start:d.schedule?.startLabel||'',end:d.schedule?.endLabel||'',scanned:d.cards.some(card=>card.data.scanCardId)}:{})};
  }).sort((x,y)=>x.date.localeCompare(y.date)||x.site.localeCompare(y.site)||x.shift.localeCompare(y.shift)||x.employeeName.localeCompare(y.employeeName));
  const visibleExceptions=exceptions.filter(e=>rowMatches(e.record,f)).map(({record,...e})=>({...e,site:siteName(e.site),siteKey:canonicalSiteName(e.site),logBook:logBookCode(record.kind)}));
@@ -261,7 +269,7 @@ export function buildManpowerReport({records=[],attendance=[],assets=[],employee
     actual:line===main,actualLabel:line===main?'Yes':'No — second machine',
     flag:mark?.severity||(zeroTrips?'zero':'normal'),flagLabel:mark?unique(mark.reasons).join('; '):zeroTrips?'BLUE — Present with 0 trips':'Normal duty',
     note:[others.length?'Also worked '+others.join(', '):'',machines].filter(Boolean).join(' · '),reason,remarks,
-    ...(hr?{logBooks:unique(line.list.filter(s=>s.card).map(s=>logBookCode(s.kind)))}:{})};
+    logBooks:unique(line.list.filter(s=>s.card).map(s=>logBookCode(s.kind))),source:cardSource(line.list.filter(s=>s.card)),batches:unique(line.list.flatMap(s=>s.batchNames||[])).join('; ')};
   });
  }).sort((a,b)=>a.date.localeCompare(b.date)||a.site.localeCompare(b.site)||a.shift.localeCompare(b.shift)||a.employeeName.localeCompare(b.employeeName)||Number(b.actual)-Number(a.actual));
  // Every known site is listed, including those with no flagged driver, so an
