@@ -182,9 +182,10 @@ const shiftLetter=code=>({S1:'A',S2:'B',S3:'C',D:'Day',N:'Night'})[code]||text(c
 const joined=(list,field)=>[...new Set(list.map(l=>text(l[field])).filter(Boolean))].join('; ');
 const siteOfKey=key=>canonicalSiteName(String(key).slice(0,String(key).lastIndexOf('|')));
 // logBooks and batches: the log book tab (VLB / ELB / LMV) and batch of Site Sheet vs Trip Card filter on them.
-const listOf=value=>(Array.isArray(value)?value:text(value).split(/s*[;+]s*/)).map(text).filter(Boolean);
+// Log books are joined "VLB + ELB", batches "A; B" (a batch name may itself hold a "+").
+const listOf=(value,by=/\s*[;+]\s*/)=>(Array.isArray(value)?value:text(value).split(by)).map(text).filter(Boolean);
 const dutyNote=l=>({shift:shiftLetter(l.shift),books:text(l.books)||text(l.logBook),doors:text(l.doors),site:text(l.site),
- logBooks:listOf(l.logBooks?.length?l.logBooks:l.logBook),batches:listOf(l.batches)});
+ logBooks:listOf(l.logBooks?.length?l.logBooks:l.logBook),batches:listOf(l.batches,/\s*;\s*/)});
 
 // sheet:      parseAttendanceSheet's result.
 // site:       the site chosen on the screen.

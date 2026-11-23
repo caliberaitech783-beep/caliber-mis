@@ -46,7 +46,8 @@ const ADVICE={
 
 const text=value=>value===null||value===undefined?'':String(value).trim();
 const uniq=list=>[...new Set(list.map(text).filter(Boolean))];
-const split=value=>Array.isArray(value)?uniq(value):uniq(text(value).split(/\s*[;+]\s*/));
+// Log books are joined "VLB + ELB"; batches, card numbers and doors "A; B" (a batch name may itself hold a "+").
+const split=(value,by=/\s*;\s*/)=>Array.isArray(value)?uniq(value):uniq(text(value).split(by));
 const SHIFT_ORDER=['S1','S2','S3','A','B','C','D','N','Day','Night'];
 const shiftRank=shift=>{const at=SHIFT_ORDER.indexOf(shift);return at<0?50:at;};
 const shiftWord=code=>({S1:'Shift A',S2:'Shift B',S3:'Shift C',A:'Shift A',B:'Shift B',C:'Shift C',D:'Day',N:'Night'})[code]||text(code);
@@ -68,7 +69,7 @@ export function cardAttendances(lines,{site,from='',to=''}={}){
   const card=held.get(key)||held.set(key,{key,number,date:l.date,shift:l.shift,site:text(l.site),employeeId:'',name:'',logBooks:[],sources:[],batches:[],books:[],doors:[],equipment:[],trips:null}).get(key);
   card.employeeId||=text(l.employeeId)||text(l.caliberCode);
   card.name||=text(l.employeeName);
-  card.logBooks.push(...split(l.logBooks?.length?l.logBooks:l.logBook));
+  card.logBooks.push(...split(l.logBooks?.length?l.logBooks:l.logBook,/\s*[;+]\s*/));
   card.sources.push(text(l.source)||(l.books?'manual':'zero-trip'));
   card.batches.push(...split(l.batches));card.books.push(...split(l.books));card.doors.push(...split(l.doors));card.equipment.push(...split(l.equipment));
   if(Number.isFinite(Number(l.trips))&&l.trips!==null&&l.trips!=='')card.trips=(card.trips||0)+Number(l.trips);

@@ -115,3 +115,19 @@ test('Trip Card vs Bio-punch is the tab after Site Sheet vs Trip Card, with log 
  assert.match(read('../src/manpower-reports.jsx'),/tripBio\?<TripCardBioPunch session=\{session\} ReportSection=\{ReportSection\}\/>/);
  for(const page of ['../src/site-sheet-trip-card.jsx','../src/trip-card-biopunch.jsx'])assert.match(read(page),/<TripCardFilters /);
 });
+
+test('the attendance read puts the batch names on its cards (the stored days keep none)',async()=>{
+ const {withCardBatches}=await import('../server/routes/manpower-report-api.mjs');
+ const asked=[];
+ const client={query:async(sql,params)=>{asked.push(params[0]);return {rows:[{id:'11',batches:[{id:5,name:'GP2/VLB/01-11/A',closed_at:'x'}]}]};}};
+ const rows=await withCardBatches(client,[{id:11,batches:[]},{id:12,batches:[]}]);
+ assert.deepEqual(asked,[['11','12']]);
+ assert.deepEqual(rows.map(r=>r.batches.map(b=>b.name)),[['GP2/VLB/01-11/A'],[]]);
+ assert.deepEqual(await withCardBatches({query:()=>{throw Error('no read');}},[]),[]);
+});
+
+test('a batch name keeps its "+" and its letters; log books split on "+"',()=>{
+ const cards=cardAttendances([{date:iso(1),shift:'S1',site:SITE,siteKey:KEY,caliberCode:'CMLL903001',logBook:'VLB + ELB',batches:'GP2 Shifts A+B; Spares',books:'TC1'}],{site:SITE});
+ assert.deepEqual(cards[0].logBooks,['VLB','ELB']);
+ assert.deepEqual(cards[0].batches,['GP2 Shifts A+B','Spares']);
+});

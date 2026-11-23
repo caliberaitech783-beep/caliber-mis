@@ -31,6 +31,18 @@ const DUTY_FIELDS=['id','date','shift','site','siteKey','employeeKey','employeeI
 // The log book, how the duty came in (scanned, manual, zero-trip entry) and its batches: Site Sheet vs Trip Card and
 // Trip Card vs Bio-punch filter and count by them.
 const CARD_FIELDS=['logBooks','source','batches'];
+// The attendance read takes its cards from the stored locked days (attendance-day-store), which keep no batch. The batch
+// names are read for those cards, in the same snapshot, so Site Sheet vs Trip Card and Trip Card vs Bio-punch can offer
+// a batch. The HR feed has no batch and skips this read.
+export async function withCardBatches(client,rows){
+ const ids=[...new Set(rows.map(r=>String(r.id)))];
+ if(!ids.length)return rows;
+ const {rows:links}=await client.query(`SELECT e.logbook_id::text AS id,jsonb_agg(jsonb_build_object('id',b.id,'name',b.name,'closed_at',b.closed_at) ORDER BY b.id) AS batches
+  FROM mis_vlb_batch_entries e JOIN mis_vlb_batches b ON b.id=e.batch_id
+  WHERE e.logbook_id::text=ANY($1::text[]) AND b.archived_at IS NULL AND b.deleted_at IS NULL GROUP BY e.logbook_id`,[ids]);
+ const of=new Map(links.map(l=>[l.id,l.batches]));
+ return rows.map(r=>of.has(String(r.id))?{...r,batches:of.get(String(r.id))}:r);
+}
 const PRESENCE_FIELDS=['date','shift','site','siteKey','employeeKey','employeeId','caliberCode','employeeName','equipment','doors','makeModel','flag','flagLabel','trips','actual'];
 const pick=(row,fields)=>Object.fromEntries(fields.map(k=>[k,row[k]]));
 const MASTER_NAMES=['Equipment master','Shift Master','Employee master','ERP Employee master','C-Dir Employee master','Users & employees'];
@@ -159,7 +171,8 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
    // neither reaches the card read limit nor sits in memory at once. Every week sees the whole range's batches,
    // so a site is listed in each week even when it saved nothing in that week.
    for(const window of attendanceWindows(filters.from,filters.to)){
-    const range=manpowerFilters(window),rows=(await lockedDayCards(client,{from:range.contextFrom,to:range.contextTo},{sites,locked,signatures,useStore:useDayStore})).rows.filter(r=>siteAllowed(req.logBookScope,r.site));
+    const range=manpowerFilters(window),read=(await lockedDayCards(client,{from:range.contextFrom,to:range.contextTo},{sites,locked,signatures,useStore:useDayStore})).rows.filter(r=>siteAllowed(req.logBookScope,r.site));
+    const rows=hr?read:await withCardBatches(client,read);
     const vehicles=linkVlbTripHandovers(rows.filter(r=>r.book_type==='vehicle'));
     parts.push({window,report:buildManpowerReport({records:[...vehicles,...rows.filter(r=>r.book_type!=='vehicle')],attendance:present.filter(r=>r.date>=window.from&&r.date<=window.to),...masters,batches,filters:range,parts:hr?'hr-attendance':'attendance',lockedOnly:true})});
    }
