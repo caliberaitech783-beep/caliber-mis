@@ -159,18 +159,29 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
  const employee=options?.employees.find(row=>row.id===String(form.employeeId));
 
  const asset=options?.assets.find(row=>row.id===String(form.assetId));
- const hmrRequired=!(lmv||vehicle&&asset?.kmrOnly);
+ // Water Tanker, Diesel Tanker, Service Van, Shift Van, Bus and LMV carry no trips: no trip rows, HMR and KMR both
+ // required (owner, 24 Nov 2026; shared/equipment-kind.mjs isNoTripVehicle).
+ const noTrips=vehicle&&Boolean(asset?.noTrips||lmv);
+ const hmrRequired=!lmv||noTrips;
  const transferNote=transferPeriodLabel(asset,form,selectedShift);
 
  const datedAssets=(options?.assets||[]).map(asset=>assetForSiteOnDate(asset,form.location,form.bookDate));
  const tripEquipmentOptions=datedAssets.filter(asset=>asset.kind==='equipment'&&form.location&&canonicalSiteName(asset.site)===canonicalSiteName(form.location));
  const tripEquipmentValues=new Set(tripEquipmentOptions.map(asset=>machineLabel(asset.door||asset.name)));
- const equipmentValidation=vehicle?validateTripEquipment({...form,trips:form.trips.filter(row=>!isEmptyTripPlaceholder(row))},datedAssets):{draft:form,issues:{}};
+ const equipmentValidation=vehicle?validateTripEquipment({...form,trips:noTrips?[]:form.trips.filter(row=>!isEmptyTripPlaceholder(row))},datedAssets):{draft:form,issues:{}};
  const replacedKmr=vehicle&&kmrMeterReplaced(form,kind);
  const meterIssues=vehicle?shiftMeterIssues(form,kind):{};
  const kmr=replacedKmr?delta(0,form.replacementKmr??''):delta(form.openingKmr,form.closingKmr),hmr=delta(form.openingHmr,form.closingHmr);
 
  useEffect(()=>{const controller=new AbortController();setHours(null);setHoursError('');if(!form.bookDate||!form.assetId||!form.shiftId||!form.location){setHoursLoading(false);return;}setHoursLoading(true);const timer=setTimeout(()=>{api('/api/log-books/hours',{method:'POST',signal:controller.signal,body:JSON.stringify({bookDate:form.bookDate,assetId:form.assetId,shiftId:form.shiftId,location:form.location,shiftHours:form.shiftHours||CARD_SHIFTS[form.cardShift]?.hours||8,manualEntry:true,manualShift:form.manualShift,runningHours:hmr})}).then(value=>{if(!controller.signal.aborted)setHours(value)}).catch(e=>{if(!controller.signal.aborted)setHoursError(e.message)}).finally(()=>{if(!controller.signal.aborted)setHoursLoading(false)});},500);return ()=>{controller.abort();clearTimeout(timer)};},[vehicle,form.bookDate,form.assetId,form.shiftId,form.location,form.shiftHours,form.manualShift,hmr,session.token,hoursRefresh]);
+
+ // A card entered by hand with 0 trips shows the driver's biometric punch for its date (owner, 24 Nov 2026).
+ const zeroTripCard=vehicle&&!form.scanCardId&&!equipmentValidation.draft.trips.some(row=>Number(row.tripCount)>0);
+ const [attendance,setAttendance]=useState(null);
+ useEffect(()=>{setAttendance(null);if(!zeroTripCard||!editing||!form.employeeId||!form.bookDate||!form.location)return;const controller=new AbortController();setAttendance({status:'loading'});
+  const timer=setTimeout(()=>{api('/api/log-books/attendance-check',{method:'POST',signal:controller.signal,body:JSON.stringify({location:form.location,bookDate:form.bookDate,employeeId:form.employeeId,cardShift:form.cardShift||''})})
+   .then(value=>{if(!controller.signal.aborted)setAttendance(value)}).catch(e=>{if(!controller.signal.aborted)setAttendance({status:'error',message:e.message})});},400);
+  return ()=>{clearTimeout(timer);controller.abort();};},[zeroTripCard,editing,form.employeeId,form.bookDate,form.location,form.cardShift]);
 
  const entryLocation=(lmv&&options?.lmvEntrySite)||options?.accountLocation||'';
  useEffect(()=>{if(saved)return;if(vlbBatch){setForm(current=>({...current,...vlbEntryFields(vlbBatch,options)}));return;}setForm(current=>current.location===entryLocation||lmv&&options?.canSelectSite&&current.location?current:{...current,location:entryLocation,assetId:'',employeeId:'',shiftId:'',workOrderId:'',manualBreakdownHours:''});},[vehicle,saved,options,vlbBatch?.id]);
@@ -269,7 +280,15 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
 
      {assetMessage&&<div className="logbook-message logbook-master-help" role="status"><p>{assetMessage}</p><a href="?page=master-sync" target="_blank" rel="noopener noreferrer">Open master sync</a></div>}
      </fieldset>
-     {vehicle&&<section className="logbook-section logbook-vehicle-trips"><div className="logbook-section-title"><h2>Detail · vehicle trips</h2><div className="logbook-trip-actions"><label>With time / Without time<SmartSelect showOverflowValue disabled={!editing||working} aria-label="Trip time entry" value={form.timeMode} onChange={e=>update('timeMode',e.target.value)}><option value="with">With time</option><option value="without">Without time</option></SmartSelect></label><button type="button" data-enter-action="add-trip" onClick={addTrip} disabled={!editing||working||form.trips.length===TRIP_CARD_ROWS||form.trips.length>=300}><Plus size={15}/>Add trip</button><button type="button" data-enter-action="add-trip-continuation" onClick={addTrip} disabled={!editing||working||form.trips.length!==TRIP_CARD_ROWS}><Plus size={15}/>Add 2nd trip card</button></div></div>
+     {noTrips&&<section className="logbook-section logbook-no-trips" aria-label="No trips"><div className="logbook-section-title"><h2>Trips · 0</h2></div><p role="note">{asset?.name||'This vehicle'} carries no trips (Water Tanker, Diesel Tanker, Service Van, Shift Van, Bus and LMV). The card is saved with 0 trips: enter opening and closing HMR and KMR only.</p></section>}
+     {zeroTripCard&&editing&&attendance&&<div className={'logbook-zero-trip-attendance is-'+attendance.status} role="status" aria-label="Biometric attendance">
+      <strong>Biometric attendance · 0 trips</strong>
+      {attendance.status==='loading'&&<span>Checking the driver's punch for {form.bookDate}…</span>}
+      {attendance.status==='present'&&<span>Present: {attendance.punches.map(p=>[p.date!==form.bookDate?p.date:'',p.inTime&&'In '+p.inTime,p.outTime&&'Out '+p.outTime,p.site&&'at '+p.site].filter(Boolean).join(' ')).join('; ')} (CMLL {attendance.code})</span>}
+      {['absent','no-code','error'].includes(attendance.status)&&<span>{attendance.message}</span>}
+      {attendance.machineNote&&<small>{attendance.machineNote}</small>}
+     </div>}
+     {vehicle&&!noTrips&&<section className="logbook-section logbook-vehicle-trips"><div className="logbook-section-title"><h2>Detail · vehicle trips</h2><div className="logbook-trip-actions"><label>With time / Without time<SmartSelect showOverflowValue disabled={!editing||working} aria-label="Trip time entry" value={form.timeMode} onChange={e=>update('timeMode',e.target.value)}><option value="with">With time</option><option value="without">Without time</option></SmartSelect></label><button type="button" data-enter-action="add-trip" onClick={addTrip} disabled={!editing||working||form.trips.length===TRIP_CARD_ROWS||form.trips.length>=300}><Plus size={15}/>Add trip</button><button type="button" data-enter-action="add-trip-continuation" onClick={addTrip} disabled={!editing||working||form.trips.length!==TRIP_CARD_ROWS}><Plus size={15}/>Add 2nd trip card</button></div></div>
 
 
        {hasContinuation&&<div className="logbook-trip-card-tabs" role="group" aria-label="Trip card pages">
