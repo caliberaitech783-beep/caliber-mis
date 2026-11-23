@@ -1,5 +1,7 @@
-// Caliber ID Re-check (owner, 22 Nov 2026): every saved card since 1 Nov judged again against Employee Master, the
-// site names the right driver for each listed card, and one correction run puts those drivers on their cards.
+// Caliber ID Re-check (owner, 22 Nov 2026): every saved card since 1 Nov judged again against Employee Master, and
+// the site names the right driver for each listed card. Submit on a line corrects that card at once and the line
+// leaves the list (owner, 23 Nov 2026: "build one step submit"; before that a choice waited for a separate
+// "Run the corrections" at the top of the page, which the sites could not find). Undo puts the earlier person back.
 // The rule is shared/caliber-recheck.mjs; the server is server/routes/caliber-recheck.mjs.
 //
 // Drawn in the owner's report steps: Step 1 one line per site, Step 2 that site date by shift, Step 3 the cards of the
@@ -57,20 +59,40 @@ export default function CaliberRecheck({session,ReportSection}){
  const loadConfirmed=async()=>{try{setConfirmedList((await api('/api/caliber-recheck/confirmed')).confirmed);}catch(e){setError(e.message);}};
  // A card that leaves the list: said above Step 3, where its line was. Undo is offered for a confirmation.
  const settled=(row,confirmed)=>{
-  setKept({id:row.id,date:row.date,undo:confirmed,text:confirmed?'Card '+row.bookNo+' confirmed right: '+row.savedId+' · '+row.savedName+' stays on it. The card has left the list.':'Card '+row.bookNo+' stands now, so it has left the list.'});
+  setKept({id:row.id,date:row.date,undo:confirmed?'confirm':'',text:confirmed?'Card '+row.bookNo+' confirmed right: '+row.savedId+' · '+row.savedName+' stays on it. The card has left the list.':'Card '+row.bookNo+' stands now, so it has left the list.'});
   if(confirmedList)void loadConfirmed();
  };
- // Submit on a card's line. A refusal is thrown back to the Fetch box, which says it on that line.
- // The saved driver's own number is the same answer as "This card is right".
+ // A card Submit has corrected: its line leaves the list, so what changed is said above Step 3, with Undo. A card
+ // that is still listed afterwards (its number is on two people of the site) keeps its line and is told there.
+ const corrected=(row,answer)=>{
+  const made=answer.correction,now=made.to+' · '+made.toName,was=[made.from,made.fromName].filter(Boolean).join(' · ');
+  if(answer.still)setSaid({id:row.id,text:'Corrected: this card is now under '+now+'. It is still listed: '+answer.still});
+  else setKept({id:row.id,date:row.date,undo:'correction',correctionId:made.id,text:'Card '+row.bookNo+' corrected: now under '+now+(was?' (was under '+was+')':'')+'. The card has left the list.'});
+  if(record)void loadRecord();
+ };
+ // Submit on a card's line corrects the card at once. A refusal is thrown back to the Fetch box, which says it on
+ // that line. The saved driver's own number is the same answer as "This card is right".
  const choose=async(row,employee)=>{
-  setError('');setNotice('');setSaid(null);setKept(null);setAsking('');
+  setError('');setNotice('');setSaid(null);setAsking('');
   const answer=await api('/api/caliber-recheck/pick',{method:'POST',body:JSON.stringify({logbookId:row.id,employeeId:employee.id})});
+  // The line of the card done before, with its Undo, stays through a refusal; a Submit that goes through replaces it.
+  setKept(null);
   if(answer.same&&answer.confirmed)settled(row,true);
-  else{
-   setNotice(answer.same?employee.name+' is the person already on card '+row.bookNo+'. Nothing to correct on it.':employee.name+' · '+employee.caliberId+' chosen for card '+row.bookNo+'. The card changes when the corrections are run.');
-   setSaid({id:row.id,text:answer.same?employee.name+' is the person already on this card. Nothing to correct on it.':'Submitted. The card changes when the corrections are run.'});
-  }
+  else if(answer.corrected)corrected(row,answer);
+  else setSaid({id:row.id,text:employee.name+' is the person already on this card. Nothing to correct on it.'});
   await recheck([row.date],false);
+ };
+ // Undo of a correction: the earlier person goes back on the card, which is judged afresh and listed again. What it
+ // did is said on the card's own line, back in the list.
+ const uncorrect=async(correctionId,date,logbookId)=>{
+  setError('');setNotice('');setSaid(null);setKept(null);
+  try{
+   const answer=await api('/api/caliber-recheck/correction/'+correctionId,{method:'DELETE'});
+   const text=answer.removed?'Taken back: card '+answer.card.bookNo+' is under '+([answer.card.employeeId,answer.card.name].filter(Boolean).join(' · ')||'nobody')+' again.':'This correction was already taken back.';
+   if(record)await loadRecord();
+   await recheck([date],false);
+   setNotice(text);setSaid({id:logbookId,text});
+  }catch(e){setError(e.message);}
  };
  // "This card is right": the paper card shows the driver the card is saved under. A refusal is said on the line.
  const confirmRight=async row=>{
@@ -109,7 +131,9 @@ export default function CaliberRecheck({session,ReportSection}){
  const siteCards=site?cardsOfSite(held,site):[],siteLabel=manySites?'All sites':sites.rows.find(row=>row.key===site)?.site||'';
  const slotRows=recheckSlotRows(siteCards,{manySites});
  const grid=dateShiftGrid(slotRows,{sumKeys:['count','picked','open'],lineOf:row=>manySites?siteDateLine(row):dateLine(row)});
- const dayColumns=[{key:'count',label:'Day cards to check',value:sums=>sums.count},{key:'picked',label:'Driver chosen',value:sums=>sums.picked},{key:'open',label:'Still to choose',value:sums=>sums.open}];
+ // "Driver chosen" and "Still to choose" belong to the choices that waited for a run. Submit corrects at once now, so
+ // these columns, and the run itself, show only while such an earlier choice still waits.
+ const dayColumns=[{key:'count',label:'Day cards to check',value:sums=>sums.count},...(picked>0?[{key:'picked',label:'Chosen earlier, waiting',value:sums=>sums.picked},{key:'open',label:'Still to choose',value:sums=>sums.open}]:[])];
  const gridExport=dateShiftExport(grid,{count:row=>row.count,countLabel:'cards to check',dayColumns,shiftLabel:shiftChoiceLabel});
  const cards=slot?cardsOfSlot(siteCards,slot):[];
  const sameSlot=row=>slot&&slot.key!==EVERY&&slot.date===row.date&&slot.shift===row.shift&&(!manySites||slot.siteKey===row.siteKey);
@@ -119,13 +143,13 @@ export default function CaliberRecheck({session,ReportSection}){
  const back=crumbs.length>1?crumbs.at(-2)[1]:null;
  const level=!site?1:!slot?2:3;
 
- const siteColumns=[{key:'site',label:'Site',value:row=>row.site},{key:'cards',label:'Cards checked',value:row=>row.cards},{key:'confirmed',label:'Confirmed right',value:row=>row.confirmed},{key:'listed',label:'Cards to check',value:row=>row.listed},
-  {key:'picked',label:'Driver chosen',value:row=>row.picked},{key:'open',label:'Still to choose',value:row=>row.open}];
+ const siteColumns=[{key:'site',label:'Site',value:row=>row.site},{key:'cards',label:'Cards checked',value:row=>row.cards},{key:'confirmed',label:'Confirmed right',value:row=>row.confirmed},{key:'corrected',label:'Corrected',value:row=>row.corrected},{key:'listed',label:'Cards to check',value:row=>row.listed},
+  ...(picked>0?[{key:'picked',label:'Chosen earlier, waiting',value:row=>row.picked},{key:'open',label:'Still to choose',value:row=>row.open}]:[])];
  const right=row=><div className="cr-right">
-  {row.pick&&<p className="cr-chosen"><strong>{row.pick.employeeId} · {row.pick.name}</strong><small>chosen by {row.pick.by}</small>{row.pick.note&&<small className="cr-note" role="alert">Not corrected in the last run: {row.pick.note}</small>}
+  {row.pick&&<p className="cr-chosen"><strong>{row.pick.employeeId} · {row.pick.name}</strong><small>chosen earlier by {row.pick.by}, not on the card yet</small>{row.pick.note&&<small className="cr-note" role="alert">Not corrected in the last run: {row.pick.note}</small>}
    <button type="button" onClick={()=>unchoose(row)}>Remove</button></p>}
   {said?.id===row.id&&<small className={'cr-said'+(said.bad?' cr-said-bad':'')} role={said.bad?'alert':'status'}>{said.text}</small>}
-  <EmployeeIdLookup key={row.id+'|'+(row.pick?.id||'')} submitLabel="Submit" scanMode token={session.token} location={row.site} bookDate={row.date} role={row.kind==='equipment'?'operator':'driver'} card={{door:row.door,cardNo:row.cardNo,book:row.bookNo}} onResolved={employee=>choose(row,employee)}/>
+  <EmployeeIdLookup key={row.id+'|'+(row.pick?.id||'')} submitLabel="Submit" scanMode submitHint="to put this person on the card" token={session.token} location={row.site} bookDate={row.date} role={row.kind==='equipment'?'operator':'driver'} card={{door:row.door,cardNo:row.cardNo,book:row.bookNo}} onResolved={employee=>choose(row,employee)}/>
   {row.canConfirm&&(asking===row.id
    ?<div className="cr-keep-ask" role="group" aria-label="Confirm that this card is right"><small>Does the paper card show {row.savedId} · {row.savedName}?</small>
      <button type="button" className="cr-keep-yes" disabled={keeping} onClick={()=>confirmRight(row)}>{keeping?'Saving…':'Yes, '+(row.savedName||row.savedId)+(row.kind==='equipment'?' operated this machine':' drove this vehicle')}</button>
@@ -142,7 +166,7 @@ export default function CaliberRecheck({session,ReportSection}){
  return <section className="caliber-recheck">
   <header className="cr-head">
    <div><h1>Caliber ID Re-check</h1>
-    <p>Every saved card is judged again against Employee Master, at its own site and date. A card is listed when its driver or operator is not a working driver or operator of that site on that date. Type the right number from the paper card and press Submit on that line; the cards change together when the corrections are run.</p></div>
+    <p>Every saved card is judged again against Employee Master, at its own site and date. A card is listed when its driver or operator is not a working driver or operator of that site on that date. Type the right number from the paper card and press Submit on that line: the card is corrected at once and leaves the list.</p></div>
    <form className="cr-period" onSubmit={event=>{event.preventDefault();void recheck();}}>
     <label>From<input type="date" min={OPERATIONAL_START} max={to} value={from} disabled={busy} onChange={event=>setFrom(event.target.value)}/></label>
     <label>To<input type="date" min={from} max={todayInIndia()} value={to} disabled={busy} onChange={event=>setTo(event.target.value)}/></label>
@@ -154,13 +178,13 @@ export default function CaliberRecheck({session,ReportSection}){
   {notice&&<p className="cr-notice" role="status">{notice}</p>}
   {refused.length>0&&<ul className="cr-refused">{refused.map((row,i)=><li key={i}><strong>{row.bookNo}</strong>: {row.why}</li>)}</ul>}
   <div className="cr-summary" aria-label="Summary">
-   <span><strong>{count(held.cards)}</strong> cards checked</span><span><strong>{count(sites.total.listed)}</strong> to check</span><span><strong>{count(held.confirmed)}</strong> confirmed right</span><span><strong>{count(picked)}</strong> with the right driver chosen</span>
+   <span><strong>{count(held.cards)}</strong> cards checked</span><span><strong>{count(sites.total.listed)}</strong> to check</span><span><strong>{count(held.confirmed)}</strong> confirmed right</span><span><strong>{count(held.corrected)}</strong> corrected</span>{picked>0&&<span><strong>{count(picked)}</strong> chosen earlier, waiting for the run</span>}
    {reasonCounts(held.listed).map(row=><span key={row.reason} className="cr-reason">{row.label}: <strong>{count(row.count)}</strong></span>)}
   </div>
   <div className="cr-actions">
    <button type="button" disabled={busy||!held.listed.length} onClick={()=>downloadBlob(buildXlsxSheetsWorkbook('Caliber ID re-check: cards to check',recheckListSheets(held.listed)),`Caliber-ID-re-check-${from}-to-${to}.xlsx`,{title:'Caliber ID re-check: cards to check'})}>Download the list (Excel)</button>
-   {held.canApply&&!confirming&&<button type="button" className="cr-run" disabled={busy||running||!picked} onClick={()=>setConfirming(true)}>Run the corrections ({count(picked)})</button>}
-   {held.canApply&&confirming&&<span className="cr-confirm">This puts the chosen driver on {count(picked)} saved card{picked===1?'':'s'}, in closed and locked batches too. Each card keeps who was on it before.
+   {held.canApply&&picked>0&&!confirming&&<button type="button" className="cr-run" disabled={busy||running} onClick={()=>setConfirming(true)}>Run the corrections ({count(picked)})</button>}
+   {held.canApply&&picked>0&&confirming&&<span className="cr-confirm">This puts the chosen driver on {count(picked)} saved card{picked===1?'':'s'}, in closed and locked batches too. Each card keeps who was on it before.
     <button type="button" className="cr-run" disabled={running} onClick={apply}>{running?'Correcting…':'Yes, correct '+count(picked)+' card'+(picked===1?'':'s')+' now'}</button><button type="button" disabled={running} onClick={()=>setConfirming(false)}>Not now</button></span>}
   </div>
 
@@ -175,18 +199,18 @@ export default function CaliberRecheck({session,ReportSection}){
    <DateShiftGrid grid={grid} count={row=>row.count} countLabel="cards to check" dayColumns={dayColumns} shiftLabel={shiftChoiceLabel} onOpen={row=>openSlot(row)} onOpenAll={()=>openSlot(null)}
     isPicked={sameSlot} allPicked={slot?.key===EVERY} ariaLabel="Cards to check by date and shift" emptyMessage="No card to check at this site in these dates."/>
   </ReportSection>}
-  {level>=3&&kept&&<p className="cr-notice cr-kept" role="status"><span>{kept.text}</span>{kept.undo&&<button type="button" onClick={()=>unconfirm(kept.id,kept.date)}>Undo</button>}</p>}
+  {level>=3&&kept&&<p className="cr-notice cr-kept" role="status"><span>{kept.text}</span>{kept.undo&&<button type="button" onClick={()=>kept.undo==='correction'?uncorrect(kept.correctionId,kept.date,kept.id):unconfirm(kept.id,kept.date)}>Undo</button>}</p>}
   {level>=3&&<ReportSection key={'cr-cards-'+site+'|'+slot.key} reportKey="Caliber ID re-check cards" title={'Step 3 · Caliber ID re-check · '+siteLabel+' · '+slot.label} category="caliber-recheck-cards" dataReady={!busy} recordDateFilter={false}
-   description="One line per card. Type the right Employee ID or Caliber ID from the paper card, see the name shown under it and press Submit on that line; a look-alike ID of the site is the likeliest. A line listed for its FORM A box also has This card is right: press it when the paper card shows the saved driver. The card is not changed here: it changes when the corrections are run."
+   description="One line per card. Type the right Employee ID or Caliber ID from the paper card, see the name shown under it and press Submit on that line; a look-alike ID of the site is the likeliest. A line listed for its FORM A box also has This card is right: press it when the paper card shows the saved driver. Submit corrects the card at once and its line leaves the list; Undo, on the line shown above this table, puts the earlier person back."
    rows={cards} columns={cardColumns} rowKey={row=>row.id} rowClassName={row=>row.pick?'cr-picked':''} emptyMessage="No card to check in this date and shift."/>}
 
   <details className="cr-record" onToggle={event=>{if(event.currentTarget.open&&!record)void loadRecord();}}>
    <summary>Corrections done{record?` (${count(record.length)})`:''}</summary>
-   <p>Every card the correction run changed: who it was under, who it is under now, who chose the driver and who ran the correction.</p>
+   <p>Every card that was corrected: who it was under, who it is under now, who corrected it and when. Undo puts the earlier person back on the card, and the card is listed again.</p>
    {record&&!record.length&&<p>No card has been corrected yet.</p>}
    {record&&record.length>0&&<><button type="button" onClick={()=>downloadBlob(buildXlsxSheetsWorkbook('Caliber ID re-check: corrections done',recheckRecordSheets(record)),`Caliber-ID-corrections-${todayInIndia()}.xlsx`,{title:'Caliber ID re-check: corrections done'})}>Download the record (Excel)</button>
-    <div className="cr-record-table"><table><thead><tr>{['Site','Date','Book NO','Why','Was under','Now under','Chosen by','Corrected by','Corrected on'].map(label=><th key={label}>{label}</th>)}</tr></thead>
-     <tbody>{record.map(row=><tr key={row.id}><td>{row.site}</td><td>{dmy(row.date)}</td><td>{row.bookNo}</td><td>{row.reason}</td><td>{row.from} {row.fromName}</td><td>{row.to} {row.toName}</td><td>{row.pickedBy}</td><td>{row.appliedBy}</td><td>{when(row.appliedAt)}</td></tr>)}</tbody></table></div></>}
+    <div className="cr-record-table"><table><thead><tr>{['Site','Date','Book NO','Why','Was under','Now under','Chosen by','Corrected by','Corrected on','Take back'].map(label=><th key={label}>{label}</th>)}</tr></thead>
+     <tbody>{record.map(row=><tr key={row.id}><td>{row.site}</td><td>{dmy(row.date)}</td><td>{row.bookNo}</td><td>{row.reason}</td><td>{row.from} {row.fromName}</td><td>{row.to} {row.toName}</td><td>{row.pickedBy}</td><td>{row.appliedBy}</td><td>{when(row.appliedAt)}</td><td><button type="button" onClick={()=>uncorrect(row.id,row.date,row.logbookId)}>Undo</button></td></tr>)}</tbody></table></div></>}
   </details>
   <details className="cr-record" onToggle={event=>{if(event.currentTarget.open&&!confirmedList)void loadConfirmed();}}>
    <summary>Cards confirmed right{confirmedList?` (${count(confirmedList.length)})`:held.confirmed?` (${count(held.confirmed)})`:''}</summary>

@@ -88,13 +88,15 @@ export function misRequestAllowed(session,req){
  if(/^\/api\/employee-master\/location\/\d{1,18}$/.test(route))return req.method==='PUT';
  if(route.startsWith('/api/employee-master')||route.startsWith('/api/erp-employees'))return allowed('Employee master');
  // The re-check of saved cards against Employee Master. Reading and choosing the right driver follow the page above;
- // the correction run is for MIS administrators only. Listed route by route: anything else under it fails closed.
+ // the run of the choices that still wait is for MIS administrators only. Listed route by route: anything else under
+ // it fails closed.
  if(route==='/api/caliber-recheck'||route.startsWith('/api/caliber-recheck/')){
   if(!allowed('Caliber ID Re-check'))return false;
   if(route==='/api/caliber-recheck'||route==='/api/caliber-recheck/record'||route==='/api/caliber-recheck/confirmed')return read;
-  // Choosing the right driver, and "This card is right" (confirm): the same people, the same sites.
+  // Choosing the right driver (Submit corrects the card at once, owner 23 Nov 2026), "This card is right" (confirm)
+  // and the Undo of a correction: the same people, the same sites.
   if(route==='/api/caliber-recheck/pick'||route==='/api/caliber-recheck/confirm')return req.method==='POST';
-  if(/^\/api\/caliber-recheck\/(?:pick|confirm)\/\d{1,18}$/.test(route))return req.method==='DELETE';
+  if(/^\/api\/caliber-recheck\/(?:pick|confirm|correction)\/\d{1,18}$/.test(route))return req.method==='DELETE';
   if(route==='/api/caliber-recheck/apply')return req.method==='POST'&&isMisAdministrator(session);
   return false;
  }
