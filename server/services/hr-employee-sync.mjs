@@ -26,6 +26,7 @@ import {applyHrMaster,planFor,hrMasterPlanKey} from '../routes/hr-master-import.
 import {employeeMasterOwner} from './employee-master-owner.mjs';
 import {applyEmployeeSiteMove,EMPLOYEE_SITE_MOVE_SCHEMA} from '../routes/employee-site-move.mjs';
 import {employeeSiteOn,sameSite,isBookDate} from '../../shared/employee-site-moves.mjs';
+import {slashedId} from '../../shared/hr-employee-changes.mjs';
 
 export const HR_SYNC_SOURCE='hrpulse.cmll.in';
 export const HR_EMPLOYEE_MASTER='Employee master';
@@ -46,7 +47,9 @@ const text=value=>value===null||value===undefined?'':String(value).trim();
 // HR's lines as the rows of HR's master Excel, so the Excel import's reader takes them as they are.
 export function hrEmployeeSheet(employees){
  if(!Array.isArray(employees))throw fail(502,'HR returned no Employee Master. Nothing was changed.');
- return [SHEET_HEADER,...employees.map(row=>[row.employeeId,row.name,row.region,row.site,row.department,row.designation,row.category,row.status].map(text))];
+ // An ID with a slash between digits ("CMLL6665/1") is written as it is but can never be read as 66651: the sheet
+ // reader then lists the line as "No usable Employee ID" and leaves it out.
+ return [SHEET_HEADER,...employees.map(row=>[slashedId(row.employeeId)?'ID '+text(row.employeeId):row.employeeId,row.name,row.region,row.site,row.department,row.designation,row.category,row.status].map(text))];
 }
 
 // Stops a copy nobody looked at when HR's list would take many people off it at once (a half-loaded HR list).

@@ -13,9 +13,10 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
-import {planHrChanges,samePerson,nameKey,HR_COPY_STOP_LIMIT,HR_CHANGE_EXISTING_FIELDS} from '../shared/hr-employee-changes.mjs';
+import {planHrChanges,samePerson,nameKey,slashedId,HR_COPY_STOP_LIMIT,HR_CHANGE_EXISTING_FIELDS} from '../shared/hr-employee-changes.mjs';
+import {readHrMasterSheet} from '../shared/hr-employee-master.mjs';
 import {createHrEmployeeMinuteCopy,EXISTING_FOR_SQL,HR_COPY_STATE_KEY,HR_COPY_SILENT_MINUTES,istDate} from '../server/services/hr-employee-minute-copy.mjs';
-import {createHrEmployeeSync} from '../server/services/hr-employee-sync.mjs';
+import {createHrEmployeeSync,hrEmployeeSheet} from '../server/services/hr-employee-sync.mjs';
 import {registerMasterSync,HR_MINUTE_ACTOR} from '../server/routes/master-sync.mjs';
 import {automationForEventKey} from '../server/services/automation-switches.mjs';
 import {AUTOMATIONS} from '../server/rules/automation-catalogue.mjs';
@@ -87,6 +88,16 @@ test('another site in HR Pulse is a move; a site set by an OTP in Pulse-II is ne
  const placed=plan.updates.find(update=>update.id==='5').patch;
  assert.deepEqual([placed.site,placed.currentLocation],[SASTI,SASTI],'a worker with no site takes HR\'s');
  assert.equal(plan.updates.some(update=>'site' in update.patch&&update.id!=='5'),false,'a site is never changed by a plain patch');
+});
+
+test('an ID with a slash is never taken for a number: the line is held, and left out of the whole-list copy',()=>{
+ assert.equal(slashedId('CMLL6665/1'),true);assert.equal(slashedId('CMLL 6665'),false);assert.equal(slashedId('CMLL-6665'),false);
+ const plan=planHrChanges([],['66651'],[hrLine('6665/1','SLASH MAN')]);
+ assert.deepEqual([plan.inserts,plan.updates,plan.held.map(item=>[item.number,item.employeeId,item.reason])],[[],[],[['66651','CMLL6665/1','bad-id']]]);
+ const sheet=hrEmployeeSheet([hrLine('6665/1','SLASH MAN'),hrLine(7001,'PLAIN MAN')]);
+ assert.deepEqual(sheet.slice(1).map(cells=>cells[0]),['ID CMLL6665/1','CMLL7001']);
+ const read=readHrMasterSheet(sheet,{leaveOut:true});
+ assert.deepEqual([read.records.map(record=>record.number),read.problems.map(problem=>[problem.employeeId,problem.problem])],[['7001'],[['ID CMLL6665/1','No usable Employee ID. Write the CMLL number.']]]);
 });
 
 test('dummy driver IDs are untouched, and an old second line of a number steps aside',()=>{

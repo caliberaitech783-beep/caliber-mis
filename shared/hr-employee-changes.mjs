@@ -37,6 +37,8 @@ export function samePerson(a,b){
 }
 // A site set by an OTP on a card in Pulse-II (not by HR) waits for HR Pulse to take that move; HR's older site
 // must not pull the worker back.
+// "CMLL6665/1" is not an employee number, although a reader that drops the slash takes it for 66651.
+export const slashedId=value=>/\d\s*\/\s*\d/.test(text(value));
 const lockedByPulseII=record=>Boolean(record.siteLockedAt)&&!/^hr-/i.test(text(record.siteLockedBy));
 
 // existing: Employee master lines ({id, master_name, record_data}) of the numbers asked. numbers: the employee
@@ -55,6 +57,8 @@ export function planHrChanges(existing,numbers,lines,{now=new Date().toISOString
   summary.people++;
   const rows=byNumber.get(number)||[],hr=hrByNumber.get(number)||[];
   if(isDummyNumber(number))continue;
+  const slashed=hr.find(line=>slashedId(line.employeeId));
+  if(slashed){hold(number,slashed,'bad-id',`${text(slashed.employeeId)} is not an Employee ID Pulse-II can use (a number with a slash). Nobody was added or changed.`);continue;}
   if(hr.length>1){hold(number,hr[0],'two-lines',`CMLL${number} is on ${hr.length} lines in HR Pulse (${[...new Set(hr.map(line=>`${text(line.name)}, ${text(line.site)}`))].join(' / ')}). Nobody was changed.`);continue;}
   if(!hr.length){
    // Removed in HR Pulse: switched off here, never deleted.
