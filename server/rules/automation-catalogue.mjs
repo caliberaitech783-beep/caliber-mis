@@ -141,6 +141,12 @@ export const AUTOMATIONS=[
   trigger:'At once, on request',people:'Project Manager of the site the worker is leaving',format:'6-digit code with the worker, both sites, the card date and the vehicle',controlledIn:'This page',
   telegram:context=>state(misBot(context)),whatsapp:context=>state(context.whatsappConfigured),popup:()=>null,count:{outbox:['employee-move-otp']},
   why:context=>[misBotWhy(context),whatsappWhy(context)],offWarning:CODE_WARNING},
+ {code:'A27',key:'hr-employee-copy',name:'Employee Master copy from HR Pulse stopped or held',category:'Masters',
+  rule:'The minute copy of Employee Master from HR Pulse stops itself (one minute would switch off more than 50 people), holds a change for a person, or has not been able to copy for 10 minutes',
+  trigger:'At once, when it happens',people:'Owner (logins with the owner\'s registered mobile) and Mr Mohit Chadda',
+  format:'What happened, how many people, the first few lines, and where to look (Sync all masters)',controlledIn:'This page',
+  telegram:context=>state(misBot(context)),whatsapp:()=>null,popup:()=>null,count:{outbox:['hr-employee-copy']},
+  why:context=>[misBotWhy(context)]},
 ];
 export const AUTOMATION_KEYS=new Set(AUTOMATIONS.map(item=>item.key));
 

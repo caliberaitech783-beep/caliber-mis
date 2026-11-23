@@ -33,8 +33,9 @@ export default function HrSyncPreview({preview,label,working,onApply,onClose}){
  const employees=preview.master==='Employee master';
  return <section className="hr-sync-preview" aria-label={`Preview of ${label} from HR`}>
   <header><h2>Preview · {label} from HR</h2><span>Nothing changed yet</span></header>
-  {preview.stop&&<p className="master-sync-error" role="alert">{preview.stop.replace('Nothing was changed. Open Preview, check and apply.','The hourly sync waits for this preview to be applied.')}</p>}
+  {preview.stop&&<p className="master-sync-error" role="alert">{preview.stop.replace('Nothing was changed. Open Preview, check and apply.','Look at the list below before you apply.').replace('Open Preview, check it and apply.','Look at the list below, then apply.')}</p>}
   {employees?<EmployeeChanges data={preview}/>:<TransferChanges data={preview}/>}
+  {employees&&<p className="master-sync-note">Apply writes these changes once. From then on Employee Master is copied from HR Pulse every minute.</p>}
   <footer><button type="button" onClick={onClose} disabled={working}>Close</button><button type="button" className="primary" onClick={onApply} disabled={working}>{working?'Applying…':'Apply these changes'}</button></footer>
  </section>;
 }
