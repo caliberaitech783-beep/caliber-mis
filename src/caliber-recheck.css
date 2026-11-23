@@ -85,3 +85,6 @@
 .caliber-recheck .cr-record table{border-collapse:collapse;width:100%;font-size:13px}
 .caliber-recheck .cr-record th,.caliber-recheck .cr-record td{padding:6px 8px;border-bottom:1px solid var(--line,#e5e9f1);text-align:left;vertical-align:top}
 .caliber-recheck .cr-record th{font-size:11px;text-transform:uppercase;color:var(--muted,#71809d);white-space:nowrap}
+/* Save shift (owner, 24 Nov 2026): the shift box on a card that names no shift. */
+.caliber-recheck .cr-shift{display:flex;gap:6px;align-items:stretch;margin:4px 0}
+.caliber-recheck .cr-shift select{flex:1 1 40%;min-height:38px;border:1px solid #c9ced6;border-radius:6px;padding:0 8px}

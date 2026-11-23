@@ -15,6 +15,8 @@
 // Each listed card carries the look-alike IDs of its site and whom the FORM A box names. Nothing here reads the
 // name written on the card or the vehicle's other drivers: the owner removed those checks.
 import {judgeCaliberId,caliberNumber,EMPLOYEE_LISTS,ID_NOT_FOUND,CONTACT_HR,HR_REFRESH_REASONS} from './caliber-id-check.mjs';
+import {matchesEmployeeReference} from './employee-identity.mjs';
+import {cardDutyShift} from './duty-shift.mjs';
 
 const text=value=>String(value??'').replace(/\s+/g,' ').trim();
 // 'not-listed' is the number Employee Master still holds from the old list but HR's employee list does not: for the
@@ -22,9 +24,13 @@ const text=value=>String(value??'').replace(/\s+/g,' ').trim();
 export const RECHECK_REASONS={
  'unknown':'No such number','not-listed':'ID not found','left':'Has left','other-site':'Another site',
  'not-driver':'Not a driver or operator','several':'Number on two people','a-form-differs':'FORM A names a colleague',
+ // Attendance not counted (owner, 24 Nov 2026): the driver stands, but the card still marks no attendance.
+ 'no-driver':'No driver on a working card','id-mismatch':'Employee ID and Caliber ID differ','no-shift':'Shift missing or two shifts',
 };
 // The order a list of reasons is shown in: the surest first.
-export const RECHECK_REASON_ORDER=['not-listed','left','unknown','other-site','a-form-differs','not-driver','several'];
+export const RECHECK_REASON_ORDER=['not-listed','left','unknown','other-site','a-form-differs','not-driver','several','no-driver','id-mismatch','no-shift'];
+// The reasons fixed by choosing the shift on the line, not the driver.
+export const SHIFT_REASONS=['no-shift'];
 
 const rowsById=new WeakMap();
 function employeeRows(masters){
@@ -46,6 +52,9 @@ export function recheckLine(check,kind='vehicle'){
   case 'not-driver':return is+': not a driver or operator.'+box;
   case 'several':return 'More than one employee at '+check.at+' has number '+check.read+'.'+box;
   case 'a-form-differs':return is+'. But the FORM A box says '+(check.aForm?.no||'another number')+': at '+check.at+' that is '+(check.aForm?.id||'another person')+(check.aForm?.name?' ('+check.aForm.name+')':'')+', one digit away.';
+  case 'no-driver':return 'Nobody is saved on this card, but it shows work, so no attendance is marked.';
+  case 'id-mismatch':return 'The Employee ID and the Caliber ID on this card name different people, so no attendance is marked.';
+  case 'no-shift':return 'The card names no shift, or two, so no attendance is marked.';
   default:return '';
  }
 }
@@ -94,3 +103,28 @@ export function recheckCounts(listed){
  for(const row of listed)if(row.reason in counts)counts[row.reason]++;
  return counts;
 }
+
+// Attendance from every card, scanned or manual (owner, 24 Nov 2026: "this type of correction for any trip card (VLB,
+// ELB & LMV) manually inserted that does not fetch the attendance"). A card whose driver stands by the checks above can
+// still mark no attendance; the attendance build (server/rules/manpower-report.mjs) leaves such a card out when
+//  - nobody is saved on it although the vehicle or machine worked (trips or working HMR): 'no-driver';
+//  - its Employee ID (the master line) and its Caliber ID name different people, or the master line is gone: 'id-mismatch';
+//  - it names no shift, or two shifts that disagree (shared/duty-shift.mjs): 'no-shift'.
+// The first two are fixed by Submit with the right person from the paper card, the last by choosing the shift on the line.
+// card: as recheckSavedCard, plus worked (true when it shows trips or working hours), shift (the card's shift labels:
+// bookShiftCode, cardShift, shiftName, manualShift) and savedShift (its Shift Master entry, when it has one).
+export function attendanceGap(masters,card){
+ const kind=card.kind==='equipment'?'equipment':'vehicle',who=kind==='equipment'?'operator':'driver';
+ const line=(reason,text)=>({reason,read:caliberNumber(card.caliberId)||String(card.caliberId??'').trim(),line:text,at:String(card.site??'').trim()});
+ const employeeId=String(card.employeeId??'').trim(),caliberId=String(card.caliberId??'').trim();
+ if(!employeeId&&!caliberId){
+  return card.worked?line('no-driver','Nobody is saved on this card, but the '+(kind==='equipment'?'machine worked':'vehicle ran')+', so no attendance is marked. Type the '+who+' from the paper card and press Submit.'):null;
+ }
+ const saved=employeeId?employeeRows(masters).get(employeeId):null;
+ if(saved&&caliberId&&!matchesEmployeeReference(saved.record_data,caliberId))return line('id-mismatch','The card is saved under '+caliberId+' but its employee line is '+(numberOf(saved.record_data)||'another person')+' ('+text(saved.record_data?.name||saved.record_data?.employee)+'), so no attendance is marked. Type the '+who+' from the paper card and press Submit.');
+ const shift=cardDutyShift(card.shift||{},card.savedShift||null);
+ if(!shift.code)return line('no-shift',(shift.conflict?'The card names two different shifts':'The card names no shift')+', so no attendance is marked. Choose the shift from the paper card and press Save shift.');
+ return null;
+}
+// One verdict per card: the driver checks first, then what keeps the card out of attendance.
+export const recheckCard=(masters,card)=>recheckSavedCard(masters,card)||attendanceGap(masters,card);
