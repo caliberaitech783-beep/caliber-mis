@@ -23,7 +23,7 @@ import React,{useEffect,useMemo,useState} from 'react';
 import {Download,Upload} from 'lucide-react';
 import {TripCardFilters,TripCardVerdict} from './trip-card-verdict.jsx';
 import {dmy,CORRECTION_KINDS} from '../shared/attendance-sheet-check.mjs';
-import {DAY_KINDS,SHEET_BOOKS,dayShiftRows,kindLabel,kindTotals,otherBookRows,personDays,shiftName} from '../shared/site-sheet-days.mjs';
+import {DAY_KINDS,SHEET_BOOKS,dayShiftRows,kindLabel,kindTotals,otherBookRows,personDays,shiftName,wrongTab} from '../shared/site-sheet-days.mjs';
 import {readAttendanceFile,sheetApi} from './attendance-sheet-run.mjs';
 import {SELECT_BY,readSiteSheetData,selectionOf,siteSheetView,siteSheetWorkbook} from './site-sheet-run.mjs';
 import {DateShiftGrid,dateShiftExport,dateShiftGrid} from './date-shift-grid.jsx';
@@ -92,7 +92,7 @@ export default function SiteSheetTripCard({session,ReportSection}){
  const totals=useMemo(()=>kindTotals(lines),[lines]);
  const shown=useMemo(()=>pick.kind?lines.filter(l=>l.kind===pick.kind):lines,[lines,pick.kind]);
  const grid=useMemo(()=>dateShiftGrid(dayShiftRows(shown),{sumKeys:['total','card','noCard','away']}),[shown]);
- const others=useMemo(()=>otherBookRows(result),[result]);
+ const others=useMemo(()=>otherBookRows(result),[result]),misplaced=useMemo(()=>wrongTab(result),[result]);
  const kinds=result?Object.entries(CORRECTION_KINDS).filter(([kind])=>result.counts[kind]>0):[];
  const boxes=pick.kind?[]:DAY_KINDS.filter(k=>totals[k.key]?.lines>0).map(k=>({key:k.key,className:'ssc-'+k.tone,label:k.label}));
  const dayColumns=[{key:'total',label:'Day total',value:s=>s.total}];
@@ -172,6 +172,7 @@ export default function SiteSheetTripCard({session,ReportSection}){
    </section>
   </div>
   {run.error&&<p className="asc-error" role="alert">{run.error}</p>}
+  {misplaced&&<p className="ssc-wrong-tab" role="alert">Is this the {misplaced.book} sheet? {misplaced.whole} of the {result.totals.people} people in this file have every trip card in another log book ({misplaced.book}: {misplaced.people}), and only {result.totals.judged} can be compared with {book} trip cards. Open the <b>{misplaced.book} sheet</b> tab and upload this file there.</p>}
   {result&&<TripCardVerdict key={'ssc-verdict-'+book+'-'+done.name} view={view} ReportSection={ReportSection} withSheet against={'the '+book+' sheet'} site={result.site} period={period}/>}
   {result&&<>
    <section className="asc-result" aria-label={'Result of the '+book+' check'}>
@@ -180,7 +181,7 @@ export default function SiteSheetTripCard({session,ReportSection}){
     {view.batch&&<p className="asc-hint">These counts are the whole {book} sheet from {dmy(view.from)} to {dmy(view.to)}, every batch. The trip card lines and the date by shift below are batch {view.batch} only; "Sheet P, no trip card" has no card, so no batch: it shows under All batches.</p>}
     <table className="asc-counts"><tbody>
      <tr><th scope="row">Employees in the {book} sheet</th><td>{result.totals.people}</td></tr>
-     <tr><th scope="row">Compared day by day with {book} trip cards (drivers and operators, or a {book} duty in Pulse-II)</th><td>{result.totals.judged}</td></tr>
+     <tr><th scope="row">Compared day by day with {book} trip cards (drivers and operators, or anyone with a duty on {book} in Pulse-II)</th><td>{result.totals.judged}</td></tr>
      <tr><th scope="row">Dates compared (locked in Pulse-II)</th><td>{result.dates.judged.length}</td></tr>
      <tr><th scope="row">Dates not locked in Pulse-II yet</th><td>{result.dates.pending.length}</td></tr>
      {kinds.map(([kind,label])=><tr key={kind}><th scope="row">{label}</th><td>{result.counts[kind]}</td></tr>)}

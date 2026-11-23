@@ -119,6 +119,16 @@ export function personDays(row){
     :c.kind==='present'&&!own?'Not judged: not a driver or operator':STATE_WORDS['']};
  });
 }
+// A file uploaded under the wrong tab (the ELB sheet under VLB): more people of the file have every trip card in another
+// log book than are compared here. Returns that log book and how many of them, or null when the file fits its tab.
+export function wrongTab(result){
+ const whole=(result?.otherBook||[]).filter(p=>p.whole);
+ if(whole.length<3||whole.length<=(result.totals?.judged||0))return null;
+ const count=new Map();
+ for(const p of whole)for(const book of p.books.split(' + '))count.set(book,(count.get(book)||0)+1);
+ const [book,people]=[...count].sort((a,b)=>b[1]-a[1])[0];
+ return {book,people,whole:whole.length};
+}
 // The people of a one-log-book sheet whose trip cards are in another log book, for the screen: one line per person.
 export const otherBookRows=result=>(result?.otherBook||[]).map(p=>({...p,key:'other-'+p.row,which:p.whole?'Every trip card':'Some days',datesLabel:p.dates.map(dayMonth).join(', ')}));
 
