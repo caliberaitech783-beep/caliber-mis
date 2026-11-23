@@ -31,3 +31,5 @@ button.tcv-tile{cursor:pointer}
 .tcv-check{justify-self:start}
 .ssc-page tr.tcb-row-ok td{background:#eefaf2}
 .ssc-page tr.tcb-row-bad td{background:#fff5ec}
+.tcb-zero{color:#9a91ad}
+.ssc-page tr.tcb-row-total td{background:#f5f1fb;font-weight:700}
