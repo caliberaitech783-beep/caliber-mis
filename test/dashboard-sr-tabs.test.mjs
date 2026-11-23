@@ -177,7 +177,7 @@ test('the Caliber ID re-check is second in Sr 1: under the last 6, 12 and 24 hou
  assert.ok(page.includes('{!embedded&&<><details className="cr-record"'),'Corrections done and Cards confirmed right stay on the page');
  assert.ok(page.includes("'data-print-title':'Caliber ID Re-check'"),'its sheet of a dashboard print has a name');
  assert.ok(page.includes('<button type="button" disabled={busy} onClick={()=>void recheck()} title="Read every day again from the server">Refresh</button>'),'Refresh always asks the server');
- assert.ok(css.includes('.caliber-recheck.cr-embedded{padding:0}'));
+ assert.ok(css.includes('.caliber-recheck.cr-embedded{padding:0 22px}'));
 });
 
 test('a screen without the report table offers only the panels it can draw',async()=>{
