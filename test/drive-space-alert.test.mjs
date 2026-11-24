@@ -1,4 +1,4 @@
-// Owner, 24 Nov 2026: tell Mohit Chadda and Anup on Telegram when 470 GB of the 500 GB drive is used, and every
+// Owner, 24 Nov 2026: tell Mohit Chadda and Anup on Telegram when 400 GB (first 470, moved to 400 the same day) of the 500 GB drive is used, and every
 // 6 hours while it stays above (Automation line A28). The figures below are made up.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -22,47 +22,47 @@ async function fixture({live=true,db=new PGlite()}={}){
 // Ticks every 10 minutes for this long, as the live server does.
 async function run(f,ms){for(let spent=0;spent<ms;spent+=DRIVE_CHECK_MINUTES*MINUTE){f.later(DRIVE_CHECK_MINUTES*MINUTE);await f.alert.tick();}}
 
-test('told at 470 GB, then every 6 hours while it stays above, never in between',async()=>{
+test('told at 400 GB, then every 6 hours while it stays above, never in between',async()=>{
  const f=await fixture();
  try{
-  f.used=469.9;assert.deepEqual(await f.alert.tick(),{ok:true,above:false});
+  f.used=399.9;assert.deepEqual(await f.alert.tick(),{ok:true,above:false});
   assert.equal(f.alerts.length,0,'below the line: nothing');
   f.later(10*MINUTE);f.used=DRIVE_ALERT_USED_GB;
-  assert.deepEqual(await f.alert.tick(),{ok:true,above:true,told:true},'470 GB itself is told');
+  assert.deepEqual(await f.alert.tick(),{ok:true,above:true,told:true},'400 GB itself is told');
   assert.equal(f.alerts.length,1);
   assert.equal(f.alerts[0].key,'drive-space:2026-11-24T06:00');
   assert.equal(f.alerts[0].message,[
-   '⚠️ Server drive nearly full: 470 GB of 500 GB used, 30 GB free (alert line 470 GB).',
-   'Crossed 470 GB since 24 Nov, 11:30 IST.',
+   '⚠️ Server drive nearly full: 400 GB of 500 GB used, 100 GB free (alert line 400 GB).',
+   'Crossed 400 GB since 24 Nov, 11:30 IST.',
    'Pulse-II, its test slot and Pulse share this drive. When it is full, releases fail at the upload (Kudu 409) and files cannot be saved.',
    'What fills it: Azure portal > App Service plan > File system storage.',
-   'Told again every 6 hours while it stays above 470 GB.'].join('\n'));
+   'Told again every 6 hours while it stays above 400 GB.'].join('\n'));
 
-  f.used=480;await run(f,DRIVE_REMIND_HOURS*HOUR-20*MINUTE);
+  f.used=410;await run(f,DRIVE_REMIND_HOURS*HOUR-20*MINUTE);
   assert.equal(f.alerts.length,1,'quiet for six hours');
   await run(f,20*MINUTE);
   assert.equal(f.alerts.length,2,'told again after six hours');
-  assert.match(f.alerts[1].message,/^⚠️ Server drive nearly full: 480 GB of 500 GB used, 20 GB free/);
-  assert.match(f.alerts[1].message,/\nAbove 470 GB since 24 Nov, 11:30 IST\./,'the first crossing time is kept');
+  assert.match(f.alerts[1].message,/^⚠️ Server drive nearly full: 410 GB of 500 GB used, 90 GB free/);
+  assert.match(f.alerts[1].message,/\nAbove 400 GB since 24 Nov, 11:30 IST\./,'the first crossing time is kept');
   assert.notEqual(f.alerts[1].key,f.alerts[0].key);
   const saved=await f.saved();
-  assert.equal(saved.usedGb,480);assert.equal(saved.aboveSince,'2026-11-24T06:00:00.000Z');
+  assert.equal(saved.usedGb,410);assert.equal(saved.aboveSince,'2026-11-24T06:00:00.000Z');
  }finally{await f.db.close();}
 });
 
-test('a drive that sways around 470 GB is not told every ten minutes; a real fall starts afresh',async()=>{
+test('a drive that sways around 400 GB is not told every ten minutes; a real fall starts afresh',async()=>{
  const f=await fixture();
  try{
-  f.used=471;await f.alert.tick();
+  f.used=401;await f.alert.tick();
   assert.equal(f.alerts.length,1);
-  f.used=465;await run(f,30*MINUTE);
-  f.used=472;await run(f,30*MINUTE);
-  assert.equal(f.alerts.length,1,'down to 465 and back up within six hours: not told again yet');
-  f.used=450;await run(f,10*MINUTE);
-  assert.equal((await f.saved()).toldAt,null,'below 460 GB the clock is cleared');
-  f.used=475;await run(f,10*MINUTE);
+  f.used=395;await run(f,30*MINUTE);
+  f.used=402;await run(f,30*MINUTE);
+  assert.equal(f.alerts.length,1,'down to 395 and back up within six hours: not told again yet');
+  f.used=380;await run(f,10*MINUTE);
+  assert.equal((await f.saved()).toldAt,null,'below 390 GB the clock is cleared');
+  f.used=405;await run(f,10*MINUTE);
   assert.equal(f.alerts.length,2,'a new crossing after space was freed is told at once');
-  assert.match(f.alerts[1].message,/\nCrossed 470 GB since/);
+  assert.match(f.alerts[1].message,/\nCrossed 400 GB since/);
  }finally{await f.db.close();}
 });
 

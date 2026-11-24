@@ -1,6 +1,6 @@
 // Server drive nearly full, on Telegram (Automation line A28). Owner, 24 Nov 2026: "intimate us on Telegram whenever
 // 470 GB of data is crossed out of 500 GB, and ... after 470, if it is upward, then every 6 hours we should get that
-// message", to Mohit Chadda and Anup both.
+// message", to Mohit Chadda and Anup both. Owner, 24 Nov 2026 (later): "change the alarm from 470 to 400 gb".
 //
 // Why: Pulse-II, its test slot and Pulse share one 500 GB drive (/home of the App Service plan). On 13 and 24 Nov 2026
 // it was full, and every release failed at the upload (Kudu 409) until space was freed.
@@ -8,14 +8,14 @@
 //  - At or above DRIVE_ALERT_USED_GB used, the owner's logins and Mr Mohit Chadda (the release approvers) are told at
 //    once, and again every DRIVE_REMIND_HOURS while it stays there.
 //  - The clock starts afresh only after the drive has come down below DRIVE_CLEAR_USED_GB, so a drive that sways
-//    around 470 GB is not told every ten minutes.
+//    around the line is not told every ten minutes.
 //  - The last telling is kept in app_settings and claimed in one UPDATE, so a restart, a release or a second
 //    server never tells twice within the six hours.
 import {statfs} from 'node:fs/promises';
 
 export const DRIVE_PATH='/home';
-export const DRIVE_ALERT_USED_GB=470;
-export const DRIVE_CLEAR_USED_GB=460;
+export const DRIVE_ALERT_USED_GB=400;
+export const DRIVE_CLEAR_USED_GB=390;
 export const DRIVE_REMIND_HOURS=6;
 export const DRIVE_CHECK_MINUTES=10;
 export const DRIVE_STATE_KEY='drive_space_alert';

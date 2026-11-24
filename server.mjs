@@ -8158,7 +8158,7 @@ registerEquipmentMismatch(app,{pool,worker:equipmentMismatch,protect:[requireSes
 // Like the VLB batch alerts, this runs on the live server whatever the scheduled-jobs switch says; the slot key stops a second server repeating a check.
 if(process.env.EQUIPMENT_MISMATCH_CHECK!=='0')scheduleBackgroundStart(()=>equipmentMismatch.start(),150000);
 // Server drive nearly full (A28, owner 24 Nov 2026): the live server reads the shared 500 GB /home drive every
-// 10 minutes and tells the release approvers (the owner's logins and Mr Mohit Chadda) at 470 GB, then every 6 hours.
+// 10 minutes and tells the release approvers (the owner's logins and Mr Mohit Chadda) at 400 GB, then every 6 hours.
 const driveSpaceTelegram=telegramOutboxSender(pool,{drain:()=>misTelegram.drain(),inChannel:(channel,person)=>misTelegram.inChannel(channel,person)});
 const driveSpaceAlert=createDriveSpaceAlert({pool,live:isLiveSlot(),
  alert:async(message,key)=>{for(const login of await releaseApproverLogins(pool)){try{await driveSpaceTelegram.send(login,message,`${key}:${login}`);}catch{/* the next person is still told */}}}});
