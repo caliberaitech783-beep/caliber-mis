@@ -30,13 +30,16 @@ test('a punch is matched with the cards with an error at its site and date, the 
  assert.deepEqual(all.lines.find(line=>line.number==='4401').countedCards.map(card=>card.bookNo),['BOOK-7']);
  assert.equal(all.lines.find(line=>line.number==='4401').shift,'S1');
  assert.equal(punchRecheck({days,listed,masters:masters(),standing:new Set(['4401|'+DATE])}).lines.find(line=>line.number==='4401').status,'counted','a Set of keys is read too');
- assert.deepEqual(sites,[{key:KEY,site:MAJRI,punched:4,counted:1,toFix:2,noCard:1}],'the helper is left out; 4401 has a card that counts; 4403 has no card at all');
+ assert.deepEqual(sites,[{key:KEY,site:MAJRI,punched:4,counted:1,toFix:2,noCard:1,received:5,unknown:0,notDriver:1}],'the helper is left out; 4401 has a card that counts; 4403 has no card at all');
  assert.deepEqual(lines.map(line=>[line.number,line.ownCard,line.cards.map(card=>card.id),line.shift]),[['4402',true,['11','10'],'S2'],['4400',false,['10','11'],'—']]);
  assert.equal(lines[0].rowId,'3');assert.equal(lines[0].name,'DRIVER THREE');
  assert.equal(cardAction(lines[0],lines[0].cards[0]),'shift','own card with no shift: Save shift');
  assert.equal(cardAction(lines[1],lines[1].cards[1]),'other','another standing driver\'s card with no shift is not this person\'s');
  assert.equal(cardAction(lines[1],lines[1].cards[0]),'submit');
  assert.equal(punchRecheck({days,listed,masters:masters(),allowed:()=>false}).lines.length,0,'a site the login does not hold is not shown');
+ // Punches received, before the driver filter: an ID in no employee list is counted at its site, or as on no site.
+ const strange=punchRecheck({days:[{caliberCode:'777',date:DATE,site:MAJRI},{caliberCode:'778',date:DATE,site:''}],masters:masters()});
+ assert.deepEqual([strange.sites[0].received,strange.sites[0].unknown,strange.sites[0].punched,strange.unplaced],[1,1,0,1]);
 });
 
 test('the screen adds the days up and draws Step 1 and Step 2',()=>{
@@ -80,6 +83,8 @@ test('the server matches the machine and imported punches with the cards, and Su
   let day=await call('/api/caliber-recheck/punches?from='+DATE+'&to='+DATE);
   assert.equal(day.status,200);
   assert.equal(day.body.machine.connected,true);
+  assert.deepEqual(day.body.machine.sites,[{site:MAJRI,days:2}],'the sites HR Pulse sent punches for');
+  assert.equal(day.body.imported,1);
   // Every site of the login has a line (owner, 24 Nov 2026: "not able to see all sites"), by its own name; Majri first.
   assert.equal(day.body.sites.length,8);
   assert.deepEqual(day.body.sites.map(site=>site.site).sort(),['Dhoptala OC (2nd)','Dudhichua East OC','Dudhichua OC','Gauri Pauni OC (2nd)','Jayant OC','Lalpeth OC','Majri OC','Sasti OC']);

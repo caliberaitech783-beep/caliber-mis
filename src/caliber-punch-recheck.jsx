@@ -114,7 +114,10 @@ export default function CaliberPunchRecheck({session,ReportSection}){
  const back=crumbs.length>1?crumbs.at(-2)[1]:null;
  const level=!site?1:!slot?2:3;
 
- const siteColumns=[{key:'site',label:'Site',value:row=>row.site},...PUNCH_VIEWS.map(one=>({key:one.key,label:one.label,value:row=>row[one.key],render:figure(one.key)}))];
+ // Punches received (owner, 24 Nov 2026): every punch day that reached Pulse-II for the site, before the driver filter,
+ // and those whose number is in no employee list: a site at 0 has no machine sending, a high "not recognised" an ID mismatch.
+ const siteColumns=[{key:'site',label:'Site',value:row=>row.site},{key:'received',label:'Punches received (all staff)',value:row=>row.received},{key:'unknown',label:'Not recognised (ID in no employee list)',value:row=>row.unknown},
+  ...PUNCH_VIEWS.map(one=>({key:one.key,label:one.label,value:row=>row[one.key],render:figure(one.key)}))];
  // The card(s) of a line that is not one to fix: the counted cards, or none.
  const cardsText=line=>line.status==='counted'?(line.countedCards||[]).map(card=>card.book+' · '+card.bookNo+(card.door?' · '+card.door:'')).join(', ')||'Card counts':'No VLB, ELB or LMV card of this person on this date';
  const action=line=>{
@@ -164,6 +167,7 @@ export default function CaliberPunchRecheck({session,ReportSection}){
    <span><strong>{count(held.punches)}</strong> punch days read</span><span><strong>{count(sites.total.punched)}</strong> drivers / operators punched</span><span><strong>{count(sites.total.counted)}</strong> attendance from a card</span>
    <span><strong>{count(sites.total.toFix)}</strong> to fix here</span><span><strong>{count(sites.total.noCard)}</strong> punched, no card at all</span>
   </div>
+  {!busy&&held.answers.size>0&&<p className="cr-notice" role="status">HR Pulse sent machine punches for: {held.hrSites.length?held.hrSites.map(one=>one.site+' ('+count(one.days)+')').join(', '):'no site'}. Uploaded in Pulse-II: {count(held.imported)} punch days.{held.unplaced?' '+count(held.unplaced)+' punch days name no site and an unknown ID, so they are on no site.':''} A site with no punches received has no machine sending to HR Pulse.</p>}
   {level>1&&<nav className="tt-crumbs" aria-label="Steps">{back&&<StepBackButton onBack={back} label={'Back to '+crumbs.at(-2)[0]}/>}{crumbs.map(([label,move],i)=><React.Fragment key={i}>{i>0&&<span aria-hidden="true">›</span>}{move&&i<crumbs.length-1?<button type="button" onClick={move}>{label}</button>:<strong aria-current="step">{label}</strong>}</React.Fragment>)}</nav>}
   <ReportSection key="cpr-sites" reportKey="Caliber punch re-check sites" title={'Step 1 · Caliber punch re-check · All sites · '+period} category="caliber-punch-recheck-sites" dataReady={!busy} recordDateFilter={false}
    description="One line per site: the drivers and operators who punched, those a card gives attendance, those whose card has an error (fixed here) and those with no card at all. Press any figure to see those people date by date and shift by shift; the line of All sites opens every site together."
