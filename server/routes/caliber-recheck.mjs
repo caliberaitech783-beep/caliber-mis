@@ -38,7 +38,7 @@ import {vlbRecordShift} from '../../shared/vlb-batch-format.mjs';
 import {shareCardOperator} from '../../shared/log-book-shared-shift.mjs';
 import {findOtherVlbCards} from '../rules/vlb-duplicate-card.mjs';
 import {OPERATIONAL_START} from '../../shared/operational-start.mjs';
-import {displaySiteName} from '../../shared/region-scope.mjs';
+import {displaySiteName,REGION_DATA} from '../../shared/region-scope.mjs';
 import {canonicalSiteName} from '../../shared/site-location.mjs';
 import {isBookDate} from '../../shared/employee-site-moves.mjs';
 import {punchRecheck,recordNumberOf} from '../../shared/caliber-punch-recheck.mjs';
@@ -194,9 +194,10 @@ export function registerCaliberRecheck(app,{pool,requireSession,requireAdministr
  // ('number|date': the driver stands, or the card was confirmed right). Shared by the re-check and the punch re-check.
  const judgeDays=async(scope,from,to)=>{
   const [masters,cards,picks,kept,done]=await Promise.all([readMasters(pool).then(result=>result.rows),pool.query(RECHECK_CARDS_SQL,[from,to]).then(result=>result.rows),pool.query(PENDING_SQL).then(result=>result.rows),pool.query(CONFIRMED_OF_DATES_SQL,[from,to]).then(result=>result.rows),pool.query(CORRECTED_OF_DATES_SQL,[from,to]).then(result=>result.rows)]);
-  const waiting=new Map(picks.map(row=>[String(row.logbook_id),row])),right=new Map(kept.map(row=>[String(row.logbook_id),row])),changed=new Set(done.map(row=>String(row.logbook_id))),sites=new Map(),listed=[],standing=new Set();
+  const waiting=new Map(picks.map(row=>[String(row.logbook_id),row])),right=new Map(kept.map(row=>[String(row.logbook_id),row])),changed=new Set(done.map(row=>String(row.logbook_id))),sites=new Map(),listed=[],standing=new Map();
   const masterLines=new Map(masters.filter(row=>EMPLOYEE_LISTS.includes(row.master_name)).map(row=>[String(row.id),row]));
-  const counts=row=>{const number=employeeNumber(row.caliber_id)||recordNumberOf(masterLines.get(String(row.employee_id))?.record_data);if(number)standing.add(number+'|'+row.date);};
+  // Who a card counts, with the card: number|date -> the cards (Caliber Punch Re-check shows them on the person's line).
+  const counts=row=>{const number=employeeNumber(row.caliber_id)||recordNumberOf(masterLines.get(String(row.employee_id))?.record_data);if(!number)return;const key=number+'|'+row.date;(standing.get(key)||standing.set(key,[]).get(key)).push({id:String(row.id),book:kindLabel(row.book_type),bookNo:row.book_no,door:row.door,site:displaySiteName(row.site)||row.site,shift:shiftOf(row)});};
   let judged=0,confirmed=0,corrected=0;
   for(const row of cards){
    if(!siteAllowed(scope,row.site))continue;
@@ -243,7 +244,12 @@ export function registerCaliberRecheck(app,{pool,requireSession,requireAdministr
    pool.query(IMPORTED_PUNCHES_SQL,[from,to]).then(result=>importedDays(result.rows.map(row=>({caliberCode:row.caliber_code,date:row.date,inTime:row.in_time,outTime:row.out_time,site:row.site})))).catch(error=>{if(error.code==='42P01'||/does not exist/.test(error.message))return [];throw error;}),
   ]);
   const days=mergeBiometricDays(machineList,importedList).filter(day=>day.date>=from&&day.date<=to);
-  const {lines,sites}=punchRecheck({days,standing:judgedDays.standing,listed:judgedDays.listed,masters:judgedDays.masters,allowed:site=>siteAllowed(scope,site),siteLabel:site=>displaySiteName(site)||site});
+  // Every site of the login has a line in Step 1, punched or not; a site's name is its own (not the key).
+  const known=new Map(REGION_DATA.flatMap(region=>region.sites).map(site=>[canonicalSiteName(site),site]));
+  const nameOf=site=>known.get(canonicalSiteName(site))||displaySiteName(site)||site;
+  const cardSites=[...known].filter(([,site])=>siteAllowed(scope,site)).map(([key,site])=>({key,site}));
+  for(const one of judgedDays.sites.values())if(!cardSites.some(site=>site.key===one.key))cardSites.push({key:one.key,site:one.site});
+  const {lines,sites}=punchRecheck({days,standing:judgedDays.standing,listed:judgedDays.listed,masters:judgedDays.masters,allowed:site=>siteAllowed(scope,site),siteLabel:nameOf,cardSites});
   res.json({from,to,punches:days.length,machine,lines,sites,tookMs:Date.now()-started});
  }));
 

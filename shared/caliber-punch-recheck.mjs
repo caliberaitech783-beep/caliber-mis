@@ -37,15 +37,19 @@ export function personAt(byNumber,number,siteKey){
 }
 
 // days:     the punch days (shared/trip-biometric-check.mjs mergeBiometricDays): {caliberCode, date, site, inTime, outTime, source}
-// standing: Set of 'number|date' for every person a card of that date counts (its driver stands, or it was confirmed right)
+// standing: Map 'number|date' -> the cards that count that person on that date (its driver stands, or it was confirmed
+//           right): {id, book, bookNo, door, site, shift}. A Set of the keys is read too (no cards then).
 // listed:   the cards with an error (the rows GET /api/caliber-recheck lists): {id, date, siteKey, site, shift, savedId, ...}
 // masters:  the master lines (Employee Master, ERP and C-Dir lists)
 // allowed:  site -> true when the login holds that site
-// Returns {lines, sites}: one line per person and date that punched, has no counted card and has a card with an error
-// at the site of the punch on that date; and per site the punched drivers and operators, those a card counts, those to
-// fix here and those with no card at all.
-export function punchRecheck({days=[],standing=new Set(),listed=[],masters=[],allowed=()=>true,siteLabel=site=>site}){
+// Returns {lines, sites}: one line per driver or operator and date that punched, with its status: 'counted' (a card
+// gives attendance; countedCards), 'toFix' (no counted card, but a card with an error at the site of the punch on that
+// date; cards, own card first) or 'noCard' (no card at all); and per site the counts of each.
+// cardSites: [{key, site}] every site with a card in these dates; each gets a line in Step 1, punched or not (owner,
+// 24 Nov 2026: "not able to see all sites"), so a site whose machine sends no punch shows as 0.
+export function punchRecheck({days=[],standing=new Set(),listed=[],masters=[],allowed=()=>true,siteLabel=site=>site,cardSites=[]}){
  const byNumber=peopleByNumber(masters),bySiteDate=new Map(),sites=new Map(),lines=[];
+ for(const one of cardSites)if(one?.key&&!sites.has(one.key))sites.set(one.key,{key:one.key,site:one.site||siteLabel(one.key),punched:0,counted:0,toFix:0,noCard:0});
  for(const card of listed){const key=card.siteKey+'|'+card.date;(bySiteDate.get(key)||bySiteDate.set(key,[]).get(key)).push(card);}
  for(const day of days){
   const number=employeeNumber(day.caliberCode);
@@ -57,19 +61,27 @@ export function punchRecheck({days=[],standing=new Set(),listed=[],masters=[],al
   // Drivers and operators only: helpers, mechanics and staff keep no trip card.
   if(!person||!drivesOrOperates({designation:person.designation}))continue;
   const cardsHere=bySiteDate.get(siteKey+'|'+day.date)||[];
-  const label=cardsHere[0]?.site||siteLabel(text(day.site))||text(day.site)||siteKey;
+  const label=sites.get(siteKey)?.site||cardsHere[0]?.site||siteLabel(text(day.site)||siteKey)||text(day.site)||siteKey;
   if(!allowed(label))continue;
   if(!sites.has(siteKey))sites.set(siteKey,{key:siteKey,site:label,punched:0,counted:0,toFix:0,noCard:0});
   const site=sites.get(siteKey);site.punched++;
-  if(standing.has(number+'|'+day.date)){site.counted++;continue;}
-  if(!cardsHere.length){site.noCard++;continue;}
+  const line={id:number+'|'+day.date+'|'+siteKey,number,rowId:person.rowId,caliberId:person.caliberId,name:person.name,designation:person.designation,
+   date:day.date,siteKey,site:label,inTime:text(day.inTime),outTime:text(day.outTime),source:text(day.source),shift:'—',ownCard:false,cards:[],countedCards:[]};
+  // Every punched person has a line (owner, 24 Nov 2026: "make it drill down for all"): counted, to fix or no card.
+  const counted=standing instanceof Map?standing.get(number+'|'+day.date):standing.has(number+'|'+day.date)?[]:null;
+  if(counted){
+   site.counted++;
+   const shifts=[...new Set(counted.map(card=>card.shift||'—'))];
+   lines.push({...line,status:'counted',countedCards:counted,shift:shifts.length===1?shifts[0]:'—'});
+   continue;
+  }
+  if(!cardsHere.length){site.noCard++;lines.push({...line,status:'noCard'});continue;}
   site.toFix++;
   const own=cardsHere.filter(card=>employeeNumber(card.savedId)===number);
   const cards=[...own,...cardsHere.filter(card=>!own.includes(card))].map(card=>({...card,own:own.includes(card)}));
   const shifts=[...new Set((own.length?own:cardsHere).map(card=>card.shift||'—'))];
-  lines.push({id:number+'|'+day.date+'|'+siteKey,number,rowId:person.rowId,caliberId:person.caliberId,name:person.name,designation:person.designation,
-   date:day.date,siteKey,site:label,inTime:text(day.inTime),outTime:text(day.outTime),source:text(day.source),shift:shifts.length===1?shifts[0]:'—',ownCard:own.length>0,cards});
+  lines.push({...line,status:'toFix',shift:shifts.length===1?shifts[0]:'—',ownCard:own.length>0,cards});
  }
  lines.sort((a,b)=>a.date.localeCompare(b.date)||a.site.localeCompare(b.site)||Number(b.ownCard)-Number(a.ownCard)||a.name.localeCompare(b.name));
- return {lines,sites:[...sites.values()].sort((a,b)=>b.toFix-a.toFix||a.site.localeCompare(b.site))};
+ return {lines,sites:[...sites.values()].sort((a,b)=>b.toFix-a.toFix||b.punched-a.punched||a.site.localeCompare(b.site))};
 }
