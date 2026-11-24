@@ -13,6 +13,8 @@ export function misPageAllowed(session,page,view){
  // may whoever keeps Employee Master. The correction run itself is an administrator's action (server/routes/caliber-recheck.mjs).
  // Caliber Punch Re-check (owner, 24 Nov 2026): the same people as Caliber ID Re-check, whose routes it uses.
  if(page==='Caliber Punch Re-check')return misPageAllowed(session,'Caliber ID Re-check',view);
+ // Machine Category Re-check (owner, 24 Nov 2026): the same people, read only.
+ if(page==='Machine Category Re-check')return misPageAllowed(session,'Caliber ID Re-check',view);
  if(page==='Caliber ID Re-check')return ['Vehicle Log Book','Equipment Log Book','Trip Card Bulk Scan','Job Card Bulk Scan','Employee master'].some(name=>misPageAllowed(session,name,view));
  if(page==='Batch reopening approvals')return session.role==='super'&&session.permissions.adminLevel==='Manager'&&managerRoleSelection(session.permissions.managerRoles?.length?session.permissions.managerRoles:session.permissions.managerRole).includes('Project Manager');
  if(['Tickets','Telegram Integration'].includes(page))return true;
@@ -94,7 +96,7 @@ export function misRequestAllowed(session,req){
  // it fails closed.
  if(route==='/api/caliber-recheck'||route.startsWith('/api/caliber-recheck/')){
   if(!allowed('Caliber ID Re-check'))return false;
-  if(route==='/api/caliber-recheck'||route==='/api/caliber-recheck/record'||route==='/api/caliber-recheck/confirmed'||route==='/api/caliber-recheck/punches')return read;
+  if(route==='/api/caliber-recheck'||route==='/api/caliber-recheck/record'||route==='/api/caliber-recheck/confirmed'||route==='/api/caliber-recheck/punches'||route==='/api/caliber-recheck/machines')return read;
   // Choosing the right driver (Submit corrects the card at once, owner 23 Nov 2026), "This card is right" (confirm)
   // and the Undo of a correction: the same people, the same sites.
   if(route==='/api/caliber-recheck/pick'||route==='/api/caliber-recheck/confirm'||route==='/api/caliber-recheck/shift')return req.method==='POST';
