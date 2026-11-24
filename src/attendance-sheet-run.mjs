@@ -39,7 +39,7 @@ export async function runSheetCheck({sheet,fileName,site,session,today=todayIst(
   read('/api/reports/manpower/attendance-sheet/people',session,{method:'POST',body:JSON.stringify({site,ids:sheet.people.map(person=>person.id)})}),
  ]);
  const result=checkAttendanceSheet({sheet,site:master.site||site,lines:[...(attendance.otDuties||[]),...(attendance.attendanceEquipment||[])],lockedDays:attendance.lockedDays||[],
-  people:master.people||[],sitePeople:master.sitePeople||[],today});
+  people:master.people||[],sitePeople:master.sitePeople||[],today,uncounted:attendance.exceptions||[]});
  const book=attendanceSheetWorkbook(result,{fileName,checkedAt:formatDisplayDateTime(new Date())});
  // The file is named by the dates compared, as its title is (the read may reach one date further: a date the sheet has no column for).
  const siteSlug=result.site.replace(/[^A-Za-z0-9]+/g,'-').replace(/^-|-$/g,''),compared=result.dates.compared;
