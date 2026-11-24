@@ -1,7 +1,7 @@
 // Stored closed days for the Operations reports (owner, 18 Nov 2026: "the batches which are closed … pre-buffer it, so it
 // will not take time … if a batch is recreated or modified … again it should buffer … every day morning 4 a.m.").
 //
-// What is stored: per site and date, every saved VLB and ELB card of that day already cut down to what the step reports
+// What is stored: per site and date, every saved VLB, ELB and LMV card (LMV since 24 Nov 2026, for the LMV Logbook Register) of that day already cut down to what the step reports
 // read (OPERATIONS_RECORD_FIELDS) with its trip count worked out, so a report reads a few small rows per day instead of
 // every card with its trip rows. Only days whose batches are all locked are stored (the locked-days rule of the
 // attendance store); today and any day still open are always read live.
@@ -33,7 +33,7 @@ export const OPERATIONS_RECORD_FIELDS=['bookDate','location','shiftName','shiftI
 // What a live read takes from each card: the fields above plus what the trip count is worked out from.
 const READ_FIELDS=[...OPERATIONS_RECORD_FIELDS,'trips','timeMode','completedTrips','totalTrips'];
 // Raising this stores every day again (the stored form changed).
-const FORM='ops-v1';
+const FORM='ops-v2';
 
 const num=v=>v===null||v===undefined||v===''||!Number.isFinite(Number(v))?null:Number(v);
 const siteDay=(site,date)=>canonicalSiteName(site)+'|'+date;
@@ -65,7 +65,7 @@ function batchSignatures(batches){
 // The live signature of every site-day with saved VLB/ELB cards (card site as written) in the dates.
 export async function operationsDaySignatures(client,{from,to},batches,sites=null){
  const {rows}=await client.query(`SELECT site,book_date::text AS date,count(*)::int AS n,sum(id)::text AS ids,sum(revision)::text AS revs
-  FROM mis_log_books WHERE book_type IN ('vehicle','equipment') AND deleted_at IS NULL AND book_date>=$$2026-11-01$$
+  FROM mis_log_books WHERE book_type IN ('vehicle','equipment','lmv') AND deleted_at IS NULL AND book_date>=$$2026-11-01$$
   AND book_date BETWEEN $1 AND $2 AND ($3::text[] IS NULL OR site=ANY($3::text[])) GROUP BY site,book_date`,[from,to,sites]);
  const ofBatches=batchSignatures(batches),out=new Map();
  for(const r of rows)out.set(dayKey(r.site,r.date),{site:r.site,date:r.date,signature:`${FORM}|${r.n}:${r.ids}:${r.revs}|${ofBatches.get(siteDay(r.site,r.date))||''}`});
@@ -78,7 +78,7 @@ async function readDayRows(client,days,{asText=false}={}){
  const dates=days.map(d=>d.date).sort();
  const {rows}=await client.query(`SELECT l.id,l.book_no,l.book_type,
   (SELECT COALESCE(jsonb_object_agg(field.key,field.value),'{}'::jsonb) FROM jsonb_each(l.data) AS field WHERE field.key=ANY($5::text[]))${asText?'::text':''} AS data
-  FROM mis_log_books l WHERE l.book_type IN ('vehicle','equipment') AND l.deleted_at IS NULL AND l.book_date>=$$2026-11-01$$
+  FROM mis_log_books l WHERE l.book_type IN ('vehicle','equipment','lmv') AND l.deleted_at IS NULL AND l.book_date>=$$2026-11-01$$
   AND l.book_date BETWEEN $3 AND $4 AND (l.site,l.book_date) IN (SELECT want.site,want.book_date FROM unnest($1::text[],$2::date[]) AS want(site,book_date))
   ORDER BY l.book_date,l.id`,[days.map(d=>d.site),days.map(d=>d.date),dates[0],dates.at(-1),READ_FIELDS]);
  return rows;
