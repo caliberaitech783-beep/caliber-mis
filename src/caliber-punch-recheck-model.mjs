@@ -31,7 +31,16 @@ export function punchSiteRows(held){
  const sum=key=>rows.reduce((total,row)=>total+row[key],0);
  return {rows,total:{id:EVERY,key:EVERY,total:true,site:'All sites',punched:sum('punched'),counted:sum('counted'),toFix:sum('toFix'),noCard:sum('noCard')}};
 }
-export const linesOfSite=(held,siteKey)=>siteKey===EVERY?held.lines:held.lines.filter(line=>line.siteKey===siteKey);
+// The lists a Step 1 figure opens (owner, 24 Nov 2026: "make it drill down for all"). 'punched' is every line.
+export const PUNCH_VIEWS=[
+ {key:'punched',label:'Drivers / operators punched',short:'All punched'},
+ {key:'counted',label:'Attendance from a card',short:'Attendance from a card'},
+ {key:'toFix',label:'To fix here (a card has an error)',short:'To fix here'},
+ {key:'noCard',label:'Punched, no card at all',short:'Punched, no card'},
+];
+export const STATUS_LABEL={counted:'Attendance from a card',toFix:'Card has an error',noCard:'No card'};
+export const ofView=(lines,view)=>view==='punched'?lines:lines.filter(line=>line.status===view);
+export const linesOfSite=(held,siteKey,view='toFix')=>ofView(siteKey===EVERY?held.lines:held.lines.filter(line=>line.siteKey===siteKey),view);
 // Step 2: one row per date and shift (and site, when all sites are open) with its people to fix.
 export function punchSlotRows(lines,{manySites=false}={}){
  const slots=new Map();

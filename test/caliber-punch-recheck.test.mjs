@@ -11,7 +11,7 @@ import {canonicalSiteName} from '../shared/site-location.mjs';
 import {registerCaliberRecheck,CALIBER_RECHECK_SCHEMA} from '../server/routes/caliber-recheck.mjs';
 import {misPageAllowed,misRequestAllowed} from '../shared/mis-application-access.mjs';
 import {requestedMisPage} from '../src/mis-navigation.mjs';
-import {emptyPunchRecheck,addPunchAnswer,punchSiteRows,punchSlotRows,cardAction,punchDefaultRange} from '../src/caliber-punch-recheck-model.mjs';
+import {emptyPunchRecheck,addPunchAnswer,punchSiteRows,punchSlotRows,cardAction,punchDefaultRange,linesOfSite,PUNCH_VIEWS} from '../src/caliber-punch-recheck-model.mjs';
 
 const MAJRI='Majri OC',DATE='2026-11-20',KEY=canonicalSiteName(MAJRI);
 const person=(id,number,name,designation,extra={})=>({id,master_name:'Employee master',record_data:{caliberId:'CMPL'+number,caliberCode:'CMLL'+number,name,currentDesignationName:designation,site:MAJRI,currentLocation:MAJRI,hrListed:true,hrLeft:false,status:'Active',...extra}});
@@ -23,7 +23,13 @@ test('a punch is matched with the cards with an error at its site and date, the 
  const days=[{caliberCode:'4400',date:DATE,site:MAJRI,inTime:'06:01',outTime:'14:05',source:'machine'},{caliberCode:'4402',date:DATE,site:MAJRI,inTime:'14:00',outTime:'',source:'machine'},
   {caliberCode:'4401',date:DATE,site:MAJRI,inTime:'06:00',source:'imported'},{caliberCode:'15970',date:DATE,site:MAJRI,inTime:'06:00',source:'machine'},
   {caliberCode:'4403',date:'2026-11-21',site:MAJRI,inTime:'06:00',source:'machine'}];
- const {lines,sites}=punchRecheck({days,listed,masters:masters(),standing:new Set(['4401|'+DATE])});
+ const counted=new Map([['4401|'+DATE,[{id:'7',book:'VLB',bookNo:'BOOK-7',door:'V7',site:MAJRI,shift:'S1'}]]]);
+ const all=punchRecheck({days,listed,masters:masters(),standing:counted}),{sites}=all,lines=all.lines.filter(line=>line.status==='toFix');
+ // Every punched driver or operator has a line, so each figure of Step 1 drills down (owner, 24 Nov 2026).
+ assert.deepEqual(all.lines.map(line=>[line.number,line.status]).sort(),[['4400','toFix'],['4401','counted'],['4402','toFix'],['4403','noCard']]);
+ assert.deepEqual(all.lines.find(line=>line.number==='4401').countedCards.map(card=>card.bookNo),['BOOK-7']);
+ assert.equal(all.lines.find(line=>line.number==='4401').shift,'S1');
+ assert.equal(punchRecheck({days,listed,masters:masters(),standing:new Set(['4401|'+DATE])}).lines.find(line=>line.number==='4401').status,'counted','a Set of keys is read too');
  assert.deepEqual(sites,[{key:KEY,site:MAJRI,punched:4,counted:1,toFix:2,noCard:1}],'the helper is left out; 4401 has a card that counts; 4403 has no card at all');
  assert.deepEqual(lines.map(line=>[line.number,line.ownCard,line.cards.map(card=>card.id),line.shift]),[['4402',true,['11','10'],'S2'],['4400',false,['10','11'],'—']]);
  assert.equal(lines[0].rowId,'3');assert.equal(lines[0].name,'DRIVER THREE');
@@ -40,6 +46,9 @@ test('the screen adds the days up and draws Step 1 and Step 2',()=>{
  const rows=punchSiteRows(held);
  assert.deepEqual([rows.rows[0].toFix,rows.total.counted,held.machineErrors.length],[1,2,0],'a date read again replaces its answer');
  assert.deepEqual(punchSlotRows(held.lines).map(row=>[row.count,row.own]),[[1,1]]);
+ const viewed={lines:[{siteKey:'a',status:'toFix'},{siteKey:'a',status:'noCard'},{siteKey:'b',status:'counted'}]};
+ assert.deepEqual(PUNCH_VIEWS.map(one=>linesOfSite(viewed,'*',one.key).length),[3,1,1,1],'punched, counted, to fix, no card');
+ assert.equal(linesOfSite(viewed,'a','noCard').length,1);
  assert.deepEqual(punchDefaultRange('2026-11-24'),{from:'2026-11-18',to:'2026-11-24'});
  assert.deepEqual(punchDefaultRange('2026-11-03'),{from:'2026-11-01',to:'2026-11-03'});
 });
@@ -71,8 +80,12 @@ test('the server matches the machine and imported punches with the cards, and Su
   let day=await call('/api/caliber-recheck/punches?from='+DATE+'&to='+DATE);
   assert.equal(day.status,200);
   assert.equal(day.body.machine.connected,true);
-  assert.deepEqual(day.body.sites.map(site=>[site.punched,site.counted,site.toFix,site.noCard]),[[3,1,2,0]]);
-  const byNumber=Object.fromEntries(day.body.lines.map(line=>[line.number,line]));
+  // Every site of the login has a line (owner, 24 Nov 2026: "not able to see all sites"), by its own name; Majri first.
+  assert.equal(day.body.sites.length,8);
+  assert.deepEqual(day.body.sites.map(site=>site.site).sort(),['Dhoptala OC (2nd)','Dudhichua East OC','Dudhichua OC','Gauri Pauni OC (2nd)','Jayant OC','Lalpeth OC','Majri OC','Sasti OC']);
+  assert.deepEqual(day.body.sites.slice(0,2).map(site=>[site.site,site.punched,site.counted,site.toFix,site.noCard]),[['Majri OC',3,1,2,0],['Dhoptala OC (2nd)',0,0,0,0]]);
+  const byNumber=Object.fromEntries(day.body.lines.filter(line=>line.status==='toFix').map(line=>[line.number,line]));
+  assert.deepEqual(day.body.lines.find(line=>line.number==='4401').countedCards.map(card=>card.bookNo),['BOOK-1']);
   assert.deepEqual(byNumber['4404'].cards.map(card=>[card.id,card.own,card.reason]),[['3',true,'no-shift'],['2',false,'no-driver']]);
   assert.deepEqual(byNumber['4400'].cards.map(card=>card.id),['2','3']);
   assert.equal(byNumber['4400'].source,'imported');
@@ -82,8 +95,9 @@ test('the server matches the machine and imported punches with the cards, and Su
   // Save shift on the own card of 4404.
   assert.equal((await call('/api/caliber-recheck/shift',{logbookId:'3',shift:'D'})).status,200);
   day=await call('/api/caliber-recheck/punches?from='+DATE+'&to='+DATE);
-  assert.deepEqual(day.body.lines,[]);
-  assert.deepEqual(day.body.sites.map(site=>[site.punched,site.counted,site.toFix]),[[3,3,0]]);
+  assert.deepEqual(day.body.lines.filter(line=>line.status==='toFix'),[]);
+  assert.deepEqual(day.body.lines.map(line=>line.status),['counted','counted','counted']);
+  assert.deepEqual([day.body.sites[0].punched,day.body.sites[0].counted,day.body.sites[0].toFix],[3,3,0]);
  }finally{server.close();await db.close();}
 });
 
