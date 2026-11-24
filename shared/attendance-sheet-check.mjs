@@ -32,7 +32,7 @@ export const SHEET_LEGEND=[
 // A sheet uploaded as one log book (owner, 24 Nov 2026: the VLB, ELB and LMV sheets are uploaded and checked apart). A P
 // whose trip card is in another log book is neither a match nor a missing card: it has its own colour and its own list.
 export const BOOK_FILL='FF9FE0D6';
-export const bookLegend=logBook=>['book','TEAL on a date = the sheet says P and Pulse-II has no '+logBook+' trip card for it: the trip card of that date, or every trip card of this person, is in another log book. Listed on the sheet "Another log book"; not counted as a missing card.'];
+export const bookLegend=logBook=>['book','TEAL on a date = the sheet says P and Pulse-II has no '+logBook+' trip card for it: the trip card of that date, or every trip card of this person, is in another log book; or the person has no trip card in any log book and others with the same designation have their cards in another log book (or, when none of them has a card, the designation belongs there: a drill operator to ELB). Listed on the sheet "Another log book"; not counted as a missing card.'];
 export const CORRECTION_KINDS={
  'no-id':'No EMP. ID','id-unreadable':'EMP. ID not readable','id-not-found':'EMP. ID not in Pulse-II','id-twice':'EMP. ID twice in the sheet','id-left':'HR marks LEFT',
  // A name mismatch is one colour in the sheet and three kinds in the lists, the one that matters first (nameDifference).
@@ -176,6 +176,22 @@ const NAME_ADVICE={
 
 // ---- Comparing -----------------------------------------------------------------------------------------------------
 const drives=designation=>Boolean(text(designation))&&drivesOrOperates({designation});
+// The log book a designation belongs to, by the owner's rule (9 Nov 2026, the Jayant fleet list): VLB tippers; ELB
+// excavator, dozer, grader, loader, drill (and the surface miner); LMV diesel and water tanker, service and shift van,
+// camper, bus, Scorpio, Hydra and the LMV driver. Sites spell them their own way (LODER, TENKAR, DIESELTANKER, PC for the
+// excavator). '' when the designation names none of them (an Eicher driver, an all-rounder): such a person stays under
+// the log book his sheet was uploaded as. Owner, 24 Nov 2026: a driver or operator with no trip card in any log book is
+// placed where his colleagues' cards are, and by this rule when none of them has a card (bookOfDesignation below), so a
+// drill operator with no card is not counted as a missing VLB card.
+const BOOK_WORDS=[
+ ['ELB',/\b(?:PC|POCLAIN|EXCAVATOR|EXCAVETOR|DOZER|GRADER|LOADER|LODER|DRILL|SURFACE|SHOVEL)\b/],
+ ['LMV',/\b(?:LMV|BUS|CAMPER|SCORPIO|HYDRA|BOLERO|VAN)\b|TANKER|TENKAR|TANKAR/],
+ ['VLB',/\b(?:TIPPER|DUMPER|HAULPAK|VOLVO|SCANIA|HYVA)\b/],
+];
+export function designationLogBook(designation){
+ const words=' '+text(designation).toUpperCase().replace(/[^A-Z]+/g,' ')+' ';
+ return BOOK_WORDS.find(([,pattern])=>pattern.test(words))?.[0]||'';
+}
 // The number a Pulse-II duty line belongs to. The sheet's EMP. ID is the Employee ID, so the line's Employee ID decides
 // when it is written as an ID (CMPL or CMLL and a number); a bare code could be another person's number, so then the
 // Caliber ID is taken. Employee Master answers by the same number (recordNumber in shared/hr-employee-master.mjs).
@@ -218,6 +234,24 @@ export function checkAttendanceSheet({sheet,site,lines=[],lockedDays=[],people=[
   const note=dutyNote(line),key=number+'|'+line.date;(otherByDay.get(key)||otherByDay.set(key,[]).get(key)).push(note);
   const held=otherBooks.get(number)||otherBooks.set(number,new Set()).get(number);for(const book of note.logBooks)held.add(book);
  }
+ // The log book of a driver or operator who has no trip card at all, for a sheet of one log book: where the cards of the
+ // others of the sheet with the same designation are (most people; a tie keeps this log book), else the owner's rule
+ // (designationLogBook). At Sasti on 24 Nov 2026 the water tanker, diesel tanker, service van, bus and LMV drivers had
+ // their cards mostly in VLB (Pulse-II files those machines as vehicles), and no drill operator had a card anywhere.
+ const designationKey=value=>text(value).toUpperCase().replace(/[^A-Z]+/g,' ').trim();
+ const booksByDesignation=new Map();
+ if(logBook)for(const p of sheet.people){
+  const books=new Set([...(active.has(p.number)?[logBook]:[]),...(otherBooks.get(p.number)||[])]);
+  const key=designationKey(p.designation||master.get(p.number)?.designation);if(!key||!books.size)continue;
+  const tally=booksByDesignation.get(key)||booksByDesignation.set(key,new Map()).get(key);
+  for(const book of books)tally.set(book,(tally.get(book)||0)+1);
+ }
+ const bookOfDesignation=designation=>{
+  const tally=booksByDesignation.get(designationKey(designation));
+  if(!tally?.size)return designationLogBook(designation);
+  const most=Math.max(...tally.values()),leaders=[...tally].filter(([,count])=>count===most).map(([book])=>book);
+  return leaders.includes(logBook)?logBook:leaders.sort()[0];
+ };
  const dateIndex=new Map(sheet.dates.map((date,index)=>[date,index]));
  const compared=sheet.filledDates.filter(date=>date>=OPERATIONAL_START&&(!today||date<=today));
  const early=sheet.filledDates.filter(date=>date<OPERATIONAL_START),later=sheet.filledDates.filter(date=>today&&date>today);
@@ -240,8 +274,12 @@ export function checkAttendanceSheet({sheet,site,lines=[],lockedDays=[],people=[
   if(nameKind)add('name-'+nameKind,{sheetSays:p.name,pulseSays:pulse.name,correction:NAME_ADVICE[nameKind]});
   if(siteIssue)add('site',{sheetSays:site,pulseSays:pulse.siteLabel||'No site',pulseSite:pulse.siteLabel||'',correction:'Pulse-II Employee Master holds this person at '+(pulse.siteLabel||'no site')+'. Correct the site on Employee Current Location, or remove the person from this sheet.'});
   // The days. A person Pulse-II does not know has no day to compare. A person whose every trip card is in another log
-  // book is not compared under this one: he belongs to that log book's sheet.
-  const elsewhere=known&&!hasDuties&&otherBooks.has(p.number),judge=known&&(onCards||hasDuties)&&!elsewhere;
+  // book is not compared under this one: he belongs to that log book's sheet. A driver or operator with no trip card in
+  // any log book is placed by his designation (bookOfDesignation): a drill operator belongs to ELB, so under VLB he is
+  // listed apart, and under ELB his P days are missing ELB cards.
+  const byDesignation=logBook&&known&&onCards&&!hasDuties&&!otherBooks.has(p.number)?bookOfDesignation(p.designation)||bookOfDesignation(pulse?.designation):'';
+  const placed=Boolean(byDesignation&&byDesignation!==logBook);
+  const elsewhere=known&&!hasDuties&&(otherBooks.has(p.number)||placed),judge=known&&(onCards||hasDuties)&&!elsewhere;
   let sheetP=0,pulseP=0;const noDuty=[],blanks=[],otherDays=[];
   const cells=sheet.filledDates.map(date=>{
    const mark=p.marks[dateIndex.get(date)],kind=markKind(mark),cell={date,mark,kind,state:'',pulse:''};
@@ -281,13 +319,15 @@ export function checkAttendanceSheet({sheet,site,lines=[],lockedDays=[],people=[
   let books='';
   if(otherDays.length){
    const withCard=otherDays.filter(cell=>cell.other?.length);
-   books=[...new Set(elsewhere?[...otherBooks.get(p.number)]:withCard.flatMap(cell=>cell.other.flatMap(d=>d.logBooks)))].sort().join(' + ')||'another log book';
-   otherBook.push({row:p.row,id:p.id,name:p.name,pulseName:pulse?.name||'',designation:p.designation||pulse?.designation||'',books,whole:elsewhere,days:otherDays.length,cardDays:withCard.length,noCardDays:otherDays.length-withCard.length,
+   books=[...new Set(placed?[byDesignation]:elsewhere?[...otherBooks.get(p.number)]:withCard.flatMap(cell=>cell.other.flatMap(d=>d.logBooks)))].sort().join(' + ')||'another log book';
+   otherBook.push({row:p.row,id:p.id,name:p.name,pulseName:pulse?.name||'',designation:p.designation||pulse?.designation||'',books,whole:elsewhere,byDesignation:placed,days:otherDays.length,cardDays:withCard.length,noCardDays:otherDays.length-withCard.length,
     dates:otherDays.map(cell=>cell.date),cards:[...new Set(withCard.flatMap(cell=>cell.other.map(d=>d.books)).filter(Boolean))].join('; ')});
   }
   const bookNote=otherDays.length&&!elsewhere?'P on '+many(otherDays.length,'date')+' with the trip card in '+books+': not counted here.':'';
-  return {...p,pulse,idIssue,siteIssue,nameDiffers,nameKind,onCards,hasDuties,judge,elsewhere,otherBooks:books,bookDays:otherDays.length,cells,sheetP:judge?sheetP:null,pulseP:judge?pulseP:null,difference:judge&&onCards?sheetP-pulseP:null,corrections:own.length,
-   remark:!p.number||!known?'Days not compared: the EMP. ID is not in Pulse-II.':elsewhere?'Days not compared under '+(logBook||'this log book')+': every trip card of this person is '+books+'.'
+  return {...p,pulse,idIssue,siteIssue,nameDiffers,nameKind,onCards,hasDuties,judge,elsewhere,byDesignation:placed,otherBooks:books||(placed?byDesignation:''),bookDays:otherDays.length,cells,sheetP:judge?sheetP:null,pulseP:judge?pulseP:null,difference:judge&&onCards?sheetP-pulseP:null,corrections:own.length,
+   remark:!p.number||!known?'Days not compared: the EMP. ID is not in Pulse-II.'
+    :placed?'Days not compared under '+logBook+': no trip card in any log book, and the designation belongs to '+byDesignation+'. Check this person under the '+byDesignation+' tab.'
+    :elsewhere?'Days not compared under '+(logBook||'this log book')+': every trip card of this person is '+books+'.'
     :!judge?'Days not compared: not a driver or operator, and no duty in Pulse-II.':[!onCards?'Only days with a duty in Pulse-II are compared: not a driver or operator.':'',bookNote].filter(Boolean).join(' ')};
  });
  for(const line of sheet.noId)corrections.push({kind:'no-id',label:CORRECTION_KINDS['no-id'],row:line.row,id:'',name:line.name,pulseName:'',designation:'',date:'',sheetSays:'(blank)',pulseSays:'',books:'',pulseSite:'',correction:'This line has no EMP. ID. Write the ID, or the line cannot be compared.'});
@@ -371,7 +411,7 @@ export function attendanceSheetWorkbook(result,{fileName='',checkedAt=''}={}){
   ['Employees with at least one correction',String(totals.peopleWithCorrections),''],
   ['Corrections in all',String(totals.corrections),'Listed one by one on the sheet "Corrections".'],
   ...Object.entries(CORRECTION_KINDS).map(([kind,label])=>['· '+label,String(counts[kind]||0),'']),
-  ...(logBook?[['In this sheet, trip cards in another log book (people)',String(result.otherBook.length),'Listed on the sheet "Another log book". Not counted as corrections of '+logBook+'.'],
+  ...(logBook?[['In this sheet, belongs to another log book (people)',String(result.otherBook.length),'Their trip cards are there, or they have none and the designation belongs there ('+result.otherBook.filter(p=>p.byDesignation).length+' by designation). Listed on the sheet "Another log book". Not counted as corrections of '+logBook+'.'],
    ['Compared with',logBook+' trip cards only','A sheet of one log book: the other people Employee Master holds at this site are not listed.']]
    :[['In Pulse-II Employee Master at this site, not in the sheet',String(result.listedOnly.length),'Listed on the sheet "Not in sheet".']]),
   ['Dates compared (locked in Pulse-II)',String(dates.judged.length),say(dates.judged)],

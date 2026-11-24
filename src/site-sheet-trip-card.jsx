@@ -118,7 +118,7 @@ export default function SiteSheetTripCard({session,ReportSection}){
  const siteRow=result?{id:'site',site:result.site,dates:result.dates.judged.length,people:result.totals.judged,...Object.fromEntries(DAY_KINDS.map(k=>[k.key,totals[k.key]?.lines||0])),book:others.length}:null;
  const siteColumns=[col('site','Site'),col('dates','Dates compared (locked)'),col('people','People compared day by day'),
   ...DAY_KINDS.map(k=>({key:k.key,label:k.label,value:r=>r[k.key],render:r=><button type="button" className={'ssc-num ssc-'+k.tone} disabled={!r[k.key]} aria-pressed={pick.kind===k.key} aria-label={k.label+' · '+r[k.key]} onClick={()=>openKind(k.key)}>{r[k.key]}<small>{many(totals[k.key]?.people||0,'person','people')}</small></button>})),
-  {key:'book',label:'Sheet P, trip card in another log book',value:r=>r.book,render:r=><button type="button" className="ssc-num ssc-teal" disabled={!r.book} aria-pressed={pick.others} aria-label={'Sheet P, trip card in another log book · '+many(r.book,'person','people')} onClick={()=>setPick(p=>({...p,others:!p.others}))}>{r.book}<small>{r.book===1?'person':'people'}</small></button>}];
+  {key:'book',label:'Sheet P, belongs to another log book',value:r=>r.book,render:r=><button type="button" className="ssc-num ssc-teal" disabled={!r.book} aria-pressed={pick.others} aria-label={'Sheet P, belongs to another log book · '+many(r.book,'person','people')} onClick={()=>setPick(p=>({...p,others:!p.others}))}>{r.book}<small>{r.book===1?'person':'people'}</small></button>}];
  const exported=dateShiftExport(grid,{count:r=>r.total,countLabel:'people',boxes,shiftLabel:shiftName,dayColumns});
  // A box is one date and shift: those two columns show only when every date is open.
  const step3Columns=[...(pick.all?[col('dateLabel','Date'),col('shiftLabel','Shift')]:[]),...(pick.box||pick.kind?[]:[col('kindLabel','Mismatch')]),col('id','EMP. ID'),col('name','Name in sheet'),col('pulseName','Name in Pulse-II'),col('designation','Designation'),
@@ -126,7 +126,7 @@ export default function SiteSheetTripCard({session,ReportSection}){
  // The correction is one sentence per way: said once above the table (the Excel keeps it on every line).
  const advice=[...new Set(listed.map(l=>l.correction))];
  const step4Columns=[col('dateLabel','Date'),col('sheetSays','Sheet says'),col('pulseSays','Pulse-II says'),col('result','Result'),col('books','Trip cards / log books'),col('equipment','Equipment')];
- const otherColumns=[col('id','EMP. ID'),col('name','Name in sheet'),col('pulseName','Name in Pulse-II'),col('designation','Designation'),col('books','Trip cards are in'),col('which','Which days'),
+ const otherColumns=[col('id','EMP. ID'),col('name','Name in sheet'),col('pulseName','Name in Pulse-II'),col('designation','Designation'),col('books','Belongs to log book'),col('which','Which days'),
   col('days','P days in the sheet'),col('cardDays','With a trip card there'),col('noCardDays','With no trip card'),col('datesLabel','Dates')];
  const where=pick.all?'All dates':dmy(pick.date)+' · '+shiftName(pick.shift);
 
@@ -144,7 +144,7 @@ export default function SiteSheetTripCard({session,ReportSection}){
     <label className={'asc-upload'+(file.busy?' busy':'')}><Upload size={16}/>{file.busy?'Reading the file…':sheet?'Choose another '+book+' file':'Choose the '+book+' Excel file'}<input type="file" accept=".xlsx,.xlsm,.xlk" disabled={file.busy||run.busy} onChange={choose}/></label>
     {sheet&&<p className="asc-note" role="status"><strong>{file.name}</strong> · sheet “{sheet.sheetName}” · {many(sheet.people.length,'employee')} · {sheet.filledDates.length?'marks from '+dmy(sheet.filledDates[0])+' to '+dmy(sheet.filledDates.at(-1)):'no date is marked'}{sheet.missingDates.length?' · no column for '+sheet.missingDates.map(dmy).join(', '):''}</p>}
     {file.error&&<p className="asc-error" role="alert">{file.name}: {file.error}</p>}
-    {!sheet&&!file.busy&&!file.error&&<p className="asc-hint">Only the people of the {active.about.split(' · ')[0]} belong in this file. If the site keeps one sheet for everyone, upload that same file here: the people whose trip cards are in another log book are listed apart.</p>}
+    {!sheet&&!file.busy&&!file.error&&<p className="asc-hint">Only the people of the {active.about.split(' · ')[0]} belong in this file. If the site keeps one sheet for everyone, upload that same file here: the people who belong to another log book (their trip cards are there, or they have none and their designation belongs there) are listed apart.</p>}
    </section>
    {/* Owner, 24 Nov 2026: the batch and dates sit in Step 2 with the site, so Check is the last step. The log book is not
        chosen here any more: it is the tab chosen above, before the upload. */}
@@ -172,7 +172,7 @@ export default function SiteSheetTripCard({session,ReportSection}){
    </section>
   </div>
   {run.error&&<p className="asc-error" role="alert">{run.error}</p>}
-  {misplaced&&<p className="ssc-wrong-tab" role="alert">Is this the {misplaced.book} sheet? {misplaced.whole} of the {result.totals.people} people in this file have every trip card in another log book ({misplaced.book}: {misplaced.people}), and only {result.totals.judged} can be compared with {book} trip cards. Open the <b>{misplaced.book} sheet</b> tab and upload this file there.</p>}
+  {misplaced&&<p className="ssc-wrong-tab" role="alert">Is this the {misplaced.book} sheet? {misplaced.whole} of the {result.totals.people} people in this file belong wholly to another log book ({misplaced.book}: {misplaced.people}), and only {result.totals.judged} can be compared with {book} trip cards. Open the <b>{misplaced.book} sheet</b> tab and upload this file there.</p>}
   {result&&<TripCardVerdict key={'ssc-verdict-'+book+'-'+done.name} view={view} ReportSection={ReportSection} withSheet against={'the '+book+' sheet'} site={result.site} period={period}/>}
   {result&&<>
    <section className="asc-result" aria-label={'Result of the '+book+' check'}>
@@ -185,12 +185,12 @@ export default function SiteSheetTripCard({session,ReportSection}){
      <tr><th scope="row">Dates compared (locked in Pulse-II)</th><td>{result.dates.judged.length}</td></tr>
      <tr><th scope="row">Dates not locked in Pulse-II yet</th><td>{result.dates.pending.length}</td></tr>
      {kinds.map(([kind,label])=><tr key={kind}><th scope="row">{label}</th><td>{result.counts[kind]}</td></tr>)}
-     <tr><th scope="row">Marked P in this sheet, trip card in another log book (people, listed apart, not a correction)</th><td>{others.length}</td></tr>
+     <tr><th scope="row">Marked P in this sheet, belongs to another log book: its trip cards are there, or by designation (people, listed apart, not a correction)</th><td>{others.length}</td></tr>
     </tbody></table>
     {done.range.cut&&<p className="asc-hint">The sheet covers more than 31 days: only the first 31 are compared.</p>}
    </section>
    <ReportSection key={'ssc-site-'+book+'-'+done.name} title={'Step 1 · '+result.site+' · '+book+' trip card against the '+book+' sheet · '+period} category="site-sheet-trip-card-site" description="People-days each way: one person on one date. Press a number to see only that way in the date by shift table. The last column counts people: marked P in this sheet, with the trip card in another log book." rows={[siteRow]} columns={siteColumns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}/>
-   {pick.others&&<ReportSection key={'ssc-others-'+book+'-'+done.name} title={'In the '+book+' sheet, trip card in another log book · '+many(others.length,'person','people')} category="site-sheet-trip-card-other-book" description={'Marked P in the '+book+' sheet, but the trip card of that date is in another log book. They are present: nothing is counted against '+book+' and nothing is listed as a missing card. "Every trip card" = no '+book+' trip card on any compared date: check that person under the tab of his own log book. Press a line for that person day by day.'} rows={others} columns={otherColumns} rowKey={r=>r.key} rowClassName={r=>'ssc-row-teal'+(String(pick.person)===String(r.row)?' report-row-picked':'')} onRowClick={r=>setPick(p=>({...p,person:String(r.row)}))} recordDateFilter={false} emptyMessage="Nobody."/>}
+   {pick.others&&<ReportSection key={'ssc-others-'+book+'-'+done.name} title={'In the '+book+' sheet, belongs to another log book · '+many(others.length,'person','people')} category="site-sheet-trip-card-other-book" description={'Marked P in the '+book+' sheet, but they belong to another log book. They are present: nothing is counted against '+book+' and nothing is listed as a missing card. "Some days" = the card of those dates is in another log book. "Every trip card" = no '+book+' trip card on any compared date. "By designation, no trip card" = no card in any log book; others with the same designation have their cards in another log book (or, when none has a card, the designation belongs there: a drill operator to ELB), so the missing cards count under that tab. Press a line for that person day by day.'} rows={others} columns={otherColumns} rowKey={r=>r.key} rowClassName={r=>'ssc-row-teal'+(String(pick.person)===String(r.row)?' report-row-picked':'')} onRowClick={r=>setPick(p=>({...p,person:String(r.row)}))} recordDateFilter={false} emptyMessage="Nobody."/>}
    <ReportSection key={'ssc-dates-'+book+'-'+done.name+'-'+pick.kind} title={'Step 2 · '+result.site+' · '+book+' · date by shift · '+way} category="site-sheet-trip-card-dates" description="In each box: the people of that date and shift, then a coloured box for each way. The site sheet has dates only, no shift: a person the sheet marks P with no trip card at all is under Shift not in sheet. Press a box for its people, All dates for everyone." rows={exported.rows} columns={exported.columns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
     <div className="ssc-kinds" role="group" aria-label="Ways shown">
      <button type="button" aria-pressed={!pick.kind} onClick={()=>setPick(p=>({...noPick,others:p.others}))}>Both ways <small>{lines.length}</small></button>
