@@ -21,13 +21,14 @@ const pick=(row,fields)=>Object.fromEntries(fields.map(k=>[k,row[k]]));
 // One week: its cards (rows, or cardsJson = JSON texts of card arrays), the batches of each card (links, or linksJson =
 // {card id: batches}; the HR feed has none), the masters (or mastersJson), the week's zero-trip entries and the batches.
 // scope: the caller's site access ({sites}), so a card of another site is left out as before.
-export function buildAttendanceWeek({cards,cardsJson=[],links,linksJson,masters,mastersJson,attendance=[],batches=[],filters,hr=false,scope,build=buildManpowerReport}){
+// punched: who punched the biometric machine in the week (server/services/attendance-punches.mjs).
+export function buildAttendanceWeek({cards,cardsJson=[],links,linksJson,masters,mastersJson,attendance=[],batches=[],filters,hr=false,scope,punched=[],build=buildManpowerReport}){
  const rows=(cards??cardsJson.flatMap(text=>JSON.parse(text))).filter(r=>siteAllowed(scope,r.site));
  const of=links??(linksJson?JSON.parse(linksJson):null);
  const withBatches=hr||!of?rows:rows.map(r=>Object.hasOwn(of,String(r.id))?{...r,batches:of[String(r.id)]}:r);
  masters??=JSON.parse(mastersJson);
  const vehicles=linkVlbTripHandovers(withBatches.filter(r=>r.book_type==='vehicle'));
- return build({records:[...vehicles,...withBatches.filter(r=>r.book_type!=='vehicle')],attendance,...masters,batches,filters,parts:hr?'hr-attendance':'attendance',lockedOnly:true});
+ return build({records:[...vehicles,...withBatches.filter(r=>r.book_type!=='vehicle')],attendance,...masters,batches,filters,parts:hr?'hr-attendance':'attendance',lockedOnly:true,punched});
 }
 
 // The answer of the register (hr=false) or of the HR feed (hr=true) from the joined weeks.
