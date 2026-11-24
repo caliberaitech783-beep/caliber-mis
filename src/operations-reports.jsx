@@ -9,7 +9,7 @@ import {hasReportSteps} from './saved-report-steps-model.mjs';
 import TripTimingReport from './trip-timing-report.jsx';
 import LoadingMachineReport from './loading-machine-report.jsx';
 import React,{useEffect,useMemo,useRef,useState} from 'react';
-import {operationReports,requirements,normalise,filterRecords,buildOperationReport} from './operations-report-model.mjs';
+import {operationReports,requirements,normalise,filterRecords,reportRecords,buildOperationReport} from './operations-report-model.mjs';
 import './operations-reports.css';
 import {encodeDateRange,parseDateRange} from './date-range-filter.mjs';
 import {monthStartDate} from '../shared/operational-start.mjs';
@@ -132,7 +132,7 @@ function SavedOperationReports({session,reportId='daily',onSelect=()=>{},ReportS
    if(!stopped)setData({...result,reportRange:filters.from+'|'+filters.to,loadStats:stats});}).catch(e=>{if(!stopped)setError(e.message);}).finally(()=>{if(!stopped)setBusy(false);});return()=>{stopped=true;reading.release();};},[filters.from,filters.to,session.token,reload,valid,parts,stepped,Boolean(requirements[id])]);
  const all=useMemo(()=>normalise(data?.records||[]),[data]);
  const effective=id==='missing'?{...filters,employee:'',workOrder:''}:filters;
- const selected=useMemo(()=>filterRecords(all,effective),[all,filters,id]);
+ const selected=useMemo(()=>reportRecords(id,filterRecords(all,effective)),[all,filters,id]);
  // The step reports are built on the server; only the other reports are built here.
  const report=useMemo(()=>stepped?{columns:[],rows:[]}:buildOperationReport(id,selected,{...data,filters:effective,monthly}),[id,selected,data,filters,monthly,stepped]);
  const set=(key,value)=>setFilters(f=>({...f,[key]:value}));

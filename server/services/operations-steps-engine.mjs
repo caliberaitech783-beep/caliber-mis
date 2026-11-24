@@ -5,7 +5,7 @@
 // database as unparsed text and passes it on. If no worker can run, the same engine runs on the main thread, as before.
 import {threadId} from 'node:worker_threads';
 import {siteAllowed} from '../../shared/log-book-access.mjs';
-import {normalise,filterRecords,buildOperationReport,effectiveOperationFilters,operationFilterOptions} from '../../src/operations-report-model.mjs';
+import {normalise,filterRecords,reportRecords,buildOperationReport,effectiveOperationFilters,operationFilterOptions} from '../../src/operations-report-model.mjs';
 import {stepItems,stepLevels} from '../../src/saved-report-steps-model.mjs';
 import {operationsRecordsFromTexts} from './operations-day-store.mjs';
 
@@ -30,7 +30,7 @@ export function createStepsEngine({now=()=>Date.now(),readingMs=STEP_READING_MS}
   let built=reading.reports.get(key);
   if(built)return built;
   const effective=effectiveOperationFilters(id,filters),data={assets:reading.assets,shifts:reading.shifts,cards:reading.cards};
-  const selected=filterRecords(reading.all,effective);
+  const selected=reportRecords(id,filterRecords(reading.all,effective));
   const report=buildOperationReport(id,selected,{...data,filters:effective,monthly});
   const items=stepItems(id,{records:selected,cards:reading.cards,report,assets:reading.assets,shifts:reading.shifts});
   const build=opened=>buildOperationReport(id,id==='scans'?selected:opened,{...data,...(id==='scans'?{cards:opened}:{}),filters:effective,monthly});
