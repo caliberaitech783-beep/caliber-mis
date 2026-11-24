@@ -81,7 +81,7 @@ test('a P whose trip card is in another log book is listed apart: not a match, n
  assert.match(operator.remark,/Days not compared under VLB: every trip card of this person is ELB\./);
  assert.deepEqual(operator.cells.map(c=>c.state),['book','book','book']);
  assert.deepEqual(personDays(operator).map(d=>[d.pulseSays,d.result]),[
-  ['ELB card in Shift A','Sheet P, trip card in another log book'],['ELB card in Shift A','Sheet P, trip card in another log book'],['No trip card; his trip cards are ELB','Sheet P, trip card in another log book']]);
+  ['ELB card in Shift A','Sheet P, belongs to another log book'],['ELB card in Shift A','Sheet P, belongs to another log book'],['No trip card; his trip cards are ELB','Sheet P, belongs to another log book']]);
  const driver=rowOf(VLB,'CMPL904002');
  assert.deepEqual(driver.cells.map(c=>c.state),['','duty','book']);
  assert.deepEqual([driver.sheetP,driver.pulseP,driver.difference],[1,2,-1],'1 P day counted under VLB, 2 VLB card days; the ELB day is neither');
@@ -113,7 +113,7 @@ test('the Excel of a log book names it, colours the other-log-book days and list
  assert.deepEqual(grid.cellFills[2],{7:'book',8:'book',9:'book'},'the operator: three teal days');
  assert.deepEqual(grid.cellFills[1],{8:'duty',9:'book'});
  assert.deepEqual(other.rows.map(r=>[r[1],r[5],r[6],r[7],r[10]]),[['CMPL904002','ELB','Some days','1','03-11'],['CMPL904003','ELB','Every trip card','3','01-11, 02-11, 03-11'],['CMPL904004','LMV','Some days','1','01-11']]);
- assert.ok(summary.rows.some(r=>r[0]==='In this sheet, trip cards in another log book (people)'&&r[1]==='3'));
+ assert.ok(summary.rows.some(r=>r[0]==='In this sheet, belongs to another log book (people)'&&r[1]==='3'));
  assert.ok(summary.rows.some(r=>r[0]==='Compared with'&&r[1]==='VLB trip cards only'));
  assert.ok(!summary.rows.some(r=>/Employee Master at this site, not in the sheet/.test(r[0])));
  const done=await runSiteSheetCheck({sheet:parseAttendanceSheet(SHEET),fileName:'elb.xlsx',site:SITE,sheetBook:'ELB',session:{token:'T'},today:iso(23),read,build:(title,sheets)=>({title,sheets})});

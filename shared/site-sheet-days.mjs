@@ -104,7 +104,7 @@ export function kindTotals(lines){
 }
 
 // One person day by day: the sheet's mark beside Pulse-II for every date of the sheet that is filled.
-const STATE_WORDS={duty:'Trip card present, sheet not P',noDuty:'Sheet P, no trip card',site:'Sheet P, trip card at another site',book:'Sheet P, trip card in another log book',skip:'Not compared',
+const STATE_WORDS={duty:'Trip card present, sheet not P',noDuty:'Sheet P, no trip card',site:'Sheet P, trip card at another site',book:'Sheet P, belongs to another log book',skip:'Not compared',
  '':'Same in both'};
 // A duty of another log book on a date (only when the sheet was uploaded as one log book): "ELB card in Shift A".
 const otherSays=c=>uniq(c.other.flatMap(d=>d.logBooks)).join(' + ')+' card in '+uniq(c.other.map(d=>shiftName(d.shift))).join(' + ');
@@ -113,14 +113,16 @@ export function personDays(row){
   const cards=[...(c.duties||[]),...(c.away||[]),...(c.other||[])],own=c.duties?.length||c.away?.length;
   return {id:c.date,date:c.date,sheetSays:c.mark||'(blank)',
    pulseSays:c.duties?.length?'Duty in '+uniq(c.duties.map(d=>shiftName(d.shift))).join(' + '):c.away?.length?'Duty at '+joined(c.away,'site'):c.other?.length?otherSays(c)
-    :c.state==='book'?'No trip card; his trip cards are '+(row.otherBooks||'in another log book'):c.pulse==='?'?'Date not locked yet':c.pulse?'No duty':'Not compared',
+    :c.state==='book'?(row.byDesignation?'No trip card in any log book; the designation belongs to '+row.otherBooks:'No trip card; his trip cards are '+(row.otherBooks||'in another log book'))
+    :c.pulse==='?'?'Date not locked yet':c.pulse?'No duty':'Not compared',
    books:joined(cards,'books'),equipment:joined(cards,'doors'),
    state:c.state,result:c.state?STATE_WORDS[c.state]??'':!c.pulse?'Not compared':c.other?.length&&!own?'Trip card in another log book: not compared here'
     :c.kind==='present'&&!own?'Not judged: not a driver or operator':STATE_WORDS['']};
  });
 }
-// A file uploaded under the wrong tab (the ELB sheet under VLB): more people of the file have every trip card in another
-// log book than are compared here. Returns that log book and how many of them, or null when the file fits its tab.
+// A file uploaded under the wrong tab (the ELB sheet under VLB): more people of the file belong wholly to another log
+// book (every trip card there, or no card and that designation) than are compared here. Returns that log book and how
+// many of them, or null when the file fits its tab.
 export function wrongTab(result){
  const whole=(result?.otherBook||[]).filter(p=>p.whole);
  if(whole.length<3||whole.length<=(result.totals?.judged||0))return null;
@@ -129,8 +131,11 @@ export function wrongTab(result){
  const [book,people]=[...count].sort((a,b)=>b[1]-a[1])[0];
  return {book,people,whole:whole.length};
 }
-// The people of a one-log-book sheet whose trip cards are in another log book, for the screen: one line per person.
-export const otherBookRows=result=>(result?.otherBook||[]).map(p=>({...p,key:'other-'+p.row,which:p.whole?'Every trip card':'Some days',datesLabel:p.dates.map(dayMonth).join(', ')}));
+// The people of a one-log-book sheet who belong to another log book, for the screen: one line per person. "Which days":
+// some days (those cards are in another log book), every trip card, or by designation (no card at all).
+export const OTHER_BOOK_WAYS={some:'Some days',every:'Every trip card',designation:'By designation, no trip card'};
+export const otherBookRows=result=>(result?.otherBook||[]).map(p=>({...p,key:'other-'+p.row,
+ which:p.byDesignation?OTHER_BOOK_WAYS.designation:p.whole?OTHER_BOOK_WAYS.every:OTHER_BOOK_WAYS.some,datesLabel:p.dates.map(dayMonth).join(', ')}));
 
 // ---- The Excel ------------------------------------------------------------------------------------------------------
 // Three sheets for buildXlsxSheetsWorkbook, put after the site's own sheet: the date by shift counts, then the lines of
@@ -160,11 +165,12 @@ export function sheetDaySheets(result,lines=sheetDayLines(result)){
 // One more sheet when the file was uploaded as one log book: the people marked P whose trip card is in another log book.
 export function otherBookSheet(result){
  const book=result.logBook||'this log book',period=result.dates?.compared?.length?dmy(result.dates.compared[0])+' to '+dmy(result.dates.compared.at(-1)):'';
- const title=result.site+' · In the '+book+' sheet, trip cards in another log book · '+period;
+ const title=result.site+' · In the '+book+' sheet, belongs to another log book · '+period;
  return {name:'Another log book',title,plainSerial:true,
   headerRows:[title,
-   'These people are marked P in the '+book+' sheet, but the trip card of that date is in another log book. They are present: nothing is counted against '+book+', and nothing is listed as a missing card.',
-   '"Every trip card": the person has no '+book+' trip card on any compared date, so he is not compared under '+book+' at all. Check him under the tab of his own log book, with that log book\'s sheet.'],
-  columns:['Row in sheet','EMP. ID','Name in sheet','Name in Pulse-II','Designation','Trip cards are in','Which days','P days in the sheet','With a trip card there','With no trip card','Dates','Trip cards / log books'].map(label=>({label})),
+   'These people are marked P in the '+book+' sheet, but they belong to another log book. They are present: nothing is counted against '+book+', and nothing is listed as a missing card.',
+   '"Some days": the trip card of those dates is in another log book. "Every trip card": the person has no '+book+' trip card on any compared date, so he is not compared under '+book+' at all.',
+   '"By designation, no trip card": the person has no trip card in any log book; the others in this sheet with the same designation have their trip cards in another log book, or, when none of them has a card, the designation belongs there by the VLB / ELB / LMV rule (a drill operator to ELB). The missing cards are counted under that tab. Check these people under the tab of their own log book.'],
+  columns:['Row in sheet','EMP. ID','Name in sheet','Name in Pulse-II','Designation','Belongs to log book','Which days','P days in the sheet','With a trip card there','With no trip card','Dates','Trip cards / log books'].map(label=>({label})),
   rows:otherBookRows(result).map(p=>[String(p.row),p.id,p.name,p.pulseName,p.designation,p.books,p.which,String(p.days),String(p.cardDays),String(p.noCardDays),p.datesLabel,p.cards])};
 }
