@@ -40,9 +40,10 @@ test('the top bar is measured once for every step heading',()=>{
 });
 
 test('a step table that fits keeps its column headings under the step heading with the page; a wider one keeps every line and slides its heading row down',async()=>{
- const {placeStepTableHeads,shiftStepTableHeads}=await import('../src/step-table-heads.js');
+ const {placeStepTableHeads,shiftStepTableHeads,STEP_TABLE_BOXES}=await import('../src/step-table-heads.js');
+ assert.ok(STEP_TABLE_BOXES.split(', ').includes('.mp-category'),'OT site summaries participate in scroll-container measurement');
  const wide=css.slice(css.indexOf('@media (min-width: 761px)'),css.indexOf('[data-printing]'));
- assert.match(wide,/:is\(\.reports-detail-table, \.ar-grid-wrap, \.report-totals-scroll\)\[data-head-fits\] \{ max-height: none; overflow: visible; \}/);
+ assert.match(wide,/:is\(\.reports-detail-table, \.ar-grid-wrap, \.report-totals-scroll, \.mp-category\)\[data-head-fits\] \{ max-height: none; overflow: visible; \}/);
  assert.match(wide,/table\[data-head="page"\] > thead th \{[^}]*position: sticky;[^}]*top: calc\(var\(--mis-top-stick, 0px\) \+ var\(--step-head, 0px\)\);/);
  assert.match(wide,/table\[data-head="shift"\] > thead th \{[^}]*transform: translateY\(var\(--head-shift, 0px\)\);/);
  assert.doesNotMatch(css,/max-height: max\(/,'no step table is put in a box of its own: every line stays on the page');
