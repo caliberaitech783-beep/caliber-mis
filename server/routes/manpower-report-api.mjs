@@ -29,8 +29,8 @@ const REPORT_CARD_FIELDS=[...ATTENDANCE_CARD_FIELDS,'remark'];
 // What the register reads of a duty line and of a presence line.
 const DUTY_FIELDS=['id','date','shift','site','siteKey','employeeKey','employeeId','caliberCode','employeeName','category','equipment','doors','makeModel','logBook','flag','flagLabel','hours','trips','km','books'];
 // The log book, how the duty came in (scanned, manual, zero-trip entry) and its batches: Site Sheet vs Trip Card and
-// Trip Card vs Bio-punch filter and count by them.
-const CARD_FIELDS=['logBooks','source','batches'];
+// Trip Card vs Bio-punch filter and count by them. machineBook: the log book of a zero-trip entry's machine (it has no card).
+const CARD_FIELDS=['logBooks','source','batches','machineBook'];
 // The attendance read takes its cards from the stored locked days (attendance-day-store), which keep no batch. The batch
 // names are read for those cards, in the same snapshot, so Site Sheet vs Trip Card and Trip Card vs Bio-punch can offer
 // a batch. The HR feed has no batch and skips this read.

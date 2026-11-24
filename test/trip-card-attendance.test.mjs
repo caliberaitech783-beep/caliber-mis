@@ -108,9 +108,9 @@ test('the dates first offered and the limits',()=>{
  assert.equal(rangeProblem('2026-11-01','2026-11-20','2026-11-24'),'');
 });
 
-test('Trip Card vs Bio-punch is the tab after Site Sheet vs Trip Card, with log book tabs on both',()=>{
+test('Trip Card vs Bio-punch is the last of the four attendance check tabs, with the filter bar on both screens',()=>{
  const ids=operationReports.map(r=>r.id);
- assert.equal(ids.indexOf('attendance-trip-bio'),ids.indexOf('attendance-site-sheet')+1);
+ assert.deepEqual(ids.slice(ids.indexOf('attendance-month'),ids.indexOf('attendance-month')+4),['attendance-month','attendance-site-sheet','attendance-sheet','attendance-trip-bio']);
  const read=name=>fs.readFileSync(new URL(name,import.meta.url),'utf8');
  assert.match(read('../src/manpower-reports.jsx'),/tripBio\?<TripCardBioPunch session=\{session\} ReportSection=\{ReportSection\}\/>/);
  for(const page of ['../src/site-sheet-trip-card.jsx','../src/trip-card-biopunch.jsx'])assert.match(read(page),/<TripCardFilters /);

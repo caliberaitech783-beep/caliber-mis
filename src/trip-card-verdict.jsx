@@ -11,20 +11,29 @@ import './trip-card-verdict.css';
 const many=(n,one,more=one+'s')=>n+' '+(n===1?one:more);
 const col=(key,label,extra={})=>({key,label,value:r=>r[key]===''||r[key]===undefined||r[key]===null?'—':r[key],...extra});
 
-export function TripCardFilters({filter,onChange,min,max,logBooks,batches,disabled,checked,onDownload,children}){
+// tabs={false}: no log book tabs. Site Sheet vs Trip Card chooses the log book before the upload (its own tabs), so here
+// only the way of selecting, the batch, From and To are left to choose.
+// ways (optional, owner 24 Nov 2026): "Select by" Date to date / Batch wise / Batch + dates ({key,label} list with the keys
+// dates, batch, both; filter.by holds the choice). Date to date hides the batch, Batch wise hides From and To. Without
+// ways the batch and the dates show together, as before.
+export function TripCardFilters({filter,onChange,min,max,logBooks,batches,disabled,checked,onDownload,ways=null,children,tabs=true}){
+ const by=ways?(filter.by||ways[0].key):'both';
  return <section className="tcv-filters" aria-label="What to see">
-  <div className="tcv-tabs" role="tablist" aria-label="Log book">
+  {tabs&&<div className="tcv-tabs" role="tablist" aria-label="Log book">
    {LOG_BOOK_TABS.map(t=><button key={t.key||'all'} type="button" role="tab" aria-selected={filter.logBook===t.key} disabled={disabled}
     onClick={()=>onChange({logBook:t.key,batch:''})}>{t.label}{logBooks&&<small>{logBooks[t.key]||0}</small>}</button>)}
-  </div>
+  </div>}
+  {ways&&<div className="tcv-ways" role="group" aria-label="Select by"><span>Select by</span>
+   {ways.map(w=><button key={w.key} type="button" aria-pressed={by===w.key} disabled={disabled} onClick={()=>onChange({by:w.key})}>{w.label}</button>)}
+  </div>}
   <div className="tcv-fields">
    {children}
-   <label>Batch<select value={filter.batch} disabled={disabled||!checked} onChange={e=>onChange({batch:e.target.value})}>
+   {by!=='dates'&&<label>Batch<select value={filter.batch} disabled={disabled||!checked} onChange={e=>onChange({batch:e.target.value})}>
     <option value="">{checked?'All batches'+(batches?' ('+batches.length+')':''):'Press Check to list the batches'}</option>
     {(batches||[]).map(b=><option key={b.value} value={b.value}>{b.value} · {many(b.count,'card')}</option>)}
-   </select></label>
-   <label>From<input type="date" value={filter.from} min={min||undefined} max={filter.to||max||undefined} disabled={disabled} onChange={e=>onChange({from:e.target.value})}/></label>
-   <label>To<input type="date" value={filter.to} min={filter.from||min||undefined} max={max||undefined} disabled={disabled} onChange={e=>onChange({to:e.target.value})}/></label>
+   </select></label>}
+   {by!=='batch'&&<label>From<input type="date" value={filter.from} min={min||undefined} max={filter.to||max||undefined} disabled={disabled} onChange={e=>onChange({from:e.target.value})}/></label>}
+   {by!=='batch'&&<label>To<input type="date" value={filter.to} min={filter.from||min||undefined} max={max||undefined} disabled={disabled} onChange={e=>onChange({to:e.target.value})}/></label>}
    {onDownload&&<button type="button" className="asc-run light tcv-download" disabled={disabled} onClick={onDownload}><Download size={16}/>Download Excel of this selection</button>}
   </div>
  </section>;

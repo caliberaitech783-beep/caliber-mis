@@ -233,7 +233,7 @@ export function buildManpowerReport({records=[],attendance=[],assets=[],employee
   const asset=assetMap.get(String(entry.asset_id));
   const door=asset?text(asset.door||asset.doorNo||equipmentDoorNumber(asset)):'';
   const site=sitesByKey.get(entry.site)||entry.site;
-  attendanceSources.push({...entry,site,door,assetKey:door?entry.site+'|'+key(door):'',batchIds:[],employeeKey:person.identityKey,employeeId:person.employeeId,employeeName:person.name,caliberCode:person.caliberCode,trips:0,...assetClass(asset),noMachine:!asset});
+  attendanceSources.push({...entry,site,door,assetKey:door?entry.site+'|'+key(door):'',batchIds:[],employeeKey:person.identityKey,employeeId:person.employeeId,employeeName:person.name,caliberCode:person.caliberCode,trips:0,...assetClass(asset),noMachine:!asset,machineBook:asset?logBookCode(fleetAssetKind(asset)):''});
  }
  const attendanceDuties=group(attendanceSources.filter(r=>!hr||![r.employeeId,r.caliberCode].some(isDummyEmployeeId)),r=>JSON.stringify([r.employeeKey,r.date,r.shift])).filter(sources=>sources.some(r=>rowMatches(r,f)));
  const shiftAttendance=!full?[]:attendanceDuties
@@ -269,7 +269,10 @@ export function buildManpowerReport({records=[],attendance=[],assets=[],employee
     actual:line===main,actualLabel:line===main?'Yes':'No — second machine',
     flag:mark?.severity||(zeroTrips?'zero':'normal'),flagLabel:mark?unique(mark.reasons).join('; '):zeroTrips?'BLUE — Present with 0 trips':'Normal duty',
     note:[others.length?'Also worked '+others.join(', '):'',machines].filter(Boolean).join(' · '),reason,remarks,
-    logBooks:unique(line.list.filter(s=>s.card).map(s=>logBookCode(s.kind))),source:cardSource(line.list.filter(s=>s.card)),batches:unique(line.list.flatMap(s=>s.batchNames||[])).join('; ')};
+    logBooks:unique(line.list.filter(s=>s.card).map(s=>logBookCode(s.kind))),source:cardSource(line.list.filter(s=>s.card)),batches:unique(line.list.flatMap(s=>s.batchNames||[])).join('; '),
+    // A zero-trip entry has no card, so no log book of its own: it belongs to the log book of its machine (Site Sheet vs
+    // Trip Card checks one log book at a time). '' when a card is on the line, or the entry names no machine.
+    machineBook:line.list.some(s=>s.card)?'':unique(line.list.map(s=>s.machineBook)).join(' + ')};
   });
  }).sort((a,b)=>a.date.localeCompare(b.date)||a.site.localeCompare(b.site)||a.shift.localeCompare(b.shift)||a.employeeName.localeCompare(b.employeeName)||Number(b.actual)-Number(a.actual));
  // Every known site is listed, including those with no flagged driver, so an
