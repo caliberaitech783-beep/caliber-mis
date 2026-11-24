@@ -2,6 +2,7 @@ import {ACTIVE_VLB_ENTRY_FROM,ACTIVE_VLB_ENTRY_FILTER,readVlbCardCounts} from '.
 import {isMisAdministrator} from '../../shared/mis-admin-access.mjs';
 import {registerVlbBatchDeletions} from './vlb-batch-deletions.mjs';
 import {withVlbTripHandovers} from '../../shared/vlb-trip-handover.mjs';
+import {readVlbZeroTripEntries} from '../../shared/vlb-zero-trip-entries.mjs';
 import {operationalDate} from '../../shared/operational-start.mjs';
 import {activeWorkOrders,WORK_ORDER_MASTERS} from '../../shared/trip-card-rules.mjs';
 import {randomUUID} from 'node:crypto';
@@ -88,7 +89,9 @@ async function details(client,batch,req){
  const lmvRecords=(await client.query(
   "SELECT id,book_no,book_type,data,revision FROM mis_log_books WHERE book_type='lmv' AND book_date=$1 AND deleted_at IS NULL ORDER BY id",
   [batch.report_date])).rows.filter(record=>canonicalSiteName(record.data.location)===canonicalSiteName(batch.site)&&vlbRecordScope(record.data).shift===batch.shift);
- return {...batch,canEditSavedFleet:Boolean(req.batchActor.mis||req.batchActor.admin||req.batchActor.siteEditor&&!batch.closed_at),created_by:creator(batch),trialExpired,records,lmvRecords,canLockLmv:!stageInfo.stageWait&&stageInfo.stage==='lmv_open'&&(owner||req.batchActor.admin)&&!trialExpired&&!stageInfo.lmvLockBlockers?.length,entry_count:records.length,requests,audit,approvalOtps,...stageInfo,canLockVlb:stageInfo.twoStage&&stageInfo.stage==='vlb_open'&&(owner||req.batchActor.admin)&&!trialExpired&&!stageInfo.lockBlockers.length,canUnlockVlb:stageInfo.twoStage&&['lmv_open','elb_open'].includes(stageInfo.stage)&&mayUnlockVlb(batch,req.batchActor),canEnterFleet:!stageInfo.stageWait&&stageInfo.twoStage&&stageInfo.stage==='elb_open'&&!trialExpired&&mayEnterFleet(batch,req.batchActor),canContinue:!trialExpired&&!batch.closed_at&&(!stageInfo.twoStage||stageInfo.stage==='vlb_open'),canClose:!stageInfo.stageWait&&canClose(batch,req.batchActor,stageInfo.twoStage),canRequestReopen:Boolean(batch.closed_at),canReopen:Boolean(batch.closed_at&&(req.batchActor.admin||req.batchActor.pm||req.batchActor.mis)),approvalExpired:false};
+ // "Present — 0 trips" entries of this site, date and shift (shared/vlb-zero-trip-entries.mjs).
+ const zeroTripEntries=await readVlbZeroTripEntries(client,batch);
+ return {...batch,canEditSavedFleet:Boolean(req.batchActor.mis||req.batchActor.admin||req.batchActor.siteEditor&&!batch.closed_at),created_by:creator(batch),trialExpired,records,lmvRecords,zeroTripEntries,canLockLmv:!stageInfo.stageWait&&stageInfo.stage==='lmv_open'&&(owner||req.batchActor.admin)&&!trialExpired&&!stageInfo.lmvLockBlockers?.length,entry_count:records.length,requests,audit,approvalOtps,...stageInfo,canLockVlb:stageInfo.twoStage&&stageInfo.stage==='vlb_open'&&(owner||req.batchActor.admin)&&!trialExpired&&!stageInfo.lockBlockers.length,canUnlockVlb:stageInfo.twoStage&&['lmv_open','elb_open'].includes(stageInfo.stage)&&mayUnlockVlb(batch,req.batchActor),canEnterFleet:!stageInfo.stageWait&&stageInfo.twoStage&&stageInfo.stage==='elb_open'&&!trialExpired&&mayEnterFleet(batch,req.batchActor),canContinue:!trialExpired&&!batch.closed_at&&(!stageInfo.twoStage||stageInfo.stage==='vlb_open'),canClose:!stageInfo.stageWait&&canClose(batch,req.batchActor,stageInfo.twoStage),canRequestReopen:Boolean(batch.closed_at),canReopen:Boolean(batch.closed_at&&(req.batchActor.admin||req.batchActor.pm||req.batchActor.mis)),approvalExpired:false};
 }
 // One read shared by callers that arrive together and reused for ttlMs. clear() drops the
 // copy, and a read already running when clear() is called is not handed to later callers.
