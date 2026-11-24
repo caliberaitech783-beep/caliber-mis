@@ -27,6 +27,14 @@ export const SHEET_BOOKS=[
  {key:'ELB',label:'ELB sheet',about:'Equipment Log Book · excavators, dozers, graders, loaders, drills'},
  {key:'LMV',label:'LMV sheet',about:'LMV Log Book · light vehicles'},
 ];
+// Owner, 24 Nov 2026 (afternoon): "also give the option to select all ... the combine of three of them, VLB, ELB and LMV".
+// A fourth tab: one sheet compared with the trip cards of VLB, ELB and LMV together (siteSheetView with no sheetBook).
+export const ALL_SHEETS={key:'ALL',label:'All sheets',about:'VLB + ELB + LMV together · one sheet for everyone',name:'VLB + ELB + LMV'};
+export const SHEET_TABS=[...SHEET_BOOKS,ALL_SHEETS];
+// The sheetBook of a tab for siteSheetView: '' for All (every log book), else the log book itself.
+export const sheetBookOf=key=>key===ALL_SHEETS.key?'':key;
+// The name of a tab in sentences: "VLB", or "VLB + ELB + LMV" for All.
+export const sheetTabName=key=>key===ALL_SHEETS.key?ALL_SHEETS.name:key;
 export const shiftName=shift=>shift===UNKNOWN_SHIFT?'Shift not in sheet':/^[A-C]$/.test(String(shift))?'Shift '+shift:String(shift||'');
 
 const text=value=>value===null||value===undefined?'':String(value).trim();

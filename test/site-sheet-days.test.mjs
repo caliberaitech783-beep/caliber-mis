@@ -108,7 +108,7 @@ test('the tab sits just beside Attendance Month-wise; Attendance Sheet Mismatch 
 // The log book itself is no longer chosen in Step 2: it is the tab chosen before the upload (test/site-sheet-log-book.test.mjs).
 test('Step 2 holds the site with the batch and dates; Check is the last step (owner, 24 Nov 2026)',()=>{
  const page=fs.readFileSync(new URL('../src/site-sheet-trip-card.jsx',import.meta.url),'utf8');
- const tabs=page.indexOf('<div className="ssc-book-tabs" role="tablist"'),one=page.indexOf('<h2>1 · {book} attendance Excel of the site</h2>');
+ const tabs=page.indexOf('<div className="ssc-book-tabs" role="tablist"'),one=page.indexOf('<h2>1 · {name} attendance Excel of the site</h2>');
  const two=page.indexOf('<h2>2 · Site, batch and dates</h2>'),bar=page.indexOf('<TripCardFilters '),three=page.indexOf('<h2>3 · Check</h2>');
  assert.ok(tabs>0&&tabs<one&&one<two,'the log book tabs come first, then the Excel of that log book');
  assert.ok(two>0&&two<bar&&bar<three,'the choice bar sits in Step 2, before Check');
@@ -128,7 +128,7 @@ test('Select by: Date to date, Batch wise or Batch + dates (owner, 24 Nov 2026)'
  assert.deepEqual(selectionOf(chosen),selectionOf({...chosen,by:'dates'}),'Date to date is the first choice');
  const read=name=>fs.readFileSync(new URL(name,import.meta.url),'utf8');
  assert.match(read('../src/site-sheet-trip-card.jsx'),/ways=\{SELECT_BY\}/);
- assert.match(read('../src/site-sheet-trip-card.jsx'),/siteSheetView\(\{sheet:tab\.file\.sheet,data:tab\.run\.done\.data,site:tab\.run\.done\.site,\.\.\.selectionOf\(tab\.filter\),sheetBook:book\}\)/,'each log book tab is seen through its own choice');
+ assert.match(read('../src/site-sheet-trip-card.jsx'),/siteSheetView\(\{sheet:tab\.file\.sheet,data:tab\.run\.done\.data,site:tab\.run\.done\.site,\.\.\.selectionOf\(tab\.filter\),sheetBook:sheetBookOf\(book\)\}\)/,'each log book tab is seen through its own choice');
  const bar=read('../src/trip-card-verdict.jsx');
  assert.match(bar,/\{by!=='dates'&&<label>Batch/,'Date to date hides the batch');
  assert.equal(bar.split("{by!=='batch'&&<label>").length,3,'Batch wise hides From and To');
