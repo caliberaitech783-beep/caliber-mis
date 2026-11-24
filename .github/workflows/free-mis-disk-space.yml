@@ -1,0 +1,41 @@
+name: Free disk space on the MIS servers
+# Manual cleanup: list by default; delete only code history and Kudu traces.
+# Never touches /home/data, backups, or scanned cards.
+on:
+  workflow_dispatch:
+    inputs:
+      delete:
+        description: 'Delete the listed items (leave off to only list sizes)'
+        type: boolean
+        default: false
+concurrency:
+  group: caliber-mis-783-release
+  cancel-in-progress: false
+jobs:
+  free:
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    permissions:
+      contents: read
+      id-token: write
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_248B6AEDDDF04A74B67402B5BD0DC3EB }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_6B5963E6143745DD89CD80664168F76E }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_6D6C9CBBB0A24F138D5B5B2F35480688 }}
+      - name: List or free the disk space
+        env:
+          MIS_STAGING_SLOT: ${{ vars.MIS_STAGING_SLOT || 'staging' }}
+          FREE_DELETE: ${{ inputs.delete }}
+        run: |
+          if [ "$FREE_DELETE" = "true" ]; then node scripts/free-mis-disk-space.mjs --delete; else node scripts/free-mis-disk-space.mjs; fi
