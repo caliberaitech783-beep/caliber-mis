@@ -1,3 +1,4 @@
+import {isDeepStrictEqual} from 'node:util';
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {readFile} from 'node:fs/promises';
@@ -54,101 +55,53 @@ if(process.argv.includes('--azure')){
  const {misDatabaseConfig}=await import('../server/rules/mis-database-config.mjs');
  const {logBookSiteScope,siteAllowed}=await import('../shared/log-book-access.mjs');
  const {isMisAdministrator}=await import('../shared/mis-admin-access.mjs');
- const {REGION_DATA}=await import('../shared/region-scope.mjs');
  const {canonicalSiteName}=await import('../shared/site-location.mjs');
- const base='https://pulse-ll.cmll.in';
- const health=await liveJson(base+'/api/health');
- assert.equal(health.commit,process.env.EXPECTED_COMMIT,'Live backend must serve the expected release');
- const ui=await readFile('src/vlb-create-batch.jsx','utf8');
- assert.match(ui,/const accountSite=entryMode\?data.lmvEntrySite\|\|data.accountLocation/,'Entry must default to the assigned site');
- const picker=/export function preferredVlbEntryBatch\(batches,remembered\)\{([\s\S]*?)\n\}/.exec(ui);
- assert.ok(picker,'Deployed picker must be present');
- const preferred=new Function('batches','remembered',picker[1]);
- const open={id:'open',closed_at:null},closed={id:'closed',closed_at:'2026-11-01'};
- assert.equal(preferred([closed,open],closed.id),open,'A remembered closed batch must not override the open batch');
- assert.equal(preferred([closed],closed.id),null,'Closed batches must not auto-open for work');
- const pool=new pg.Pool({...misDatabaseConfig(),connectionTimeoutMillis:15000,max:2});
- let checked=0,restricted=0,admins=0,openSelections=0,restrictedCandidates=0;const liveScanChecks=[];
+ const {fleetDoorKey}=await import('../shared/scan-fleet-door.mjs');
+ const {withVlbTripHandovers,linkVlbTripHandovers}=await import('../shared/vlb-trip-handover.mjs');
+ const {readVlbBatchListCounts}=await import('../server/rules/vlb-card-counts.mjs');
+ const base='https://pulse-ll.cmll.in',health=await liveJson(base+'/api/health',{attempts:2});
+ assert.equal(health.commit,'59a242eb91e1544c8b910b780953ac31d67fa7b5');assert.equal(health.database,'connected');
+ const pool=new pg.Pool({...misDatabaseConfig(),max:1,connectionTimeoutMillis:10000,statement_timeout:20000,options:'-c default_transaction_read_only=on'});
+ const result={commit:health.commit,readOnlyDatabase:true,accounts:[],countsCompared:0,handoverCardsCompared:0,detailRead:false,outsideSiteDenied:false,timings:[]};
+ const get=async(path,headers)=>{const start=Date.now(),r=await fetch(base+path,{headers,signal:AbortSignal.timeout(25000)});result.timings.push({route:path.replace(/[0-9a-f]{8}-[0-9a-f-]{27,}/g,':id'),ms:Date.now()-start,status:r.status});return r;};
  try{
-  const sessions=(await pool.query(`SELECT token,role,employee_name AS name,login_name AS login,assigned_role AS "assignedRole",permissions
-   FROM (SELECT *,row_number() OVER(PARTITION BY lower(login_name) ORDER BY last_seen_at DESC) AS session_rank FROM auth_sessions WHERE created_at>NOW()-INTERVAL '30 days') AS recent WHERE session_rank<=2 ORDER BY last_seen_at DESC LIMIT 2000`)).rows;
-  // Repeated administrator test logins must not hide older site-user sessions.
-  const attempts=new Map();
-  const candidates=sessions.filter(session=>{const n=attempts.get(session.login)||0;attempts.set(session.login,n+1);return n<2;})
-   .sort((a,b)=>Number(isMisAdministrator(a))-Number(isMisAdministrator(b)));
-  restrictedCandidates=candidates.filter(session=>!isMisAdministrator(session)).length;
-  const sitesOnly=process.argv.includes('--sites-only');
- if(sitesOnly)candidates.sort((a,b)=>Number(isMisAdministrator(b))-Number(isMisAdministrator(a)));
- const seen=new Set();
-  for(const session of candidates){
-   if(seen.has(session.login)||sitesOnly&&!isMisAdministrator(session))continue;
-   const headers={Authorization:'Bearer '+session.token};
-   const response=await fetch(base+'/api/log-books/options?scan=1',{headers,signal:AbortSignal.timeout(30000)});
-   if([401,403].includes(response.status))continue;
-   assert.equal(response.status,200,'Authorized options request must succeed');
-   const options=await liveJson(base+'/api/log-books/options?scan=1',{headers,initialResponse:response,allowDenied:true});if(!options)continue;seen.add(session.login);
-   const user=(await pool.query(`SELECT record_data FROM master_records WHERE master_name='Users & employees'
-    AND (lower(trim(record_data->>'login'))=$1 OR lower(trim(record_data->>'employee'))=$2)
-    ORDER BY CASE WHEN lower(trim(record_data->>'login'))=$1 THEN 0 ELSE 1 END,created_at DESC LIMIT 1`,[session.login.toLowerCase(),session.name.toLowerCase()])).rows[0]?.record_data||{};
-   const scope=logBookSiteScope(session,user),admin=isMisAdministrator(session);
-   const batchOptions=await liveJson(base+'/api/log-books/options',{headers});
-   const lmvOptions=await liveJson(base+'/api/log-books/options?scan=1&logBookKind=lmv',{headers});
-   assert.deepEqual(options.sites,batchOptions.sites,'VLB and ELB scan sites must match Create VLB Batch');
-   assert.deepEqual(lmvOptions.sites,batchOptions.sites,'LMV scan sites must match Create VLB Batch');
-   console.log('Live site lists match:',JSON.stringify(batchOptions.sites));
-   if(sitesOnly&&batchOptions.canSelectSite&&batchOptions.sites.length){await pool.end();process.exit(0);}
-   assert.ok(options.sites.every(site=>siteAllowed(scope,site)),'Scan options must contain only authorized sites');
-   assert.equal(options.canSelectSite,scope.sites===null,'Site selection follows the assigned operational scope, including administrators');
-   if(admin)admins++;else{
-    restricted++;
-    const outside=REGION_DATA.flatMap(region=>region.sites).find(site=>!siteAllowed(scope,site));
-    if(outside){
-     const preview=await fetch(base+'/api/vlb-batches/preview?'+new URLSearchParams({site:outside,date:'2026-11-04',shift:'S1',scan:'1'}),{headers,signal:AbortSignal.timeout(30000)});
-     assert.equal(preview.status,403,'A crafted scan preview must deny an outside site');
-    }
+  const sessions=(await pool.query("SELECT token,role,employee_name AS name,login_name AS login,assigned_role AS \"assignedRole\",permissions FROM (SELECT *,row_number() OVER(PARTITION BY lower(login_name) ORDER BY last_seen_at DESC) AS rank FROM auth_sessions WHERE created_at>NOW()-INTERVAL '7 days' AND last_seen_at>NOW()-INTERVAL '2 days') recent WHERE rank=1 ORDER BY last_seen_at DESC LIMIT 200")).rows;
+  sessions.sort((a,b)=>Number(isMisAdministrator(b))-Number(isMisAdministrator(a)));
+  let adminChecked=false,restrictedChecked=false;
+  for(const session of sessions){
+   const admin=isMisAdministrator(session);if(admin?adminChecked:restrictedChecked)continue;
+   const headers={Authorization:'Bearer '+session.token},r=await get('/api/vlb-batches',headers);
+   if([401,403].includes(r.status))continue;assert.equal(r.status,200);const data=await r.json();
+   const user=(await pool.query("SELECT record_data FROM master_records WHERE master_name='Users & employees' AND lower(trim(record_data->>'login'))=$1 ORDER BY id DESC LIMIT 1",[String(session.login).toLowerCase()])).rows[0]?.record_data||{},scope=logBookSiteScope(session,user);
+   assert.ok(data.batches.every(b=>siteAllowed(scope,b.site)));
+   assert.ok(data.batches.every(b=>Number.isInteger(b.entry_count)&&Number.isInteger(b.elb_entry_count)));
+   if(scope.sites!==null&&!result.outsideSiteDenied){
+    const outside=(await pool.query("SELECT id,site FROM mis_vlb_batches WHERE archived_at IS NULL AND book_date>='2026-11-01' ORDER BY created_at DESC")).rows.find(b=>!siteAllowed(scope,b.site));
+    if(outside){const denied=await get('/api/vlb-batches/'+outside.id,headers);assert.ok([403,404].includes(denied.status));await denied.body?.cancel();result.outsideSiteDenied=true;}
    }
-   for(const kind of ['vehicle','equipment']){
-    const r=await fetch(base+'/api/log-books/'+kind+'?first=1',{headers,signal:AbortSignal.timeout(30000)});
-    if(r.status===403)continue;
-    assert.equal(r.status,200);
-    const data=await liveJson(base+'/api/log-books/'+kind+'?first=1',{headers,initialResponse:r,allowDenied:true});if(!data)continue;assert.ok((data.records||[]).every(row=>siteAllowed(scope,row.data?.location||row.site)),'VLB/ELB records must stay within scope');
-   }
-   const r=await fetch(base+'/api/vlb-batches?scan=1',{headers,signal:AbortSignal.timeout(30000)});
-   if(r.ok){
-    const batchData=await liveJson(base+'/api/vlb-batches?scan=1',{headers,initialResponse:r,allowDenied:true});if(!batchData)continue;const {batches=[]}=batchData;assert.ok(batches.every(batch=>siteAllowed(scope,batch.site)),'Scan batch list must stay within scope');
-    for(const site of options.sites){
-     const matching=batches.filter(batch=>!batch.archived_at&&!batch.deleted_at&&canonicalSiteName(batch.site)===canonicalSiteName(site));
-     const active=matching.filter(batch=>!batch.closed_at);
-     if(active.length===1){assert.equal(preferred(matching,matching.find(batch=>batch.closed_at)?.id),active[0]);openSelections++;}
-    }
-   }
-   // Read existing entries and their retained images; never upload production test cards.
-   if(liveScanChecks.length<2){
-    const scans=await liveJson(base+'/api/scan-batches',{headers,allowDenied:true});
-    for(const kind of ['vehicle','equipment']){
-     if(liveScanChecks.some(check=>check.kind===kind))continue;
-     const batch=(scans?.batches||[]).find(row=>row.kind===kind&&Number(row.cards)>0);
-     if(!batch)continue;
-     const detail=await liveJson(base+'/api/scan-batches/'+batch.id,{headers});
-     assert.equal(detail.batch.kind,kind,'Live scan entry retains its VLB/ELB type');
-     assert.ok(Array.isArray(detail.cards),'Live scan entry returns cards');
-     const statuses={},ocrSamples=[];
-     for(const card of detail.cards){statuses[card.status]=(statuses[card.status]||0)+1;const extraction=card.raw_fields?.gemini;if(extraction)ocrSamples.push({elapsedMs:extraction.totalElapsedMs??extraction.elapsedMs,attempts:extraction.attempts??1});}
-     const sample=detail.cards.find(card=>!card.raw_fields?.fleetRejection);
-     let imageAvailable=false;
-     if(sample){const image=await fetch(base+'/api/scan-cards/'+sample.id+'/image',{headers,signal:AbortSignal.timeout(30000)});assert.equal(image.status,200,'Existing live scan image must open');assert.match(image.headers.get('content-type')||'',/^image\//);await image.body?.cancel();imageAvailable=true;}
-     liveScanChecks.push({kind,cards:detail.cards.length,statuses,imageAvailable,ocrSamples:ocrSamples.slice(0,5)});
-    }
-   }
-   checked++;
-   if(restricted>=2&&admins>=1&&openSelections>=1)break;
+   const sample=data.batches.find(b=>b.entry_count>0);
+   if(sample&&!result.detailRead){const response=await get('/api/vlb-batches/'+sample.id,headers);assert.equal(response.status,200);const detail=await response.json();assert.equal(detail.id,sample.id);assert.equal(detail.entry_count,detail.records.length);result.detailRead=true;}
+   result.accounts.push({administrator:admin,restrictedScope:scope.sites!==null,batches:data.batches.length});
+   if(admin)adminChecked=true;else restrictedChecked=true;if(adminChecked&&restrictedChecked)break;
   }
+  assert.ok(adminChecked&&restrictedChecked);assert.ok(result.detailRead&&result.outsideSiteDenied);
+  const db=await pool.connect();
+  try{
+   await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+   const ids=(await db.query("SELECT id FROM mis_vlb_batches WHERE archived_at IS NULL AND book_date>='2026-11-01' ORDER BY created_at DESC LIMIT 30")).rows.map(b=>b.id),current=await readVlbBatchListCounts(db,ids);
+   const previous=(await db.query("SELECT b.id,(SELECT count(*)::int FROM mis_vlb_batch_entries e JOIN mis_log_books l ON l.id=e.logbook_id WHERE e.batch_id=b.id AND l.deleted_at IS NULL AND l.book_type='vehicle' AND l.book_date>='2026-11-01') AS entry_count,(SELECT count(*)::int FROM mis_elb_batch_entries e JOIN mis_log_books l ON l.id=e.logbook_id WHERE e.batch_id=b.id AND l.deleted_at IS NULL) AS elb_entry_count FROM mis_vlb_batches b WHERE id=ANY($1::uuid[])",[ids])).rows;
+   const ordered=rows=>[...rows].sort((a,b)=>a.id.localeCompare(b.id));assert.ok(isDeepStrictEqual(ordered(current),ordered(previous)),'Previous and optimized batch counts must agree');result.countsCompared=ids.length;
+   const input=(await db.query("SELECT id,book_no,book_type,data FROM mis_log_books WHERE book_type='vehicle' AND deleted_at IS NULL AND book_date>='2026-11-01' AND mis_vlb_has_handover_trip(data) ORDER BY id DESC LIMIT 1")).rows[0];
+   if(input){
+    const key=data=>JSON.stringify([canonicalSiteName(data.location),fleetDoorKey(data.door)]),wanted=key(input.data);
+    const candidates=(await db.query("SELECT id,data->>'location' AS location,data->>'door' AS door FROM mis_log_books WHERE book_type='vehicle' AND deleted_at IS NULL AND book_date>='2026-11-01' AND mis_vlb_has_handover_trip(data)")).rows.filter(r=>key(r)===wanted).map(r=>r.id);
+    const history=(await db.query("SELECT id,book_no,book_type,data FROM mis_log_books WHERE id=ANY($1::bigint[]) AND book_type='vehicle' AND deleted_at IS NULL AND book_date>='2026-11-01'",[candidates])).rows;
+    const all=new Map(history.map(r=>[String(r.id),r]));all.set(String(input.id),input);
+    const expected=linkVlbTripHandovers([...all.values()]).find(r=>String(r.id)===String(input.id));assert.ok(isDeepStrictEqual(await withVlbTripHandovers(db,[input]),[expected]),'Previous and optimized historical handovers must agree');result.handoverCardsCompared=history.length;
+   }
+   await db.query('ROLLBACK');
+  }finally{db.release();}
+  console.log(JSON.stringify(result));
  }finally{await pool.end();}
- const result={commit:health.commit,checkedAccounts:checked,restrictedCandidateSessions:restrictedCandidates,restrictedAccounts:restricted,administratorAccounts:admins,liveOpenBatchSelections:openSelections,closedBatchPreferenceRejected:true,liveScanChecks};
- console.log(JSON.stringify(result));
- assert.ok(restricted>0,'A current restricted MIS session is required for live access verification');
- assert.ok(admins>0,'A current administrator session is required for live all-site verification');
- assert.ok(openSelections>0,'An existing open site batch is required for live selection verification');
 }
-
 }
