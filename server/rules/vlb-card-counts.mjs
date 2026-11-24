@@ -2,6 +2,26 @@
 // Keep this predicate shared by the list, detail and lightweight count endpoint.
 export const ACTIVE_VLB_ENTRY_FROM='mis_vlb_batch_entries e JOIN mis_log_books l ON l.id=e.logbook_id';
 export const ACTIVE_VLB_ENTRY_FILTER="l.deleted_at IS NULL AND l.book_type='vehicle' AND l.book_date>=$$2026-11-01$$";
+// Only count the caller's visible batches; the list's global stage/owner metadata
+// is read separately. Keep the same active-record predicates as the old list.
+export async function readVlbBatchListCounts(client,batchIds){
+ if(!batchIds.length)return [];
+ return (await client.query(`WITH visible_batches AS (
+  SELECT unnest($1::uuid[]) AS id
+ ), vlb_counts AS (
+  SELECT e.batch_id,count(*)::int AS total
+  FROM ${ACTIVE_VLB_ENTRY_FROM} JOIN visible_batches b ON b.id=e.batch_id
+  WHERE ${ACTIVE_VLB_ENTRY_FILTER} GROUP BY e.batch_id
+ ), elb_counts AS (
+  SELECT e.batch_id,count(*)::int AS total
+  FROM mis_elb_batch_entries e JOIN mis_log_books l ON l.id=e.logbook_id
+  JOIN visible_batches b ON b.id=e.batch_id
+  WHERE l.deleted_at IS NULL GROUP BY e.batch_id
+ )
+ SELECT b.id,COALESCE(v.total,0) AS entry_count,COALESCE(e.total,0) AS elb_entry_count
+ FROM visible_batches b LEFT JOIN vlb_counts v ON v.batch_id=b.id
+ LEFT JOIN elb_counts e ON e.batch_id=b.id`,[batchIds])).rows;
+}
 export async function readVlbCardCounts(client,batchId){
  const {rows}=await client.query(`SELECT count(*)::int AS entry_count,
  count(*) FILTER(WHERE COALESCE(e.snapshot->'data'->>'scanCardId','')='')::int AS manual_count,
