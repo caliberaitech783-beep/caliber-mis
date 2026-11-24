@@ -58,7 +58,16 @@ export function attendanceAnswer({parts,filters,hr=false,scope,locked,generatedA
   exceptions:report.exceptions,notes:report.notes,generatedAt};
 }
 
-// The two worker builds (report-builds.mjs). Each hands back JSON text: a week the main thread only holds until the join,
-// and the answer it only sends.
-export const attendanceWeekJson=input=>JSON.stringify(buildAttendanceWeek(input));
+// A week keeps only what the join and both answers read (24 Nov 2026: 22.7 MB a week of every site before, kept in the
+// answer cache). Duty and presence lines keep the fields the answers pick or filter by; the other tables are not used.
+const WEEK_DUTY_FIELDS=[...new Set([...DUTY_FIELDS,...CARD_FIELDS,'logBooks','start','end','km','scanned'])];
+const WEEK_PRESENCE_FIELDS=[...new Set([...PRESENCE_FIELDS,...CARD_FIELDS,'status','reason','remarks','logBooks','actual'])];
+export function trimAttendanceWeek(report){
+ return {filters:report.filters,otDuties:report.otDuties.map(row=>pick(row,WEEK_DUTY_FIELDS)),attendanceEquipment:report.attendanceEquipment.map(row=>pick(row,WEEK_PRESENCE_FIELDS)),
+  attendanceShifts:report.attendanceShifts,exceptions:report.exceptions,ot:report.ot,otSites:report.otSites,attendanceSites:report.attendanceSites,notes:report.notes};
+}
+
+// The two worker builds (report-builds.mjs). Each hands back JSON text: a week the main thread only holds until the join
+// (or keeps in the answer cache), and the answer it only sends.
+export const attendanceWeekJson=input=>JSON.stringify(trimAttendanceWeek(buildAttendanceWeek(input)));
 export const attendanceAnswerJson=({weeks,...rest})=>JSON.stringify(attendanceAnswer({...rest,parts:weeks.map(({window,json})=>({window,report:JSON.parse(json)}))}));

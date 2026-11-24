@@ -1,11 +1,12 @@
 import {canonicalSiteName} from '../../shared/site-location.mjs';
-import {manpowerFilters,buildManpowerReport,attendanceWindows,joinOtReports,joinManpowerReports,MANPOWER_VIEWS,lockedSiteDays,otHistoryWindows,otHistorySummary,otYearWindows,otDriverTally,OT_HISTORY_DAYS} from '../rules/manpower-report.mjs';
+import {manpowerFilters,buildManpowerReport,attendanceWindows,joinOtReports,joinManpowerReports,MANPOWER_VIEWS,lockedSiteDays,nextReportDate,otHistoryWindows,otHistorySummary,otYearWindows,otDriverTally,OT_HISTORY_DAYS} from '../rules/manpower-report.mjs';
 import {siteAllowed,requireLogBookSite} from '../../shared/log-book-access.mjs';
 import {sharedLogBookSites} from '../services/log-book-site-list.mjs';
 import {directLane,reportKey} from '../services/report-lane.mjs';
 import {buildReportInWorker} from '../services/report-build-pool.mjs';
 import {requireHrAttendance} from './hr-attendance-access.mjs';
-import {HISTORY_CARD_FIELDS,ATTENDANCE_CARD_FIELDS,ATTENDANCE_BATCH_COLUMNS,attendanceDayStoreEnabled,cardSignatures,lockedDayCards,dayCardBatchesText} from '../services/attendance-day-store.mjs';
+import {attendanceAnswerCache,fingerprint,ATTENDANCE_WEEK_KEEP_MS,ATTENDANCE_RECENT_KEEP_MS} from '../services/attendance-answer-cache.mjs';
+import {HISTORY_CARD_FIELDS,ATTENDANCE_CARD_FIELDS,ATTENDANCE_BATCH_COLUMNS,attendanceDayStoreEnabled,cardSignatures,lockedDayCards,lockedSignedDays,dayCardBatchesText} from '../services/attendance-day-store.mjs';
 
 const todayIst=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 // Slim read for OT look-backs: only the card fields that decide a duty, from all three log books.
@@ -42,7 +43,7 @@ export async function reportMastersText(client){
  return {shifts,mastersJson:row?.masters||'{"assets":[],"employees":[],"shifts":[]}'};
 }
 
-export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandovers=async(_,rows)=>rows,today=todayIst,lane=directLane,useDayStore=attendanceDayStoreEnabled(),buildInWorker=buildReportInWorker}){
+export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandovers=async(_,rows)=>rows,today=todayIst,lane=directLane,useDayStore=attendanceDayStoreEnabled(),buildInWorker=buildReportInWorker,answerCache=attendanceAnswerCache}){
  // The server's one list of sites that hold cards (server/services/log-book-site-list.mjs).
  const filterLogBookSites=sharedLogBookSites(pool);
  app.get('/api/reports/manpower',...protect,async(req,res,next)=>{
@@ -153,7 +154,7 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
    const {shifts,mastersJson}=await reportMastersText(client);
    const batches=(await client.query(`SELECT ${ATTENDANCE_BATCH_COLUMNS} FROM mis_vlb_batches
     WHERE deleted_at IS NULL AND archived_at IS NULL AND book_date BETWEEN $1 AND $2`,[filters.contextFrom,filters.contextTo])).rows.filter(b=>siteAllowed(req.logBookScope,b.site));
-   const present=attendance.filter(r=>siteAllowed(req.logBookScope,r.site)),weeks=[],scope={sites:req.logBookScope?.sites};
+   const present=attendance.filter(r=>siteAllowed(req.logBookScope,r.site)),scope={sites:req.logBookScope?.sites};
    // Only locked site-days are read (the rest is left out of the report anyway): from the stored locked days where a
    // stored day still matches its cards and batches, the rest live. See server/services/attendance-day-store.mjs.
    const locked=lockedSiteDays(shifts,batches),signatures=await cardSignatures(client,{from:filters.contextFrom,to:filters.contextTo},sites,batches);
@@ -162,20 +163,41 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
    // so a site is listed in each week even when it saved nothing in that week.
    // 24 Nov 2026: the cards come as JSON text and each week is built on a report worker (server/rules/attendance-read.mjs)
    // while the next week is read; the main thread no longer unpacks or builds anything.
-   for(const window of attendanceWindows(filters.from,filters.to)){
-    const range=manpowerFilters(window),read=await lockedDayCards(client,{from:range.contextFrom,to:range.contextTo},{sites,locked,signatures,useStore:useDayStore,asText:true});
-    const linksJson=hr?null:await dayCardBatchesText(client,read.days);
-    if(building)weeks.push(await building);
-    building=buildInWorker('attendance-week',{cardsJson:read.cardsJson,linksJson,mastersJson,attendance:present.filter(r=>r.date>=window.from&&r.date<=window.to),batches,filters:range,hr,scope}).then(json=>({window,json}));
+   // Repeat opens (server/services/attendance-answer-cache.mjs): each week gets a key from everything it is built from,
+   // and the answer a key from its weeks. An unchanged answer is sent at once; an unchanged week that ended at least two
+   // days ago is not read or built again.
+   const mastersKey=fingerprint(mastersJson),siteNames=[...new Set(batches.map(b=>b.site))],keepBefore=nextReportDate(today(),-1);
+   const plans=attendanceWindows(filters.from,filters.to).map(window=>{const range=manpowerFilters(window);
+    return {window,range,days:lockedSignedDays(signatures,{from:range.contextFrom,to:range.contextTo},locked),attendance:present.filter(r=>r.date>=window.from&&r.date<=window.to),kept:Boolean(answerCache)&&window.to<keepBefore};});
+   for(const plan of plans){
+    plan.linksJson=hr?null:await dayCardBatchesText(client,plan.days);
+    const weekBatches=batches.filter(b=>b.report_date>=plan.range.contextFrom&&b.report_date<=plan.range.contextTo).sort((a,b)=>String(a.id).localeCompare(String(b.id)));
+    plan.key=fingerprint('attendance-week',hr,scope.sites??null,plan.range,mastersKey,siteNames,weekBatches,plan.days.map(d=>[d.site,d.date,d.signature]),plan.linksJson,plan.attendance);
+   }
+   const answerKey=fingerprint('attendance-answer',hr,scope.sites??null,filters,plans.map(p=>p.key),[...locked].sort());
+   const ready=answerCache?.get(answerKey);
+   if(ready){await client.query('COMMIT');client.release();client=null;return ready;}
+   const weeks=[];
+   for(const plan of plans){
+    const kept=plan.kept?answerCache.get(plan.key):null;
+    if(kept){weeks.push(Promise.resolve({window:plan.window,json:kept}));continue;}
+    const read=await lockedDayCards(client,{from:plan.range.contextFrom,to:plan.range.contextTo},{sites,locked,signatures,useStore:useDayStore,asText:true});
+    // One week is built at a time, so a month of cards is never held at once.
+    if(building)await building;
+    building=buildInWorker('attendance-week',{cardsJson:read.cardsJson,linksJson:plan.linksJson,mastersJson,attendance:plan.attendance,batches,filters:plan.range,hr,scope})
+     .then(json=>{if(plan.kept)answerCache.set(plan.key,json,ATTENDANCE_WEEK_KEEP_MS);return {window:plan.window,json};});
     // A build that fails while the next week is read is reported when it is awaited, not as an unhandled error.
     building.catch(()=>{});
+    weeks.push(building);
    }
    await client.query('COMMIT');
    client.release();client=null;
-   if(building)weeks.push(await building);
+   const built=await Promise.all(weeks);
    building=null;
    // The weeks are joined and the answer written as JSON text on the worker too; it is sent as it is.
-   return buildInWorker('attendance-answer',{weeks,filters,hr,scope,locked:[...locked]});
+   const text=await buildInWorker('attendance-answer',{weeks:built,filters,hr,scope,locked:[...locked]});
+   answerCache?.set(answerKey,text,plans.every(p=>p.kept)?ATTENDANCE_WEEK_KEEP_MS:ATTENDANCE_RECENT_KEEP_MS);
+   return text;
    }catch(error){if(client)await client.query('ROLLBACK').catch(()=>{});await building?.catch(()=>{});throw error;}
    finally{client?.release();}
    });

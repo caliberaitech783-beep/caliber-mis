@@ -73,8 +73,10 @@ async function readDayCardsText(client,days,fields){
 // The cards of the locked site-days in the dates: from the store where the stored day still matches, the rest live.
 // Days that are not locked are not read at all; the locked-days rule leaves them out of the report anyway.
 // asText: the cards come as JSON texts (cardsJson, each a JSON array) instead of rows, with the site-days they cover (days).
+// The saved site-days in the dates that are locked, with their signatures: what lockedDayCards reads.
+export const lockedSignedDays=(signatures,{from,to},locked)=>[...signatures.values()].filter(d=>d.date>=from&&d.date<=to&&locked.has(siteDay(d.site,d.date)));
 export async function lockedDayCards(client,{from,to},{sites,locked,signatures,useStore=true,fields=ATTENDANCE_CARD_FIELDS,asText=false}){
- const wanted=[...signatures.values()].filter(d=>d.date>=from&&d.date<=to&&locked.has(siteDay(d.site,d.date)));
+ const wanted=lockedSignedDays(signatures,{from,to},locked);
  if(!wanted.length)return asText?{cardsJson:[],days:[],stored:0,live:0}:{rows:[],stored:0,live:0};
  const fresh=new Map();
  if(useStore){

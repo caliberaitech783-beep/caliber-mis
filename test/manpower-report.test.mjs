@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {buildManpowerReport,manpowerCategoryCells,manpowerFilters,lockedSiteDays,pendingSiteDays,attendanceWindows,otHistoryWindows,otHistorySummary,otYearWindows,otDriverTally} from '../server/rules/manpower-report.mjs';
 import {registerManpowerReports} from '../server/routes/manpower-report-api.mjs';
 import {linkVlbTripHandovers} from '../shared/vlb-trip-handover.mjs';
+import {createTextCache} from '../server/services/attendance-answer-cache.mjs';
+import {buildReportInWorker} from '../server/services/report-build-pool.mjs';
 
 const site='Sasti OC',date='2026-11-10';
 const shifts=[['A','05:00','13:00'],['B','13:00','21:00'],['C','21:00','05:00']].map(([shiftCode,startTime,endTime],i)=>({id:String(31+i),site,shiftCode,shiftName:'Shift '+shiftCode,startTime,endTime,status:'Active'}));
@@ -134,10 +136,10 @@ const lockedBatches=(open=[])=>Array.from({length:17},(_,i)=>'2026-11-'+String(i
  const k=[name,day,shift].join('|');return {id:k,name:'BATCH '+k,site:name,report_date:day,shift,stage:open.includes(k)?'vlb_open':'closed',closed_at:open.includes(k)?null:day+'T23:00:00Z'};})));
 // The card signature read of the stored locked days: count, id sum and revision sum per card site and date.
 const signatureRows=(cards,[from,to,sites])=>{const out=new Map();for(const c of cards){if(c.book_date<from||c.book_date>to||sites&&!sites.includes(c.site))continue;const k=c.site+'|'+c.book_date,row=out.get(k)||{site:c.site,date:c.book_date,n:0,ids:0,revs:0};row.n++;row.ids+=Number(c.id);row.revs+=Number(c.revision||1);out.set(k,row);}return [...out.values()].map(r=>({...r,ids:String(r.ids),revs:String(r.revs)}));};
-function apiHarness(scope={sites:['sasti ob']},cards=[card()],{batches=[]}={}){
+function apiHarness(scope={sites:['sasti ob']},cards=[card()],{batches=[],answerCache=createTextCache(),today='2026-11-12',builds=[]}={}){
  const handlers={};const calls=[];let released=false;const client={async query(sql,args){calls.push({sql,args});if(sql.startsWith('SELECT DISTINCT site'))return {rows:[{site},{site:'Jayant OC'}]};if(sql.includes('GROUP BY site,book_date'))return {rows:signatureRows(cards,args)};if(sql.includes('json_agg(c ORDER BY')){const day=cards.filter(c=>args[0].some((name,i)=>name===c.site&&args[1][i]===c.book_date));return {rows:[{n:day.length,cards:JSON.stringify(day)}]};}if(sql.startsWith("SELECT json_build_object('assets'"))return {rows:[{masters:JSON.stringify({assets:assets.map(a=>({...a,id:String(a.id)})),employees:employees.map(e=>({...e,id:String(e.id)})),shifts:shifts.map(x=>({...x,id:String(x.id)}))})}]};if(sql.startsWith('SELECT id,record_data FROM master_records'))return {rows:shifts.map(record_data=>({id:record_data.id,record_data}))};if(sql.includes('SELECT l.id')&&sql.includes('unnest('))return {rows:cards.filter(c=>args[0].some((name,i)=>name===c.site&&args[1][i]===c.book_date))};if(sql.includes('SELECT l.id'))return {rows:Array.isArray(args?.[3])?cards.map(c=>({...c,data:Object.fromEntries(Object.entries(c.data).filter(([k])=>args[3].includes(k)))})):cards};if(sql.includes('FROM mis_vlb_batches'))return {rows:typeof batches==='function'?batches():batches};if(sql.startsWith('SELECT id,master_name'))return {rows:[...assets.map(record_data=>({id:record_data.id,master_name:'Equipment master',record_data})),...employees.map(record_data=>({id:record_data.id,master_name:'Employee master',record_data})),...shifts.map(record_data=>({id:record_data.id,master_name:'Shift Master',record_data}))]};return {rows:[]};},release(){released=true;}};
- const protect=[()=>{},()=>{},()=>{}];registerManpowerReports({get(path,...steps){if(path==='/api/integrations/hr/attendance')assert.equal(steps.length,2);else assert.deepEqual(steps.slice(0,3),protect);handlers[path]=steps.at(-1);}},{pool:{connect:async()=>client},protect,ensureBooks:async()=>{},withHandovers:async(_,rows)=>rows,today:()=>'2026-11-12'});
- return {calls,async run(query={from:date,to:date},path='/api/reports/manpower'){let result,status=200;const headers={};await handlers[path]({query,logBookScope:scope},{set(k,v){headers[k]=v;return this;},status(s){status=s;return this;},type(t){headers['Content-Type']=t;return this;},send(text){result=JSON.parse(text);},json(value){result=value;}},e=>{throw e;});return {result,status,headers,released};}};
+ const protect=[()=>{},()=>{},()=>{}];registerManpowerReports({get(path,...steps){if(path==='/api/integrations/hr/attendance')assert.equal(steps.length,2);else assert.deepEqual(steps.slice(0,3),protect);handlers[path]=steps.at(-1);}},{pool:{connect:async()=>client},protect,ensureBooks:async()=>{},withHandovers:async(_,rows)=>rows,today:()=>today,answerCache,buildInWorker:(task,input)=>{builds.push(task);return buildReportInWorker(task,input);}});
+ return {calls,builds,async run(query={from:date,to:date},path='/api/reports/manpower'){let result,status=200;const headers={};await handlers[path]({query,logBookScope:scope},{set(k,v){headers[k]=v;return this;},status(s){status=s;return this;},type(t){headers['Content-Type']=t;return this;},send(text){result=JSON.parse(text);},json(value){result=value;}},e=>{throw e;});return {result,status,headers,released};}};
 }
 test('API uses scope, excludes deleted cards, and reads one private consistent snapshot',async()=>{
  const h=apiHarness(),r=await h.run();assert.equal(r.status,200);assert.equal(r.result.totals.assets,1);assert.equal(r.headers['Cache-Control'],'private, no-store');assert.equal(r.released,true);assert.match(h.calls[0].sql,/REPEATABLE READ READ ONLY/);const query=h.calls.find(c=>c.sql.includes('SELECT l.id'));assert.deepEqual(query.args[2],[site]);assert.match(query.sql,/l.deleted_at IS NULL/);assert.match(query.sql,/b.deleted_at IS NULL/);assert.ok(query.sql.includes("l.book_type IN ('vehicle','equipment','lmv')"),'LMV books are read for the OT view');assert.equal(h.calls.at(-1).sql,'COMMIT');assert.ok(!JSON.stringify(r.result).includes('record_data'));
@@ -517,4 +519,55 @@ test('reconciliation lists the site fleet from the Equipment master and what eac
  const work=Object.fromEntries(r.fleetWork.map(w=>[w.door+w.shift,[w.inFleet,w.active,w.zeroKm,w.trips,w.km]]));
  assert.deepEqual(work,{V1S1:[true,true,false,5,100],V2S1:[true,false,true,0,0],V3S1:[true,false,false,0,100],V5S2:[false,true,false,5,100]},'a zero-trip card is not active; zero km is marked apart; a card of a machine now at another site is outside the fleet list');
  assert.ok(r.fleetWork.every(w=>w.siteKey==='sasti ob'&&w.logBook==='VLB'));
+});
+
+// Repeat opens of the attendance read (owner, 24 Nov 2026: "instant next"): the answer and the weeks that ended at least two
+// days ago are kept, and used again only while every card, batch, link, zero-trip entry and master behind them is unchanged.
+test('the attendance cache keeps text by key, for its time, within its size',()=>{
+ let time=0;const cache=createTextCache({maxBytes:10,now:()=>time});
+ cache.set('a','1234',1000);cache.set('b','5678',1000);
+ assert.equal(cache.get('a'),'1234');
+ cache.set('c','9999',1000);
+ assert.equal(cache.get('b'),null,'the one used longest ago leaves first');assert.equal(cache.get('a'),'1234');
+ cache.set('big','123456',1000);assert.equal(cache.get('big'),null,'more than half the cache is not kept');
+ time=1000;assert.equal(cache.get('a'),null,'old text is not used');
+ const off=createTextCache({maxBytes:0});off.set('a','1',1000);assert.equal(off.get('a'),null);
+});
+const onDay=(id,day,shift,patch={})=>card(id,shift,{bookDate:day,...patch});
+const monthCards=()=>[onDay(1,'2026-11-02',1),onDay(2,'2026-11-07',3),onDay(3,'2026-11-08',1),onDay(4,'2026-11-10',2),onDay(5,'2026-11-16',1)];
+test('a repeat open of the same attendance dates is answered at once, and a change rebuilds only its week',async()=>{
+ const cards=monthCards(),builds=[],answerCache=createTextCache(),range={from:'2026-11-01',to:'2026-11-16'};
+ const h=apiHarness({sites:null},cards,{batches:lockedBatches(),answerCache,today:'2026-11-30',builds});
+ const reads=()=>h.calls.filter(c=>c.sql.includes('json_agg(c ORDER BY')).length;
+ const first=await h.run({...range,view:'attendance'},'/api/reports/manpower/attendance');
+ assert.equal(first.status,200);assert.deepEqual(builds,['attendance-week','attendance-week','attendance-week','attendance-answer']);assert.equal(reads(),3);
+ // Another screen asks for the same dates: nothing is read or built again, and the connection is still given back.
+ const again=await h.run(range,'/api/reports/manpower/attendance');
+ assert.deepEqual(again.result,first.result);assert.equal(builds.length,4);assert.equal(reads(),3);assert.equal(again.released,true);assert.equal(h.calls.at(-1).sql,'COMMIT');
+ // A card of 16 Nov is corrected: only its week is read and built again.
+ Object.assign(cards[4],{revision:2,data:{...cards[4].data,employeeId:22,caliberId:'102'}});
+ const edited=await h.run(range,'/api/reports/manpower/attendance');
+ assert.deepEqual(builds.slice(4),['attendance-week','attendance-answer']);assert.equal(reads(),4);
+ assert.ok(edited.result.otDuties.some(d=>d.employeeId==='102'),'the correction shows');
+ const fresh=(await apiHarness({sites:null},cards,{batches:lockedBatches(),today:'2026-11-30'}).run(range,'/api/reports/manpower/attendance')).result;
+ assert.deepEqual({...edited.result,generatedAt:0},{...fresh,generatedAt:0},'the same as a read with nothing kept');
+ // A reopened shift on 2 Nov changes that week's batches: that week is built again.
+ const reopened=lockedBatches(['Sasti OC|2026-11-02|S1']);
+ const h2=apiHarness({sites:null},cards,{batches:reopened,answerCache,today:'2026-11-30',builds:[]});
+ await h2.run(range,'/api/reports/manpower/attendance');assert.deepEqual(h2.builds,['attendance-week','attendance-answer']);
+ // The HR feed and a site login never get this answer.
+ const hr=await h.run(range,'/api/integrations/hr/attendance');assert.equal(hr.status,200);assert.ok(!('lockedDays' in hr.result));
+ const site=apiHarness({sites:['jayant ob']},cards,{batches:lockedBatches(),answerCache,today:'2026-11-30',builds:[]});
+ const siteRead=await site.run(range,'/api/reports/manpower/attendance');
+ assert.equal(site.builds.at(-1),'attendance-answer','built for its own sites');assert.deepEqual(siteRead.result.otDuties,[]);
+});
+test('an answer with recent days is kept five minutes; finished weeks stay',async()=>{
+ let time=Date.parse('2026-11-12T06:00:00Z');
+ const builds=[],answerCache=createTextCache({now:()=>time}),range={from:'2026-11-01',to:'2026-11-16'};
+ const h=apiHarness({sites:null},monthCards(),{batches:lockedBatches(),answerCache,today:'2026-11-12',builds});
+ await h.run(range,'/api/reports/manpower/attendance');assert.equal(builds.length,4);
+ time+=4*60_000;await h.run(range,'/api/reports/manpower/attendance');assert.equal(builds.length,4,'within five minutes: the answer is kept');
+ time+=2*60_000;await h.run(range,'/api/reports/manpower/attendance');
+ // 1-7 Nov ended more than two days before the 12th and is kept; 8-14 and 15-16 can still change with the clock.
+ assert.deepEqual(builds.slice(4),['attendance-week','attendance-week','attendance-answer']);
 });
