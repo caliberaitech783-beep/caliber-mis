@@ -81,7 +81,7 @@ export default function CardRecheckView({session,ReportSection}){
  // Submit: the person typed from the paper card goes on the card at once; Undo puts the earlier person back.
  const choose=async(line,employee)=>{
   setSaid(null);setKept(null);
-  const answer=await api('/api/caliber-recheck/pick',{method:'POST',body:JSON.stringify({logbookId:line.id,employeeId:employee.id})});
+  const answer=await api('/api/caliber-recheck/pick',{method:'POST',body:JSON.stringify({logbookId:line.id,employeeId:employee.id,anyCard:line.status!=='error'})});
   await recheck([line.date],false);
   if(answer.corrected){const made=answer.correction;setKept({date:line.date,correctionId:made.id,text:'Card '+made.bookNo+' is now under '+made.to+' · '+made.toName+(made.from?' (was under '+[made.from,made.fromName].filter(Boolean).join(' · ')+')':'')+'.'+(answer.still?' It is still listed: '+answer.still:' Its attendance is marked.')});}
   else setKept({date:line.date,text:employee.name+' is already on card '+line.bookNo+'.'+(answer.confirmed?' The card was confirmed right.':'')});
@@ -119,8 +119,13 @@ export default function CardRecheckView({session,ReportSection}){
  const siteColumns=[{key:'site',label:'Site',value:row=>row.site},...CARD_VIEWS.map(one=>({key:one.key,label:one.label,value:row=>row[one.key],render:figure(one.key)}))];
 
  const fix=line=>{
-  if(line.status!=='error')return '';
+  // Every card can be put right here (owner, 24 Nov 2026: "correction section not showing"): a card with an error as on
+  // Caliber ID Re-check; any other card takes another driver from the paper card (anyCard), with Undo.
   const e=line.error||{},busyLine=working===line.id;
+  if(line.status!=='error')return <div className="cr-right">
+   {said?.id===line.id&&<small className={'cr-said'+(said.bad?' cr-said-bad':'')} role={said.bad?'alert':'status'}>{said.text}</small>}
+   <EmployeeIdLookup key={line.id} submitLabel={line.status==='idle'?'Submit':'Change driver'} scanMode submitHint={line.status==='idle'?'to put this person on the card':'when the paper card shows another person'} token={session.token} location={line.site} bookDate={line.date} role={line.kind==='equipment'?'operator':'driver'} card={{door:line.door,book:line.bookNo}} onResolved={employee=>choose(line,employee)}/>
+  </div>;
   return <div className="cr-right">
    {said?.id===line.id&&<small className={'cr-said'+(said.bad?' cr-said-bad':'')} role={said.bad?'alert':'status'}>{said.text}</small>}
    {e.canRefresh&&<div className="employee-id-refresh cr-refresh"><button type="button" className="employee-id-refresh-button" disabled={Boolean(working)||busy} onClick={()=>refresh(line)}>{busyLine?'Checking HR Pulse…':'Refresh'}</button><small>{REFRESH_HINT}</small></div>}
@@ -136,7 +141,7 @@ export default function CardRecheckView({session,ReportSection}){
   {key:'saved',label:'Saved under',value:line=>[line.savedId,line.savedName].filter(Boolean).join(' '),render:line=>line.savedId||line.savedName?<><strong>{line.savedId}</strong><small className="cr-sub">{line.savedName}</small></>:<small className="cr-sub">Nobody</small>},
   {key:'status',label:'Attendance',value:line=>STATUS[line.status],render:line=><><strong>{STATUS[line.status]}</strong>{line.status==='error'&&<small className="cr-sub">{line.error?.reasonLabel}. {line.error?.line}</small>}</>},
   {key:'punch',label:'Bio-punch In / Out',value:line=>line.punch?(line.punch.inTime||'—')+' / '+(line.punch.outTime||'—'):'No punch',render:line=>line.punch?<><strong>{(line.punch.inTime||'—')+' / '+(line.punch.outTime||'—')}</strong><small className="cr-sub">{[SOURCE[line.punch.source]||line.punch.source,line.punch.site].filter(Boolean).join(' · ')}</small></>:<small className="cr-sub">{line.number?'No punch this day':'—'}</small>},
-  ...(view==='error'||cardsOfView(siteLines,'error').length?[{key:'fix',label:'Put it right',value:()=> '',render:fix}]:[])];
+  {key:'fix',label:'Put it right (from the paper card)',value:()=> '',render:fix}];
 
  return <>
   <header className="cr-head">
