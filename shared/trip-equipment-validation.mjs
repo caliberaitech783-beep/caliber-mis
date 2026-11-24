@@ -1,4 +1,4 @@
-import {assetBookKind} from './equipment-kind.mjs';
+import {assetBookKind,masterCategory} from './equipment-kind.mjs';
 import {canonicalSiteName} from './site-location.mjs';
 import {tripEquipmentRequired} from './trip-card-rules.mjs';
 const clean=v=>String(v??'').trim(),key=v=>clean(v).toUpperCase().replace(/[ ._-]/g,'');
@@ -17,7 +17,9 @@ const equipmentIndexes=new WeakMap();
 function equipmentIndex(assets){
  let index=equipmentIndexes.get(assets);
  if(index)return index;
- const records=assets.filter(record=>assetBookKind(record)==='equipment');
+ // The loading machine of a trip is an Equipment of the Equipment master (owner, 24 Nov 2026): a Vehicle or LMV never
+ // answers, whatever its group; a record with no category is judged by its group, as before.
+ const records=assets.filter(record=>(masterCategory(record)||assetBookKind(record))==='equipment');
  const byId=new Map(),byNumber=new Map(),byKey=new Map();
  let hasUMachine=false;
  const add=(map,key,entry)=>{

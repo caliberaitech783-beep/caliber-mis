@@ -110,7 +110,7 @@ test('the page sits under Caliber ID Re-check, for the same people',()=>{
  assert.equal(misRequestAllowed(login(['Employee master']),{path:'/api/caliber-recheck/punches',method:'POST'}),false);
  assert.equal(requestedMisPage('?page=caliber-punch-recheck'),'Caliber Punch Re-check');
  const main=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');
- assert.match(main,/'Caliber ID Re-check','Caliber Punch Re-check','Equipment master'/);
+ assert.match(main,/'Caliber ID Re-check','Caliber Punch Re-check','Machine Category Re-check','Equipment master'/);
  assert.ok(main.includes("renderedActive==='Caliber Punch Re-check' ? (<CaliberPunchRecheck session={session} ReportSection={ReportSection}/>)"));
  assert.ok(main.includes("if(name==='Caliber Punch Re-check')return canOpenAdminPage('Caliber ID Re-check');"));
 });

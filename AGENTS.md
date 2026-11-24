@@ -119,3 +119,14 @@ Set by the owner on 24 November 2026: "caliber punch recheck mis me hi, caliber 
 - Every Step 1 figure drills down (owner, 24 Nov 2026: "make it drill down for all"): punched, attendance from a card (with that card), to fix, and punched with no card. Every site of the login has a line, 0 when its machine sent no punch ("not able to see all sites").
 - Step 3 sets each person beside those cards, their own card first. Submit puts the person on the chosen card (`/pick`), Save shift writes the shift of their own card (`/shift`), Refresh asks HR Pulse about their ID; Undo takes a Submit back. Nothing new writes a card: it is the Caliber ID Re-check routes.
 - Rule: `shared/caliber-punch-recheck.mjs`; screen: `src/caliber-punch-recheck.jsx`; `test/caliber-punch-recheck.test.mjs` checks it.
+
+# A card's machine must fit its book's category in Equipment Master
+
+Set by the owner on 24 November 2026: if any vehicle or equipment on a VLB, ELB or LMV card, scanned or entered by hand, does not match its category in the master, show an error.
+
+- A VLB takes only a machine whose Equipment category in Equipment Master is Vehicle, an ELB only Equipment, an LMV only LMV. An LMV is no longer accepted on a VLB or ELB (it was from 9 Nov 2026). The save refuses any other machine, naming the machine, its category and the right book (`bookCategoryIssue` in `shared/equipment-kind.mjs`, called from `resolveLogBookData` for manual and scanned cards). The door lists offer only the machines that fit.
+- A trip's loading machine must be Equipment in the master, whatever its group says (`shared/trip-equipment-validation.mjs`).
+- A machine with no category in the master is still judged by its group, and the error says to set its category in Pulse.
+- Scan review shows the same error on the door field before saving (`src/scan-field-review.mjs`).
+- Masters › Machine Category Re-check, under Caliber Punch Re-check, for the same people: the saved cards whose machine or trip loading machine does not fit the master today, in Step 1 / 2 / 3. It is read only, so the card is corrected on its own page or the category in Pulse (`GET /api/caliber-recheck/machines`, rule `shared/machine-category-recheck.mjs`).
+- `test/machine-category-check.test.mjs` checks this.
