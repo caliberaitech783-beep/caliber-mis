@@ -55,8 +55,8 @@ test('the date by shift boxes count each way, and the totals count people-days a
  const lines=sheetDayLines(result());
  assert.deepEqual(dayShiftRows(lines).map(r=>[r.date,r.shift,r.total,r.card,r.noCard,r.away]),[
   [iso(1),'A',1,1,0,0],[iso(2),'A',1,0,0,1],[iso(2),'B',1,1,0,0],[iso(2),'C',1,1,0,0],[iso(3),UNKNOWN_SHIFT,1,0,1,0]]);
- assert.deepEqual(kindTotals(lines),{card:{lines:3,people:2},noCard:{lines:1,people:1},away:{lines:1,people:1}});
- assert.deepEqual(DAY_KINDS.map(k=>k.label),['Trip card present, sheet not P','Sheet P, no trip card','Sheet P, trip card at another site']);
+ assert.deepEqual(kindTotals(lines),{card:{lines:3,people:2},noCard:{lines:1,people:1},away:{lines:1,people:1},uncounted:{lines:0,people:0}});
+ assert.deepEqual(DAY_KINDS.map(k=>k.label),['Trip card present, sheet not P','Sheet P, no trip card','Sheet P, trip card at another site','Sheet P, trip card saved but not counted']);
 });
 
 test('one person day by day: the mark beside Pulse-II for every date of the sheet',()=>{

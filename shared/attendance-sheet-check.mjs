@@ -20,12 +20,13 @@ import {OPERATIONAL_START} from './operational-start.mjs';
 
 export const SHEET_MAX_PEOPLE=5000;
 // The colours of the Excel given back (ARGB). One colour per kind of mismatch; the key is written at the top of the sheet.
-export const SHEET_FILLS={id:'FFFF9E9E',name:'FFFFE066',site:'FFD9B8FF',noDuty:'FFFFC78A',duty:'FF9EC9FF',skip:'FFD9D9D9'};
+export const SHEET_FILLS={id:'FFFF9E9E',name:'FFFFE066',site:'FFD9B8FF',noDuty:'FFFFC78A',uncounted:'FFF7A8CB',duty:'FF9EC9FF',skip:'FFD9D9D9'};
 export const SHEET_LEGEND=[
  ['id','RED on EMP. ID = ID mismatch: the ID is not in Pulse-II Employee Master, cannot be read, is written twice in the sheet, or HR marks the person LEFT.'],
  ['name','YELLOW on NAME = name mismatch: the name in the sheet differs from Pulse-II. The Pulse-II name is in the column "Name in Pulse-II"; the column "Name mismatch" says which kind: another name, fuller name, or spelling.'],
  ['site','PURPLE = another site: Pulse-II holds this person at another site (on EMP. ID), or his duty of that date is at another site (on the date).'],
  ['noDuty','ORANGE on a date = the sheet says P, Pulse-II has no trip card, log book or zero-trip entry for that date.'],
+ ['uncounted','PINK on a date = the sheet says P and a trip card of that date IS saved, but Pulse-II does not count it as attendance: its driver matches no single person in Employee Master (two lines hold the ID, or the Employee ID and Caliber ID name different people), or its shift or date conflicts. Not a missing card: correct it on Masters > Caliber ID Re-check.'],
  ['duty','BLUE on a date = the sheet says A, PL, - or blank, Pulse-II has a duty saved for that date.'],
  ['skip','GREY on a date = not compared: the date is not locked in Pulse-II yet, or the mark is blank or not understood.'],
 ];
@@ -37,7 +38,7 @@ export const CORRECTION_KINDS={
  'no-id':'No EMP. ID','id-unreadable':'EMP. ID not readable','id-not-found':'EMP. ID not in Pulse-II','id-twice':'EMP. ID twice in the sheet','id-left':'HR marks LEFT',
  // A name mismatch is one colour in the sheet and three kinds in the lists, the one that matters first (nameDifference).
  'name-other':'Name differs: another name','name-fuller':'Name differs: fuller name on one side','name-spelling':'Name differs: spelling or initials',
- 'site':'Held at another site','no-duty':'P in the sheet, no duty in Pulse-II','duty':'Not P in the sheet, duty in Pulse-II',
+ 'site':'Held at another site','no-duty':'P in the sheet, no duty in Pulse-II','card-not-counted':'P in the sheet, trip card saved but not counted','duty':'Not P in the sheet, duty in Pulse-II',
  'other-site':'Duty at another site','mark':'Mark not understood','blank':'Blank mark','no-column':'Date missing in the sheet','not-in-sheet':'In Pulse-II, not in the sheet',
 };
 
@@ -206,6 +207,24 @@ const siteOfKey=key=>canonicalSiteName(String(key).slice(0,String(key).lastIndex
 const listOf=(value,by=/\s*[;+]\s*/)=>(Array.isArray(value)?value:text(value).split(by)).map(text).filter(Boolean);
 const dutyNote=l=>({shift:shiftLetter(l.shift),books:text(l.books)||text(l.logBook),doors:text(l.doors),site:text(l.site),
  logBooks:listOf(l.logBooks?.length?l.logBooks:l.logBook),batches:listOf(l.batches,/\s*;\s*/)});
+// Saved trip cards the attendance register leaves out (owner, 24 Nov 2026: Majri OC, CMPL9040 had an ELB card on every
+// date and the ELB sheet check coloured every P orange, "no trip card"). The register counts a card only when its driver
+// resolves to one Employee Master person and its shift and date agree (buildManpowerReport, server/rules/manpower-report.mjs);
+// otherwise the card is a review item (exceptions of /api/reports/manpower/attendance) with one of these reasons. Such a P
+// is not a missing card: the card is there and is corrected on Caliber ID Re-check.
+const UNCOUNTED=/cannot be resolved to an employee master|conflicts with the linked employee master|mapping is ambiguous|metadata conflicts with the logbook|shift labels conflict/i;
+export const uncountedCards=exceptions=>(Array.isArray(exceptions)?exceptions:[]).filter(e=>e&&UNCOUNTED.test(text(e.reason))&&e.date&&employeeNumber(e.employeeId));
+// One card of uncountedCards as a note (the reasons of one card are joined).
+function uncountedNotes(list){
+ const byCard=new Map();
+ for(const e of list){
+  const id=text(e.book)+'|'+text(e.door)+'|'+text(e.shift),held=byCard.get(id);
+  if(held){if(!held.reasons.includes(text(e.reason)))held.reasons.push(text(e.reason));continue;}
+  byCard.set(id,{shift:shiftLetter(e.shift),books:text(e.book),doors:text(e.door),site:text(e.site),here:false,siteKey:canonicalSiteName(e.siteKey||e.site),
+   logBooks:listOf(e.logBook),batches:listOf(e.batches,/\s*;\s*/).filter(b=>!/^Saved (?:VLB|ELB|LMV) \(no site batch\)$/.test(b)),reasons:[text(e.reason)]});
+ }
+ return [...byCard.values()].map(n=>({...n,reason:n.reasons.join('; ')}));
+}
 
 // sheet:      parseAttendanceSheet's result.
 // site:       the site chosen on the screen.
@@ -214,10 +233,12 @@ const dutyNote=l=>({shift:shiftLetter(l.shift),books:text(l.books)||text(l.logBo
 // people:     Employee Master's answer for the numbers of the sheet ({number,found,name,designation,siteLabel,atSite,working,left}).
 // sitePeople: the people Employee Master holds working at this site ({number,name,designation}).
 // today:      YYYY-MM-DD (IST); later dates are not compared.
+// uncounted:  the review items of the same read (exceptions); the saved cards among them that attendance leaves out
+//             (uncountedCards) turn a "P, no trip card" into "P, trip card saved but not counted".
 // logBook:    VLB, ELB or LMV when the sheet was uploaded as the sheet of one log book. `lines` then hold only the duties
 //             of that log book and otherLines the duties of the other two, so a P with a trip card in another log book is
 //             told apart from a P with no trip card at all. '' = one sheet for every log book, as before.
-export function checkAttendanceSheet({sheet,site,lines=[],lockedDays=[],people=[],sitePeople=[],today='',logBook='',otherLines=[]}){
+export function checkAttendanceSheet({sheet,site,lines=[],lockedDays=[],people=[],sitePeople=[],today='',logBook='',otherLines=[],uncounted=[]}){
  const siteKey=canonicalSiteName(site);
  const master=new Map(people.map(p=>[String(p.number),p]));
  const locked=new Set(lockedDays.filter(k=>siteOfKey(k)===siteKey).map(k=>String(k).slice(String(k).lastIndexOf('|')+1)));
@@ -227,6 +248,8 @@ export function checkAttendanceSheet({sheet,site,lines=[],lockedDays=[],people=[
   const entry={...line,number,here:canonicalSiteName(line.siteKey||line.site)===siteKey};
   const key=number+'|'+line.date;(byDay.get(key)||byDay.set(key,[]).get(key)).push(entry);active.add(number);
  }
+ const uncountedByDay=new Map();
+ for(const e of uncountedCards(uncounted)){const key=employeeNumber(e.employeeId)+'|'+e.date;(uncountedByDay.get(key)||uncountedByDay.set(key,[]).get(key)).push(e);}
  // The duties of the other log books: by person and date, and the log books each person's trip cards are in.
  const otherByDay=new Map(),otherBooks=new Map(),otherBook=[];
  for(const line of otherLines){
@@ -297,6 +320,15 @@ export function checkAttendanceSheet({sheet,site,lines=[],lockedDays=[],people=[
     if(here.length)return cell;
     if(away.length){cell.state='site';add('other-site',{date,sheetSays:mark,pulseSays:'Duty at '+joined(away,'site')+' (Shift '+[...new Set(away.map(l=>shiftLetter(l.shift)))].join(', ')+')',books:joined(away,'books'),pulseSite:joined(away,'site'),
      correction:'The sheet says P here; Pulse-II has the duty of this date at '+joined(away,'site')+'. Correct the sheet, or correct the site or the Caliber ID on that card.'});return cell;}
+    // P with a trip card saved that attendance does not count: the card is there, its driver or shift is wrong.
+    const notCounted=uncountedByDay.has(p.number+'|'+date)?uncountedNotes(uncountedByDay.get(p.number+'|'+date)):[];
+    if(notCounted.length){
+     for(const n of notCounted)n.here=n.siteKey===siteKey;
+     cell.state='uncounted';cell.uncounted=notCounted;cell.pulse='Card not counted';
+     add('card-not-counted',{date,sheetSays:mark,pulseSays:notCounted.map(n=>(n.books||'Trip card')+(n.shift?' (Shift '+n.shift+')':'')+': '+n.reason).join(' | '),books:joined(notCounted,'books'),pulseSite:joined(notCounted,'site'),
+      correction:'A trip card of this date is saved, but attendance does not count it. Open Masters > Caliber ID Re-check: put the right person on the card, or correct the duplicate line in HR Pulse Employee Master, or save the shift. Not a missing card.'});
+     return cell;
+    }
     // P with the trip card in another log book: present, so not a missing card, and not a match of this log book either.
     // It is not one of this log book's P days.
     if(other.length||elsewhere){cell.state='book';otherDays.push(cell);if(judge)sheetP--;return cell;}

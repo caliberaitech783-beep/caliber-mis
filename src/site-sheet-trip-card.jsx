@@ -35,8 +35,8 @@ import './site-sheet-trip-card.css';
 
 const many=(n,one,more=one+'s')=>n+' '+(n===1?one:more);
 const TONE=Object.fromEntries(DAY_KINDS.map(k=>[k.key,k.tone]));
-const STATE_TONE={duty:'blue',noDuty:'orange',site:'purple',book:'teal',skip:'grey'};
-const TONE_COLOUR={blue:'#1d5fd1',orange:'#d46a00',purple:'#6a3fa0'};
+const STATE_TONE={duty:'blue',noDuty:'orange',site:'purple',uncounted:'pink',book:'teal',skip:'grey'};
+const TONE_COLOUR={blue:'#1d5fd1',orange:'#d46a00',purple:'#6a3fa0',pink:'#c2185b'};
 const noPick={kind:'',date:'',shift:'',box:'',all:false,person:'',others:false};
 const col=(key,label,extra={})=>({key,label,value:r=>r[key]===''||r[key]===undefined||r[key]===null?'—':r[key],...extra});
 const lineKey=l=>[l.row,l.date,l.shift,l.kind].join('|');
@@ -96,7 +96,7 @@ export default function SiteSheetTripCard({session,ReportSection}){
  const download=()=>{const made=siteSheetWorkbook(view,{fileName:file.name});downloadBlob(made.blob,made.name,{title:made.title});patch(book,t=>({run:{...t.run,done:{...t.run.done,name:made.name}}}));};
  const totals=useMemo(()=>kindTotals(lines),[lines]);
  const shown=useMemo(()=>pick.kind?lines.filter(l=>l.kind===pick.kind):lines,[lines,pick.kind]);
- const grid=useMemo(()=>dateShiftGrid(dayShiftRows(shown),{sumKeys:['total','card','noCard','away']}),[shown]);
+ const grid=useMemo(()=>dateShiftGrid(dayShiftRows(shown),{sumKeys:['total','card','noCard','away','uncounted']}),[shown]);
  const others=useMemo(()=>otherBookRows(result),[result]),misplaced=useMemo(()=>wrongTab(result),[result]);
  const kinds=result?Object.entries(CORRECTION_KINDS).filter(([kind])=>result.counts[kind]>0):[];
  const boxes=pick.kind?[]:DAY_KINDS.filter(k=>totals[k.key]?.lines>0).map(k=>({key:k.key,className:'ssc-'+k.tone,label:k.label}));
@@ -114,8 +114,8 @@ export default function SiteSheetTripCard({session,ReportSection}){
   const t=tabs[key],v=views[key];
   if(t.file.busy)return {tone:'wait',text:'Reading the file…'};
   if(t.run.busy)return {tone:'wait',text:'Comparing with Pulse-II…'};
-  if(v){const cards=v.summary.attention,missing=v.lines.filter(l=>l.kind==='noCard').length;
-   return {tone:cards||missing?'bad':'ok',text:cards||missing?cards+(cards===1?' trip card needs':' trip cards need')+' attention · '+missing+' sheet P, no trip card':'Checked: nothing needs attention'};}
+  if(v){const cards=v.summary.attention,missing=v.lines.filter(l=>l.kind==='noCard').length,uncounted=v.lines.filter(l=>l.kind==='uncounted').length;
+   return {tone:cards||missing||uncounted?'bad':'ok',text:cards||missing||uncounted?cards+(cards===1?' trip card needs':' trip cards need')+' attention · '+missing+' sheet P, no trip card'+(uncounted?' · '+uncounted+' card not counted':''):'Checked: nothing needs attention'};}
   if(t.file.error||t.run.error)return {tone:'bad',text:'Could not be checked: open this tab'};
   return t.file.sheet?{tone:'wait',text:'File chosen: press Check'}:{tone:'none',text:'No file yet'};
  };

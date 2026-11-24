@@ -66,7 +66,7 @@ export function siteSheetView({sheet,data,site,from='',to='',logBook='',batch=''
  const {own:pulseLines,other:otherLines}=sheetBook?linesOfBook(everyLine,sheetBook):{own:everyLine,other:[]};
  const seen=sheetBook?'':logBook;
  const result=checkAttendanceSheet({sheet:limitSheet(sheet,lo,hi),site:master.site||site,lines:pulseLines,otherLines,logBook:sheetBook,lockedDays:attendance.lockedDays||[],
-  people:master.people||[],sitePeople:master.sitePeople||[],today});
+  people:master.people||[],sitePeople:master.sitePeople||[],today,uncounted:attendance.exceptions||[]});
  const allLines=sheetDayLines(result),lines=selectDayLines(allLines,{logBook:seen,batch});
  // The trip cards of the compared (locked) dates at this site, judged against the sheet.
  const judgedDates=new Set(result.dates.judged);

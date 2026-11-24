@@ -29,7 +29,9 @@
 .ssc-kinds small{font-weight:700}
 .ssc-num{display:inline-flex;flex-direction:column;align-items:flex-end;padding:4px 10px;border:1px solid transparent;border-radius:8px;font:inherit;font-weight:700;cursor:pointer;color:#fff}
 .ssc-num small{font-weight:500;font-size:12px}
-.ssc-num.ssc-blue{background:#1d5fd1}.ssc-num.ssc-orange{background:#d46a00}.ssc-num.ssc-purple{background:#6a3fa0}
+.ssc-num.ssc-blue{background:#1d5fd1}.ssc-num.ssc-orange{background:#d46a00}.ssc-num.ssc-purple{background:#6a3fa0}.ssc-num.ssc-pink{background:#c2185b}
+.ssc-page .dsg-box.ssc-pink,.ssc-page .ssc-kinds button.ssc-pink[aria-pressed="true"]{background:#c2185b;color:#fff;border-color:#961247}
+.ssc-page tr.ssc-row-pink td{background:#fde7f0;color:#4a0f26}
 .ssc-num:disabled{background:#eee;color:#555;cursor:default}
 .ssc-num[aria-pressed="true"]{outline:3px solid #2a1d40;outline-offset:1px}
 .ssc-legend{display:flex;flex-wrap:wrap;gap:8px 16px;margin:0 0 8px;font-size:13px;color:#3d2a5c}
