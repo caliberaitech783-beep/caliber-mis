@@ -109,3 +109,12 @@ Set by the owner on 24 November 2026: "attendance should mark whether any proces
 - A manual LMV card needs a shift (Shift Master entry, Day / Night or the card's marked shift); a manual VLB or ELB marked Day / Night needs 12 Hrs (`normalizeLogBook`).
 - Caliber ID Re-check also lists every card (VLB, ELB, LMV, scanned or manual) that marks no attendance although its driver stands: no driver on a card that shows work, an Employee ID and Caliber ID naming different people (both fixed by Submit), or no shift / two shifts (fixed by **Save shift** on the line, `POST /api/caliber-recheck/shift`, which writes every shift label to agree and keeps the old ones in `shiftCorrection`). Rule: `attendanceGap` in `shared/caliber-recheck.mjs`.
 - Do not remove these rules; `test/duty-shift.test.mjs` and `test/caliber-recheck.test.mjs` check them.
+
+# Caliber Punch Re-check
+
+Set by the owner on 24 November 2026: "caliber punch recheck mis me hi, caliber id recheck ke niche", so that a VLB, ELB or LMV card error that keeps a punched person's attendance out is put right from the same screen.
+
+- Masters › Caliber Punch Re-check sits under Caliber ID Re-check and is open to the same people (the card makers and whoever keeps Employee Master, i.e. HR), each for the sites of their login.
+- `GET /api/caliber-recheck/punches` (one day at a time) reads the punches (site machines from HR Pulse, and the imported ones), judges the cards of the day as Caliber ID Re-check does, and lists every driver or operator who punched, has no card that counts, and has a card with an error at the site of the punch on that date. Helpers and staff are left out. A failed HR Pulse read is said and the imported punches are still used.
+- Step 3 sets each person beside those cards, their own card first. Submit puts the person on the chosen card (`/pick`), Save shift writes the shift of their own card (`/shift`), Refresh asks HR Pulse about their ID; Undo takes a Submit back. Nothing new writes a card: it is the Caliber ID Re-check routes.
+- Rule: `shared/caliber-punch-recheck.mjs`; screen: `src/caliber-punch-recheck.jsx`; `test/caliber-punch-recheck.test.mjs` checks it.
