@@ -46,3 +46,12 @@ test('ordinary ELB-only MIS session can request fleet verification using only it
  await bridge.request('fleet',{site:'Jayant OB'},'ordinary-elb');
  await assert.rejects(bridge.request('fleet',{site:'Jayant OB'},'other-user'),e=>e.status===401);
 });
+
+test('raw asks return Pulse bytes unparsed, and a refusal still carries Pulse error sentence',async()=>{
+ let status=200;
+ const bridge=createPulseSignInBridge({pool:{query:async()=>({rows:[{grant_token:'g'}]})},fetchImpl:async()=>status===200?new Response('[{"ref":"BD1"}]'):Response.json({error:'Pulse sign-in expired.'},{status})});
+ const bytes=await bridge.request('breakdown-mirror',{},null,{menu:'Pulse Master Sync',raw:true});
+ assert.ok(Buffer.isBuffer(bytes));assert.equal(bytes.toString('utf8'),'[{"ref":"BD1"}]');
+ status=401;
+ await assert.rejects(()=>bridge.request('breakdown-mirror',{},null,{raw:true}),error=>error.status===401&&error.message==='Pulse sign-in expired.');
+});

@@ -8089,7 +8089,7 @@ registerHrMasterImport(app,{pool,requireSession,requireAdministrator,door:employ
 // A Form Master: A Form no., CMLL id and site linked for scanned cards and biometric files (shared/a-form-master.mjs).
 registerAFormMaster(app,{pool,requireSession,requireAdministrator});
 const scanImageStorage=createScanBlobStorage(scanBlobConfig());
-pulseBreakdownMirror=String(process.env.PULSE_BREAKDOWN_MIRROR||'').trim().toLowerCase()==='off'?null:createPulseBreakdownMirror({pool,readFeed:()=>pulseMasterSync.readFullBreakdownFeed()});
+pulseBreakdownMirror=String(process.env.PULSE_BREAKDOWN_MIRROR||'').trim().toLowerCase()==='off'?null:createPulseBreakdownMirror({pool,readFeed:()=>pulseMasterSync.readFullBreakdownFeed(),readFeedRaw:()=>pulseMasterSync.readFullBreakdownFeedRaw()});
 const logBooks=registerLogBooks(app,{imageStorage:scanImageStorage,pool,requireSession,requireAdministrator,pulseMasterSync,breakdownMirror:pulseBreakdownMirror,getSiteScope:logBookScope,sendDeletionOtp:request=>sendScopedDeletionOtp({pool,...request}),approvalOtp:{pmLogins:vehicleTransferPmLogins,deliver:request=>approvalOtpDelivery.send(request)}});
 // PM approvals by OTP for express site transfers and new equipment raised from a VLB/ELB batch.
 // Telegram first, WhatsApp fallback. Pulse is the only Equipment master: vehicle transfers are
