@@ -9,7 +9,7 @@ import {misPageAllowed} from '../shared/mis-application-access.mjs';
 const read=file=>fs.readFileSync(new URL('../src/'+file,import.meta.url),'utf8').replace(/\r\n/g,'\n');
 const compile=async file=>(await transformWithOxc(read(file).replace(/^import .*;\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function').replaceAll('export const','const'),file,{jsx:{runtime:'classic'}})).code;
 
-const cards={updatedAt:'2026-11-14T12:00:00Z',kinds:['vehicle','equipment'],totals:{vehicle:120,equipment:40,activeSites:2,recoveryDrafts:1},bySite:[{site:'Sasti OC',vehicle:80,equipment:30},{site:'Jayant OC',vehicle:40,equipment:10}]};
+const cards={updatedAt:'2026-11-14T12:00:00Z',kinds:['vehicle','lmv','equipment'],totals:{vehicle:120,lmv:12,equipment:40,activeSites:2,recoveryDrafts:1},bySite:[{site:'Sasti OC',vehicle:80,lmv:8,equipment:30},{site:'Jayant OC',vehicle:40,lmv:4,equipment:10}]};
 // The dashboard drawn once with its states set by hand: the Sr No on screen and the Sr Nos opened so far.
 async function dashboard({sr=1,opened=[1],data=cards,ReportSection=()=>null,session={token:'t'},goto}={}){
  const calls={recent:null},drawn={};
@@ -44,7 +44,9 @@ test('the panels are Sr 1 to Sr 6 as the owner set them on 18 Nov 2026, with All
  assert.deepEqual(view.api.DASHBOARD_PANELS.map(panel=>[panel.sr,panel.name]),[[1,SR1],[2,'Trip Timing & Gap'],[3,'OT & Multiple Duties'],[4,'Loading Equipment-wise (Chart)'],[5,'Attendance Month-wise'],[6,'Attendance Shift-wise']]);
  assert.deepEqual(view.tabs,[['Sr 1 '+SR1,true],['Sr 2 Trip Timing & Gap',false],['Sr 3 OT & Multiple Duties',false],['Sr 4 Loading Equipment-wise (Chart)',false],['Sr 5 Attendance Month-wise',false],['Sr 6 Attendance Shift-wise',false],['All Every Sr No',false]]);
  assert.match(view.html,/<nav class="lb-sr-tabs" role="tablist" aria-label="Dashboard reports by Sr No" data-print-hide="">/,'the strip itself is left off a print');
- assert.ok(view.html.indexOf('class="lb-kpis"')<view.html.indexOf('class="lb-sr-tabs"'),'the four cards stay above the strip');
+ assert.ok(view.html.indexOf('class="lb-kpis"')<view.html.indexOf('class="lb-sr-tabs"'),'the five cards stay above the strip');
+ assert.match(view.html,/Total ELB cards[\s\S]*Total LMV entries/,'the LMV total is immediately beside the ELB total');
+ assert.match(view.html,/Total LMV entries[\s\S]*>12</,'the LMV card displays its separate saved-entry count');
  assert.ok(view.html.indexOf('class="lb-sr-tabs"')<view.html.indexOf('data-stub="recent"'),'the Sr No chosen is under the strip');
  assert.ok(!view.html.includes('Site comparison'),'the site comparison is gone from the dashboard');
  assert.equal((view.html.match(/id="lb-sr-1"/g)||[]).length,1,'no two parts of Sr 1 share an id');
