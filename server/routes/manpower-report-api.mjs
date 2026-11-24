@@ -1,12 +1,11 @@
 import {canonicalSiteName} from '../../shared/site-location.mjs';
-import {manpowerFilters,buildManpowerReport,attendanceWindows,joinAttendanceReports,joinOtReports,joinManpowerReports,MANPOWER_VIEWS,pendingSiteDays,lockedSiteDays,otHistoryWindows,otHistorySummary,otYearWindows,otDriverTally,OT_HISTORY_DAYS} from '../rules/manpower-report.mjs';
+import {manpowerFilters,buildManpowerReport,attendanceWindows,joinOtReports,joinManpowerReports,MANPOWER_VIEWS,lockedSiteDays,otHistoryWindows,otHistorySummary,otYearWindows,otDriverTally,OT_HISTORY_DAYS} from '../rules/manpower-report.mjs';
 import {siteAllowed,requireLogBookSite} from '../../shared/log-book-access.mjs';
 import {sharedLogBookSites} from '../services/log-book-site-list.mjs';
 import {directLane,reportKey} from '../services/report-lane.mjs';
-import {linkVlbTripHandovers} from '../../shared/vlb-trip-handover.mjs';
 import {buildReportInWorker} from '../services/report-build-pool.mjs';
 import {requireHrAttendance} from './hr-attendance-access.mjs';
-import {HISTORY_CARD_FIELDS,ATTENDANCE_CARD_FIELDS,ATTENDANCE_BATCH_COLUMNS,attendanceDayStoreEnabled,cardSignatures,lockedDayCards} from '../services/attendance-day-store.mjs';
+import {HISTORY_CARD_FIELDS,ATTENDANCE_CARD_FIELDS,ATTENDANCE_BATCH_COLUMNS,attendanceDayStoreEnabled,cardSignatures,lockedDayCards,dayCardBatchesText} from '../services/attendance-day-store.mjs';
 
 const todayIst=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 // Slim read for OT look-backs: only the card fields that decide a duty, from all three log books.
@@ -26,30 +25,21 @@ async function slimCards(client,range,sites,fields=HISTORY_CARD_FIELDS,{withBatc
 }
 // The full report also shows a card's remark (Manpower by Category list).
 const REPORT_CARD_FIELDS=[...ATTENDANCE_CARD_FIELDS,'remark'];
-// What the register reads of a duty line and of a presence line.
-const DUTY_FIELDS=['id','date','shift','site','siteKey','employeeKey','employeeId','caliberCode','employeeName','category','equipment','doors','makeModel','logBook','flag','flagLabel','hours','trips','km','books'];
-// The log book, how the duty came in (scanned, manual, zero-trip entry) and its batches: Site Sheet vs Trip Card and
-// Trip Card vs Bio-punch filter and count by them. machineBook: the log book of a zero-trip entry's machine (it has no card).
-const CARD_FIELDS=['logBooks','source','batches','machineBook'];
-// The attendance read takes its cards from the stored locked days (attendance-day-store), which keep no batch. The batch
-// names are read for those cards, in the same snapshot, so Site Sheet vs Trip Card and Trip Card vs Bio-punch can offer
-// a batch. The HR feed has no batch and skips this read.
-export async function withCardBatches(client,rows){
- const ids=[...new Set(rows.map(r=>String(r.id)))];
- if(!ids.length)return rows;
- const {rows:links}=await client.query(`SELECT e.logbook_id::text AS id,jsonb_agg(jsonb_build_object('id',b.id,'name',b.name,'closed_at',b.closed_at) ORDER BY b.id) AS batches
-  FROM mis_vlb_batch_entries e JOIN mis_vlb_batches b ON b.id=e.batch_id
-  WHERE e.logbook_id::text=ANY($1::text[]) AND b.archived_at IS NULL AND b.deleted_at IS NULL GROUP BY e.logbook_id`,[ids]);
- const of=new Map(links.map(l=>[l.id,l.batches]));
- return rows.map(r=>of.has(String(r.id))?{...r,batches:of.get(String(r.id))}:r);
-}
-const PRESENCE_FIELDS=['date','shift','site','siteKey','employeeKey','employeeId','caliberCode','employeeName','equipment','doors','makeModel','flag','flagLabel','trips','actual'];
-const pick=(row,fields)=>Object.fromEntries(fields.map(k=>[k,row[k]]));
 const MASTER_NAMES=['Equipment master','Shift Master','Employee master','ERP Employee master','C-Dir Employee master','Users & employees'];
-async function reportMasters(client){
+export async function reportMasters(client){
  const masters=(await client.query("SELECT id,master_name,record_data FROM master_records WHERE master_name=ANY($1::text[]) ORDER BY id",[MASTER_NAMES])).rows;
  const fromMaster=names=>masters.filter(r=>names.includes(r.master_name)).map(r=>({...r.record_data,id:String(r.id)}));
  return {assets:fromMaster(['Equipment master']),employees:fromMaster(MASTER_NAMES.slice(2)),shifts:fromMaster(['Shift Master'])};
+}
+// The same masters as one JSON text for a report worker, built by Postgres (24 Nov 2026): the Employee master alone is about
+// 21,000 lines, and unpacking it on every attendance read held the main thread. Each line is its record with id = the row
+// id as text, as reportMasters gives it. The Shift Master is also read as rows: the main thread needs it for the locked days.
+const MASTER_LINES=`COALESCE(json_agg(record_data||jsonb_build_object('id',id::text) ORDER BY id) FILTER (WHERE master_name=ANY($1::text[])),'[]'::json)`;
+export async function reportMastersText(client){
+ const {rows:[row]}=await client.query(`SELECT json_build_object('assets',${MASTER_LINES.replace('$1','$2')},'employees',${MASTER_LINES.replace('$1','$3')},'shifts',${MASTER_LINES.replace('$1','$4')})::text AS masters
+  FROM master_records WHERE master_name=ANY($1::text[])`,[MASTER_NAMES,['Equipment master'],MASTER_NAMES.slice(2),['Shift Master']]);
+ const shifts=(await client.query("SELECT id,record_data FROM master_records WHERE master_name='Shift Master' ORDER BY id")).rows.map(r=>({...r.record_data,id:String(r.id)}));
+ return {shifts,mastersJson:row?.masters||'{"assets":[],"employees":[],"shifts":[]}'};
 }
 
 export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandovers=async(_,rows)=>rows,today=todayIst,lane=directLane,useDayStore=attendanceDayStoreEnabled(),buildInWorker=buildReportInWorker}){
@@ -151,7 +141,7 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
    const filters=manpowerFilters({from:req.query.from,to:req.query.to});
    await ensureBooks();
    const body=await lane.run(reportKey(hr?'hr-attendance':'manpower-attendance',req),async()=>{
-   let client;
+   let client,building=null;
    try{
    client=await pool.connect();
    await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
@@ -160,50 +150,36 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
     FROM mis_shift_attendance WHERE book_date BETWEEN $1 AND $2 AND ($3::text[] IS NULL OR site=ANY($3::text[]))
     ORDER BY book_date,site,shift,employee_id LIMIT 50001`,[filters.from,filters.to,req.logBookScope.sites]);
    if(attendance.length>50000)throw Object.assign(new Error('This range contains too many attendance entries. Select a shorter date range.'),{status:400});
-   const masters=await reportMasters(client);
+   const {shifts,mastersJson}=await reportMastersText(client);
    const batches=(await client.query(`SELECT ${ATTENDANCE_BATCH_COLUMNS} FROM mis_vlb_batches
     WHERE deleted_at IS NULL AND archived_at IS NULL AND book_date BETWEEN $1 AND $2`,[filters.contextFrom,filters.contextTo])).rows.filter(b=>siteAllowed(req.logBookScope,b.site));
-   const present=attendance.filter(r=>siteAllowed(req.logBookScope,r.site)),parts=[];
+   const present=attendance.filter(r=>siteAllowed(req.logBookScope,r.site)),weeks=[],scope={sites:req.logBookScope?.sites};
    // Only locked site-days are read (the rest is left out of the report anyway): from the stored locked days where a
    // stored day still matches its cards and batches, the rest live. See server/services/attendance-day-store.mjs.
-   const locked=lockedSiteDays(masters.shifts,batches),signatures=await cardSignatures(client,{from:filters.contextFrom,to:filters.contextTo},sites,batches);
+   const locked=lockedSiteDays(shifts,batches),signatures=await cardSignatures(client,{from:filters.contextFrom,to:filters.contextTo},sites,batches);
    // One week of cards at a time from the same snapshot (each with its adjoining days), so a month of every site
    // neither reaches the card read limit nor sits in memory at once. Every week sees the whole range's batches,
    // so a site is listed in each week even when it saved nothing in that week.
+   // 24 Nov 2026: the cards come as JSON text and each week is built on a report worker (server/rules/attendance-read.mjs)
+   // while the next week is read; the main thread no longer unpacks or builds anything.
    for(const window of attendanceWindows(filters.from,filters.to)){
-    const range=manpowerFilters(window),read=(await lockedDayCards(client,{from:range.contextFrom,to:range.contextTo},{sites,locked,signatures,useStore:useDayStore})).rows.filter(r=>siteAllowed(req.logBookScope,r.site));
-    const rows=hr?read:await withCardBatches(client,read);
-    const vehicles=linkVlbTripHandovers(rows.filter(r=>r.book_type==='vehicle'));
-    parts.push({window,report:buildManpowerReport({records:[...vehicles,...rows.filter(r=>r.book_type!=='vehicle')],attendance:present.filter(r=>r.date>=window.from&&r.date<=window.to),...masters,batches,filters:range,parts:hr?'hr-attendance':'attendance',lockedOnly:true})});
+    const range=manpowerFilters(window),read=await lockedDayCards(client,{from:range.contextFrom,to:range.contextTo},{sites,locked,signatures,useStore:useDayStore,asText:true});
+    const linksJson=hr?null:await dayCardBatchesText(client,read.days);
+    if(building)weeks.push(await building);
+    building=buildInWorker('attendance-week',{cardsJson:read.cardsJson,linksJson,mastersJson,attendance:present.filter(r=>r.date>=window.from&&r.date<=window.to),batches,filters:range,hr,scope}).then(json=>({window,json}));
+    // A build that fails while the next week is read is reported when it is awaited, not as an unhandled error.
+    building.catch(()=>{});
    }
    await client.query('COMMIT');
    client.release();client=null;
-   const report=joinAttendanceReports(parts,filters);
-   if(hr)return {
-    attendanceEquipment:report.attendanceEquipment.map(row=>pick(row,[...PRESENCE_FIELDS,'status','reason','remarks','logBooks'])),
-    attendanceShifts:report.attendanceShifts.filter(row=>siteAllowed(req.logBookScope,row.siteKey)),
-    otDuties:report.otDuties.map(row=>pick(row,[...DUTY_FIELDS,'logBooks'])),
-    performance:report.otDuties.map(row=>pick(row,['date','site','siteKey','shift','employeeId','employeeName','start','end','km'])),
-    details:report.otDuties.filter(row=>row.scanned).map(row=>({...pick(row,['date','site','siteKey','shift','employeeId','employeeName']),batchStatus:'Saved scan'})),
-    exceptions:report.exceptions.map(row=>pick(row,['date','site','siteKey','shift','employeeId','employeeName','reason'])),
-    ot:report.ot.map(row=>pick(row,['site','siteKey','employeeId','schedule'])),
-    // Only locked site-days are sent. These are the days left out because a shift is still open, reopened or has no batch;
-    // nobody is absent on them, the figures come once the day is locked.
-    pendingDays:pendingSiteDays(report.attendanceShifts.filter(row=>siteAllowed(req.logBookScope,row.siteKey)),locked)
-   };
-   const dutyKey=d=>[d.employeeKey,d.siteKey,d.date,d.shift].join('|'),held=new Set(report.otDuties.map(dutyKey));
-   // The locked site-days of the selected dates, so the register marks a day ? or counts it by the same rule as the server.
-   const lockedDays=[...locked].filter(k=>{const date=k.slice(k.lastIndexOf('|')+1);return date>=filters.from&&date<=filters.to&&siteAllowed(req.logBookScope,k.slice(0,k.lastIndexOf('|')));}).sort();
-   return {filters:report.filters,lockedDays,otDuties:report.otDuties.map(d=>pick(d,[...DUTY_FIELDS,...CARD_FIELDS])),
-    // Only presence the duty lines do not already hold: a zero-trip entry without a card, or the second operator of a card.
-    attendanceEquipment:report.attendanceEquipment.filter(r=>r.actual&&r.employeeKey&&r.shift&&!held.has(dutyKey(r))).map(r=>pick(r,[...PRESENCE_FIELDS,...CARD_FIELDS])),
-    attendanceShifts:report.attendanceShifts.filter(s=>siteAllowed(req.logBookScope,s.siteKey)),
-    otSites:report.otSites.filter(s=>siteAllowed(req.logBookScope,s.site)),attendanceSites:report.attendanceSites.filter(s=>siteAllowed(req.logBookScope,s.site)),
-    exceptions:report.exceptions,notes:report.notes,generatedAt:new Date().toISOString()};
-   }catch(error){if(client)await client.query('ROLLBACK').catch(()=>{});throw error;}
+   if(building)weeks.push(await building);
+   building=null;
+   // The weeks are joined and the answer written as JSON text on the worker too; it is sent as it is.
+   return buildInWorker('attendance-answer',{weeks,filters,hr,scope,locked:[...locked]});
+   }catch(error){if(client)await client.query('ROLLBACK').catch(()=>{});await building?.catch(()=>{});throw error;}
    finally{client?.release();}
    });
-   res.set('Cache-Control','private, no-store').json(body);
+   res.set('Cache-Control','private, no-store').type('application/json').send(body);
   }catch(error){if(error.status)return res.status(error.status).json({error:error.message});next(error);}
  };
  app.get('/api/reports/manpower/attendance',...protect,readAttendance(false));
