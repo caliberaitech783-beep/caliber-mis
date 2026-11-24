@@ -259,8 +259,10 @@ export function registerCaliberRecheck(app,{pool,requireSession,requireAdministr
   const nameOf=site=>known.get(canonicalSiteName(site))||displaySiteName(site)||site;
   const cardSites=[...known].filter(([,site])=>siteAllowed(scope,site)).map(([key,site])=>({key,site}));
   for(const one of judgedDays.sites.values())if(!cardSites.some(site=>site.key===one.key))cardSites.push({key:one.key,site:one.site});
-  const {lines,sites}=punchRecheck({days,standing:judgedDays.standing,listed:judgedDays.listed,masters:judgedDays.masters,allowed:site=>siteAllowed(scope,site),siteLabel:nameOf,cardSites});
-  res.json({from,to,punches:days.length,machine,lines,sites,tookMs:Date.now()-started});
+  const {lines,sites,unplaced}=punchRecheck({days,standing:judgedDays.standing,listed:judgedDays.listed,masters:judgedDays.masters,allowed:site=>siteAllowed(scope,site),siteLabel:nameOf,cardSites});
+  // The site names HR Pulse sent punches for, as it names them, with the punch days of each (the machines that send).
+  const fromHr=new Map();for(const day of machineList){const name=day.site||'(no site)';fromHr.set(name,(fromHr.get(name)||0)+1);}
+  res.json({from,to,punches:days.length,machine:{...machine,days:machineList.length,sites:[...fromHr].filter(([site])=>siteAllowed(scope,nameOf(site))).map(([site,days])=>({site,days})).sort((a,b)=>b.days-a.days)},imported:importedList.length,unplaced,lines,sites,tookMs:Date.now()-started});
  }));
 
  // "This card is right": the paper card shows the driver the card is saved under. Returns {confirmed:true}, or
