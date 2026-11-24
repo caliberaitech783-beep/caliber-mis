@@ -42,12 +42,25 @@ function savedWindow(date,start,hours){
  const label=at=>new Date(at+19800000).toISOString().slice(0,16).replace('T',' ');
  return {start:begin,end,hours:h,startLabel:label(begin),endLabel:label(end)};
 }
-function identityIndex(employees){
- const byId=new Map(),aliases=new Map(),caliberMappings=new Map();
+// Which person a card names. Employee Master is the authority (owner, 23 Nov 2026), so when the card's person is in
+// Employee Master, only Employee Master decides whether the ID is ambiguous: a line in the ERP, C-Dir or Users list that
+// writes the same ID another way no longer keeps the card out of attendance. An Employee Code beside an explicit
+// Employee ID is not an ID either (as in employeeReferenceKeys): on 24 Nov 2026 the Lalpeth line "CMPLCMPL9040" with
+// Employee Code CMPL9040 kept every card of CMPL9040 at Majri out, and 268 cards of 154 people were out on 1-2 Nov.
+// sourceMaster: the list a record comes from (reportMasters); a record without it counts as Employee Master.
+export const EMPLOYEE_MASTER='Employee master';
+const inEmployeeMaster=record=>!record?.sourceMaster||record.sourceMaster===EMPLOYEE_MASTER;
+export function identityIndex(employees){
+ const byId=new Map(),everywhere={aliases:new Map(),mappings:new Map()},master={aliases:new Map(),mappings:new Map()},masterByIdentity=new Map();
+ const add=(map,token,value)=>{if(!map.has(token))map.set(token,new Set());if(value)map.get(token).add(value);};
  for(const e of employees){const identity=employeeIdentity(e),employeeId=text(identity.employeeId||e.empId||e.employeeCode),caliberCode=text(identity.caliberCode),identityKey=key(suggestedCaliberId(employeeId)||employeeId||caliberCode);
-  if(!caliberMappings.has(identityKey))caliberMappings.set(identityKey,new Set());if(caliberCode)caliberMappings.get(identityKey).add(key(caliberCode));
-  const person={id:String(e.id),employeeId,caliberCode,name:text(e.name||e.employee||e.login),designation:text(e.currentDesignationName||e.designationName||e.designation),identityKey};byId.set(String(e.id),{...person,source:e});
-  for(const token of unique([employeeId,caliberCode,e.empId,e.employeeCode].map(key))){if(!aliases.has(token))aliases.set(token,new Set());aliases.get(token).add(identityKey);}
+  const person={id:String(e.id),employeeId,caliberCode,name:text(e.name||e.employee||e.login),designation:text(e.currentDesignationName||e.designationName||e.designation),identityKey,source:e};byId.set(String(e.id),person);
+  const lists=inEmployeeMaster(e)?[everywhere,master]:[everywhere];
+  if(inEmployeeMaster(e)&&identityKey&&!masterByIdentity.has(identityKey)&&person.name)masterByIdentity.set(identityKey,person);
+  for(const list of lists){
+   add(list.mappings,identityKey,caliberCode&&key(caliberCode));
+   for(const token of unique([employeeId,caliberCode,e.empId].map(key)))if(token)add(list.aliases,token,identityKey);
+  }
  }
  // Every master record under each written form of its Employee ID, built once: a card whose saved ID does not name a
  // master record is looked up here instead of being compared with every employee (cards x employees on a month).
@@ -58,8 +71,11 @@ function identityIndex(employees){
   if(!person&&data.caliberId){const matches=unique(employeeReferenceVariants(data.caliberId).flatMap(v=>byReference.get(v)||[])).sort((a,b)=>position.get(a)-position.get(b));if(unique(matches.map(p=>p.identityKey)).length===1)person=matches[0];}
   if(!person?.identityKey||!person.name)return {error:'Employee ID is missing or cannot be resolved to an employee master.'};
   if(data.caliberId&&!matchesEmployeeReference(person.source,data.caliberId))return {error:'Saved Employee ID conflicts with the linked employee master.'};
-  if(caliberMappings.get(person.identityKey)?.size>1||[person.employeeId,person.caliberCode].some(token=>(aliases.get(key(token))?.size||0)>1))return {error:'Employee / Caliber ID mapping is ambiguous.'};
-  return person;
+  // A card linked to the ERP, C-Dir or Users line of a person counts as that person's Employee Master line.
+  const own=inEmployeeMaster(person.source)?person:masterByIdentity.get(person.identityKey)||person;
+  const {aliases,mappings}=inEmployeeMaster(own.source)?master:everywhere;
+  if(mappings.get(own.identityKey)?.size>1||[own.employeeId,own.caliberCode].some(token=>(aliases.get(key(token))?.size||0)>1))return {error:'Employee / Caliber ID mapping is ambiguous.'};
+  return own;
  };
 }
 const meter=(data,kind)=>{const a=number(data['opening'+kind]),b=number(data['closing'+kind]);return a!==null&&b!==null&&a>=0&&b>=a?round(b-a):null;};

@@ -49,7 +49,9 @@ const MASTER_NAMES=['Equipment master','Shift Master','Employee master','ERP Emp
 async function reportMasters(client){
  const masters=(await client.query("SELECT id,master_name,record_data FROM master_records WHERE master_name=ANY($1::text[]) ORDER BY id",[MASTER_NAMES])).rows;
  const fromMaster=names=>masters.filter(r=>names.includes(r.master_name)).map(r=>({...r.record_data,id:String(r.id)}));
- return {assets:fromMaster(['Equipment master']),employees:fromMaster(MASTER_NAMES.slice(2)),shifts:fromMaster(['Shift Master'])};
+ // sourceMaster: Employee Master decides an ambiguous ID before the other lists (identityIndex in the report rules).
+ const employees=masters.filter(r=>MASTER_NAMES.slice(2).includes(r.master_name)).map(r=>({...r.record_data,id:String(r.id),sourceMaster:r.master_name}));
+ return {assets:fromMaster(['Equipment master']),employees,shifts:fromMaster(['Shift Master'])};
 }
 
 export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandovers=async(_,rows)=>rows,today=todayIst,lane=directLane,useDayStore=attendanceDayStoreEnabled(),buildInWorker=buildReportInWorker}){
