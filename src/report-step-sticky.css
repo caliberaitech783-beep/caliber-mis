@@ -35,7 +35,9 @@
   /* Owner, 19 Nov 2026: the column headings of every step table stay in view too, right under the step heading, and every
      line stays on the page (measured by step-table-heads.js). A table that fits the width: the boxes around it stop
      scrolling sideways, so its heading row stays in view with the page itself. */
-  .generated-report-section[data-step-look] :is(.reports-detail-table, .ar-grid-wrap, .report-totals-scroll)[data-head-fits] { max-height: none; overflow: visible; }
+  /* OT and manpower summaries scroll inside .mp-category too. Release that box when it fits, or the page's sticky
+     inset is applied inside the box and pushes the column headings below the first site rows. */
+  .generated-report-section[data-step-look] :is(.reports-detail-table, .ar-grid-wrap, .report-totals-scroll, .mp-category)[data-head-fits] { max-height: none; overflow: visible; }
   .generated-report-section[data-step-look] table[data-head="page"] > thead th {
     position: sticky;
     top: calc(var(--mis-top-stick, 0px) + var(--step-head, 0px));

@@ -7,7 +7,7 @@ import { useRef } from "react";
 //    heading row can stay in view with the page itself.
 //  - A wider table keeps its sideways scroll (data-head="shift"): the page cannot hold its heading row there, so the row
 //    is moved down as the page scrolls (--head-shift), as far as the table's last line.
-export const STEP_TABLE_BOXES = ".reports-detail-table, .ar-grid-wrap, .report-totals-scroll";
+export const STEP_TABLE_BOXES = ".reports-detail-table, .ar-grid-wrap, .report-totals-scroll, .mp-category";
 
 function boxFits(box) {
   // A box may show an upright scroll bar, which takes width the table would have once the box stops scrolling: that
