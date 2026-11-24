@@ -359,7 +359,11 @@ export function registerCaliberRecheck(app,{pool,requireSession,requireAdministr
   const verdict=recheckCard(masters,{kind:card.book_type,site:card.site,date:card.date,employeeId:data.employeeId,caliberId:data.caliberId,aFormNo:data.aFormNo,...attendanceFacts(data,masters)});
   // Submit changes the card at once, so it changes only a card that is on the list: one whose driver stands is not
   // this page's to change. (A card just corrected by someone else, or pressed twice, ends here too.)
-  if(!verdict)fail('Card '+card.book_no+' is not on the list: its '+(kind==='equipment'?'operator':'driver')+' stands at this site on this date. Nothing was changed.',409);
+  // The Trip cards view of Caliber Punch Re-check (owner, 24 Nov 2026: "agar kuch change karna hi to mai yahi se ok kar
+  // saku") may change the driver of any card from the paper card (anyCard): the new person is checked as on every
+  // Submit, the change is recorded with who made it, and Undo puts the earlier person back.
+  const anyCard=req.body?.anyCard===true;
+  if(!verdict&&!anyCard)fail('Card '+card.book_no+' is not on the list: its '+(kind==='equipment'?'operator':'driver')+' stands at this site on this date. Nothing was changed.',409);
   const by=login(req),byName=nameOf(req),at=new Date().toISOString();
   // One step (owner, 23 Nov 2026): the choice and the correction are one transaction. A refusal (the card changed
   // meanwhile, the driver already holds another card of this vehicle and shift) leaves nothing behind and goes back
@@ -369,7 +373,7 @@ export function registerCaliberRecheck(app,{pool,requireSession,requireAdministr
    // Another driver is chosen: an earlier "This card is right" no longer stands.
    await client.query(WITHDRAW_SQL,[card.id,by]);
    const pick=(await client.query('INSERT INTO mis_caliber_corrections(logbook_id,book_no,book_type,book_date,site,reason,old_employee_id,old_caliber_id,old_name,new_employee_id,new_caliber_id,new_name,picked_by,picked_name) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *',
-    [card.id,card.book_no,card.book_type,card.date,card.site,verdict?.reason||'',text(data.employeeId),text(data.caliberId),text(data.employeeName),String(employee.id),identity.employeeId,name,by,byName])).rows[0];
+    [card.id,card.book_no,card.book_type,card.date,card.site,verdict?.reason||(anyCard?'changed-on-trip-cards':''),text(data.employeeId),text(data.caliberId),text(data.employeeName),String(employee.id),identity.employeeId,name,by,byName])).rows[0];
    const result=await applyCaliberCorrection(client,pick,{by,byName,at});
    if(result.refused)fail(result.refused,409);
    // The card as it is now, judged again. The chosen driver stands on every count a person can answer for; when
@@ -496,7 +500,7 @@ export function registerCaliberRecheck(app,{pool,requireSession,requireAdministr
  app.get('/api/caliber-recheck/record',...protect,wrap(async(req,res)=>{
   const scope=await getSiteScope(req.session);
   const {rows}=await pool.query(RECORD_SQL);
-  res.json({corrections:rows.filter(row=>siteAllowed(scope,row.site)).map(row=>({id:String(row.id),logbookId:String(row.logbook_id),bookNo:row.book_no,book:kindLabel(row.book_type),date:row.book_date,site:displaySiteName(row.site)||row.site,reason:RECHECK_REASONS[row.reason]||'',
+  res.json({corrections:rows.filter(row=>siteAllowed(scope,row.site)).map(row=>({id:String(row.id),logbookId:String(row.logbook_id),bookNo:row.book_no,book:kindLabel(row.book_type),date:row.book_date,site:displaySiteName(row.site)||row.site,reason:RECHECK_REASONS[row.reason]||(row.reason==='changed-on-trip-cards'?'Changed on Trip cards (driver stood)':''),
    from:row.old_caliber_id,fromName:row.old_name,to:row.new_caliber_id,toName:row.new_name,pickedBy:row.picked_name||row.picked_by,pickedAt:row.picked_at,appliedBy:row.applied_name||row.applied_by,appliedAt:row.applied_at}))});
  }));
 }

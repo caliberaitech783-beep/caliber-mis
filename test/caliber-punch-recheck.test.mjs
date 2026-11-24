@@ -112,6 +112,14 @@ test('the server matches the machine and imported punches with the cards, and Su
   assert.deepEqual(day.body.lines.filter(line=>line.status==='toFix'),[]);
   cards=await call('/api/caliber-recheck/cards?from='+DATE+'&to='+DATE);
   assert.deepEqual(cards.body.lines.map(line=>line.status),['counted','counted','counted'],'put right, the cards mark attendance');
+  // Any card may take another driver on the Trip cards view (owner, 24 Nov 2026: "correction section not showing"):
+  // Caliber ID Re-check still changes only a listed card; the Trip cards view says anyCard, and the change is recorded.
+  assert.equal((await call('/api/caliber-recheck/pick',{logbookId:'1',employeeId:'1'})).status,409,'a card whose driver stands is not changed without anyCard');
+  const changed=await call('/api/caliber-recheck/pick',{logbookId:'1',employeeId:'1',anyCard:true});
+  assert.equal(changed.status,201,JSON.stringify(changed.body));
+  assert.equal(changed.body.correction.to,'CMPL4400');
+  const record=await call('/api/caliber-recheck/record');
+  assert.equal(record.body.corrections.find(row=>row.bookNo==='BOOK-1').reason,'Changed on Trip cards (driver stood)');
   assert.deepEqual(day.body.lines.map(line=>line.status),['counted','counted','counted']);
   assert.deepEqual([day.body.sites[0].punched,day.body.sites[0].counted,day.body.sites[0].toFix],[3,3,0]);
  }finally{server.close();await db.close();}
