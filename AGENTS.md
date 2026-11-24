@@ -131,3 +131,14 @@ Set by the owner on 24 November 2026: if any vehicle or equipment on a VLB, ELB 
 - Scan review shows the same error on the door field before saving (`src/scan-field-review.mjs`).
 - Masters › Machine Category Re-check, under Caliber Punch Re-check, for the same people: the saved cards whose machine or trip loading machine does not fit the master today, in Step 1 / 2 / 3. It is read only, so the card is corrected on its own page or the category in Pulse (`GET /api/caliber-recheck/machines`, rule `shared/machine-category-recheck.mjs`).
 - `test/machine-category-check.test.mjs` checks this.
+
+# VLB, LMV and ELB locking off for five days
+
+Set by the owner on 24 November 2026: "locking of VLB, LMB and ELB ka lock hata sakta hu kya 5 din ke liye".
+
+- Until the end of 29 Nov 2026 (India time) a batch's stages stop nobody: VLB, LMV and ELB cards are added and changed in every open stage (VLB open, LMV open, ELB open), by hand or by scan. A VLB card changed after Lock VLB updates the batch's machine trips at once; a machine no card loads any more drops to 0 trips.
+- No batch waits for an older batch of the site to lock LMV or close. Close batch is offered in every open stage and does Lock VLB and Lock LMV itself, with their checks; everything a close checks (an ELB for every loading machine, transfers, waiting scans, duplicate ELBs) is unchanged.
+- Not changed: a closed batch is reopened before its cards change, and another shift of the same date still needs Lock VLB first (a site and date hold one VLB-open batch). Deleting a card outside its open stage still goes through Deletion.
+- The batch page says so ("Locking is off until …"). From 30 Nov 2026 00:00 IST the locks return by themselves; nothing has to be switched back.
+- The Azure setting `VLB_BATCH_LOCK_PAUSE_UNTIL=YYYY-MM-DD` moves the last day, `VLB_BATCH_LOCK_PAUSE_UNTIL=off` ends the pause at once (a setting change restarts the app, no release).
+- `shared/batch-lock-pause.mjs` holds the rule; `test/batch-lock-pause.test.mjs` checks it.

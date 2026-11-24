@@ -19,6 +19,7 @@ import {twoStageEnabled,batchStage,FLEET_STATUSES} from '../rules/vlb-two-stage.
 import {consumeApprovalOtp,liveApprovalOtps,publicApprovalOtp} from '../services/vlb-approval-otp.mjs';
 import {batchStageWaits} from '../rules/vlb-batch-queue.mjs';
 import {previousBatchScope,batchOrderBlock} from '../../shared/vlb-batch-order.mjs';
+import {batchLockPause,batchLocksPaused,batchLockPauseNote} from '../../shared/batch-lock-pause.mjs';
 export {VLB_BATCH_SCHEMA} from '../rules/vlb-batch-policy.mjs';
 const uuid=value=>/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value||'');
 const fail=batchFail;
@@ -29,7 +30,8 @@ const mayClose=(batch,actor,twoStage=twoStageEnabled())=>isOwner(batch,actor)||(
 const mayEnterFleet=(batch,actor)=>isOwner(batch,actor)||Boolean(actor.mis||actor.admin||actor.siteEditor&&!batch.closed_at);
 // Owner, 18 Nov 2026: reopening a saved batch and Unlock VLB no longer need the site PM's approval.
 const mayUnlockVlb=(batch,actor)=>actor.admin||actor.mis||isOwner(batch,actor)||batchPmAtSite(actor,batch.site);
-const canClose=(batch,actor,twoStage)=>!batch.closed_at&&(!twoStage||batchStage(batch)==='elb_open')&&mayClose(batch,actor,twoStage);
+// While locking is paused (shared/batch-lock-pause.mjs) Close batch is offered in every open stage and locks VLB and LMV itself.
+const canClose=(batch,actor,twoStage)=>!batch.closed_at&&(!twoStage||batchLocksPaused()||batchStage(batch)==='elb_open')&&mayClose(batch,actor,twoStage);
 async function eligible(client,selection){
  const {rows}=await client.query(`SELECT l.id,l.book_no,l.book_type,l.site,l.book_date::text,l.data,l.revision,l.created_by,l.created_at
  FROM mis_log_books l WHERE l.book_type='vehicle' AND l.deleted_at IS NULL AND l.book_date=$1
@@ -91,7 +93,7 @@ async function details(client,batch,req){
   [batch.report_date])).rows.filter(record=>canonicalSiteName(record.data.location)===canonicalSiteName(batch.site)&&vlbRecordScope(record.data).shift===batch.shift);
  // "Present — 0 trips" entries of this site, date and shift (shared/vlb-zero-trip-entries.mjs).
  const zeroTripEntries=await readVlbZeroTripEntries(client,batch);
- return {...batch,canEditSavedFleet:Boolean(req.batchActor.mis||req.batchActor.admin||req.batchActor.siteEditor&&!batch.closed_at),created_by:creator(batch),trialExpired,records,lmvRecords,zeroTripEntries,canLockLmv:!stageInfo.stageWait&&stageInfo.stage==='lmv_open'&&(owner||req.batchActor.admin)&&!trialExpired&&!stageInfo.lmvLockBlockers?.length,entry_count:records.length,requests,audit,approvalOtps,...stageInfo,canLockVlb:stageInfo.twoStage&&stageInfo.stage==='vlb_open'&&(owner||req.batchActor.admin)&&!trialExpired&&!stageInfo.lockBlockers.length,canUnlockVlb:stageInfo.twoStage&&['lmv_open','elb_open'].includes(stageInfo.stage)&&mayUnlockVlb(batch,req.batchActor),canEnterFleet:!stageInfo.stageWait&&stageInfo.twoStage&&stageInfo.stage==='elb_open'&&!trialExpired&&mayEnterFleet(batch,req.batchActor),canContinue:!trialExpired&&!batch.closed_at&&(!stageInfo.twoStage||stageInfo.stage==='vlb_open'),canClose:!stageInfo.stageWait&&canClose(batch,req.batchActor,stageInfo.twoStage),canRequestReopen:Boolean(batch.closed_at),canReopen:Boolean(batch.closed_at&&(req.batchActor.admin||req.batchActor.pm||req.batchActor.mis)),approvalExpired:false};
+ return {...batch,canEditSavedFleet:Boolean(req.batchActor.mis||req.batchActor.admin||req.batchActor.siteEditor&&!batch.closed_at),created_by:creator(batch),trialExpired,records,lmvRecords,zeroTripEntries,canLockLmv:!stageInfo.stageWait&&stageInfo.stage==='lmv_open'&&(owner||req.batchActor.admin)&&!trialExpired&&!stageInfo.lmvLockBlockers?.length,entry_count:records.length,requests,audit,approvalOtps,...stageInfo,canLockVlb:stageInfo.twoStage&&stageInfo.stage==='vlb_open'&&(owner||req.batchActor.admin)&&!trialExpired&&!stageInfo.lockBlockers.length,canUnlockVlb:stageInfo.twoStage&&['lmv_open','elb_open'].includes(stageInfo.stage)&&mayUnlockVlb(batch,req.batchActor),canEnterFleet:!stageInfo.stageWait&&stageInfo.twoStage&&stageInfo.stage==='elb_open'&&!trialExpired&&mayEnterFleet(batch,req.batchActor),canContinue:!trialExpired&&!batch.closed_at&&(!stageInfo.twoStage||stageInfo.stage==='vlb_open'||batchLocksPaused()),lockPaused:Boolean(stageInfo.twoStage)&&batchLocksPaused(),lockPause:{...batchLockPause(),note:batchLockPauseNote(batchLockPause())},canClose:!stageInfo.stageWait&&canClose(batch,req.batchActor,stageInfo.twoStage),canRequestReopen:Boolean(batch.closed_at),canReopen:Boolean(batch.closed_at&&(req.batchActor.admin||req.batchActor.pm||req.batchActor.mis)),approvalExpired:false};
 }
 // One read shared by callers that arrive together and reused for ttlMs. clear() drops the
 // copy, and a read already running when clear() is called is not handed to later callers.
@@ -205,14 +207,15 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
    ORDER BY (b.closed_at IS NULL) DESC,b.created_at DESC,b.id DESC
   `)).rows));
   const twoStage=twoStageEnabled();
-  const waits=twoStage?batchStageWaits([...rows].reverse()):new Map();
-  const batches=rows.filter(b=>siteAllowed(req.logBookScope,b.site)).map(b=>({...b,created_by:creator(b),stageWait:waits.get(b.id)||'',twoStage,canClose:!waits.has(b.id)&&canClose(b,req.batchActor,twoStage),stage:twoStage?batchStage(b):(b.closed_at?'closed':'open')}));
+  const waits=twoStage&&!batchLocksPaused()?batchStageWaits([...rows].reverse()):new Map();
+  const batches=rows.filter(b=>siteAllowed(req.logBookScope,b.site)).map(b=>({...b,created_by:creator(b),stageWait:waits.get(b.id)||'',twoStage,lockPaused:twoStage&&batchLocksPaused(),canClose:!waits.has(b.id)&&canClose(b,req.batchActor,twoStage),stage:twoStage?batchStage(b):(b.closed_at?'closed':'open')}));
   const openBatchStatuses=req.batchActor.mis?rows.filter(b=>!b.closed_at).map(b=>({
    site:b.site,date:b.report_date,shift:b.shift,stage:twoStage?batchStage(b):'vlb_open'
   })):undefined;
   const open=rows.find(b=>!b.closed_at&&(isOwner(b,req.batchActor)||batchLogin(creator(b))===req.batchActor.login));
   const openBatch=open?(siteAllowed(req.logBookScope,open.site)?{...open,created_by:creator(open),stageWait:waits.get(open.id)||'',canClose:!waits.has(open.id)&&canClose(open,req.batchActor,twoStage)}:{id:open.id,restricted:true}):null;
-  res.json({twoStage,batches,openBatchStatuses,openBatch:openBatch&&!openBatch.restricted?{...openBatch,stage:twoStage?batchStage(openBatch):(openBatch.closed_at?'closed':'open')}:openBatch,actor:{login:req.batchActor.login,mis:req.batchActor.mis,pm:req.batchActor.pm,canCreate:req.batchActor.canCreate,admin:req.batchActor.admin}});
+  const lockPause=batchLockPause();
+  res.json({twoStage,lockPause:{...lockPause,note:batchLockPauseNote(lockPause)},batches,openBatchStatuses,openBatch:openBatch&&!openBatch.restricted?{...openBatch,stage:twoStage?batchStage(openBatch):(openBatch.closed_at?'closed':'open')}:openBatch,actor:{login:req.batchActor.login,mis:req.batchActor.mis,pm:req.batchActor.pm,canCreate:req.batchActor.canCreate,admin:req.batchActor.admin}});
  }));
  app.get('/api/vlb-batches/approvals',...protect,handle(async(req,res)=>{
   const rows=(await pool.query('SELECT r.*,b.name,b.site,b.book_date::text AS report_date,b.shift,b.closed_at,b.closure_revision AS current_revision FROM mis_vlb_reopen_requests r JOIN mis_vlb_batches b ON b.id=r.batch_id WHERE b.archived_at IS NULL AND b.book_date>=$$2026-11-01$$ AND r.withdrawn_at IS NULL ORDER BY r.requested_at DESC')).rows;
@@ -286,6 +289,11 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
  app.post('/api/vlb-batches/:id/close',...protect,handle(async(req,res)=>{await batchTransaction(req,async(client,batch)=>{
   if(!mayClose(batch,req.batchActor))fail(twoStageEnabled()?'Only the active batch owner or an MIS administrator can close this batch.':'Only the active batch owner can close this batch.',403);
   if(batch.closed_at)return;
+  // While locking is paused Close batch does Lock VLB and Lock LMV first, with their own checks.
+  if(twoStageEnabled()&&batchLocksPaused()){
+   if(batchStage(batch)==='vlb_open')batch=await lockVlb(client,batch,req.batchActor.login);
+   if(batchStage(batch)==='lmv_open')batch=await lockLmv(client,batch,req.batchActor.login);
+  }
   await assertCloseAllowed(client,batch);
   const closed=(await client.query("UPDATE mis_vlb_batches SET closed_at=NOW(),amendment_by=NULL,closure_revision=closure_revision+1,stage='closed' WHERE id=$1 RETURNING *,book_date::text AS report_date",[batch.id])).rows[0];
   await auditVlbBatch(client,batch,req.batchActor.login,'saved_and_locked',{closureRevision:closed.closure_revision,savedWithoutChanges:true,twoStage:twoStageEnabled()});

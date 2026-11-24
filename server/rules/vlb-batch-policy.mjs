@@ -4,6 +4,7 @@ import {canonicalSiteName} from '../../shared/site-location.mjs';
 import {vlbRecordShift} from '../../shared/vlb-batch-format.mjs';
 import {VLB_TWO_STAGE_SCHEMA,twoStageEnabled} from './vlb-two-stage.mjs';
 import {readBatchStageWait} from './vlb-batch-queue.mjs';
+import {batchLocksPaused} from '../../shared/batch-lock-pause.mjs';
 import {VLB_APPROVAL_OTP_SCHEMA} from '../services/vlb-approval-otp.mjs';
 
 export const VLB_BATCH_SCHEMA=`
@@ -122,7 +123,8 @@ export async function assertVlbBatchWrite(client,data,actor,recordId,{adding=fal
  // cards may add or change them, whoever created or reopened the batch, and a reopened batch
  // has no expiry. Only a closed batch has to be reopened first.
  if(batch.closed_at&&!adding)batchFail('This site/date/shift batch is closed. Reopen the existing batch before changing existing cards.');
- if(twoStageEnabled()&&(batch.stage==='lmv_open'||batch.lmv_locked_at||batch.stage==='elb_open'&&!adding))batchFail('VLB is locked for batch '+batch.name+'. Unlock VLB from the batch page before changing existing tipper cards.');
+ // While locking is paused (shared/batch-lock-pause.mjs) a VLB card is added or changed in every open stage.
+ if(twoStageEnabled()&&!batchLocksPaused()&&(batch.stage==='lmv_open'||batch.lmv_locked_at||batch.stage==='elb_open'&&!adding))batchFail('VLB is locked for batch '+batch.name+'. Unlock VLB from the batch page before changing existing tipper cards.');
  return batch;
 }
 // Saving a card never locks its batch (owner, 19 Nov 2026). A reopened batch used to close
@@ -137,6 +139,8 @@ export async function syncVlbBatchRecord(client,record,actor,{relock=true}={}){
  const batch=await assertVlbBatchWrite(client,record.data,actor,record.id,{adding:!before});if(!batch)return;
  await client.query('INSERT INTO mis_vlb_batch_entries(batch_id,logbook_id,snapshot) VALUES($1,$2,$3::jsonb) ON CONFLICT(logbook_id) DO UPDATE SET snapshot=EXCLUDED.snapshot',[batch.id,record.id,JSON.stringify(record)]);
  await auditVlbBatch(client,batch,actor,before?'card_updated':'card_added',{logbookId:record.id,before:before||null,after:record});
- if(!before&&twoStageEnabled()&&(batch.closed_at||batch.stage==='elb_open')){const {refreshLateVlbTrips}=await import('./vlb-batch-stages.mjs');await refreshLateVlbTrips(client,batch);}
+ // A card saved after Lock VLB updates the batch's machine trips; while locking is paused a changed card does too.
+ const afterLock=batch.closed_at||batch.stage==='elb_open'||batchLocksPaused()&&batch.stage==='lmv_open';
+ if(twoStageEnabled()&&afterLock&&(!before||batchLocksPaused())){const {refreshLateVlbTrips}=await import('./vlb-batch-stages.mjs');await refreshLateVlbTrips(client,batch);}
  if(relock)await lockSavedVlbBatches(client,actor,[record.id]);
 }

@@ -16,6 +16,7 @@ import {createKeyedSerializer,uploadDuplicateLockKey} from '../services/scan-upl
 import {isDeletableScanCard} from '../../src/scan-card-deletion-selection.mjs';
 import {lockSavedVlbBatches,lockVlbBatchWrites,matchingVlbBatch,isOpenBatchForDeletion} from '../rules/vlb-batch-policy.mjs';
 import {twoStageEnabled,batchStage} from '../rules/vlb-two-stage.mjs';
+import {batchLocksPaused} from '../../shared/batch-lock-pause.mjs';
 import {requireScanEntrySpace} from '../../public/scan-entry-limit.mjs';
 import {SCAN_BATCH_NAMING_SCHEMA,createScanBatch} from '../rules/scan-batch-naming.mjs';
 import {SCAN_QUEUE_SCHEMA,SCAN_LEASE_SCHEMA,claimNextScanCard,requestScanBatch,queuedScanBatches,renewReadLeases,requeueExpiredReads,scanReadTiming,releaseReadLeases,beatScanEngine,removeScanEngine,pruneScanEngines,liveScanEngines,processLeaseOwner,scanDatabaseUnavailable,requeueAfterDatabaseFailure} from '../services/scan-extraction-queue.mjs';
@@ -447,7 +448,7 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
  // would wait in review and never reach the batch. Refuse it at upload and say what to do.
  const refuseTripCardsAfterVlbLock=async batch=>{
   const context=batch.expected_context;
-  if(batch.kind!=='vehicle'||!context||context.logBookKind==='lmv'||context.cancelled||!twoStageEnabled())return;
+  if(batch.kind!=='vehicle'||!context||context.logBookKind==='lmv'||context.cancelled||!twoStageEnabled()||batchLocksPaused())return;
   let vlbBatch=null;try{vlbBatch=await matchingVlbBatch(pool,context);}catch{return;}
   if(!vlbBatch||vlbBatch.deleted_at||vlbBatch.archived_at||batchStage(vlbBatch)==='vlb_open')return;
   fail(`VLB is already locked for batch ${vlbBatch.name}, so these trip cards could not be saved. Unlock VLB from the batch page before scanning more trip cards for this shift.`,409);

@@ -16,6 +16,7 @@ import {twoStageEnabled,batchStage,activeSiteHolds,holdSummary,buildMachineSnaps
 import {pendingTransferFor} from '../routes/vehicle-transfer-express.mjs';
 
 import {readBatchStageWait} from './vlb-batch-queue.mjs';
+import {batchLocksPaused} from '../../shared/batch-lock-pause.mjs';
 import {readWaitingScans,vlbLockScanBlocker,lmvLockScanBlocker,closeScanBlocker} from './vlb-waiting-scans.mjs';
 const batchWaitingScans=(client,batch)=>readWaitingScans(client,{site:batch.site,date:batch.report_date,shift:batch.shift});
 
@@ -121,6 +122,11 @@ export async function refreshLateVlbTrips(client,batch){
   SELECT $1,(r->>'assetId')::bigint,r->>'door',r->>'equipmentName',r->>'equipmentGroup',(r->>'trips')::integer,(r->>'sourceCards')::integer
   FROM jsonb_array_elements($2::jsonb) r
   ON CONFLICT(batch_id,asset_id) DO UPDATE SET trips=EXCLUDED.trips,source_cards=EXCLUDED.source_cards`,[batch.id,JSON.stringify(fleet)]);
+ // A machine no card loads any more (a VLB card changed while locking is paused) keeps its line at 0 trips,
+ // so Close batch does not ask for an ELB of trips that are gone.
+ const loading=machines.map(machine=>Number(machine.assetId));
+ await client.query('UPDATE mis_vlb_batch_machines SET trips=0,source_cards=0 WHERE batch_id=$1 AND NOT (asset_id=ANY($2::bigint[]))',[batch.id,loading]);
+ await client.query('UPDATE mis_vlb_batch_fleet SET trips=0,source_cards=0 WHERE batch_id=$1 AND trips>0 AND NOT (asset_id=ANY($2::bigint[]))',[batch.id,loading]);
 }
 
 export async function lockVlb(client,batch,actor,{assets}={}){
@@ -297,7 +303,9 @@ export async function assertLmvBatchWrite(client,data){
  if(!twoStageEnabled())return null;
  await lockVlbBatchScope(client,vlbRecordScope(data));
  const batch=await matchingVlbBatch(client,data);
- if(!batch||batch.deleted_at||batch.archived_at||batchStage(batch)!=='lmv_open')fail('Select an existing Vehicle Log Book batch open for LMV entry before saving or changing LMV cards.',409);
+ // While locking is paused LMV cards are saved in every open stage (shared/batch-lock-pause.mjs).
+ const lmvStage=batch&&(batchLocksPaused()?batchStage(batch)!=='closed':batchStage(batch)==='lmv_open');
+ if(!batch||batch.deleted_at||batch.archived_at||!lmvStage)fail('Select an existing Vehicle Log Book batch open for LMV entry before saving or changing LMV cards.',409);
  await requireStageTurn(client,batch);
  return batch;
 }
@@ -311,7 +319,8 @@ export async function assertElbBatchWrite(client,data,{adding=false}={}){
  if(!batch)fail('Create the VLB batch for this site, date and shift and lock VLB before saving ELB cards. Standalone ELB saving is discontinued.',409);
  if(batch.archived_at||batch.deleted_at)fail('This batch is unavailable. Open an active site/date/shift batch before saving.',409);
  const stage=batchStage(batch);
- if(stage==='vlb_open'||stage==='lmv_open')fail('Lock VLB and LMV for batch '+batch.name+' before saving ELB cards.',409);
+ // While locking is paused ELB cards are saved before VLB and LMV are locked too; Lock VLB keeps them.
+ if((stage==='vlb_open'||stage==='lmv_open')&&!batchLocksPaused())fail('Lock VLB and LMV for batch '+batch.name+' before saving ELB cards.',409);
  if(stage==='closed'&&batch.lmv_locked_at)fail('This batch is locked. Reopen it before saving ELB cards.',409);
  if(stage==='closed'&&!adding)fail('Batch '+batch.name+' is closed. Reopen it before changing existing ELB cards.',409);
  await requireStageTurn(client,batch);
