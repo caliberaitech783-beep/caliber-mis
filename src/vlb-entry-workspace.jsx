@@ -9,6 +9,8 @@ import ShiftAttendance from './shift-attendance.jsx';
 export const elbEntryBlocker=(kind,batch)=>{
  if(!batch)return '';
  if(batch.stageWait)return batch.stageWait;
+ // While locking is paused (shared/batch-lock-pause.mjs) every open batch takes VLB, LMV and ELB cards.
+ if(batch.lockPaused&&!batch.closed_at)return '';
  if(kind==='vehicle')return batch.closed_at||(batch.twoStage===true&&batch.stage!=='vlb_open')?'VLB batch '+batch.name+' is locked. Unlock or reopen the batch before adding Manual, Scan or Upload entries.':'';
  if(kind==='equipment'&&batch.closed_at&&batch.lmv_locked_at)return 'Reopen this batch before entering ELB cards.';
  if(kind==='lmv')return batch.closed_at||(batch.twoStage===true&&batch.stage!=='lmv_open')?'Select a batch with LMV open.':'';

@@ -49,9 +49,11 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
  const twoStage=Boolean(viewed?.twoStage),stage=twoStage?viewed.stage||'vlb_open':'';
  const [inlineCard,setInlineCard]=useState(null);
  useEffect(()=>setInlineCard(null),[viewed?.id]);
- const vlbLocked=viewed?.closed_at||viewed?.trialExpired||(twoStage&&stage!=='vlb_open');
- const elbLocked=viewed?.closed_at||stage!=='elb_open'||viewed?.trialExpired;
- const lmvLocked=viewed?.closed_at||stage!=='lmv_open'||Boolean(viewed?.stageWait);
+ // While locking is paused (shared/batch-lock-pause.mjs) every open stage takes VLB, LMV and ELB cards.
+ const lockPaused=Boolean(twoStage&&viewed?.lockPaused);
+ const vlbLocked=viewed?.closed_at||viewed?.trialExpired||(twoStage&&stage!=='vlb_open'&&!lockPaused);
+ const elbLocked=viewed?.closed_at||(stage!=='elb_open'&&!lockPaused)||viewed?.trialExpired;
+ const lmvLocked=viewed?.closed_at||(stage!=='lmv_open'&&!lockPaused)||Boolean(viewed?.stageWait);
  const cardsLocked=kind=>kind==='equipment'?elbLocked:kind==='lmv'?lmvLocked:vlbLocked;
  // An open batch never stops a user (owner, 19 Nov 2026): VLB, LMV and ELB cards show Edit
  // while that stage is open, whoever created or reopened the batch.
@@ -203,7 +205,9 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
  const changed=async batch=>{if(batch){++detailRequest.current;setViewed(batch);setOpenBatch(batch.closed_at?null:batch);if(!batch.closed_at)onSelected?.(batch)}setRefresh(n=>n+1)};
  const records=viewed?.records||preview?.records||[],manual=records.filter(r=>vlbRecordSource(r)==='VLB Manual').length;
  const lmvOpen=stage==='lmv_open'&&!viewed?.stageWait;
- const entryCounts=(lmvOpen?viewed.lmvRecords||[]:records).reduce((counts,record)=>({...counts,[vlbRecordEntryType(record)]:counts[vlbRecordEntryType(record)]+1}),{manual:0,scan:0,upload:0});
+ // The main list shows the LMV cards while LMV is open; while locking is paused it keeps the VLB cards and the LMV cards are listed below.
+ const lmvList=lmvOpen&&!lockPaused;
+ const entryCounts=(lmvList?viewed.lmvRecords||[]:records).reduce((counts,record)=>({...counts,[vlbRecordEntryType(record)]:counts[vlbRecordEntryType(record)]+1}),{manual:0,scan:0,upload:0});
  const contracts=activeWorkOrders(options?.workOrders||[],selection.site,selection.date);
  const shifts=options?availableShifts(options,selection):[];
  const batchSites=new Map();
@@ -267,19 +271,25 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
   </section>}
   {viewed&&<section className="logbook-section vlb-active-batch-panel">{!entryMode&&<StepBackButton onBack={clearView} label="Back to batch list"/>}<h2>{viewed.name}</h2><div className="vlb-batch-stage-toolbar">{twoStage&&<StageSteps stage={stage} waiting={Boolean(viewed.stageWait)}/>}<button type="button" disabled={busy||detailLoading} onClick={clearView}>Show unbatched entries</button></div>
     {viewed.stageWait&&<p className="logbook-message" role="status">{viewed.stageWait}</p>}
+    {lockPaused&&!viewed.closed_at&&viewed.lockPause?.note&&<p className="logbook-message vlb-lock-pause-note" role="status">{viewed.lockPause.note}</p>}
     {twoStage&&<WaitingScans entries={viewed.waitingScans} stage={stage}/>}
-    {(lmvOpen||stage==='vlb_open')&&(onManual||onScan)&&<div className="vlb-batch-actions" role="group" aria-label="Batch entry options">
+    {(lmvOpen||stage==='vlb_open'||lockPaused&&stage!=='closed')&&(onManual||onScan)&&<div className="vlb-batch-actions" role="group" aria-label="Batch entry options">
      <button type="button" aria-pressed={entryFilter==='manual'} disabled={busy||detailLoading} onClick={()=>setEntryFilter(value=>value==='manual'?'':'manual')}>Manual ({entryCounts.manual})</button>
      <button type="button" aria-pressed={entryFilter==='scan'} disabled={busy||detailLoading} onClick={()=>setEntryFilter(value=>value==='scan'?'':'scan')}>Scan ({entryCounts.scan})</button>
      <button type="button" aria-pressed={entryFilter==='upload'} disabled={busy||detailLoading} onClick={()=>setEntryFilter(value=>value==='upload'?'':'upload')}>PDF ({entryCounts.upload})</button>
    </div>}
    {viewed&&twoStage&&<div className="vlb-two-stage">
+    {lockPaused&&['vlb_open','lmv_open'].includes(stage)&&<div className="vlb-batch-actions" role="group" aria-label="Entry while locking is off">
+     {stage==='vlb_open'&&onLmvManual&&<button type="button" onClick={()=>onLmvManual(viewed)}>Add LMV manually</button>}
+     {stage==='vlb_open'&&onLmvScan&&<button type="button" onClick={()=>onLmvScan(viewed)}>Scan or upload LMV PDF</button>}
+     <button type="button" className="vlb-approval-primary" disabled={busy||detailLoading||!viewed.canClose} onClick={()=>close(viewed)}>Close batch (locks VLB and LMV)</button>
+    </div>}
     {stage==='vlb_open'&&<><div className="vlb-batch-actions"><button type="button" className="vlb-approval-primary" disabled={busy||detailLoading||!viewed.canLockVlb} onClick={()=>lockStage('vlb')}>Lock VLB</button><button type="button" disabled={busy} onClick={()=>setNewEquipment(v=>!v)}>{newEquipment?'Hide new equipment form':'Create new equipment'}</button></div>{(()=>{const shown=(viewed.lockBlockers||[]).filter(text=>text!==viewed.waitingScanMessage);return shown.length>0&&<p className="logbook-message" role="status">Lock VLB is blocked: {shown.join(' ')}</p>})()}</>}
     {lmvOpen&&<div className="vlb-batch-actions">
      {onLmvManual&&<button type="button" onClick={()=>onLmvManual(viewed)}>Add LMV manually</button>}
      {onLmvScan&&<button type="button" onClick={()=>onLmvScan(viewed)}>Scan or upload LMV PDF</button>}
      <button type="button" className="vlb-approval-primary" disabled={busy||detailLoading||!viewed.canLockLmv} onClick={()=>lockStage('lmv')}>Lock LMV</button>
-     <button type="button" disabled>ELB entry · Lock LMV first</button>
+     {!lockPaused&&<button type="button" disabled>ELB entry · Lock LMV first</button>}
      {viewed.canUnlockVlb&&<button type="button" disabled={busy} onClick={unlockVlb}>Unlock VLB</button>}
     </div>}
     {stage==='elb_open'&&<><div className="vlb-batch-actions">{onEquipmentElb&&!equipmentElbHidden&&<button type="button" className="vlb-approval-primary vlb-open-elb-button" disabled={busy||viewed.canEnterFleet===false} onClick={()=>onEquipmentElb(viewed)}>Process Equipment ELB</button>}<button type="button" aria-expanded={!equipmentElbHidden} aria-controls="vlb-equipment-elb-details" onClick={()=>setEquipmentElbHidden(v=>!v)}>{equipmentElbHidden?'Show Equipment ELB':'Hide Equipment ELB'}</button>{viewed.canUnlockVlb&&<button type="button" disabled={busy} onClick={unlockVlb}>Unlock VLB</button>}<button type="button" disabled={busy||detailLoading||!viewed.canClose} onClick={()=>close(viewed)}>Close &amp; lock ELB</button>{canDeleteManualElb&&<button type="button" disabled={busy||detailLoading} aria-expanded={deleteBatchId===viewed.id} onClick={()=>setDeleteBatchId(id=>id===viewed.id?null:viewed.id)}>Delete manual ELBs</button>}</div>
@@ -295,17 +305,17 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
     {viewed.elbRecords?.length>0&&<section aria-label="Saved ELB cards">
      <ElbSavedCardsReport key={viewed.id} batch={viewed} ReportSection={ReportSection} onView={record=>viewCard(record,'equipment')} rowAction={record=>action(record,'equipment')} renderField={(record,field,value)=>fieldCell(record,'equipment',field,value)} rowEditor={(record,colSpan)=>editor(record,'equipment',colSpan)}/>
     </section>}
-    {!lmvOpen&&viewed.lmvRecords?.length>0&&<section aria-label="Saved LMV cards">
+    {!lmvList&&viewed.lmvRecords?.length>0&&<section aria-label="Saved LMV cards">
      <h3>Saved LMV cards</h3>
      <VlbBatchReport key={viewed.id+':lmv'} batch={{...viewed,records:viewed.lmvRecords}} bookLabel="LMV" ReportSection={ReportSection} onView={record=>viewCard(record,'lmv')} rowAction={record=>action(record,'lmv')} renderField={(record,field,value)=>fieldCell(record,'lmv',field,value)} rowEditor={(record,colSpan)=>editor(record,'lmv',colSpan)}/>
     </section>}
     <VlbBatchHolds session={session} batch={viewed} onChanged={()=>setRefresh(n=>n+1)}/>
    </div>}
-   {loading||detailLoading?<p role="status">Loading entries…</p>:viewed?<VlbBatchReport key={viewed.id} batch={lmvOpen?{...viewed,records:viewed.lmvRecords||[]}:viewed} bookLabel={lmvOpen?'LMV':'VLB'} ReportSection={ReportSection} onView={record=>viewCard(record,lmvOpen?'lmv':'vehicle')} rowAction={record=>action(record,lmvOpen?'lmv':'vehicle')} renderField={(record,field,value)=>fieldCell(record,lmvOpen?'lmv':'vehicle',field,value)} rowEditor={(record,colSpan)=>editor(record,lmvOpen?'lmv':'vehicle',colSpan)} entryType={entryFilter}/>:<><p>{records.length} cards · {manual} Manual + {records.length-manual} Scan · All included automatically. Each scan entry holds up to 40 cards; this final batch includes all matching saved entries and can exceed 40 cards.</p><SmartSearchReport ReportSection={ReportSection} title="Unbatched entries" category="vlb-unbatched-preview" description={[displaySiteName(selection.site),selection.date,selection.shift].filter(Boolean).join(' · ')||'Choose site, date and shift'} searchLabel="Smart Search unbatched entries" placeholder="Book number, trip card, vehicle or driver" columns={previewReportColumns} rows={records} rowKey={r=>r.id} emptyMessage={selection.site&&selection.date&&selection.shift?'No saved, unbatched entries match this selection.':'Select site, date and shift to load saved entries.'}/></>}
+   {loading||detailLoading?<p role="status">Loading entries…</p>:viewed?<VlbBatchReport key={viewed.id} batch={lmvList?{...viewed,records:viewed.lmvRecords||[]}:viewed} bookLabel={lmvList?'LMV':'VLB'} ReportSection={ReportSection} onView={record=>viewCard(record,lmvList?'lmv':'vehicle')} rowAction={record=>action(record,lmvList?'lmv':'vehicle')} renderField={(record,field,value)=>fieldCell(record,lmvList?'lmv':'vehicle',field,value)} rowEditor={(record,colSpan)=>editor(record,lmvList?'lmv':'vehicle',colSpan)} entryType={entryFilter}/>:<><p>{records.length} cards · {manual} Manual + {records.length-manual} Scan · All included automatically. Each scan entry holds up to 40 cards; this final batch includes all matching saved entries and can exceed 40 cards.</p><SmartSearchReport ReportSection={ReportSection} title="Unbatched entries" category="vlb-unbatched-preview" description={[displaySiteName(selection.site),selection.date,selection.shift].filter(Boolean).join(' · ')||'Choose site, date and shift'} searchLabel="Smart Search unbatched entries" placeholder="Book number, trip card, vehicle or driver" columns={previewReportColumns} rows={records} rowKey={r=>r.id} emptyMessage={selection.site&&selection.date&&selection.shift?'No saved, unbatched entries match this selection.':'Select site, date and shift to load saved entries.'}/></>}
   </section>}
 
   {viewed&&selectedCard&&<VlbBatchCardDetails key={viewed.id+":"+selectedCard.viewKey} kind={selectedCard.kind} onClose={()=>{setSelectedCard(null);document.querySelector(".vlb-active-batch-panel")?.scrollIntoView({block:"start"})}} session={session} batch={viewed} record={selectedCard} ReportSection={ReportSection}/> }
-  <VlbBatchGovernance batch={viewed} actor={actor} onManual={twoStage&&stage!=='vlb_open'?undefined:onManual} onScan={twoStage&&stage!=='vlb_open'?undefined:onScan} onRequestReopen={()=>setShowApproval(true)}/>
+  <VlbBatchGovernance batch={viewed} actor={actor} onManual={twoStage&&stage!=='vlb_open'&&!lockPaused?undefined:onManual} onScan={twoStage&&stage!=='vlb_open'&&!lockPaused?undefined:onScan} onRequestReopen={()=>setShowApproval(true)}/>
   {showApproval&&viewed?.closed_at&&<VlbReopenDialog key={viewed.id+':'+viewed.closure_revision} session={session} batch={viewed} onChanged={changed} onDismiss={()=>setShowApproval(false)}/>}
  </section>;
 }
@@ -387,6 +397,8 @@ export function openVlbEntryBatches(batches,site,kind='vehicle'){
  if(!site)return [];
  return batches.filter(batch=>{
   if(batch.archived_at||batch.deleted_at||batch.stageWait||canonicalSiteName(batch.site)!==canonicalSiteName(site))return false;
+  // While locking is paused (shared/batch-lock-pause.mjs) every open batch takes VLB, LMV and ELB cards.
+  if(batch.twoStage===true&&batch.lockPaused&&!batch.closed_at)return true;
   if(kind==='vehicle')return !batch.closed_at&&(batch.twoStage!==true||batch.stage==='vlb_open');
   if(kind==='lmv')return !batch.closed_at&&(batch.twoStage!==true||batch.stage==='lmv_open');
   return batch.twoStage!==true||batch.stage==='elb_open'||(batch.closed_at&&!batch.lmv_locked_at);
