@@ -517,7 +517,7 @@ test('the page is in the menu, drawn in the report steps, with the Fetch box on 
  assert.equal(requestedMisPage('?page=caliber-recheck'),'Caliber ID Re-check');
  assert.match(misPageUrl('https://pulse-ll.cmll.in/','Caliber ID Re-check'),/\?page=caliber-recheck$/);
  const main=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');
- assert.match(main,/'A Form Master','Employee Current Location','Caliber ID Re-check','Equipment master'/);
+ assert.match(main,/'A Form Master','Employee Current Location','Caliber ID Re-check','Caliber Punch Re-check','Equipment master'/);
  assert.ok(main.includes("renderedActive==='Caliber ID Re-check' ? (<CaliberRecheck session={session} ReportSection={ReportSection}/>)"));
  assert.ok(main.includes("if(name==='Caliber ID Re-check')return session?.permissions?.separateMisCredentials?misPageAllowed(session,name,responsiveMobile?'mobile':'desktop'):isAdministrator;"));
  const page=readFileSync(new URL('../src/caliber-recheck.jsx',import.meta.url),'utf8');

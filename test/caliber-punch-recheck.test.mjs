@@ -1,0 +1,102 @@
+// Caliber Punch Re-check (owner, 24 Nov 2026: "caliber punch recheck mis me hi, caliber id recheck ke niche"): the
+// drivers and operators who punched but get no attendance because a VLB, ELB or LMV card of their site and date has an
+// error, set beside those cards and put right on the same line through the Caliber ID Re-check routes.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import express from 'express';
+import {PGlite} from '@electric-sql/pglite';
+import {punchRecheck} from '../shared/caliber-punch-recheck.mjs';
+import {canonicalSiteName} from '../shared/site-location.mjs';
+import {registerCaliberRecheck,CALIBER_RECHECK_SCHEMA} from '../server/routes/caliber-recheck.mjs';
+import {misPageAllowed,misRequestAllowed} from '../shared/mis-application-access.mjs';
+import {requestedMisPage} from '../src/mis-navigation.mjs';
+import {emptyPunchRecheck,addPunchAnswer,punchSiteRows,punchSlotRows,cardAction,punchDefaultRange} from '../src/caliber-punch-recheck-model.mjs';
+
+const MAJRI='Majri OC',DATE='2026-11-20',KEY=canonicalSiteName(MAJRI);
+const person=(id,number,name,designation,extra={})=>({id,master_name:'Employee master',record_data:{caliberId:'CMPL'+number,caliberCode:'CMLL'+number,name,currentDesignationName:designation,site:MAJRI,currentLocation:MAJRI,hrListed:true,hrLeft:false,status:'Active',...extra}});
+const masters=()=>[person(1,4400,'DRIVER ONE','VOLVO DRIVER'),person(2,4401,'DRIVER TWO','TIPPER DRIVER'),person(3,4402,'DRIVER THREE','VOLVO DRIVER'),
+ person(4,4403,'DRIVER FOUR','PC OPERATOR'),person(5,15970,'HELPING HAND','HELPER'),person(6,4404,'DRIVER FIVE','VOLVO DRIVER')];
+
+test('a punch is matched with the cards with an error at its site and date, the own card first',()=>{
+ const listed=[{id:'10',date:DATE,siteKey:KEY,site:MAJRI,shift:'S1',savedId:'CMPL9999',reason:'unknown'},{id:'11',date:DATE,siteKey:KEY,site:MAJRI,shift:'S2',savedId:'CMPL4402',reason:'no-shift',pickShift:true}];
+ const days=[{caliberCode:'4400',date:DATE,site:MAJRI,inTime:'06:01',outTime:'14:05',source:'machine'},{caliberCode:'4402',date:DATE,site:MAJRI,inTime:'14:00',outTime:'',source:'machine'},
+  {caliberCode:'4401',date:DATE,site:MAJRI,inTime:'06:00',source:'imported'},{caliberCode:'15970',date:DATE,site:MAJRI,inTime:'06:00',source:'machine'},
+  {caliberCode:'4403',date:'2026-11-21',site:MAJRI,inTime:'06:00',source:'machine'}];
+ const {lines,sites}=punchRecheck({days,listed,masters:masters(),standing:new Set(['4401|'+DATE])});
+ assert.deepEqual(sites,[{key:KEY,site:MAJRI,punched:4,counted:1,toFix:2,noCard:1}],'the helper is left out; 4401 has a card that counts; 4403 has no card at all');
+ assert.deepEqual(lines.map(line=>[line.number,line.ownCard,line.cards.map(card=>card.id),line.shift]),[['4402',true,['11','10'],'S2'],['4400',false,['10','11'],'—']]);
+ assert.equal(lines[0].rowId,'3');assert.equal(lines[0].name,'DRIVER THREE');
+ assert.equal(cardAction(lines[0],lines[0].cards[0]),'shift','own card with no shift: Save shift');
+ assert.equal(cardAction(lines[1],lines[1].cards[1]),'other','another standing driver\'s card with no shift is not this person\'s');
+ assert.equal(cardAction(lines[1],lines[1].cards[0]),'submit');
+ assert.equal(punchRecheck({days,listed,masters:masters(),allowed:()=>false}).lines.length,0,'a site the login does not hold is not shown');
+});
+
+test('the screen adds the days up and draws Step 1 and Step 2',()=>{
+ let held=emptyPunchRecheck();
+ held=addPunchAnswer(held,{from:DATE,punches:5,machine:{error:'HR Pulse did not give the machine punches (x).'},sites:[{key:KEY,site:MAJRI,punched:4,counted:1,toFix:2,noCard:1}],lines:[{id:'a',date:DATE,shift:'S1',siteKey:KEY,site:MAJRI,ownCard:true},{id:'b',date:DATE,shift:'S1',siteKey:KEY,site:MAJRI,ownCard:false}]});
+ held=addPunchAnswer(held,{from:DATE,punches:5,machine:{},sites:[{key:KEY,site:MAJRI,punched:4,counted:2,toFix:1,noCard:1}],lines:[{id:'a',date:DATE,shift:'S1',siteKey:KEY,site:MAJRI,ownCard:true}]});
+ const rows=punchSiteRows(held);
+ assert.deepEqual([rows.rows[0].toFix,rows.total.counted,held.machineErrors.length],[1,2,0],'a date read again replaces its answer');
+ assert.deepEqual(punchSlotRows(held.lines).map(row=>[row.count,row.own]),[[1,1]]);
+ assert.deepEqual(punchDefaultRange('2026-11-24'),{from:'2026-11-18',to:'2026-11-24'});
+ assert.deepEqual(punchDefaultRange('2026-11-03'),{from:'2026-11-01',to:'2026-11-03'});
+});
+
+test('the server matches the machine and imported punches with the cards, and Submit from the line puts the person on the card',async()=>{
+ const db=new PGlite();
+ await db.exec(`CREATE TABLE master_records(id BIGSERIAL PRIMARY KEY,master_name TEXT,record_data JSONB);
+  CREATE TABLE mis_log_books(id BIGSERIAL PRIMARY KEY,book_no TEXT,book_type TEXT,book_date DATE,site TEXT,asset_id BIGINT,data JSONB,revision INTEGER DEFAULT 1,deleted_at TIMESTAMPTZ,created_at TIMESTAMPTZ DEFAULT NOW(),updated_at TIMESTAMPTZ DEFAULT NOW());
+  CREATE TABLE mis_vlb_batch_entries(batch_id TEXT,logbook_id BIGINT PRIMARY KEY,snapshot JSONB);
+  CREATE TABLE mis_elb_batch_entries(batch_id TEXT,logbook_id BIGINT PRIMARY KEY,snapshot JSONB);
+  CREATE TABLE mis_biometric_punches(caliber_code TEXT,punch_date DATE,in_time TEXT,out_time TEXT,site TEXT);`);
+ await db.exec(CALIBER_RECHECK_SCHEMA);
+ for(const row of masters())await db.query('INSERT INTO master_records(id,master_name,record_data) VALUES($1,$2,$3)',[row.id,row.master_name,JSON.stringify(row.record_data)]);
+ const book=async(id,data)=>{const full={bookDate:DATE,location:MAJRI,assetId:String(50+id),door:'V9'+id,bookShiftCode:'S1',trips:[{equipmentName:'LPC01',tripCount:3}],openingKmr:100,closingKmr:140,...data};
+  await db.query('INSERT INTO mis_log_books(id,book_no,book_type,book_date,site,asset_id,data,revision) VALUES($1,$2,$3,$4,$5,$6,$7,3)',[id,'BOOK-'+id,'vehicle',DATE,MAJRI,full.assetId,JSON.stringify(full)]);};
+ await book(1,{employeeId:'2',caliberId:'CMPL4401',employeeName:'DRIVER TWO',aFormNo:'A-1'});
+ await book(2,{employeeId:'',caliberId:'',employeeName:'',aFormNo:'A-2'});
+ await book(3,{employeeId:'6',caliberId:'CMPL4404',employeeName:'DRIVER FIVE',aFormNo:'A-3',bookShiftCode:'',cardShift:'',shiftName:''});
+ await db.query("INSERT INTO mis_biometric_punches VALUES('4400',$1,'06:00','14:00',$2)",[DATE,MAJRI]);
+ const query=(sql,params)=>!params&&sql.includes(';')?db.exec(sql):db.query(sql,params);
+ const pool={query,connect:async()=>({query,release(){}})};
+ const app=express();app.use(express.json());
+ registerCaliberRecheck(app,{pool,requireSession:(req,res,next)=>{req.session={login:'majri.hr',name:'Majri HR',role:'super',permissions:{adminLevel:'User'}};next()},requireAdministrator:(req,res,next)=>next(),
+  getSiteScope:async()=>({sites:null,label:'All sites'}),readMasters:async client=>client.query('SELECT id,master_name,record_data FROM master_records ORDER BY id'),
+  hrPunches:async()=>({sites:[MAJRI],punches:[['CMLL4401','4401',DATE+' 06:02:00',0,'0'],['CMLL4404','4404',DATE+' 06:03:00',0,'0']]})});
+ const server=app.listen(0),base='http://127.0.0.1:'+server.address().port;
+ const call=async(path,body)=>{const r=await fetch(base+path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,body:await r.json()};};
+ try{
+  let day=await call('/api/caliber-recheck/punches?from='+DATE+'&to='+DATE);
+  assert.equal(day.status,200);
+  assert.equal(day.body.machine.connected,true);
+  assert.deepEqual(day.body.sites.map(site=>[site.punched,site.counted,site.toFix,site.noCard]),[[3,1,2,0]]);
+  const byNumber=Object.fromEntries(day.body.lines.map(line=>[line.number,line]));
+  assert.deepEqual(byNumber['4404'].cards.map(card=>[card.id,card.own,card.reason]),[['3',true,'no-shift'],['2',false,'no-driver']]);
+  assert.deepEqual(byNumber['4400'].cards.map(card=>card.id),['2','3']);
+  assert.equal(byNumber['4400'].source,'imported');
+  // Submit on the line of 4400: the card with no driver takes DRIVER ONE, and the line leaves the list.
+  const put=await call('/api/caliber-recheck/pick',{logbookId:'2',employeeId:byNumber['4400'].rowId});
+  assert.equal(put.status,201,JSON.stringify(put.body));
+  // Save shift on the own card of 4404.
+  assert.equal((await call('/api/caliber-recheck/shift',{logbookId:'3',shift:'D'})).status,200);
+  day=await call('/api/caliber-recheck/punches?from='+DATE+'&to='+DATE);
+  assert.deepEqual(day.body.lines,[]);
+  assert.deepEqual(day.body.sites.map(site=>[site.punched,site.counted,site.toFix]),[[3,3,0]]);
+ }finally{server.close();await db.close();}
+});
+
+test('the page sits under Caliber ID Re-check, for the same people',()=>{
+ const login=pages=>({permissions:{separateMisCredentials:true,misDesktopAccess:pages,misMobileAccess:[]}});
+ assert.equal(misPageAllowed(login(['Employee master']),'Caliber Punch Re-check','desktop'),true);
+ assert.equal(misPageAllowed(login(['Trip Card Bulk Scan']),'Caliber Punch Re-check','desktop'),true);
+ assert.equal(misPageAllowed(login(['Reports']),'Caliber Punch Re-check','desktop'),false);
+ assert.equal(misRequestAllowed(login(['Employee master']),{path:'/api/caliber-recheck/punches',method:'GET'}),true);
+ assert.equal(misRequestAllowed(login(['Employee master']),{path:'/api/caliber-recheck/punches',method:'POST'}),false);
+ assert.equal(requestedMisPage('?page=caliber-punch-recheck'),'Caliber Punch Re-check');
+ const main=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');
+ assert.match(main,/'Caliber ID Re-check','Caliber Punch Re-check','Equipment master'/);
+ assert.ok(main.includes("renderedActive==='Caliber Punch Re-check' ? (<CaliberPunchRecheck session={session} ReportSection={ReportSection}/>)"));
+ assert.ok(main.includes("if(name==='Caliber Punch Re-check')return canOpenAdminPage('Caliber ID Re-check');"));
+});
