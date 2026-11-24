@@ -172,7 +172,8 @@ export default function SiteSheetTripCard({session,ReportSection}){
    </section>
   </div>
   {run.error&&<p className="asc-error" role="alert">{run.error}</p>}
-  {misplaced&&<p className="ssc-wrong-tab" role="alert">Is this the {misplaced.book} sheet? {misplaced.whole} of the {result.totals.people} people in this file belong wholly to another log book ({misplaced.book}: {misplaced.people}), and only {result.totals.judged} can be compared with {book} trip cards. Open the <b>{misplaced.book} sheet</b> tab and upload this file there.</p>}
+  {misplaced?.mixed&&<p className="ssc-mixed-sheet" role="status">This file holds the people of other log books too, as one sheet for the whole site does. The {book} result below covers the <b>{many(misplaced.judged,'person','people')} compared with {book} trip cards</b>. {misplaced.books.map(b=>b.people+' belong to '+b.book).join(', ')}{misplaced.shared?' ('+misplaced.shared+' of them to more than one)':''}: they are listed apart under "belongs to another log book" and not counted here. To check them, open the {misplaced.books.map(b=>b.book+' sheet').join(' or ')} tab and upload the same file there.</p>}
+  {misplaced&&!misplaced.mixed&&<p className="ssc-wrong-tab" role="alert">Is this the {misplaced.book} sheet? {misplaced.whole} of the {result.totals.people} people in this file belong wholly to another log book ({misplaced.book}: {misplaced.people}), and only {result.totals.judged} can be compared with {book} trip cards. Open the <b>{misplaced.book} sheet</b> tab and upload this file there.</p>}
   {result&&<TripCardVerdict key={'ssc-verdict-'+book+'-'+done.name} view={view} ReportSection={ReportSection} withSheet against={'the '+book+' sheet'} site={result.site} period={period}/>}
   {result&&<>
    <section className="asc-result" aria-label={'Result of the '+book+' check'}>

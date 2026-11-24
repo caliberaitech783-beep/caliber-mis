@@ -67,7 +67,7 @@ test('under ELB the drill operator\'s P days are missing ELB cards, under LMV th
  assert.ok(ELB.result.corrections.some(c=>c.id==='CMPL906001'&&c.kind==='no-duty'),'a missing ELB card is a correction under ELB');
  assert.deepEqual(missing(LMV),['CMPL906004','CMPL906008']);
  assert.deepEqual(apart(LMV).map(p=>p[0]),['CMPL906001','CMPL906002','CMPL906003','CMPL906006','CMPL906007']);
- assert.deepEqual(wrongTab(LMV.result),{book:'VLB',people:4,whole:5},'most of this file is VLB: the LMV tab says so');
+ assert.deepEqual(wrongTab(LMV.result),{book:'VLB',people:4,whole:5,judged:2,mixed:false,books:[{book:'VLB',people:4},{book:'ELB',people:1}],shared:0},'most of this file is VLB and only 2 are compared: the LMV tab says so');
 });
 
 test('a tie between colleagues\' log books keeps the tab the sheet was uploaded as',async()=>{

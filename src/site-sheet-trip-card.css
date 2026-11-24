@@ -14,6 +14,7 @@
 .ssc-book-tabs button[aria-selected="true"]{background:#5b2d91;border-color:#5b2d91;color:#fff;box-shadow:0 3px 0 #2a1d40}
 .ssc-book-tabs button[aria-selected="true"] span{color:#e8dcf7}
 @media(max-width:720px){.ssc-book-tabs{grid-template-columns:1fr}}
+.ssc-mixed-sheet{margin:0;padding:12px 14px;border:1px solid #9fd2c9;border-radius:10px;background:#eef9f6;color:#0f3d38}
 .ssc-wrong-tab{margin:0;padding:12px 14px;border:2px solid #d46a00;border-radius:10px;background:#fff4e6;color:#5a2b00;font-weight:600}
 .ssc-num.ssc-teal{background:#0f766e}
 .ssc-page tr.ssc-row-teal td{background:#e2f5f1;color:#0f3d38}

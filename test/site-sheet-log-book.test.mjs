@@ -127,12 +127,12 @@ test('a file uploaded under the wrong tab is said so: most of its people have ev
  const data=await readSiteSheetData({sheet,site:SITE,session:{token:'T'},today:iso(23),
   read:async url=>url.includes('/people')?{site:SITE,people:[1,2,3].map(n=>master(905000+n,'OPERATOR '+n)),sitePeople:[]}:{otDuties:duties,attendanceEquipment:[],lockedDays:LOCKED}});
  const underVlb=siteSheetView({sheet,data,site:SITE,sheetBook:'VLB',today:iso(23)});
- assert.deepEqual(wrongTab(underVlb.result),{book:'ELB',people:3,whole:3});
+ assert.deepEqual(wrongTab(underVlb.result),{book:'ELB',people:3,whole:3,judged:0,mixed:false,books:[{book:'ELB',people:3}],shared:0});
  assert.equal(underVlb.lines.length,0,'no operator is listed as a missing VLB card');
  assert.equal(wrongTab(siteSheetView({sheet,data,site:SITE,sheetBook:'ELB',today:iso(23)}).result),null);
  const {VLB,ELB}=await views();
  assert.equal(wrongTab(VLB.result),null,'a sheet for everyone under VLB: the tipper drivers are compared, no warning');assert.equal(wrongTab(ELB.result),null);
- assert.match(fs.readFileSync(new URL('../src/site-sheet-trip-card.jsx',import.meta.url),'utf8'),/\{misplaced&&<p className="ssc-wrong-tab" role="alert">Is this the \{misplaced\.book\} sheet\?/);
+ assert.match(fs.readFileSync(new URL('../src/site-sheet-trip-card.jsx',import.meta.url),'utf8'),/\{misplaced&&!misplaced\.mixed&&<p className="ssc-wrong-tab" role="alert">Is this the \{misplaced\.book\} sheet\?/);
 });
 
 test('one sheet for every log book still works as before (no log book chosen)',async()=>{
