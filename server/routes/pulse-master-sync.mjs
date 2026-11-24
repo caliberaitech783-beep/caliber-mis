@@ -129,9 +129,11 @@ export function createPulseMasterSync({pool,stateFile,credentialStore,sharedSign
  let token='',username='',lastSuccess=null,lastAttempt=null,error='',counts={},busy=false,started=false,timer;
  let lmvLastSuccess=null,lmvError='';
  let regionLastSuccess=null,regionError='';
- const request=async(route,options={})=>{
+ // raw: answer with Pulse's bytes (a Buffer) instead of parsed JSON (the breakdown copy).
+ const request=async(route,{raw=false,...options}={})=>{
    let response;
    try{response=await fetchImpl(SOURCE+route,{...options,redirect:'error',signal:AbortSignal.timeout(45000)});}catch{throw new Error('Could not reach pulse.cmll.in. The connection will retry automatically.');}
+   if(raw&&response.ok)return Buffer.from(await response.arrayBuffer());
    const body=await response.json().catch(()=>null);
    if(!response.ok){if([401,403].includes(response.status))throw Object.assign(new Error('Pulse access expired or was denied. Reconnect an authorized Pulse administrator with MIS verification access to the card site.'),{code:'PULSE_AUTH_EXPIRED',status:response.status});throw Object.assign(new Error(body?.error||`Pulse request failed (${response.status}).`),{status:response.status});}
    return body;
@@ -222,6 +224,11 @@ export function createPulseMasterSync({pool,stateFile,credentialStore,sharedSign
      if(!token&&!sharedSignIn)throw new Error('Connect Pulse to keep the breakdown copy.');
      if(!Array.isArray(rows))throw new Error('Pulse returned an invalid breakdown feed.');
      return rows;
+   },
+   // The same list as Pulse's bytes, unparsed: the copy compares them and parses only a changed list.
+   async readFullBreakdownFeedRaw(){
+     if(!token&&!sharedSignIn)throw new Error('Connect Pulse to keep the breakdown copy.');
+     return token?authorizedRequest('/api/requests',{raw:true}):sharedSignIn.request('breakdown-mirror',{},null,{menu:'Pulse Master Sync',raw:true});
    },
    async readBreakdownRequests({fresh=false,actor}={}){
      if(!token&&sharedSignIn){

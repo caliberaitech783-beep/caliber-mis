@@ -79,3 +79,72 @@ test('BD hours, the server start and health use the copy; Pulse gives the whole 
  const sync=readFileSync(new URL('../server/routes/pulse-master-sync.mjs',import.meta.url),'utf8');
  assert.match(sync,/sharedSignIn\.request\('breakdown-mirror',\{\},null,\{menu:'Pulse Master Sync'\}\)/);
 });
+
+// 24 Nov 2026: the copy held the main thread for about a second every minute. Pulse's answer is now
+// compared as bytes: an unchanged list is never parsed, and a changed list is stored at most every 5 minutes.
+test('an unchanged list is compared as bytes and never parsed again',async()=>{
+ let time=Date.parse('2026-11-24T09:00:00Z'),reads=0;const pool=fakePool();
+ const body=JSON.stringify([{ref:'BD1',site:'Jayant OB'},{ref:'BD2',site:'Majri OB'}]);
+ const mirror=createPulseBreakdownMirror({pool,readFeed:async()=>{throw new Error('the parsed read is not used');},readFeedRaw:async()=>{reads++;return Buffer.from(body);},now:()=>time});
+ for(let i=0;i<4;i++){await mirror.refresh();time+=60_000;}
+ const status=mirror.status();
+ assert.equal(reads,4);assert.equal(status.parses,1,'parsed once, on the first read');assert.equal(status.unchangedReads,3);
+ assert.equal(pool.state.writes,1);assert.equal(pool.state.touches,3,'unchanged minutes only move the read time');
+ assert.deepEqual(await mirror.read(),JSON.parse(body));
+ assert.equal(mirrorReadAt(await mirror.read()),time-60_000,'the read time still moves every minute');
+ assert.deepEqual(pool.state.row.rows,JSON.parse(body),'stored from the bytes Pulse sent');
+});
+
+test('a changed list answers at once but is written to the database at most every five minutes',async()=>{
+ let time=Date.parse('2026-11-24T09:00:00Z'),version=1;const pool=fakePool();
+ const body=()=>JSON.stringify([{ref:'BD1',hours:version}]);
+ const mirror=createPulseBreakdownMirror({pool,readFeed:null,readFeedRaw:async()=>body(),now:()=>time});
+ await mirror.refresh();assert.equal(pool.state.writes,1);
+ for(let minute=1;minute<5;minute++){time+=60_000;version++;await mirror.refresh();
+  assert.deepEqual(await mirror.read(),[{ref:'BD1',hours:version}],'memory copy follows Pulse every minute');}
+ assert.equal(pool.state.writes,1,'no 26,000-row rewrite every minute');
+ assert.equal(pool.state.touches,0,'the stored copy is older, so its read time is not moved');
+ assert.equal(mirror.status().storePending,true);
+ time+=60_000;await mirror.refresh();
+ assert.equal(pool.state.writes,2,'written again five minutes after the last write');
+ assert.deepEqual(pool.state.row.rows,[{ref:'BD1',hours:5}],'the newest list is the one written');
+ assert.equal(mirror.status().storePending,false);
+ time+=60_000;await mirror.refresh();assert.equal(pool.state.touches,1,'unchanged and stored: read time only');
+});
+
+test('a list that changes back to the stored one needs no write',async()=>{
+ let time=Date.parse('2026-11-24T09:00:00Z'),body='[{"ref":"BD1"}]';const pool=fakePool();
+ const mirror=createPulseBreakdownMirror({pool,readFeedRaw:async()=>body,now:()=>time});
+ await mirror.refresh();
+ time+=60_000;body='[{"ref":"BD1"},{"ref":"BD2"}]';await mirror.refresh();
+ time+=60_000;body='[{"ref":"BD1"}]';await mirror.refresh();
+ assert.equal(pool.state.writes,1);assert.equal(mirror.status().storePending,false);assert.equal(pool.state.touches,1);
+});
+
+test('a broken answer from Pulse keeps the last good copy',async()=>{
+ let time=Date.parse('2026-11-24T09:00:00Z'),body='[{"ref":"BD1"}]';const pool=fakePool();
+ const mirror=createPulseBreakdownMirror({pool,readFeedRaw:async()=>body,now:()=>time});
+ await mirror.refresh();
+ body='<html>Gateway Timeout</html>';time+=60_000;
+ await assert.rejects(mirror.refresh(),/invalid breakdown feed/);
+ body='{"error":"x"}';await assert.rejects(mirror.refresh(),/invalid breakdown feed/);
+ body='null';await assert.rejects(mirror.refresh(),/invalid breakdown feed/);
+ assert.deepEqual(await mirror.read(),[{ref:'BD1'}]);assert.equal(mirror.status().failures,3);
+ body='[{"ref":"BD1"}]';await mirror.refresh();assert.equal(mirror.status().unchangedReads,1,'the good copy kept its own fingerprint');
+});
+
+test('after a restart the stored list is not written again when Pulse still sends it',async()=>{
+ const time=Date.parse('2026-11-24T09:00:00Z'),pool=fakePool(),body='[{"ref":"BD9"}]';
+ await createPulseBreakdownMirror({pool,readFeedRaw:async()=>body,now:()=>time}).refresh();
+ const restarted=createPulseBreakdownMirror({pool,readFeedRaw:async()=>body,now:()=>time+60_000});
+ await restarted.refresh();
+ assert.equal(pool.state.writes,1);assert.equal(restarted.status().parses,0,'same bytes as the stored copy: not parsed');
+});
+
+test('the server reads the list as bytes through either Pulse connection',()=>{
+ const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
+ assert.match(server,/readFeedRaw:\(\)=>pulseMasterSync\.readFullBreakdownFeedRaw\(\)/);
+ const sync=readFileSync(new URL('../server/routes/pulse-master-sync.mjs',import.meta.url),'utf8');
+ assert.match(sync,/authorizedRequest\('\/api\/requests',\{raw:true\}\)/);
+ assert.match(sync,/sharedSignIn\.request\('breakdown-mirror',\{\},null,\{menu:'Pulse Master Sync',raw:true\}\)/);
+});
