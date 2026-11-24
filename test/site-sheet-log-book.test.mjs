@@ -157,5 +157,5 @@ test('the screen chooses the log book before the upload, keeps a file and a resu
  assert.equal(ids.indexOf('attendance-site-sheet'),ids.indexOf('attendance-month')+1);
  // The server gives a zero-trip entry the log book of its machine.
  assert.match(source('../server/rules/manpower-report.mjs'),/machineBook:asset\?logBookCode\(fleetAssetKind\(asset\)\):''/);
- assert.match(source('../server/routes/manpower-report-api.mjs'),/const CARD_FIELDS=\['logBooks','source','batches','machineBook'\];/);
+ assert.match(source('../server/rules/attendance-read.mjs'),/const CARD_FIELDS=\['logBooks','source','batches','machineBook'\];/);
 });

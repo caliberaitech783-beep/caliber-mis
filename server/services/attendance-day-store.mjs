@@ -46,33 +46,64 @@ export async function cardSignatures(client,{from,to},sites,batches){
  return out;
 }
 // The card fields of the listed site-days (card site as written), read live from the log books.
-async function readDayCards(client,days,fields){
- if(!days.length)return [];
- const dates=days.map(d=>d.date).sort();
- const {rows}=await client.query(`SELECT l.id,l.book_no,l.book_type,l.book_date::text,l.site,l.asset_id,
+const DAY_CARDS_SQL=(limit)=>`SELECT l.id,l.book_no,l.book_type,l.book_date::text,l.site,l.asset_id,
   (SELECT COALESCE(jsonb_object_agg(field.key,field.value),'{}'::jsonb) FROM jsonb_each(l.data) AS field WHERE field.key=ANY($5::text[])) AS data,
   '[]'::jsonb AS batches
   FROM mis_log_books l WHERE l.book_type IN ('vehicle','equipment','lmv') AND l.deleted_at IS NULL AND l.book_date>=$$2026-11-01$$
   AND l.book_date BETWEEN $3 AND $4 AND (l.site,l.book_date) IN (SELECT want.site,want.book_date FROM unnest($1::text[],$2::date[]) AS want(site,book_date))
-  ORDER BY l.book_date,l.id LIMIT ${CARD_LIMIT+1}`,[days.map(d=>d.site),days.map(d=>d.date),dates[0],dates.at(-1),fields]);
- if(rows.length>CARD_LIMIT)throw Object.assign(new Error('Earlier duty history is too large to read for this selection. Open one site and try again.'),{status:400});
+  ORDER BY l.book_date,l.id LIMIT ${limit}`;
+const dayArgs=(days,fields)=>{const dates=days.map(d=>d.date).sort();return [days.map(d=>d.site),days.map(d=>d.date),dates[0],dates.at(-1),fields];};
+const tooLarge=()=>Object.assign(new Error('Earlier duty history is too large to read for this selection. Open one site and try again.'),{status:400});
+async function readDayCards(client,days,fields){
+ if(!days.length)return [];
+ const {rows}=await client.query(DAY_CARDS_SQL(CARD_LIMIT+1),dayArgs(days,fields));
+ if(rows.length>CARD_LIMIT)throw tooLarge();
  return rows;
+}
+// The same cards as one JSON text, built by Postgres (24 Nov 2026). Unpacking a week of every site's cards (with their trip
+// rows) held the server's main thread for seconds; the text goes to a report worker as it is (report-build-pool.mjs).
+// id and asset_id are BIGINT, which the database driver hands over as text, so they are sent as text here too.
+async function readDayCardsText(client,days,fields){
+ if(!days.length)return {text:'[]',count:0};
+ const sql=DAY_CARDS_SQL(CARD_LIMIT+1).replace('SELECT l.id,l.book_no,l.book_type,l.book_date::text,l.site,l.asset_id,','SELECT l.id::text AS id,l.book_no,l.book_type,l.book_date::text AS book_date,l.site,l.asset_id::text AS asset_id,');
+ const {rows:[row]}=await client.query(`SELECT count(*)::int AS n,COALESCE(json_agg(c ORDER BY c.book_date,c.id::bigint),'[]')::text AS cards FROM (${sql}) c`,dayArgs(days,fields));
+ if(row.n>CARD_LIMIT)throw tooLarge();
+ return {text:row.cards,count:row.n};
 }
 // The cards of the locked site-days in the dates: from the store where the stored day still matches, the rest live.
 // Days that are not locked are not read at all; the locked-days rule leaves them out of the report anyway.
-export async function lockedDayCards(client,{from,to},{sites,locked,signatures,useStore=true,fields=ATTENDANCE_CARD_FIELDS}){
+// asText: the cards come as JSON texts (cardsJson, each a JSON array) instead of rows, with the site-days they cover (days).
+export async function lockedDayCards(client,{from,to},{sites,locked,signatures,useStore=true,fields=ATTENDANCE_CARD_FIELDS,asText=false}){
  const wanted=[...signatures.values()].filter(d=>d.date>=from&&d.date<=to&&locked.has(siteDay(d.site,d.date)));
- if(!wanted.length)return {rows:[],stored:0,live:0};
+ if(!wanted.length)return asText?{cardsJson:[],days:[],stored:0,live:0}:{rows:[],stored:0,live:0};
  const fresh=new Map();
  if(useStore){
-  const {rows}=await client.query(`SELECT site,book_date::text AS date,signature,cards FROM mis_attendance_day_cards
+  const {rows}=await client.query(`SELECT site,book_date::text AS date,signature,${asText?'cards::text AS cards':'cards'} FROM mis_attendance_day_cards
    WHERE book_date BETWEEN $1 AND $2 AND ($3::text[] IS NULL OR site=ANY($3::text[]))`,[from,to,sites]);
   for(const r of rows){const k=dayKey(r.site,r.date);if(signatures.get(k)?.signature===r.signature)fresh.set(k,r.cards);}
  }
  const missing=wanted.filter(d=>!fresh.has(dayKey(d.site,d.date)));
+ const counts={stored:wanted.length-missing.length,live:missing.length};
+ if(asText){
+  const live=await readDayCardsText(client,missing,fields);
+  return {cardsJson:[...wanted.flatMap(d=>fresh.has(dayKey(d.site,d.date))?[fresh.get(dayKey(d.site,d.date))]:[]),live.text],days:wanted,...counts};
+ }
  const live=await readDayCards(client,missing,fields);
  const stored=wanted.flatMap(d=>fresh.get(dayKey(d.site,d.date))||[]);
- return {rows:[...stored,...live],stored:wanted.length-missing.length,live:missing.length};
+ return {rows:[...stored,...live],...counts};
+}
+// The batches of every card of the listed site-days, as one JSON text {card id: [{id,name,closed_at}]}: the stored days keep
+// no batch, and Site Sheet vs Trip Card and Trip Card vs Bio-punch filter by it. Same cards as lockedDayCards reads.
+export async function dayCardBatchesText(client,days){
+ if(!days.length)return '{}';
+ const dates=days.map(d=>d.date).sort();
+ const {rows:[row]}=await client.query(`SELECT COALESCE(json_object_agg(x.id,x.batches),'{}')::text AS links FROM (
+  SELECT e.logbook_id::text AS id,jsonb_agg(jsonb_build_object('id',b.id,'name',b.name,'closed_at',b.closed_at) ORDER BY b.id) AS batches
+  FROM mis_vlb_batch_entries e JOIN mis_vlb_batches b ON b.id=e.batch_id JOIN mis_log_books l ON l.id=e.logbook_id
+  WHERE b.archived_at IS NULL AND b.deleted_at IS NULL AND l.book_type IN ('vehicle','equipment','lmv') AND l.deleted_at IS NULL AND l.book_date>=$$2026-11-01$$
+  AND l.book_date BETWEEN $3 AND $4 AND (l.site,l.book_date) IN (SELECT want.site,want.book_date FROM unnest($1::text[],$2::date[]) AS want(site,book_date))
+  GROUP BY e.logbook_id) x`,[days.map(d=>d.site),days.map(d=>d.date),dates[0],dates.at(-1)]);
+ return row?.links||'{}';
 }
 
 const SHIFT_MASTER_SQL="SELECT id,record_data FROM master_records WHERE master_name='Shift Master' ORDER BY id";
