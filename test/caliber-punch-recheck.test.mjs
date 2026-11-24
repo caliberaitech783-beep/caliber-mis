@@ -7,6 +7,7 @@ import {readFileSync} from 'node:fs';
 import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
 import {punchRecheck} from '../shared/caliber-punch-recheck.mjs';
+import {cardRecheck,cardsOfView,CARD_VIEWS} from '../shared/caliber-card-recheck.mjs';
 import {canonicalSiteName} from '../shared/site-location.mjs';
 import {registerCaliberRecheck,CALIBER_RECHECK_SCHEMA} from '../server/routes/caliber-recheck.mjs';
 import {misPageAllowed,misRequestAllowed} from '../shared/mis-application-access.mjs';
@@ -80,6 +81,14 @@ test('the server matches the machine and imported punches with the cards, and Su
  const server=app.listen(0),base='http://127.0.0.1:'+server.address().port;
  const call=async(path,body)=>{const r=await fetch(base+path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,body:await r.json()};};
  try{
+  // Trip cards view (owner, 24 Nov 2026): every card, its status and the bio-punch of the person on it.
+  let cards=await call('/api/caliber-recheck/cards?from='+DATE+'&to='+DATE);
+  assert.equal(cards.status,200,JSON.stringify(cards.body));
+  assert.deepEqual(cards.body.lines.map(line=>[line.id,line.book,line.status,Boolean(line.punch)]),[['1','VLB','counted',true],['2','VLB','error',false],['3','VLB','error',true]]);
+  assert.equal(cards.body.lines[1].error.reason,'no-driver');assert.equal(cards.body.lines[2].error.pickShift,true);
+  const majri=cards.body.sites.find(site=>site.site===MAJRI);
+  assert.deepEqual([majri.cards,majri.vlb,majri.counted,majri.error,majri.punch,majri.noPunch],[3,3,1,2,1,0]);
+  assert.equal(cards.body.sites.length,8,'every site of the login');
   let day=await call('/api/caliber-recheck/punches?from='+DATE+'&to='+DATE);
   assert.equal(day.status,200);
   assert.equal(day.body.machine.connected,true);
@@ -101,6 +110,8 @@ test('the server matches the machine and imported punches with the cards, and Su
   assert.equal((await call('/api/caliber-recheck/shift',{logbookId:'3',shift:'D'})).status,200);
   day=await call('/api/caliber-recheck/punches?from='+DATE+'&to='+DATE);
   assert.deepEqual(day.body.lines.filter(line=>line.status==='toFix'),[]);
+  cards=await call('/api/caliber-recheck/cards?from='+DATE+'&to='+DATE);
+  assert.deepEqual(cards.body.lines.map(line=>line.status),['counted','counted','counted'],'put right, the cards mark attendance');
   assert.deepEqual(day.body.lines.map(line=>line.status),['counted','counted','counted']);
   assert.deepEqual([day.body.sites[0].punched,day.body.sites[0].counted,day.body.sites[0].toFix],[3,3,0]);
  }finally{server.close();await db.close();}
@@ -118,4 +129,13 @@ test('the page sits under Caliber ID Re-check, for the same people',()=>{
  assert.match(main,/'Caliber ID Re-check','Caliber Punch Re-check','Machine Category Re-check','Equipment master'/);
  assert.ok(main.includes("renderedActive==='Caliber Punch Re-check' ? (<CaliberPunchRecheck session={session} ReportSection={ReportSection}/>)"));
  assert.ok(main.includes("if(name==='Caliber Punch Re-check')return canOpenAdminPage('Caliber ID Re-check');"));
+});
+
+test('the trip cards view counts each site by book, attendance, error and bio-punch, and each figure opens its cards',()=>{
+ const card=(id,book,status,number,more={})=>({id,book,bookNo:'B'+id,door:'D'+id,date:DATE,shift:'S1',siteKey:KEY,site:MAJRI,number,savedId:number?'CMPL'+number:'',savedName:'',status,...more});
+ const cards=[card('1','VLB','counted','4400'),card('2','ELB','counted','4401'),card('3','LMV','error','4402'),card('4','VLB','idle','')];
+ const {lines,sites}=cardRecheck({cards,days:[{caliberCode:'CMLL4400',date:DATE,inTime:'06:00',site:MAJRI,source:'machine'}],cardSites:[{key:'x',site:'Gauri Pauni OC (2nd)'}]});
+ assert.deepEqual(sites.map(site=>[site.site,site.cards,site.vlb,site.elb,site.lmv,site.counted,site.error,site.idle,site.punch,site.noPunch]),[[MAJRI,4,2,1,1,2,1,1,1,1],['Gauri Pauni OC (2nd)',0,0,0,0,0,0,0,0,0]]);
+ assert.deepEqual(lines.find(line=>line.id==='1').punch,{inTime:'06:00',outTime:'',site:MAJRI,source:'machine'});
+ assert.deepEqual(CARD_VIEWS.map(view=>cardsOfView(lines,view.key).map(line=>line.id).join('')),['2314','14','2','3','21','3','1','2','4']);
 });

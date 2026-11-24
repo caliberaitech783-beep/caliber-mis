@@ -15,6 +15,7 @@ import {OPERATIONAL_START} from '../shared/operational-start.mjs';
 import {REFRESH_HINT} from '../shared/caliber-id-check.mjs';
 import {dmy,todayInIndia,recheckDates} from './caliber-recheck-model.mjs';
 import {EVERY,punchDefaultRange,emptyPunchRecheck,addPunchAnswer,punchSiteRows,linesOfSite,punchSlotRows,linesOfSlot,firstCard,cardAction,cardOption,PUNCH_VIEWS,STATUS_LABEL} from './caliber-punch-recheck-model.mjs';
+import CardRecheckView from './caliber-card-recheck.jsx';
 import './caliber-recheck.css';
 
 const count=value=>Number(value||0).toLocaleString('en-IN');
@@ -22,7 +23,19 @@ const SHIFT_OPTIONS=[['S1','Shift I'],['S2','Shift II'],['S3','Shift III'],['D',
 const SOURCE={machine:'Machine','imported':'Imported','machine+imported':'Machine + imported'};
 const isTotal=row=>Boolean(row.total);
 
+// The two views (owner, 24 Nov 2026: "dono rakho"): Trip cards first (src/caliber-card-recheck.jsx), Bio-punch beside it.
 export default function CaliberPunchRecheck({session,ReportSection}){
+ const [tab,setTab]=useState('cards');
+ return <section className="caliber-recheck">
+  <nav className="am-chips cr-views" aria-label="View">
+   <button type="button" aria-current={tab==='cards'?'page':undefined} onClick={()=>setTab('cards')}>Trip cards (VLB · ELB · LMV)</button>
+   <button type="button" aria-current={tab==='punch'?'page':undefined} onClick={()=>setTab('punch')}>Bio-punch</button>
+  </nav>
+  {tab==='cards'?<CardRecheckView session={session} ReportSection={ReportSection}/>:<PunchView session={session} ReportSection={ReportSection}/>}
+ </section>;
+}
+
+function PunchView({session,ReportSection}){
  const [range,setRange]=useState(()=>punchDefaultRange(todayInIndia()));
  const [held,setHeld]=useState(emptyPunchRecheck),[progress,setProgress]=useState(null),[error,setError]=useState('');
  const [open,setOpen]=useState({site:'',slot:null});
@@ -150,7 +163,7 @@ export default function CaliberPunchRecheck({session,ReportSection}){
   ...(view==='counted'?[]:[{key:'why',label:'Why no attendance',value:line=>{const card=fixable(line)?cardOf(line):null;return card?card.reasonLabel+'. '+card.line:line.status==='counted'?'':'No card';},render:whyCell}]),
   ...(view==='toFix'||view==='punched'?[{key:'fix',label:'Put it right',value:()=> '',render:line=>fixable(line)?action(line):''}]:[])];
 
- return <section className="caliber-recheck">
+ return <>
   <header className="cr-head">
    <div><h1>Caliber Punch Re-check</h1>
     <p>The drivers and operators who punched on the biometric machine but get no attendance from a VLB, ELB or LMV card, because a card of their site on that date has an error (a wrong or unknown ID, no driver, Employee ID and Caliber ID that differ, no shift or two). Each person is shown beside those cards, their own card first. Check the paper card and put it right on the same line: Submit puts the person on the card, Save shift writes the shift of their own card, Refresh asks HR Pulse about their ID. Undo takes a Submit back. The same changes show on Caliber ID Re-check.</p></div>
@@ -183,5 +196,5 @@ export default function CaliberPunchRecheck({session,ReportSection}){
   {level>=3&&<ReportSection key={'cpr-lines-'+site+view+'|'+slot.key} reportKey="Caliber punch re-check people" title={'Step 3 · Caliber punch re-check · '+siteLabel+' · '+viewInfo.short+' · '+slot.label} category="caliber-punch-recheck-people" dataReady={!busy} recordDateFilter={false}
    description="One line per person who punched: the bio-punch, the card with an error at the site on that date (their own card first; pick another when there are several) and why it gives no attendance. Check the paper card and press Submit to put the person on the card, Save shift to write the shift of their own card, or Refresh when HR Pulse must add the ID. The line leaves the list once the card counts. Opened from another figure, the lines say which card gives attendance, or that the person has no card on that date."
    rows={lines} columns={lineColumns} rowKey={line=>line.id} emptyMessage="Nobody in this list in this date and shift."/>}
- </section>;
+ </>;
 }
