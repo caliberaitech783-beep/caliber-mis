@@ -119,11 +119,11 @@ test('full deployment carries forward old chunks without replacing newly built f
   const shared = 'vendor-AbCd1234.js', old = 'feature-DbCe4321.css';
   await writeFile(path.join(directory, shared), 'new package copy');
   const downloaded = [];
-  const count = await preserveUiAssets(
+  const result = await preserveUiAssets(
     [shared, old, '../escape-AbCd1234.js', 'index.html'].map(name => ({name})),
     {directory, readPublished: async name => { downloaded.push(name); return 'old release asset'; }},
   );
-  assert.equal(count, 1);
+  assert.equal(result.carried, 1);
   assert.deepEqual(downloaded, [old]);
   assert.equal(await readFile(path.join(directory, shared), 'utf8'), 'new package copy');
   assert.equal(await readFile(path.join(directory, old), 'utf8'), 'old release asset');

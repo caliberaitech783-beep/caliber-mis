@@ -366,8 +366,12 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.MIS_GEMINI_API_KEY }}
         run: python3 scripts/configure-gemini-azure.py
 
+      # Carries the live version's files and those retired in the last 7 days, and stops adding
+      # older ones after 12 minutes (scripts/preserve-live-ui-assets.mjs). The limit below is the
+      # backstop: past it the release fails here, before the new version is uploaded or swapped in.
       - name: Carry forward immutable assets used by open MIS tabs
         if: steps.ui-delta.outputs.applied != 'true'
+        timeout-minutes: 20
         run: node scripts/preserve-live-ui-assets.mjs
 
       - name: Stage the complete runtime without Git history
