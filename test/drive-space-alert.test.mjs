@@ -7,6 +7,7 @@ import {PGlite} from '@electric-sql/pglite';
 import {createDriveSpaceAlert,driveFigures,DRIVE_STATE_KEY,DRIVE_ALERT_USED_GB,DRIVE_REMIND_HOURS,DRIVE_CHECK_MINUTES} from '../server/services/drive-space-alert.mjs';
 import {automationForEventKey} from '../server/services/automation-switches.mjs';
 import {AUTOMATIONS,automationRows} from '../server/rules/automation-catalogue.mjs';
+import {CHANNEL_AUTOMATION_KEYS,channelEventKey} from '../server/services/automation-channels.mjs';
 
 const START=Date.parse('2026-11-24T05:50:00.000Z'),MINUTE=60000,HOUR=60*MINUTE;
 const space=usedGb=>({totalGb:500,usedGb,freeGb:Math.round((500-usedGb)*10)/10});
@@ -102,6 +103,12 @@ test('A28 sits on the Automation tab, has its own switch and goes to the release
  assert.equal(row.trigger,'Checked every 10 minutes on the live server; last reading 452.3 GB of 500 GB used, 47.7 GB free');
  const off=automationRows({...base,driveSpace:{running:false,last:null}}).at(-1);
  assert.equal(off.channels.telegram,'off');assert.match(off.notSendingReason,/not the live server/);
+ // Owner, 24 Nov 2026: its own Telegram channel ("Azure limit increase warning"), one post per telling.
+ assert.equal(CHANNEL_AUTOMATION_KEYS.has('drive-space'),true);
+ assert.equal(row.channel.allowed,true);
+ assert.equal(channelEventKey('drive-space:2026-11-24T06:00:anoop','anoop'),'channel:drive-space:2026-11-24T06:00');
+ assert.equal(channelEventKey('drive-space:2026-11-24T06:00:mohitchadda','mohitchadda'),'channel:drive-space:2026-11-24T06:00','both people share one channel post');
+ assert.equal(automationForEventKey(channelEventKey('drive-space:2026-11-24T06:00:anoop','anoop').slice(8)),'drive-space');
  const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
  assert.match(server,/createDriveSpaceAlert\(\{pool,live:isLiveSlot\(\),\s*alert:async\(message,key\)=>\{for\(const login of await releaseApproverLogins\(pool\)\)/);
  assert.match(server,/scheduleBackgroundStart\(\(\)=>driveSpaceAlert\.start\(\),120000\)/);

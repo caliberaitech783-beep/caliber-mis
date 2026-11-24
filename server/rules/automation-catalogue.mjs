@@ -147,7 +147,7 @@ export const AUTOMATIONS=[
   format:'What happened, how many people, the first few lines, and where to look (Sync all masters)',controlledIn:'This page',
   telegram:context=>state(misBot(context)),whatsapp:()=>null,popup:()=>null,count:{outbox:['hr-employee-copy']},
   why:context=>[misBotWhy(context)]},
- {code:'A28',key:'drive-space',name:'Server drive nearly full (470 of 500 GB)',category:'Server',
+ {code:'A28',key:'drive-space',channel:true,name:'Server drive nearly full (470 of 500 GB)',category:'Server',
   rule:'The 500 GB drive shared by Pulse-II, its test slot and Pulse has 470 GB or more in use; told again every 6 hours while it stays there (a new crossing is told at once after it has come down below 460 GB)',
   trigger:context=>{const last=context.driveSpace?.last;return 'Checked every 10 minutes on the live server'+(last?.usedGb!==undefined?`; last reading ${last.usedGb} GB of ${last.totalGb} GB used, ${last.freeGb} GB free`:last?.error?`; last reading: ${last.error}`:'');},
   people:'Owner (logins with the owner\'s registered mobile) and Mr Mohit Chadda',
