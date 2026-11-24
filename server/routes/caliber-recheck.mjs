@@ -42,6 +42,7 @@ import {displaySiteName,REGION_DATA} from '../../shared/region-scope.mjs';
 import {canonicalSiteName} from '../../shared/site-location.mjs';
 import {isBookDate} from '../../shared/employee-site-moves.mjs';
 import {punchRecheck,recordNumberOf} from '../../shared/caliber-punch-recheck.mjs';
+import {cardRecheck} from '../../shared/caliber-card-recheck.mjs';
 import {machineDays,importedDays,mergeBiometricDays} from '../../shared/trip-biometric-check.mjs';
 import {employeeNumber,hrSiteName} from '../../shared/hr-employee-master.mjs';
 import {createHrEmployeeSync} from '../services/hr-employee-sync.mjs';
@@ -204,10 +205,13 @@ export function registerCaliberRecheck(app,{pool,requireSession,requireAdministr
  // ('number|date': the driver stands, or the card was confirmed right). Shared by the re-check and the punch re-check.
  const judgeDays=async(scope,from,to)=>{
   const [masters,cards,picks,kept,done]=await Promise.all([readMasters(pool).then(result=>result.rows),pool.query(RECHECK_CARDS_SQL,[from,to]).then(result=>result.rows),pool.query(PENDING_SQL).then(result=>result.rows),pool.query(CONFIRMED_OF_DATES_SQL,[from,to]).then(result=>result.rows),pool.query(CORRECTED_OF_DATES_SQL,[from,to]).then(result=>result.rows)]);
-  const waiting=new Map(picks.map(row=>[String(row.logbook_id),row])),right=new Map(kept.map(row=>[String(row.logbook_id),row])),changed=new Set(done.map(row=>String(row.logbook_id))),sites=new Map(),listed=[],standing=new Map();
+  const waiting=new Map(picks.map(row=>[String(row.logbook_id),row])),right=new Map(kept.map(row=>[String(row.logbook_id),row])),changed=new Set(done.map(row=>String(row.logbook_id))),sites=new Map(),listed=[],standing=new Map(),all=[];
   const masterLines=new Map(masters.filter(row=>EMPLOYEE_LISTS.includes(row.master_name)).map(row=>[String(row.id),row]));
   // Who a card counts, with the card: number|date -> the cards (Caliber Punch Re-check shows them on the person's line).
-  const counts=row=>{const number=employeeNumber(row.caliber_id)||recordNumberOf(masterLines.get(String(row.employee_id))?.record_data);if(!number)return;const key=number+'|'+row.date;(standing.get(key)||standing.set(key,[]).get(key)).push({id:String(row.id),book:kindLabel(row.book_type),bookNo:row.book_no,door:row.door,site:displaySiteName(row.site)||row.site,shift:shiftOf(row)});};
+  const numberOfRow=row=>employeeNumber(row.caliber_id)||recordNumberOf(masterLines.get(String(row.employee_id))?.record_data);
+  // Every judged card, compact (the trip cards view of Caliber Punch Re-check, shared/caliber-card-recheck.mjs).
+  const keep=(row,key,label,status,error=null)=>all.push({id:String(row.id),book:kindLabel(row.book_type),kind:row.book_type==='equipment'?'equipment':'vehicle',bookNo:row.book_no,door:row.door,date:row.date,shift:shiftOf(row),siteKey:key,site:label,number:numberOfRow(row),savedId:row.caliber_id,savedName:row.employee_name,scanCardId:row.scan_card_id||'',status,error});
+  const counts=row=>{const number=numberOfRow(row);if(!number)return;const key=number+'|'+row.date;(standing.get(key)||standing.set(key,[]).get(key)).push({id:String(row.id),book:kindLabel(row.book_type),bookNo:row.book_no,door:row.door,site:displaySiteName(row.site)||row.site,shift:shiftOf(row)});};
   let judged=0,confirmed=0,corrected=0;
   for(const row of cards){
    if(!siteAllowed(scope,row.site))continue;
@@ -218,9 +222,9 @@ export function registerCaliberRecheck(app,{pool,requireSession,requireAdministr
    // A card that carries a correction is counted, so the work done shows after its line has left the list.
    if(changed.has(String(row.id))){site.corrected++;corrected++;}
    const verdict=recheckCard(masters,{kind:row.book_type,site:row.site,date:row.date,employeeId:row.employee_id,caliberId:row.caliber_id,aFormNo:row.a_form,...attendanceFacts(rowData(row),masters)});
-   if(!verdict){counts(row);continue;}
+   if(!verdict){counts(row);keep(row,key,site.site,numberOfRow(row)?'counted':'idle');continue;}
    // A person confirmed this card from the paper card: it is counted, not listed.
-   if(confirmationHolds(right.get(String(row.id)),{employeeId:row.employee_id,aFormNo:row.a_form},verdict)){site.confirmed++;confirmed++;counts(row);continue;}
+   if(confirmationHolds(right.get(String(row.id)),{employeeId:row.employee_id,aFormNo:row.a_form},verdict)){site.confirmed++;confirmed++;counts(row);keep(row,key,site.site,'counted');continue;}
    const pick=publicPick(waiting.get(String(row.id)));
    site.listed++;if(pick)site.picked++;
    listed.push({id:String(row.id),bookNo:row.book_no,book:kindLabel(row.book_type),kind:row.book_type==='equipment'?'equipment':'vehicle',date:row.date,shift:shiftOf(row),siteKey:key,site:site.site,door:row.door,
@@ -228,8 +232,9 @@ export function registerCaliberRecheck(app,{pool,requireSession,requireAdministr
     reason:verdict.reason,reasonLabel:RECHECK_REASONS[verdict.reason],line:verdict.line,lookAlikes:verdict.lookAlikes||[],more:verdict.more||0,aForm:verdict.aForm||null,canConfirm:canConfirmSaved(verdict),
     // HR settles this one: the line says so and has a Refresh that asks HR Pulse for the saved number.
     canRefresh:canRefreshFromHr(verdict),pickShift:SHIFT_REASONS.includes(verdict.reason),pick});
+   keep(row,key,site.site,'error',listed.at(-1));
   }
-  return {masters,judged,confirmed,corrected,listed,standing,sites};
+  return {masters,judged,confirmed,corrected,listed,standing,sites,all};
  };
 
  app.get('/api/caliber-recheck',...protect,wrap(async(req,res)=>{
@@ -244,25 +249,44 @@ export function registerCaliberRecheck(app,{pool,requireSession,requireAdministr
  // (shared/caliber-punch-recheck.mjs). The punches are the site machines' (from HR Pulse) and the imported ones; a
  // machine read that fails is said, and the imported punches are still used. The cards are put right through /pick
  // and /shift, so the same people and sites may do it.
- app.get('/api/caliber-recheck/punches',...protect,wrap(async(req,res)=>{
-  const scope=await getSiteScope(req.session),{from,to}=period(req.query),started=Date.now();
+ // The punches of the dates: the site machines' (from HR Pulse) and the imported ones. A machine read that fails is said.
+ const readPunches=async(from,to)=>{
   const machine={connected:false,error:''};
-  const [judgedDays,machineList,importedList]=await Promise.all([
-   judgeDays(scope,from,to),
+  const [machineList,importedList]=await Promise.all([
    Promise.resolve().then(()=>hrPunches({from,to})).then(answer=>{machine.connected=true;return machineDays(answer,{siteName:name=>hrSiteName(name)||name}).days;},
     error=>{machine.error=error?.status===503?'Pulse-II is not connected to HR Pulse, so the machine punches could not be read.':'HR Pulse did not give the machine punches ('+(error?.message||'no answer')+').';return [];}),
    pool.query(IMPORTED_PUNCHES_SQL,[from,to]).then(result=>importedDays(result.rows.map(row=>({caliberCode:row.caliber_code,date:row.date,inTime:row.in_time,outTime:row.out_time,site:row.site})))).catch(error=>{if(error.code==='42P01'||/does not exist/.test(error.message))return [];throw error;}),
   ]);
-  const days=mergeBiometricDays(machineList,importedList).filter(day=>day.date>=from&&day.date<=to);
-  // Every site of the login has a line in Step 1, punched or not; a site's name is its own (not the key).
-  const known=new Map(REGION_DATA.flatMap(region=>region.sites).map(site=>[canonicalSiteName(site),site]));
-  const nameOf=site=>known.get(canonicalSiteName(site))||displaySiteName(site)||site;
-  const cardSites=[...known].filter(([,site])=>siteAllowed(scope,site)).map(([key,site])=>({key,site}));
-  for(const one of judgedDays.sites.values())if(!cardSites.some(site=>site.key===one.key))cardSites.push({key:one.key,site:one.site});
-  const {lines,sites,unplaced}=punchRecheck({days,standing:judgedDays.standing,listed:judgedDays.listed,masters:judgedDays.masters,allowed:site=>siteAllowed(scope,site),siteLabel:nameOf,cardSites});
-  // The site names HR Pulse sent punches for, as it names them, with the punch days of each (the machines that send).
-  const fromHr=new Map();for(const day of machineList){const name=day.site||'(no site)';fromHr.set(name,(fromHr.get(name)||0)+1);}
-  res.json({from,to,punches:days.length,machine:{...machine,days:machineList.length,sites:[...fromHr].filter(([site])=>siteAllowed(scope,nameOf(site))).map(([site,days])=>({site,days})).sort((a,b)=>b.days-a.days)},imported:importedList.length,unplaced,lines,sites,tookMs:Date.now()-started});
+  return {machine,machineList,importedList,days:mergeBiometricDays(machineList,importedList).filter(day=>day.date>=from&&day.date<=to)};
+ };
+ // Every site of the login has a line in Step 1, punched or not; a site's name is its own (not the key).
+ const known=new Map(REGION_DATA.flatMap(region=>region.sites).map(site=>[canonicalSiteName(site),site]));
+ const siteNameOf=site=>known.get(canonicalSiteName(site))||displaySiteName(site)||site;
+ const sitesOfLogin=(scope,judgedSites)=>{
+  const list=[...known].filter(([,site])=>siteAllowed(scope,site)).map(([key,site])=>({key,site}));
+  for(const one of judgedSites.values())if(!list.some(site=>site.key===one.key))list.push({key:one.key,site:one.site});
+  return list;
+ };
+ // What HR Pulse sent, by its site names (the machines that send), for the login's sites.
+ const hrSitesOf=(scope,machineList)=>{const fromHr=new Map();for(const day of machineList){const name=day.site||'(no site)';fromHr.set(name,(fromHr.get(name)||0)+1);}
+  return [...fromHr].filter(([site])=>siteAllowed(scope,siteNameOf(site))).map(([site,days])=>({site,days})).sort((a,b)=>b.days-a.days);};
+
+ app.get('/api/caliber-recheck/punches',...protect,wrap(async(req,res)=>{
+  const scope=await getSiteScope(req.session),{from,to}=period(req.query),started=Date.now();
+  const [judgedDays,{machine,machineList,importedList,days}]=await Promise.all([judgeDays(scope,from,to),readPunches(from,to)]);
+  const cardSites=sitesOfLogin(scope,judgedDays.sites);
+  const {lines,sites,unplaced}=punchRecheck({days,standing:judgedDays.standing,listed:judgedDays.listed,masters:judgedDays.masters,allowed:site=>siteAllowed(scope,site),siteLabel:siteNameOf,cardSites});
+  res.json({from,to,punches:days.length,machine:{...machine,days:machineList.length,sites:hrSitesOf(scope,machineList)},imported:importedList.length,unplaced,lines,sites,tookMs:Date.now()-started});
+ }));
+
+ // Trip cards view (owner, 24 Nov 2026): every VLB, ELB and LMV card of the day with its status and its bio-punch
+ // (shared/caliber-card-recheck.mjs). A card with an error carries its Caliber ID Re-check line, and is put right
+ // through /pick, /shift and /confirm as on that page.
+ app.get('/api/caliber-recheck/cards',...protect,wrap(async(req,res)=>{
+  const scope=await getSiteScope(req.session),{from,to}=period(req.query),started=Date.now();
+  const [judgedDays,{machine,machineList,importedList,days}]=await Promise.all([judgeDays(scope,from,to),readPunches(from,to)]);
+  const {lines,sites}=cardRecheck({cards:judgedDays.all,days,cardSites:sitesOfLogin(scope,judgedDays.sites)});
+  res.json({from,to,punches:days.length,machine:{...machine,days:machineList.length,sites:hrSitesOf(scope,machineList)},imported:importedList.length,lines,sites,tookMs:Date.now()-started});
  }));
 
  // "This card is right": the paper card shows the driver the card is saved under. Returns {confirmed:true}, or
