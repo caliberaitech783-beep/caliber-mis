@@ -49,22 +49,28 @@ export function personAt(byNumber,number,siteKey){
 // 24 Nov 2026: "not able to see all sites"), so a site whose machine sends no punch shows as 0.
 export function punchRecheck({days=[],standing=new Set(),listed=[],masters=[],allowed=()=>true,siteLabel=site=>site,cardSites=[]}){
  const byNumber=peopleByNumber(masters),bySiteDate=new Map(),sites=new Map(),lines=[];
- for(const one of cardSites)if(one?.key&&!sites.has(one.key))sites.set(one.key,{key:one.key,site:one.site||siteLabel(one.key),punched:0,counted:0,toFix:0,noCard:0});
+ // What was received, before the driver filter (owner, 24 Nov 2026: a column to prove which sites send punches):
+ // per site every punch day, those whose number is in no employee list, and those of other designations; and the
+ // punch days that name no site and whose number is unknown, so no site can be given to them.
+ let unplaced=0;
+ for(const one of cardSites)if(one?.key&&!sites.has(one.key))sites.set(one.key,{key:one.key,site:one.site||siteLabel(one.key),punched:0,counted:0,toFix:0,noCard:0,received:0,unknown:0,notDriver:0});
  for(const card of listed){const key=card.siteKey+'|'+card.date;(bySiteDate.get(key)||bySiteDate.set(key,[]).get(key)).push(card);}
  for(const day of days){
   const number=employeeNumber(day.caliberCode);
   if(!number||!day.date)continue;
   const home=(byNumber.get(number)||[]).map(row=>siteOfRecord(row.record_data)).find(Boolean)||'';
   const siteKey=canonicalSiteName(text(day.site))||home;
-  if(!siteKey)continue;
+  if(!siteKey){unplaced++;continue;}
   const person=personAt(byNumber,number,siteKey);
-  // Drivers and operators only: helpers, mechanics and staff keep no trip card.
-  if(!person||!drivesOrOperates({designation:person.designation}))continue;
   const cardsHere=bySiteDate.get(siteKey+'|'+day.date)||[];
   const label=sites.get(siteKey)?.site||cardsHere[0]?.site||siteLabel(text(day.site)||siteKey)||text(day.site)||siteKey;
   if(!allowed(label))continue;
-  if(!sites.has(siteKey))sites.set(siteKey,{key:siteKey,site:label,punched:0,counted:0,toFix:0,noCard:0});
-  const site=sites.get(siteKey);site.punched++;
+  if(!sites.has(siteKey))sites.set(siteKey,{key:siteKey,site:label,punched:0,counted:0,toFix:0,noCard:0,received:0,unknown:0,notDriver:0});
+  const site=sites.get(siteKey);site.received++;
+  if(!person){site.unknown++;continue;}
+  // Drivers and operators only: helpers, mechanics and staff keep no trip card.
+  if(!drivesOrOperates({designation:person.designation})){site.notDriver++;continue;}
+  site.punched++;
   const line={id:number+'|'+day.date+'|'+siteKey,number,rowId:person.rowId,caliberId:person.caliberId,name:person.name,designation:person.designation,
    date:day.date,siteKey,site:label,inTime:text(day.inTime),outTime:text(day.outTime),source:text(day.source),shift:'—',ownCard:false,cards:[],countedCards:[]};
   // Every punched person has a line (owner, 24 Nov 2026: "make it drill down for all"): counted, to fix or no card.
@@ -83,5 +89,5 @@ export function punchRecheck({days=[],standing=new Set(),listed=[],masters=[],al
   lines.push({...line,status:'toFix',shift:shifts.length===1?shifts[0]:'—',ownCard:own.length>0,cards});
  }
  lines.sort((a,b)=>a.date.localeCompare(b.date)||a.site.localeCompare(b.site)||Number(b.ownCard)-Number(a.ownCard)||a.name.localeCompare(b.name));
- return {lines,sites:[...sites.values()].sort((a,b)=>b.toFix-a.toFix||b.punched-a.punched||a.site.localeCompare(b.site))};
+ return {lines,unplaced,sites:[...sites.values()].sort((a,b)=>b.toFix-a.toFix||b.punched-a.punched||b.received-a.received||a.site.localeCompare(b.site))};
 }

@@ -19,7 +19,7 @@ const CACHE_MS=15_000;
 const EVENT_PREFIX={
  'equipment-mismatch':'equipment-mismatch','pulse-pending':'pulse-pending',
  'alias-otp':'alias-otp','alias-shadow':'alias-suspended','alias-weekly':'alias-weekly',
- 'transfer-otp':'transfer-otp','equipment-otp':'equipment-otp','vlb-approval-otp':'vlb-approval-otp','employee-move-otp':'employee-move-otp','hr-employee-copy':'hr-employee-copy',
+ 'transfer-otp':'transfer-otp','equipment-otp':'equipment-otp','vlb-approval-otp':'vlb-approval-otp','employee-move-otp':'employee-move-otp','hr-employee-copy':'hr-employee-copy','drive-space':'drive-space',
  created:'mis-ticket',resolved:'mis-ticket','scan-batch-report':'scan-batch-report','health-report':'health-report',
 };
 // Pulse Telegram / WhatsApp message purpose -> automation key.

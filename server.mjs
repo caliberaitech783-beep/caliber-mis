@@ -46,6 +46,7 @@ import {sharedMisDashboardIdentity} from './server/rules/mis-dashboard-identity.
 import {registerMasterSync} from './server/routes/master-sync.mjs';
 import {createHrEmployeeSync} from './server/services/hr-employee-sync.mjs';
 import {createHrEmployeeMinuteCopy} from './server/services/hr-employee-minute-copy.mjs';
+import {createDriveSpaceAlert} from './server/services/drive-space-alert.mjs';
 import {createHrSiteMoveOutbox} from './server/services/hr-site-move-outbox.mjs';
 import {registerEmployeeMaster} from './server/routes/employee-master.mjs';
 import {createEmployeeMasterDoor,registerEmployeeMasterDoor} from './server/routes/employee-master-door.mjs';
@@ -8155,13 +8156,19 @@ const equipmentMismatch=createEquipmentMismatchWorker({pool,pulse:pulseMasterSyn
 registerEquipmentMismatch(app,{pool,worker:equipmentMismatch,protect:[requireSession,requireAdministrator,async(req,res,next)=>{try{req.logBookScope=await logBookScope(req.session);next()}catch(error){if(error.status)return res.status(error.status).json({error:error.message});next(error)}}]});
 // Like the VLB batch alerts, this runs on the live server whatever the scheduled-jobs switch says; the slot key stops a second server repeating a check.
 if(process.env.EQUIPMENT_MISMATCH_CHECK!=='0')scheduleBackgroundStart(()=>equipmentMismatch.start(),150000);
+// Server drive nearly full (A28, owner 24 Nov 2026): the live server reads the shared 500 GB /home drive every
+// 10 minutes and tells the release approvers (the owner's logins and Mr Mohit Chadda) at 470 GB, then every 6 hours.
+const driveSpaceTelegram=telegramOutboxSender(pool,{drain:()=>misTelegram.drain(),inChannel:(channel,person)=>misTelegram.inChannel(channel,person)});
+const driveSpaceAlert=createDriveSpaceAlert({pool,live:isLiveSlot(),
+ alert:async(message,key)=>{for(const login of await releaseApproverLogins(pool)){try{await driveSpaceTelegram.send(login,message,`${key}:${login}`);}catch{/* the next person is still told */}}}});
+scheduleBackgroundStart(()=>driveSpaceAlert.start(),120000);
 // Telegram/WhatsApp Automation Centre: every automatic message rule, its channels and its count to date.
 const automationCentre=createAutomationCentre({pool,ensureSchema:()=>logBooks.initialize(),context:async()=>{
  const [whatsappSettings,whatsappEnv,misBot,vlbAlerts,deletion]=await Promise.all([storedWhatsAppReportSettings(),metaWhatsAppRuntimeEnv(),integrationSecrets.read('mis-telegram').catch(()=>null),readAlertSettings(pool),
   pool.query('SELECT setting_value FROM app_settings WHERE setting_key=$1',['mis_deletion_whatsapp']).then(result=>result.rows[0]?.setting_value,()=>null)]);
  return {whatsappSettings,whatsappConfigured:metaWhatsAppConfiguration(whatsappEnv).configured,misTelegram:{enabled:Boolean(misBot?.enabled&&misBot?.webhookReady)},
   pulseTelegram:telegramConfiguration(),pulseTelegramPurpose:purpose=>telegramPurposeEnabled(whatsappSettings,purpose),vlbAlerts,vlbAlertsRunning:process.env.VLB_BATCH_ALERTS!=='0',scanBatchReportRunning:scanBatchReportEnabled(),healthReportRunning:healthReportEnabled()&&isLiveSlot(),
-  scheduledJobs:scheduledJobsEnabled,emailConfigured:ticketEmailConfiguration().configured,deletionWhatsApp:deletion?.enabled===true};
+  driveSpace:driveSpaceAlert.status(),scheduledJobs:scheduledJobsEnabled,emailConfigured:ticketEmailConfiguration().configured,deletionWhatsApp:deletion?.enabled===true};
 }});
 // Site-wise batch completion report on Telegram to the owner: one message per VLB batch when it is closed (MIS_SCAN_BATCH_REPORT=off stops it).
 // The Automation Centre sends a sample of it on request.

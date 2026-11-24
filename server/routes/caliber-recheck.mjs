@@ -45,6 +45,7 @@ import {punchRecheck,recordNumberOf} from '../../shared/caliber-punch-recheck.mj
 import {machineDays,importedDays,mergeBiometricDays} from '../../shared/trip-biometric-check.mjs';
 import {employeeNumber,hrSiteName} from '../../shared/hr-employee-master.mjs';
 import {createHrEmployeeSync} from '../services/hr-employee-sync.mjs';
+import {machineCategoryIssues} from '../../shared/machine-category-recheck.mjs';
 
 export const CALIBER_RECHECK_SCHEMA=`
  CREATE TABLE IF NOT EXISTS mis_caliber_corrections(
@@ -81,6 +82,15 @@ export const RECHECK_CARDS_SQL=`SELECT l.id,l.book_no,l.book_type,l.book_date::t
  FROM mis_log_books l CROSS JOIN LATERAL jsonb_to_record(l.data) AS x("employeeId" text,"caliberId" text,"employeeName" text,"aFormNo" text,"jobCardNo" text,door text,"bookShiftCode" text,"cardShift" text,"shiftName" text,"scanCardId" text,
   "manualShift" text,"shiftId" text,"totalTrips" text,"completedTrips" text,"fleetTrips" text,"openingHmr" text,"closingHmr" text,"openingKmr" text,"closingKmr" text)
  WHERE l.deleted_at IS NULL AND l.book_date>=$1::date AND l.book_date<=$2::date ORDER BY l.book_date,l.id`;
+// Machine Category Re-check: the machine of each card and the loading machines of its trips, nothing else.
+export const MACHINE_CARDS_SQL=`SELECT l.id,l.book_no,l.book_type,l.book_date::text AS date,l.site,l.asset_id::text AS asset_id,
+  COALESCE(l.data->>'door','') AS door,COALESCE(l.data->>'bookShiftCode','') AS book_shift,COALESCE(l.data->>'cardShift','') AS card_shift,
+  COALESCE(l.data->>'shiftName','') AS shift_name,COALESCE(l.data->>'scanCardId','') AS scan_card_id,COALESCE(l.data->>'aFormNo','') AS a_form,
+  COALESCE(l.data->>'jobCardNo','') AS job_card,COALESCE(l.data->>'caliberId','') AS caliber_id,COALESCE(l.data->>'employeeName','') AS employee_name,
+  COALESCE((SELECT jsonb_agg(jsonb_build_object('equipmentId',t->>'equipmentId','equipmentName',t->>'equipmentName'))
+   FROM jsonb_array_elements(CASE WHEN jsonb_typeof(l.data->'trips')='array' THEN l.data->'trips' ELSE '[]'::jsonb END) t
+   WHERE COALESCE(t->>'equipmentId','')<>''),'[]'::jsonb) AS trips
+ FROM mis_log_books l WHERE l.deleted_at IS NULL AND l.book_date>=$1::date AND l.book_date<=$2::date ORDER BY l.book_date,l.id`;
 const IMPORTED_PUNCHES_SQL="SELECT caliber_code,punch_date::text AS date,in_time,out_time,site FROM mis_biometric_punches WHERE punch_date BETWEEN $1 AND $2 LIMIT 100001";
 const PENDING_SQL="SELECT id,logbook_id,new_employee_id,new_caliber_id,new_name,picked_by,picked_name,picked_at,note FROM mis_caliber_corrections WHERE status='pending'";
 // The confirmations of the dates asked (book_date is kept as YYYY-MM-DD text, so it compares as a date does).
@@ -249,8 +259,10 @@ export function registerCaliberRecheck(app,{pool,requireSession,requireAdministr
   const nameOf=site=>known.get(canonicalSiteName(site))||displaySiteName(site)||site;
   const cardSites=[...known].filter(([,site])=>siteAllowed(scope,site)).map(([key,site])=>({key,site}));
   for(const one of judgedDays.sites.values())if(!cardSites.some(site=>site.key===one.key))cardSites.push({key:one.key,site:one.site});
-  const {lines,sites}=punchRecheck({days,standing:judgedDays.standing,listed:judgedDays.listed,masters:judgedDays.masters,allowed:site=>siteAllowed(scope,site),siteLabel:nameOf,cardSites});
-  res.json({from,to,punches:days.length,machine,lines,sites,tookMs:Date.now()-started});
+  const {lines,sites,unplaced}=punchRecheck({days,standing:judgedDays.standing,listed:judgedDays.listed,masters:judgedDays.masters,allowed:site=>siteAllowed(scope,site),siteLabel:nameOf,cardSites});
+  // The site names HR Pulse sent punches for, as it names them, with the punch days of each (the machines that send).
+  const fromHr=new Map();for(const day of machineList){const name=day.site||'(no site)';fromHr.set(name,(fromHr.get(name)||0)+1);}
+  res.json({from,to,punches:days.length,machine:{...machine,days:machineList.length,sites:[...fromHr].filter(([site])=>siteAllowed(scope,nameOf(site))).map(([site,days])=>({site,days})).sort((a,b)=>b.days-a.days)},imported:importedList.length,unplaced,lines,sites,tookMs:Date.now()-started});
  }));
 
  // "This card is right": the paper card shows the driver the card is saved under. Returns {confirmed:true}, or
@@ -277,6 +289,29 @@ export function registerCaliberRecheck(app,{pool,requireSession,requireAdministr
  };
 
  // The site names the right driver for one listed card. The employee comes from the Fetch box (its master line id).
+ // Machine Category Re-check (owner, 24 Nov 2026): the saved VLB, ELB and LMV cards whose machine, or a trip's loading
+ // machine, is of another category in the Equipment master than the book takes (shared/machine-category-recheck.mjs).
+ // Read only: the card is put right on its own page (or the category in Pulse); the line leaves once it fits.
+ app.get('/api/caliber-recheck/machines',...protect,wrap(async(req,res)=>{
+  const scope=await getSiteScope(req.session),{from,to}=period(req.query),started=Date.now();
+  const [masters,cards]=await Promise.all([readMasters(pool).then(result=>result.rows),pool.query(MACHINE_CARDS_SQL,[from,to]).then(result=>result.rows)]);
+  const assets=new Map(masters.filter(row=>row.master_name==='Equipment master').map(row=>[String(row.id),row.record_data||{}]));
+  const sites=new Map(),listed=[];let judged=0;
+  for(const row of cards){
+   if(!siteAllowed(scope,row.site))continue;
+   judged++;
+   const key=canonicalSiteName(row.site)||row.site;
+   if(!sites.has(key))sites.set(key,{key,site:displaySiteName(row.site)||row.site,cards:0,listed:0,machine:0,trip:0});
+   const site=sites.get(key);site.cards++;
+   const issues=machineCategoryIssues({kind:row.book_type,assetId:row.asset_id,door:row.door,trips:row.trips},assets);
+   if(!issues.length)continue;
+   site.listed++;if(issues.some(one=>one.where==='machine'))site.machine++;if(issues.some(one=>one.where==='trip'))site.trip++;
+   listed.push({id:String(row.id),bookNo:row.book_no,book:kindLabel(row.book_type),kind:row.book_type,date:row.date,shift:shiftOf(row),siteKey:key,site:site.site,door:row.door,
+    cardNo:row.book_type==='equipment'?row.job_card:row.a_form,scanned:Boolean(row.scan_card_id),savedId:row.caliber_id,savedName:row.employee_name,issues});
+  }
+  res.json({from,to,cards:judged,listed,sites:[...sites.values()],tookMs:Date.now()-started});
+ }));
+
  app.post('/api/caliber-recheck/pick',...protect,wrap(async(req,res)=>{
   const scope=await getSiteScope(req.session),logbookId=text(req.body?.logbookId),employeeId=text(req.body?.employeeId);
   if(!/^\d{1,18}$/.test(logbookId)||!/^\d{1,18}$/.test(employeeId))fail('Choose a card and a driver.');

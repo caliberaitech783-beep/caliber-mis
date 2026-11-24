@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PGlite} from '@electric-sql/pglite';
-import {ATTENDANCE_DAY_STORE_SCHEMA,attendanceDayStoreSweep,cardSignatures,lockedDayCards,attendanceDayStoreEnabled} from '../server/services/attendance-day-store.mjs';
+import {ATTENDANCE_DAY_STORE_SCHEMA,attendanceDayStoreSweep,cardSignatures,lockedDayCards,dayCardBatchesText,attendanceDayStoreEnabled} from '../server/services/attendance-day-store.mjs';
 import {lockedSiteDays} from '../server/rules/manpower-report.mjs';
 
 const SITE='Sasti OC',D10='2026-11-10',D11='2026-11-11';
@@ -82,4 +82,50 @@ test('with the switch off every locked day is read live',async t=>{
  await card(db,D10,'21');await sweep(pool).runOnce();
  assert.deepEqual(((await read(client,{useStore:false}))).live,1);
  assert.equal(attendanceDayStoreEnabled({ATTENDANCE_DAY_STORE:'0'}),false);assert.equal(attendanceDayStoreEnabled({}),true);
+});
+
+// 24 Nov 2026: the attendance read takes the cards, their batches and the masters as JSON text built by Postgres, so the
+// server's main thread unpacks nothing; a report worker does. The text must hold exactly what the row reads hold.
+// (node-pg hands BIGINT columns over as text; the text read casts id and asset_id to text for the same reason.)
+const asRows=pieces=>pieces.flatMap(text=>JSON.parse(text));
+const sameIds=rows=>rows.map(r=>({...r,id:String(r.id),asset_id:String(r.asset_id)}));
+async function readText(client,{useStore=true}={}){
+ const shifts=(await client.query("SELECT id,record_data FROM master_records WHERE master_name='Shift Master'")).rows.map(r=>({...r.record_data,id:String(r.id)}));
+ const batches=(await client.query("SELECT id,name,site,book_date::text AS report_date,closed_at,shift,stage,closure_revision FROM mis_vlb_batches WHERE deleted_at IS NULL AND archived_at IS NULL")).rows;
+ const signatures=await cardSignatures(client,{from:D10,to:D11},null,batches);
+ return lockedDayCards(client,{from:D10,to:D11},{sites:null,locked:lockedSiteDays(shifts,batches),signatures,useStore,asText:true});
+}
+test('the text read gives the same cards as the row read, from the store and live',async t=>{
+ const {db,client,pool}=await database(t);
+ for(const shift of ['S1','S2','S3'])await batch(db,D10,shift);
+ await card(db,D10,'21',{operatorSplit:{secondOperatorId:22}});await card(db,D10,'22');await card(db,D11,'23');
+ const live=await readText(client);
+ assert.deepEqual([live.stored,live.live,live.days.map(d=>d.date)],[0,1,[D10]],'only the locked 10th');
+ assert.deepEqual(sameIds(asRows(live.cardsJson)),sameIds((await read(client)).rows),'live: same cards, same fields, same order');
+ assert.ok(!live.cardsJson.join('').includes('big image'),'only the attendance fields');
+ await sweep(pool).runOnce();
+ const stored=await readText(client);
+ assert.deepEqual([stored.stored,stored.live],[1,0]);
+ assert.deepEqual(sameIds(asRows(stored.cardsJson)),sameIds((await read(client)).rows),'stored: same cards');
+ const none=await readText(client,{useStore:false});
+ assert.deepEqual(sameIds(asRows(none.cardsJson)),sameIds(asRows(live.cardsJson)));
+});
+test('the batches of the read cards and the masters come as text with what the row reads gave',async t=>{
+ const {db,client}=await database(t);
+ await db.exec('CREATE TABLE mis_vlb_batch_entries(batch_id BIGINT,logbook_id BIGINT)');
+ for(const shift of ['S1','S2','S3'])await batch(db,D10,shift);
+ const a=(await card(db,D10,'21')).rows[0].id,b=(await card(db,D10,'22')).rows[0].id,other=(await card(db,D11,'23')).rows[0].id;
+ const ids=(await db.query('SELECT id,shift FROM mis_vlb_batches ORDER BY id')).rows;
+ await db.query('INSERT INTO mis_vlb_batch_entries VALUES($1,$2),($3,$2),($1,$4)',[ids[1].id,a,ids[0].id,other]);
+ await db.query("UPDATE mis_vlb_batches SET archived_at=NOW() WHERE id=$1",[ids[2].id]);await db.query('INSERT INTO mis_vlb_batch_entries VALUES($1,$2)',[ids[2].id,b]);
+ const links=JSON.parse(await dayCardBatchesText(client,[{site:SITE,date:D10}]));
+ assert.deepEqual(Object.keys(links),[String(a)],'only cards of the listed days, and no archived batch');
+ assert.deepEqual(links[String(a)].map(x=>x.name),[D10+' S1',D10+' S2'],'in batch order');
+ assert.equal(await dayCardBatchesText(client,[]),'{}');
+ await db.query("INSERT INTO master_records(master_name,record_data) VALUES('Employee master',$1::jsonb),('Equipment master',$2::jsonb),('ERP Employee master',$3::jsonb),('Other master',$4::jsonb)",
+  [JSON.stringify({id:'old',caliberId:'101',name:'Driver One'}),JSON.stringify({door:'V1',group:'Tipper'}),JSON.stringify({caliberId:'102'}),JSON.stringify({x:1})]);
+ const {reportMasters,reportMastersText}=await import('../server/routes/manpower-report-api.mjs');
+ const rows=await reportMasters(client),text=await reportMastersText(client);
+ assert.deepEqual(JSON.parse(text.mastersJson),rows,'assets, employees and shifts as before, id = the row id as text');
+ assert.deepEqual(text.shifts,rows.shifts);
 });

@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
 import {parseAttendanceSheet,BOOK_FILL,SHEET_FILLS,SHEET_LEGEND} from '../shared/attendance-sheet-check.mjs';
-import {SHEET_BOOKS,UNKNOWN_SHIFT,personDays,otherBookRows,wrongTab} from '../shared/site-sheet-days.mjs';
+import {ALL_SHEETS,SHEET_BOOKS,SHEET_TABS,UNKNOWN_SHIFT,personDays,otherBookRows,sheetBookOf,sheetTabName,wrongTab} from '../shared/site-sheet-days.mjs';
 import {lineBooks,linesOfBook,readSiteSheetData,siteSheetView,siteSheetWorkbook,runSiteSheetCheck} from '../src/site-sheet-run.mjs';
 import {operationReports} from '../src/operations-report-model.mjs';
 
@@ -144,18 +144,40 @@ test('one sheet for every log book still works as before (no log book chosen)',a
  assert.ok(!book.blob.sheets.some(s=>s.name==='Another log book'));assert.deepEqual(book.blob.sheets[0].fills,SHEET_FILLS);
 });
 
+// Owner, 24 Nov 2026 (afternoon): "also give the option to select all ... the combine of three of them, VLB, ELB and LMV".
+test('the All sheets tab compares one sheet with the VLB, ELB and LMV trip cards together',async()=>{
+ assert.deepEqual(SHEET_TABS.map(b=>b.key),['VLB','ELB','LMV','ALL'],'All sheets is the fourth tab, after the three log books');
+ assert.equal(ALL_SHEETS.label,'All sheets');
+ assert.equal(sheetBookOf('ALL'),'','All = no single log book: every log book together');
+ assert.equal(sheetBookOf('ELB'),'ELB');
+ assert.equal(sheetTabName('ALL'),'VLB + ELB + LMV');assert.equal(sheetTabName('VLB'),'VLB');
+ const sheet=parseAttendanceSheet(SHEET),data=await readSiteSheetData({sheet,site:SITE,session:{token:'T'},today:iso(23),read});
+ const all=siteSheetView({sheet,data,site:SITE,sheetBook:sheetBookOf('ALL'),today:iso(23)});
+ assert.equal(all.result.otherBook.length,0,'nobody is listed apart: every log book is compared');
+ assert.equal(wrongTab(all.result),null,'no wrong-tab warning under All');
+ // GOPAL OPERATOR's ELB cards and SHYAM DRIVER's ELB card of 3 Nov are matches under All (they are not under VLB).
+ assert.equal(rowOf(all,'CMPL904003').cells[0].state,'','ELB card on 1 Nov, P in the sheet: a match');
+ assert.equal(rowOf(all,'CMPL904002').cells[2].state,'','ELB card on 3 Nov, P in the sheet: a match');
+ // Every trip card of the three log books is judged against the sheet.
+ const {VLB,ELB,LMV}=await views();
+ assert.ok(all.cards.length>=VLB.cards.length+ELB.cards.length,'VLB and ELB cards together');
+ const book=siteSheetWorkbook(all,{fileName:'site.xlsx',build:(title,sheets)=>({title,sheets}),checkedAt:'x'});
+ assert.ok(!book.blob.sheets.some(s=>s.name==='Another log book'));
+});
+
 test('the screen chooses the log book before the upload, keeps a file and a result per log book, and sits beside Attendance Month-wise',()=>{
  const source=name=>fs.readFileSync(new URL(name,import.meta.url),'utf8');
  const page=source('../src/site-sheet-trip-card.jsx');
  assert.match(page,/Which sheet are you uploading\?/);
- assert.match(page,/<div className="ssc-book-tabs" role="tablist" aria-label="Log book of the sheet">\s*\{SHEET_BOOKS\.map\(/);
- assert.match(page,/useState\(\(\)=>Object\.fromEntries\(SHEET_BOOKS\.map\(b=>\[b\.key,blankTab\(\)\]\)\)\)/,'one file, check and result per log book');
- assert.match(page,/siteSheetView\(\{sheet:held\.file\.sheet,data,site:at,\.\.\.selectionOf\(\{\.\.\.held\.filter,from,to,batch:''\}\),sheetBook:key\}\)/,'the check is of the log book of its tab');
+ assert.match(page,/<div className="ssc-book-tabs" role="tablist" aria-label="Log book of the sheet">\s*\{SHEET_TABS\.map\(/);
+ assert.match(page,/useState\(\(\)=>Object\.fromEntries\(SHEET_TABS\.map\(b=>\[b\.key,blankTab\(\)\]\)\)\)/,'one file, check and result per log book');
+ assert.match(page,/siteSheetView\(\{sheet:held\.file\.sheet,data,site:at,\.\.\.selectionOf\(\{\.\.\.held\.filter,from,to,batch:''\}\),sheetBook:sheetBookOf\(key\)\}\)/,'the check is of the log book of its tab');
+ assert.match(page,/const views=\{VLB:vlb,ELB:elb,LMV:lmv,ALL:all\}/,'the All sheets tab keeps its own result');
  assert.match(page,/<TripCardFilters tabs=\{false\} /,'the log book is not chosen again after the upload');
  assert.match(source('../src/trip-card-verdict.jsx'),/\{tabs&&<div className="tcv-tabs" role="tablist" aria-label="Log book">/);
  const ids=operationReports.map(r=>r.id);
  assert.equal(ids.indexOf('attendance-site-sheet'),ids.indexOf('attendance-month')+1);
  // The server gives a zero-trip entry the log book of its machine.
  assert.match(source('../server/rules/manpower-report.mjs'),/machineBook:asset\?logBookCode\(fleetAssetKind\(asset\)\):''/);
- assert.match(source('../server/routes/manpower-report-api.mjs'),/const CARD_FIELDS=\['logBooks','source','batches','machineBook'\];/);
+ assert.match(source('../server/rules/attendance-read.mjs'),/const CARD_FIELDS=\['logBooks','source','batches','machineBook'\];/);
 });
