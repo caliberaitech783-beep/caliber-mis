@@ -131,13 +131,20 @@ export function personDays(row){
 // A file uploaded under the wrong tab (the ELB sheet under VLB): more people of the file belong wholly to another log
 // book (every trip card there, or no card and that designation) than are compared here. Returns that log book and how
 // many of them, or null when the file fits its tab.
+// Owner, 24 Nov 2026: Sasti keeps ONE sheet for the whole site, so under the ELB tab 409 of its 940 people were VLB people
+// and the screen asked "Is this the VLB sheet?" although 143 ELB people were compared. When at least MIXED_SHEET_PEOPLE
+// people are compared here the file holds this log book's people too: mixed is true, and the screen says what was
+// compared instead of calling it the wrong tab. books: each other log book and how many belong wholly to it.
+export const MIXED_SHEET_PEOPLE=10;
 export function wrongTab(result){
- const whole=(result?.otherBook||[]).filter(p=>p.whole);
- if(whole.length<3||whole.length<=(result.totals?.judged||0))return null;
+ const whole=(result?.otherBook||[]).filter(p=>p.whole),judged=result?.totals?.judged||0;
+ if(whole.length<3||whole.length<=judged)return null;
  const count=new Map();
  for(const p of whole)for(const book of p.books.split(' + '))count.set(book,(count.get(book)||0)+1);
- const [book,people]=[...count].sort((a,b)=>b[1]-a[1])[0];
- return {book,people,whole:whole.length};
+ const books=[...count].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0])).map(([name,people])=>({book:name,people}));
+ // shared: people counted under more than one of those log books (cards in both LMV and VLB).
+ return {book:books[0].book,people:books[0].people,whole:whole.length,judged,mixed:judged>=MIXED_SHEET_PEOPLE,books,
+  shared:whole.filter(p=>p.books.includes(' + ')).length};
 }
 // The people of a one-log-book sheet who belong to another log book, for the screen: one line per person. "Which days":
 // some days (those cards are in another log book), every trip card, or by designation (no card at all).
