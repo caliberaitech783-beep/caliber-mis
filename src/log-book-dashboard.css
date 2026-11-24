@@ -195,3 +195,7 @@
 .lb-reports>.lb-sr>section{margin:0;min-width:0;max-width:100%;overflow-x:auto}
 /* On a phone every tab stays in view: the tabs show their Sr No alone, and only the one chosen spells out its name. */
 @media(max-width:540px){.lb-sr-tabs{gap:6px;padding:6px}.lb-sr-tabs button{padding:5px}.lb-sr-tabs button span{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}.lb-sr-tabs button[aria-selected=true]{padding-right:12px}.lb-sr-tabs button[aria-selected=true] span{position:static;width:auto;height:auto;overflow:visible;clip-path:none}}
+/* The Caliber ID re-check in Sr 1 keeps its total (All sites) in the foot of the table: on paper its last site is an ordinary line and the foot is the total. */
+[data-printing] .lb-reports [data-category=caliber-recheck-sites] table tbody tr:last-child>*{font-weight:400;border-top:0;border-bottom:1px solid #e6def1;background-color:#fff!important}
+[data-printing] .lb-reports [data-category=caliber-recheck-sites] table tbody tr:nth-child(even):last-child>*{background-color:#f7f3fc!important}
+[data-printing] .lb-reports [data-category=caliber-recheck-sites] table tfoot tr>*{font-weight:750;font-size:16.5px;padding-top:15px;padding-bottom:15px;border-top:2px solid #56309a;border-bottom:0;background-color:#ece4f8!important;color:#1a1330!important}

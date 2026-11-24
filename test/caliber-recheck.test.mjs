@@ -16,6 +16,7 @@ import {registerCaliberRecheck,pickRefusal,RECHECK_MAX_DAYS,CALIBER_RECHECK_SCHE
 import {misPageAllowed,misRequestAllowed} from '../shared/mis-application-access.mjs';
 import {requestedMisPage,misPageUrl} from '../src/mis-navigation.mjs';
 import {recheckDates,emptyRecheck,addRecheckAnswer,recheckSiteRows,cardsOfSite,recheckSlotRows,cardsOfSlot,lookAlikeText,reasonCounts,recheckListSheets,recheckRecordSheets,recheckConfirmedSheets,EVERY} from '../src/caliber-recheck-model.mjs';
+import {keepRecheckAnswer,keptRecheckAnswer,forgetRecheckAnswers,RECHECK_KEEP_MS} from '../src/caliber-recheck-model.mjs';
 
 const MAJRI='Majri OC',SASTI='Sasti OC';
 const person=(id,number,name,designation,extra={})=>({id,master_name:'Employee master',record_data:{caliberId:'CMPL'+number,caliberCode:'CMLL'+number,name,currentDesignationName:designation,site:MAJRI,currentLocation:MAJRI,hrListed:true,hrLeft:false,status:'Active',...extra}});
@@ -603,4 +604,28 @@ test('Save shift is on the allowed list and on the screen',()=>{
  const access=readFileSync(new URL('../shared/mis-application-access.mjs',import.meta.url),'utf8');
  assert.ok(access.includes("route==='/api/caliber-recheck/shift')return req.method==='POST'"));
  assert.ok(session);
+});
+
+// Owner, 24 Nov 2026: Step 1 also stands in Sr 1 of the dashboard, which is opened far more often than the page.
+test('a day read in the last five minutes is kept for the dashboard, for the login that read it',()=>{
+ forgetRecheckAnswers();
+ const day={from:'2026-11-20',to:'2026-11-20',cards:7,listed:[],sites:[]},t0=1_000_000;
+ assert.equal(RECHECK_KEEP_MS,300000);
+ assert.equal(keptRecheckAnswer('a','2026-11-20',t0),null,'nothing kept before a read');
+ keepRecheckAnswer('a',day,t0);
+ assert.deepEqual(keptRecheckAnswer('a','2026-11-20',t0+60_000),{answer:day,at:t0},'the day and when it was read');
+ assert.equal(keptRecheckAnswer('a','2026-11-21',t0+60_000),null,'another day was never read');
+ assert.equal(keptRecheckAnswer('a','2026-11-20',t0+RECHECK_KEEP_MS),null,'after five minutes the server is asked again');
+ assert.equal(keptRecheckAnswer('a','2026-11-20',t0-1),null,'a clock set back never makes an old answer young');
+ // A day read again (after a Submit, or by the page) replaces what was kept.
+ const later={...day,cards:8};keepRecheckAnswer('a',later,t0+120_000);
+ assert.equal(keptRecheckAnswer('a','2026-11-20',t0+130_000).answer.cards,8);
+ // Another login in the same browser never sees these days, and its own reading drops them.
+ assert.equal(keptRecheckAnswer('b','2026-11-20',t0+130_000),null);
+ keepRecheckAnswer('b',{...day,cards:3},t0+140_000);
+ assert.equal(keptRecheckAnswer('a','2026-11-20',t0+150_000),null,'the earlier login\'s days are gone');
+ assert.equal(keptRecheckAnswer('b','2026-11-20',t0+150_000).answer.cards,3);
+ keepRecheckAnswer('',day,t0);keepRecheckAnswer('b',null,t0);keepRecheckAnswer('b',{},t0);
+ assert.equal(keptRecheckAnswer('','2026-11-20',t0),null,'nothing is kept without a login or a dated answer');
+ forgetRecheckAnswers();assert.equal(keptRecheckAnswer('b','2026-11-20',t0+150_000),null);
 });

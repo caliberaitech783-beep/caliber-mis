@@ -16,7 +16,7 @@ import {downloadBlob} from './download-history.mjs';
 import {shiftChoiceLabel} from '../shared/report-filter-options.mjs';
 import {OPERATIONAL_START} from '../shared/operational-start.mjs';
 import {REFRESH_HINT} from '../shared/caliber-id-check.mjs';
-import {EVERY,dmy,when,todayInIndia,recheckDates,emptyRecheck,addRecheckAnswer,recheckSiteRows,cardsOfSite,recheckSlotRows,cardsOfSlot,lookAlikeText,reasonCounts,recheckListSheets,recheckRecordSheets,recheckConfirmedSheets} from './caliber-recheck-model.mjs';
+import {EVERY,dmy,when,todayInIndia,recheckDates,emptyRecheck,addRecheckAnswer,recheckSiteRows,cardsOfSite,recheckSlotRows,cardsOfSlot,lookAlikeText,reasonCounts,recheckListSheets,recheckRecordSheets,recheckConfirmedSheets,keepRecheckAnswer,keptRecheckAnswer} from './caliber-recheck-model.mjs';
 import './caliber-recheck.css';
 
 const count=value=>Number(value||0).toLocaleString('en-IN');
@@ -37,7 +37,12 @@ function OriginalCardPreview({card,token,onClose}){
  </div>;
 }
 
-export default function CaliberRecheck({session,ReportSection}){
+// embedded (owner, 24 Nov 2026: "add this in serial number one dashboard"): the same steps inside Sr 1 of the
+// dashboard, under the last 6, 12 and 24 hours. Kept short there: no page heading, dates, summary, Excel or the two
+// lists at the foot (those stay on the page, which onOpenPage opens); Step 1 with its figures, and Step 2 and Step 3
+// under it when a site is pressed, work as on the page. Its first reading takes the days read in the last few minutes
+// from the browser (src/caliber-recheck-model.mjs), and a login that may not open the page sees nothing.
+export default function CaliberRecheck({session,ReportSection,embedded=false,onOpenPage}){
  const [from,setFrom]=useState(OPERATIONAL_START),[to,setTo]=useState(todayInIndia());
  const [held,setHeld]=useState(emptyRecheck),[progress,setProgress]=useState(null),[error,setError]=useState(''),[notice,setNotice]=useState('');
  const [open,setOpen]=useState({site:'',slot:null}),[confirming,setConfirming]=useState(false),[running,setRunning]=useState(false),[refused,setRefused]=useState([]),[record,setRecord]=useState(null);
@@ -51,31 +56,38 @@ export default function CaliberRecheck({session,ReportSection}){
  const [refreshing,setRefreshing]=useState('');
  // Save shift: the shift chosen on each 'no-shift' line, and the line being saved.
  const [shiftPicks,setShiftPicks]=useState({}),[savingShift,setSavingShift]=useState('');
+ // On the dashboard: when the oldest day on screen was read, and whether this login was refused the re-check.
+ const [asOf,setAsOf]=useState(0),[refusedAccess,setRefusedAccess]=useState(false);
  const run=useRef(0);
  const api=async(path,options={})=>{
   const response=await fetch(path,{...options,headers:{Authorization:`Bearer ${session.token}`,...(options.body?{'Content-Type':'application/json'}:{})}});
   const body=await response.json().catch(()=>({}));
-  if(!response.ok)throw new Error(body.error||'The re-check is unavailable.');
+  if(!response.ok)throw Object.assign(new Error(body.error||'The re-check is unavailable.'),{status:response.status});
   return body;
  };
  // Every date of the period, one after the other. A newer run, or leaving the page, stops an older one.
  // Reading one date again after a Submit (fresh = false) is not a newer run: it must not stop a full read that is
  // still going, or the list would end at the date it had reached.
- const recheck=async(dates=recheckDates(from,to),fresh=true,keepMessages=false)=>{
+ // reuse (the dashboard's first reading only): a day read in the last few minutes is taken from the browser.
+ const recheck=async(dates=recheckDates(from,to),fresh=true,keepMessages=false,reuse=false)=>{
   const mine=fresh?++run.current:run.current;
   setError('');if(fresh){setSaid(null);setKept(null);setAsking('');setHeld(emptyRecheck());setOpen({site:'',slot:null});if(!keepMessages){setNotice('');setRefused([]);}}
+  let oldest=Date.now();
   try{
    for(let i=0;i<dates.length;i++){
     if(run.current!==mine)return;
     if(fresh)setProgress({done:i,total:dates.length});
-    const answer=await api('/api/caliber-recheck?from='+dates[i]+'&to='+dates[i]);
+    const kept=reuse?keptRecheckAnswer(session.token,dates[i]):null;
+    const answer=kept?kept.answer:await api('/api/caliber-recheck?from='+dates[i]+'&to='+dates[i]);
+    if(kept)oldest=Math.min(oldest,kept.at);else keepRecheckAnswer(session.token,answer);
     if(run.current!==mine)return;
     setHeld(now=>addRecheckAnswer(now,answer));
    }
-  }catch(e){if(run.current===mine)setError(e.message);}
+   if(fresh&&run.current===mine)setAsOf(oldest);
+  }catch(e){if(run.current===mine){if(embedded&&e.status===403)setRefusedAccess(true);else setError(e.message);}}
   finally{if(fresh&&run.current===mine)setProgress(null);}
  };
- useEffect(()=>{void recheck();return()=>{run.current++};},[]);
+ useEffect(()=>{void recheck(undefined,true,false,embedded);return()=>{run.current++};},[]);
 
  const loadConfirmed=async()=>{try{setConfirmedList((await api('/api/caliber-recheck/confirmed')).confirmed);}catch(e){setError(e.message);}};
  // A card that leaves the list: said above Step 3, where its line was. Undo is offered for a confirmation.
@@ -214,8 +226,15 @@ export default function CaliberRecheck({session,ReportSection}){
   {key:'right',label:'Right driver (from the paper card)',value:row=>row.pick?row.pick.employeeId+' '+row.pick.name:'',render:right},
   {key:'scan',label:'Trip Card Scanned',value:row=>row.scanCardId?'Original card available':'Not available',render:row=>row.scanCardId?<button type="button" className="cr-view-card" onClick={()=>setPreviewCard(row)}>View Original Card</button>:<span className="cr-card-unavailable">Not available</span>}];
 
- return <section className="caliber-recheck">
-  <header className="cr-head">
+ if(embedded&&refusedAccess)return null;
+ return <section className={'caliber-recheck'+(embedded?' cr-embedded':'')} {...(embedded?{'aria-label':'Caliber ID re-check','data-print-title':'Caliber ID Re-check','data-print-subtitle':'Cards checked, confirmed right, corrected and still to check, site by site','data-print-note':period}:{})}>
+  {embedded&&<div className="cr-compact" data-print-hide="">
+   <h2>Caliber ID Re-check</h2>
+   <span className="cr-asof">{busy?'':asOf?'As on '+when(asOf):''}</span>
+   <button type="button" disabled={busy} onClick={()=>void recheck()} title="Read every day again from the server">Refresh</button>
+   {onOpenPage&&<button type="button" className="cr-open-page" onClick={onOpenPage} title="The full page: dates, the Excel list, Corrections done and Cards confirmed right">Open Caliber ID Re-check</button>}
+  </div>}
+  {!embedded&&<header className="cr-head">
    <div><h1>Caliber ID Re-check</h1>
     <p>Every saved card is judged again against Employee Master, at its own site and date. A card is listed when its driver or operator is not a working driver or operator of that site on that date. Type the right number from the paper card and press Submit on that line: the card is corrected at once and leaves the list. A line that says ID not found is for HR: contact your HR team, and press Refresh on that line once HR has added the ID in HR Pulse.</p></div>
    <form className="cr-period" onSubmit={event=>{event.preventDefault();void recheck();}}>
@@ -223,12 +242,13 @@ export default function CaliberRecheck({session,ReportSection}){
     <label>To<input type="date" min={from} max={todayInIndia()} value={to} disabled={busy} onChange={event=>setTo(event.target.value)}/></label>
     <button disabled={busy||!from||!to}>Re-check</button>
    </form>
-  </header>
-  {progress&&<p role="status" className="cr-progress">Re-checking day {progress.done+1} of {progress.total}…</p>}
+  </header>}
+  {/* On the dashboard the line starts with "Reading": All in the Sr No strip waits for a report that says so. */}
+  {progress&&<p role="status" className="cr-progress">{embedded?'Reading the Caliber ID re-check: day ':'Re-checking day '}{progress.done+1} of {progress.total}…</p>}
   {error&&<p className="cr-error" role="alert">{error}</p>}
   {notice&&<p className="cr-notice" role="status">{notice}</p>}
   {refused.length>0&&<ul className="cr-refused">{refused.map((row,i)=><li key={i}><strong>{row.bookNo}</strong>: {row.why}</li>)}</ul>}
-  <div className="cr-summary" aria-label="Summary">
+  {!embedded&&<><div className="cr-summary" aria-label="Summary">
    <span><strong>{count(held.cards)}</strong> cards checked</span><span><strong>{count(sites.total.listed)}</strong> to check</span><span><strong>{count(held.confirmed)}</strong> confirmed right</span><span><strong>{count(held.corrected)}</strong> corrected</span>{picked>0&&<span><strong>{count(picked)}</strong> chosen earlier, waiting for the run</span>}
    {reasonCounts(held.listed).map(row=><span key={row.reason} className="cr-reason">{row.label}: <strong>{count(row.count)}</strong></span>)}
   </div>
@@ -237,9 +257,9 @@ export default function CaliberRecheck({session,ReportSection}){
    {held.canApply&&picked>0&&!confirming&&<button type="button" className="cr-run" disabled={busy||running} onClick={()=>setConfirming(true)}>Run the corrections ({count(picked)})</button>}
    {held.canApply&&picked>0&&confirming&&<span className="cr-confirm">This puts the chosen driver on {count(picked)} saved card{picked===1?'':'s'}, in closed and locked batches too. Each card keeps who was on it before.
     <button type="button" className="cr-run" disabled={running} onClick={apply}>{running?'Correcting…':'Yes, correct '+count(picked)+' card'+(picked===1?'':'s')+' now'}</button><button type="button" disabled={running} onClick={()=>setConfirming(false)}>Not now</button></span>}
-  </div>
+  </div></>}
 
-  <nav className="tt-crumbs" aria-label="Steps">{back&&<StepBackButton onBack={back} label={'Back to '+crumbs.at(-2)[0]}/>}{crumbs.map(([label,go],i)=><React.Fragment key={i}>{i>0&&<span aria-hidden="true">›</span>}{go&&i<crumbs.length-1?<button type="button" onClick={go}>{label}</button>:<strong aria-current="step">{label}</strong>}</React.Fragment>)}</nav>
+  {(!embedded||level>1)&&<nav className="tt-crumbs" aria-label="Steps" {...(embedded?{'data-print-hide':''}:{})}>{back&&<StepBackButton onBack={back} label={'Back to '+crumbs.at(-2)[0]}/>}{crumbs.map(([label,go],i)=><React.Fragment key={i}>{i>0&&<span aria-hidden="true">›</span>}{go&&i<crumbs.length-1?<button type="button" onClick={go}>{label}</button>:<strong aria-current="step">{label}</strong>}</React.Fragment>)}</nav>}
   <ReportSection key="cr-sites" reportKey="Caliber ID re-check sites" title={'Step 1 · Caliber ID re-check · All sites · '+period} category="caliber-recheck-sites" dataReady={!busy} recordDateFilter={false}
    description="One line per site: the cards checked and the cards whose driver or operator does not stand. Press a site to see it date by date and shift by shift; press All sites for every site together."
    rows={sites.rows.length?[...sites.rows,sites.total]:[]} columns={siteColumns} rowKey={row=>row.id} rowClassName={row=>(row.total?'tt-total':'')+(site&&row.key===site?' report-row-picked':'')} isTotalRow={isTotal}
@@ -256,7 +276,7 @@ export default function CaliberRecheck({session,ReportSection}){
    rows={cards} columns={cardColumns} rowKey={row=>row.id} rowClassName={row=>row.pick?'cr-picked':''} emptyMessage="No card to check in this date and shift."/>}
   {previewCard&&<OriginalCardPreview card={previewCard} token={session.token} onClose={()=>setPreviewCard(null)}/>}
 
-  <details className="cr-record" onToggle={event=>{if(event.currentTarget.open&&!record)void loadRecord();}}>
+  {!embedded&&<><details className="cr-record" onToggle={event=>{if(event.currentTarget.open&&!record)void loadRecord();}}>
    <summary>Corrections done{record?` (${count(record.length)})`:''}</summary>
    <p>Every card that was corrected: who it was under, who it is under now, who corrected it and when. Undo puts the earlier person back on the card, and the card is listed again.</p>
    {record&&!record.length&&<p>No card has been corrected yet.</p>}
@@ -271,6 +291,6 @@ export default function CaliberRecheck({session,ReportSection}){
    {confirmedList&&confirmedList.length>0&&<><button type="button" onClick={()=>downloadBlob(buildXlsxSheetsWorkbook('Caliber ID re-check: cards confirmed right',recheckConfirmedSheets(confirmedList)),`Caliber-ID-confirmed-right-${todayInIndia()}.xlsx`,{title:'Caliber ID re-check: cards confirmed right'})}>Download the list (Excel)</button>
     <div className="cr-record-table"><table><thead><tr>{['Site','Date','Book NO','Driver kept on the card','FORM A box names','Confirmed by','Confirmed on','Take back'].map(label=><th key={label}>{label}</th>)}</tr></thead>
      <tbody>{confirmedList.map(row=><tr key={row.id}><td>{row.site}</td><td>{dmy(row.date)}</td><td>{row.bookNo}</td><td>{row.driver} {row.driverName}</td><td>{row.formA?row.formA+': ':''}{row.namedId} {row.namedName}</td><td>{row.by}</td><td>{when(row.at)}</td><td><button type="button" onClick={()=>unconfirm(row.logbookId,row.date)}>Undo</button></td></tr>)}</tbody></table></div></>}
-  </details>
+  </details></>}
  </section>;
 }

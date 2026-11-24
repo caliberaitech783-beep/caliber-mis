@@ -2,6 +2,7 @@ import {TableSmartPrint} from './helpers/smart-print-stub.mjs';
 import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';
 import React from 'react';import {renderToStaticMarkup} from 'react-dom/server';import {transformWithOxc} from 'vite';
 import * as recentRules from '../shared/recent-activity.mjs';
+import {misPageAllowed} from '../shared/mis-application-access.mjs';
 
 // The dashboard by Sr No (owner, 14 Nov 2026): the cards stay on top, each panel below them has a serial number, and only
 // the Sr No chosen in the strip is on screen, so opening the dashboard no longer starts every report's reading at once.
@@ -10,24 +11,24 @@ const compile=async file=>(await transformWithOxc(read(file).replace(/^import .*
 
 const cards={updatedAt:'2026-11-14T12:00:00Z',kinds:['vehicle','equipment'],totals:{vehicle:120,equipment:40,activeSites:2,recoveryDrafts:1},bySite:[{site:'Sasti OC',vehicle:80,equipment:30},{site:'Jayant OC',vehicle:40,equipment:10}]};
 // The dashboard drawn once with its states set by hand: the Sr No on screen and the Sr Nos opened so far.
-async function dashboard({sr=1,opened=[1],data=cards,ReportSection=()=>null}={}){
- const calls={recent:null};
+async function dashboard({sr=1,opened=[1],data=cards,ReportSection=()=>null,session={token:'t'},goto}={}){
+ const calls={recent:null},drawn={};
  const dates={from:'2026-11-01',to:'2026-11-14'};
  // In the order of the screen's useState calls: printing, print error, dates applied, dates typed, cards, error, loading, refresh, pop-up, Sr No, Sr Nos opened.
  const states=['','',{...dates,location:'',shift:''},dates,data,'',false,0,null,sr,opened];
  let cursor=0;
- const stub=name=>props=>React.createElement('div',{'data-stub':name,'data-report':props.reportId||'','data-paused':String(props.paused??'')});
+ const stub=name=>props=>{drawn[name]=props;return React.createElement('div',{'data-stub':name,'data-report':props.reportId||'','data-paused':String(props.paused??'')});};
  const icon=()=>null;
- const environment={React,Suspense:React.Suspense,lazy:()=>stub('operations'),useEffect:()=>{},useRef:()=>({current:null}),useState:()=>[states[cursor++],()=>{}],
+ const environment={React,Suspense:React.Suspense,lazy:loader=>stub(String(loader).includes('caliber-recheck')?'recheck':'operations'),useEffect:()=>{},useRef:()=>({current:null}),useState:()=>[states[cursor++],()=>{}],
   BookOpen:icon,Building2:icon,ShieldCheck:icon,ArrowUpRight:icon,X:icon,Download:icon,Printer:icon,
-  openSmartPrint:()=>{},TableSmartPrint,scanImageExtensionForType:()=>'.jpg',OPERATIONAL_START:'2026-11-01',sitesLowToHigh:rows=>rows||[],
+  openSmartPrint:()=>{},TableSmartPrint,misPageAllowed,scanImageExtensionForType:()=>'.jpg',OPERATIONAL_START:'2026-11-01',sitesLowToHigh:rows=>rows||[],
   BatchStatusReport:stub('batch'),ManpowerReports:stub('manpower'),RecentActivityPanel:stub('recent'),
   useRecentActivity:options=>{calls.recent=options;return {recent:null,error:''};},windowLabel:hours=>`Last ${hours} hours`};
- const api=new Function(...Object.keys(environment),await compile('log-book-dashboard.jsx')+';return {LogBookDashboard,DASHBOARD_PANELS,ALL_PANELS,panelShown,nextPanelToOpen,PANEL_OPEN_WAIT_MS}')(...Object.values(environment));
- const html=renderToStaticMarkup(api.LogBookDashboard({session:{token:'t'},ReportSection}));
+ const api=new Function(...Object.keys(environment),await compile('log-book-dashboard.jsx')+';return {LogBookDashboard,DASHBOARD_PANELS,ALL_PANELS,panelShown,nextPanelToOpen,PANEL_OPEN_WAIT_MS,recheckAllowed}')(...Object.values(environment));
+ const html=renderToStaticMarkup(api.LogBookDashboard({session,ReportSection,goto}));
  assert.equal(cursor,states.length,'every state of the screen was set by the test');
  const plain=text=>text.replace(/<[^>]+>/g,' ').replace(/&amp;/g,'&').replace(/\s+/g,' ').trim();
- return {html,calls,api,
+ return {html,calls,drawn,api,
   // The tabs of the strip, left to right: [name on the tab, chosen or not].
   tabs:[...html.matchAll(/<button type="button" role="tab" id="lb-sr-tab-[^"]+" aria-selected="(true|false)"[^>]*>(.*?)<\/button>/g)].map(tab=>[plain(tab[2]),tab[1]==='true']),
   // A report's place on the page: 'shown', 'hidden' (kept with its figures behind another tab) or 'absent' (never opened, so never read).
@@ -91,7 +92,7 @@ test('All puts every Sr No on the page, opened one after another',async()=>{
  for(const number of [1,2,3,4,5,6])assert.equal(view.panel(number),'shown');
  assert.ok(view.has('recent'));
  assert.equal(view.paused(),'false');assert.equal(view.calls.recent.active,true);
- const order=['data-stub="recent"','data-stub="batch"','data-report="timing"','data-report="ot"','data-report="loading"','data-report="attendance-month"','data-report="attendance"'].map(mark=>view.html.indexOf(mark));
+ const order=['data-stub="recent"','data-stub="recheck"','data-stub="batch"','data-report="timing"','data-report="ot"','data-report="loading"','data-report="attendance-month"','data-report="attendance"'].map(mark=>view.html.indexOf(mark));
  assert.ok(order.every(at=>at>=0),'every report is on the page');
  assert.deepEqual(order,[...order].sort((a,b)=>a-b),'in the order of their Sr Nos');
  // Just after All is chosen from Sr 1 only Sr 1 is open; the others follow one at a time.
@@ -131,6 +132,52 @@ test('a print or PDF holds the cards and the Sr No on screen, and says so',async
  assert.ok(css.includes('.lb-sr:not([hidden]){display:grid;gap:28px;grid-template-columns:minmax(0,1fr);min-width:0}'),'a Sr No shown is laid out as the reports area was');
  assert.ok(css.includes('.lb-sr[hidden]{display:none}'));
  assert.ok(css.includes('.lb-reports>.lb-sr>section{margin:0;min-width:0;max-width:100%;overflow-x:auto}'),'a wide report still scrolls inside its own box');
+});
+
+// Owner, 24 Nov 2026: "Photo number one. Please add this in serial number one dashboard. And it should be second in line
+// ... Just below the photo, photo number two": Step 1 of the Caliber ID re-check stands second in Sr 1, under the last
+// 6, 12 and 24 hours and above Batch Status & Turnaround.
+test('the Caliber ID re-check is second in Sr 1: under the last 6, 12 and 24 hours, above Batch Status',async()=>{
+ let opened='';
+ let view=await dashboard({goto:name=>{opened=name;}});
+ const at=mark=>view.html.indexOf(mark);
+ assert.ok(view.has('recheck'),'it is on the page with Sr 1');
+ assert.ok(at('data-stub="recent"')>=0&&at('data-stub="recent"')<at('data-stub="recheck"')&&at('data-stub="recheck"')<at('data-stub="batch"'),'the last 24 hours, then the re-check, then Batch Status');
+ assert.ok(at('id="lb-sr-1"')<at('data-stub="recheck"'),'inside Sr 1, so it is hidden with it and printed with it');
+ assert.equal(view.drawn.recheck.embedded,true,'the short form: Step 1 with its steps, no page heading or foot lists');
+ view.drawn.recheck.onOpenPage();assert.equal(opened,'Caliber ID Re-check','its button opens the full page');
+ view=await dashboard();assert.equal(view.drawn.recheck.onOpenPage,undefined,'a screen that cannot change page offers no such button');
+ // It is not read for another Sr No: Sr 2 opened first leaves Sr 1 off the page.
+ view=await dashboard({sr:2,opened:[2]});assert.ok(!view.has('recheck'));
+ // Behind another tab it stays on the page with its figures, hidden with Sr 1.
+ view=await dashboard({sr:2,opened:[1,2]});assert.ok(view.has('recheck'));assert.equal(view.panel(1),'hidden');
+ // Without the report table it cannot be drawn.
+ view=await dashboard({ReportSection:null});assert.ok(!view.has('recheck'));
+ // A login with its own MIS pages sees it only when it may open the Caliber ID Re-check page (the server's own rule).
+ const own=pages=>({token:'t',role:'super',permissions:{separateMisCredentials:true,misDesktopAccess:pages,misMobileAccess:[]}});
+ view=await dashboard({session:own(['Dashboard','Reports'])});
+ assert.ok(!view.has('recheck'),'no re-check for a login the server would refuse');assert.ok(view.has('batch'),'Batch Status stays');
+ view=await dashboard({session:own(['Dashboard','Vehicle Log Book'])});assert.ok(view.has('recheck'));
+ assert.equal(view.api.recheckAllowed({token:'t',permissions:{}}),true,'an administrator without separate MIS pages reads it');
+ const screen=read('log-book-dashboard.jsx');
+ assert.ok(screen.includes("const CaliberRecheck=lazy(()=>import('./caliber-recheck.jsx'));"),'it loads after the cards');
+ assert.ok(screen.includes("export const recheckAllowed=session=>!session?.permissions?.separateMisCredentials||misPageAllowed(session,'Caliber ID Re-check');"));
+ assert.ok(screen.includes("the last 6, 12 and 24 hours, the Caliber ID re-check, Batch Status & Turnaround"),'Smart Print names it in the complete dashboard');
+ // The same screen as the page, kept short; a day read in the last few minutes is not asked for again.
+ const page=read('caliber-recheck.jsx'),css=read('caliber-recheck.css');
+ assert.ok(page.includes('export default function CaliberRecheck({session,ReportSection,embedded=false,onOpenPage}){'),'the page itself is not embedded');
+ assert.ok(page.includes("useEffect(()=>{void recheck(undefined,true,false,embedded);return()=>{run.current++};},[]);"),'only the first reading on the dashboard takes kept days');
+ assert.ok(page.includes("const kept=reuse?keptRecheckAnswer(session.token,dates[i]):null;"));
+ assert.ok(page.includes("if(kept)oldest=Math.min(oldest,kept.at);else keepRecheckAnswer(session.token,answer);"),'every day read from the server replaces what was kept');
+ assert.ok(page.includes("{embedded?'Reading the Caliber ID re-check: day ':'Re-checking day '}"),'All in the Sr No strip waits for a line that starts with Reading');
+ assert.ok(page.includes("if(embedded&&e.status===403)setRefusedAccess(true);else setError(e.message);"),'a refused login sees no panel, not an error');
+ assert.ok(page.includes("if(embedded&&refusedAccess)return null;"));
+ assert.ok(page.includes('{!embedded&&<header className="cr-head">'),'no page heading or dates on the dashboard');
+ assert.ok(page.includes('{!embedded&&<><div className="cr-summary" aria-label="Summary">'),'no summary, Excel or run there');
+ assert.ok(page.includes('{!embedded&&<><details className="cr-record"'),'Corrections done and Cards confirmed right stay on the page');
+ assert.ok(page.includes("'data-print-title':'Caliber ID Re-check'"),'its sheet of a dashboard print has a name');
+ assert.ok(page.includes('<button type="button" disabled={busy} onClick={()=>void recheck()} title="Read every day again from the server">Refresh</button>'),'Refresh always asks the server');
+ assert.ok(css.includes('.caliber-recheck.cr-embedded{padding:0 22px}'));
 });
 
 test('a screen without the report table offers only the panels it can draw',async()=>{
