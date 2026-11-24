@@ -40,13 +40,13 @@ if(process.argv.includes('--azure')){
  // Reuse the existing verification dependency cache and run a small private
  // checker whose imports still point at the actual deployed application.
  const payload=(await readFile(new URL(import.meta.url),'utf8')).replaceAll("'../","'file:///home/site/wwwroot/");
- const upload=await fetch(host+'/api/vfs/data/vlb-elb-access-check.mjs',{
+ const upload=await fetch(host+'/api/vfs/data/batch-loading-live-check-20261124.mjs',{
   method:'PUT',headers:{Authorization:'Bearer '+token,'Content-Type':'application/octet-stream','If-Match':'*'},
   body:payload,signal:AbortSignal.timeout(30000)
  });
  assert.ok(upload.ok,'Verification checker upload HTTP '+upload.status);
  const siteArgs=process.argv.includes('--sites-only')?' --sites-only':'';
- const result=await remote(`EXPECTED_COMMIT=${expected} NODE_PATH=/home/data/vlb-elb-verification-runtime-20261029:/home/data/vlb-elb-verification-runtime-20261029/node_modules:/home/site/wwwroot/node_modules:/node_modules node /home/data/vlb-elb-access-check.mjs${siteArgs}`);
+ const result=await remote(`EXPECTED_COMMIT=${expected} NODE_PATH=/home/data/vlb-elb-verification-runtime-20261029:/home/data/vlb-elb-verification-runtime-20261029/node_modules:/home/site/wwwroot/node_modules:/node_modules node /home/data/batch-loading-live-check-20261124.mjs${siteArgs}`);
  console.log(result.Output||'');
  if(result.ExitCode!==0)console.error(result.Error||'Live checker returned '+result.ExitCode);
  assert.equal(result.ExitCode,0,'Live VLB/ELB verification failed; no production records were changed');
