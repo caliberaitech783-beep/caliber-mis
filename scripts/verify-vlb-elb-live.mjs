@@ -60,7 +60,7 @@ if(process.argv.includes('--azure')){
  const {withVlbTripHandovers,linkVlbTripHandovers}=await import('../shared/vlb-trip-handover.mjs');
  const {readVlbBatchListCounts}=await import('../server/rules/vlb-card-counts.mjs');
  const base='https://pulse-ll.cmll.in',health=await liveJson(base+'/api/health',{attempts:2});
- assert.equal(health.commit,'59a242eb91e1544c8b910b780953ac31d67fa7b5');assert.equal(health.database,'connected');
+ assert.equal(health.commit,process.env.EXPECTED_COMMIT);assert.equal(typeof readVlbBatchListCounts,'function','Approved batch-loading fix must be installed');assert.equal(health.database,'connected');
  const pool=new pg.Pool({...misDatabaseConfig(),max:1,connectionTimeoutMillis:10000,statement_timeout:20000,options:'-c default_transaction_read_only=on'});
  const result={commit:health.commit,readOnlyDatabase:true,accounts:[],countsCompared:0,handoverCardsCompared:0,detailRead:false,outsideSiteDenied:false,timings:[]};
  const get=async(path,headers)=>{const start=Date.now(),r=await fetch(base+path,{headers,signal:AbortSignal.timeout(25000)});result.timings.push({route:path.replace(/[0-9a-f]{8}-[0-9a-f-]{27,}/g,':id'),ms:Date.now()-start,status:r.status});return r;};
