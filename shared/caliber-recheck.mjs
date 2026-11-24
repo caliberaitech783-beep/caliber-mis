@@ -15,7 +15,7 @@
 // Each listed card carries the look-alike IDs of its site and whom the FORM A box names. Nothing here reads the
 // name written on the card or the vehicle's other drivers: the owner removed those checks.
 import {judgeCaliberId,caliberNumber,EMPLOYEE_LISTS,ID_NOT_FOUND,CONTACT_HR,HR_REFRESH_REASONS} from './caliber-id-check.mjs';
-import {matchesEmployeeReference} from './employee-identity.mjs';
+import {matchesSamePerson} from './employee-identity.mjs';
 import {cardDutyShift} from './duty-shift.mjs';
 
 const text=value=>String(value??'').replace(/\s+/g,' ').trim();
@@ -121,7 +121,8 @@ export function attendanceGap(masters,card){
   return card.worked?line('no-driver','Nobody is saved on this card, but the '+(kind==='equipment'?'machine worked':'vehicle ran')+', so no attendance is marked. Type the '+who+' from the paper card and press Submit.'):null;
  }
  const saved=employeeId?employeeRows(masters).get(employeeId):null;
- if(saved&&caliberId&&!matchesEmployeeReference(saved.record_data,caliberId))return line('id-mismatch','The card is saved under '+caliberId+' but its employee line is '+(numberOf(saved.record_data)||'another person')+' ('+text(saved.record_data?.name||saved.record_data?.employee)+'), so no attendance is marked. Type the '+who+' from the paper card and press Submit.');
+ // CMPL and CMLL of one number are one person, as in the attendance build (matchesSamePerson).
+ if(saved&&caliberId&&!matchesSamePerson(saved.record_data,caliberId))return line('id-mismatch','The card is saved under '+caliberId+' but its employee line is '+(numberOf(saved.record_data)||'another person')+' ('+text(saved.record_data?.name||saved.record_data?.employee)+'), so no attendance is marked. Type the '+who+' from the paper card and press Submit.');
  const shift=cardDutyShift(card.shift||{},card.savedShift||null);
  if(!shift.code)return line('no-shift',(shift.conflict?'The card names two different shifts':'The card names no shift')+', so no attendance is marked. Choose the shift from the paper card and press Save shift.');
  return null;

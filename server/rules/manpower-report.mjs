@@ -1,11 +1,12 @@
 import {siteChoices} from '../../shared/report-filter-options.mjs';
 import {canonicalSiteName as siteNameKey} from '../../shared/site-location.mjs';
 import {equipmentDoorNumber} from '../../shared/equipment-door.mjs';
-import {employeeIdentity,employeeReferenceKeys,employeeReferenceVariants,matchesEmployeeReference,suggestedCaliberId} from '../../shared/employee-identity.mjs';
+import {employeeIdentity,employeeReferenceKeys,matchesSamePerson,personKey,samePersonVariants,suggestedCaliberId} from '../../shared/employee-identity.mjs';
 import {bookShiftCode,selectedMasterShift} from '../../shared/trip-card-rules.mjs';
 import {operationalDate,OPERATIONAL_START} from '../../shared/operational-start.mjs';
 import {equipmentGroupName} from '../../shared/equipment-group.mjs';
 import {isDummyEmployeeId} from '../../shared/dummy-employee-ids.mjs';
+import {employeeNumber} from '../../shared/hr-employee-master.mjs';
 import {cardDutyShift,TWELVE_HOUR_CODES} from '../../shared/duty-shift.mjs';
 import {batchStage} from './vlb-two-stage.mjs';
 import {fleetAssetKind,assetIdentity} from './fleet-reconciliation.mjs';
@@ -44,8 +45,10 @@ function savedWindow(date,start,hours){
 }
 function identityIndex(employees){
  const byId=new Map(),aliases=new Map(),caliberMappings=new Map();
- for(const e of employees){const identity=employeeIdentity(e),employeeId=text(identity.employeeId||e.empId||e.employeeCode),caliberCode=text(identity.caliberCode),identityKey=key(suggestedCaliberId(employeeId)||employeeId||caliberCode);
-  if(!caliberMappings.has(identityKey))caliberMappings.set(identityKey,new Set());if(caliberCode)caliberMappings.get(identityKey).add(key(caliberCode));
+ for(const e of employees){const identity=employeeIdentity(e),employeeId=text(identity.employeeId||e.empId||e.employeeCode),caliberCode=text(identity.caliberCode),identityKey=key(suggestedCaliberId(employeeId)||employeeId||personKey(caliberCode)||caliberCode);
+  // CMPL9040 and CMLL9040 are one person (personKey): HR Pulse's line and an ERP or login line of the same person are not
+  // two people. Owner, 24 Nov 2026: at Majri OC every ELB card of CMPL9040 was left out of attendance as "ambiguous".
+  if(!caliberMappings.has(identityKey))caliberMappings.set(identityKey,new Set());if(caliberCode)caliberMappings.get(identityKey).add(key(personKey(caliberCode)||caliberCode));
   const person={id:String(e.id),employeeId,caliberCode,name:text(e.name||e.employee||e.login),designation:text(e.currentDesignationName||e.designationName||e.designation),identityKey};byId.set(String(e.id),{...person,source:e});
   for(const token of unique([employeeId,caliberCode,e.empId,e.employeeCode].map(key))){if(!aliases.has(token))aliases.set(token,new Set());aliases.get(token).add(identityKey);}
  }
@@ -55,9 +58,9 @@ function identityIndex(employees){
  for(const p of byId.values()){position.set(p,position.size);for(const token of unique(employeeReferenceKeys(p.source))){if(!byReference.has(token))byReference.set(token,[]);byReference.get(token).push(p);}}
  return data=>{
   let person=byId.get(String(data.employeeId));
-  if(!person&&data.caliberId){const matches=unique(employeeReferenceVariants(data.caliberId).flatMap(v=>byReference.get(v)||[])).sort((a,b)=>position.get(a)-position.get(b));if(unique(matches.map(p=>p.identityKey)).length===1)person=matches[0];}
+  if(!person&&data.caliberId){const matches=unique(samePersonVariants(data.caliberId).flatMap(v=>byReference.get(v)||[])).sort((a,b)=>position.get(a)-position.get(b));if(unique(matches.map(p=>p.identityKey)).length===1)person=matches[0];}
   if(!person?.identityKey||!person.name)return {error:'Employee ID is missing or cannot be resolved to an employee master.'};
-  if(data.caliberId&&!matchesEmployeeReference(person.source,data.caliberId))return {error:'Saved Employee ID conflicts with the linked employee master.'};
+  if(data.caliberId&&!matchesSamePerson(person.source,data.caliberId))return {error:'Saved Employee ID conflicts with the linked employee master.'};
   if(caliberMappings.get(person.identityKey)?.size>1||[person.employeeId,person.caliberCode].some(token=>(aliases.get(key(token))?.size||0)>1))return {error:'Employee / Caliber ID mapping is ambiguous.'};
   return person;
  };
@@ -121,7 +124,20 @@ const rowMatches=(r,f,{dates=true}={})=>(!dates||r.date>=f.from&&r.date<=f.to)&&
 
 // parts 'attendance' builds only what the attendance register shows (duty lines, presence, batches, sites, review items);
 // the tables of the other Manpower views come back empty. parts 'ot' is the same build with the filter lists kept.
-export function buildManpowerReport({records=[],attendance=[],assets=[],employees=[],shifts=[],batches=[],filters,now=Date.now(),parts='all',lockedOnly=false}){
+// punched: who punched the biometric machine ("number|siteKey|date", "number||date" for a punch with no site;
+// server/services/attendance-punches.mjs). Owner, 24 Nov 2026 ("Card + punch"): a card whose driver cannot be matched to
+// one Employee Master person counts for its Caliber ID when that ID punched that day at that site. Nobody is counted
+// without a card, and a card that matches is counted as before.
+export function buildManpowerReport({records=[],attendance=[],assets=[],employees=[],shifts=[],batches=[],filters,now=Date.now(),parts='all',lockedOnly=false,punched=[]}){
+ const punchedSet=new Set(punched);
+ // Said in other words than the error itself: a card counted by its punch is not one that attendance leaves out.
+ const PUNCH_RESCUE_WHY=error=>/ambiguous/.test(error)?'two lines hold this ID':/conflicts/.test(error)?'its Employee ID and Caliber ID name different people':'its ID is not in Employee Master';
+ const punchedPerson=(d,site,date)=>{
+  const number=employeeNumber(d.caliberId);if(!number)return null;
+  if(!punchedSet.has(number+'|'+canonicalSiteName(site)+'|'+date)&&!punchedSet.has(number+'||'+date))return null;
+  const written=key(d.caliberId),identityKey=key(suggestedCaliberId(written))||written;
+  return {employeeId:written,employeeName:text(d.employeeName),caliberCode:written,designation:'',employeeKey:identityKey};
+ };
  const lockedDays=lockedOnly?lockedSiteDays(shifts,batches):null,dayLocked=(site,date)=>!lockedDays||lockedDays.has(canonicalSiteName(site)+'|'+date);
  const hr=parts==='hr-attendance',full=!hr&&parts!=='attendance'&&parts!=='ot',listOptions=full||parts==='ot',f=manpowerFilters(filters),exceptions=[],rows=[],resolveEmployee=identityIndex(employees),assetMap=new Map(assets.map(a=>[String(a.id),a]));
  const addIssue=(r,reason)=>{r.issues.push(reason);exceptions.push({id:`${r.id}:${r.issues.length}`,date:r.date,site:r.site,shift:r.shift,door:r.door,employeeId:r.employeeId||r.savedEmployeeId,employeeName:r.employeeName,book:r.book,batches:sourceLabel(r),reason,record:r});};
@@ -135,7 +151,9 @@ export function buildManpowerReport({records=[],attendance=[],assets=[],employee
   if(!r.batchIds.length&&d.scanBatchId){r.batchIds=[String(d.scanBatchId)];r.batchNames=[record.scan_batch_name||String(d.scanBatchId)];r.batchStatus='Saved scan';}
   if(seenIds.has(r.id)){addIssue(r,'Repeated saved record omitted from totals.');continue;}seenIds.add(r.id);
   if(date!==d.bookDate||canonicalSiteName(site)!==canonicalSiteName(d.location)){r.eligible=false;addIssue(r,'Saved date/site metadata conflicts with the logbook; excluded from totals.');}
-  const person=resolveEmployee(d);if(person.error)addIssue(r,person.error);else Object.assign(r,{employeeId:person.employeeId,employeeName:person.name,caliberCode:person.caliberCode,designation:person.designation,employeeKey:person.identityKey});
+  const person=resolveEmployee(d),byPunch=person.error?punchedPerson(d,site,date):null;
+  if(byPunch){Object.assign(r,byPunch);addIssue(r,'Counted by bio-punch: '+byPunch.employeeId+' punched on this date at this site, but the card\u2019s driver is not one Employee Master person ('+PUNCH_RESCUE_WHY(person.error)+'). Correct the card on Caliber ID Re-check.');}
+  else if(person.error)addIssue(r,person.error);else Object.assign(r,{employeeId:person.employeeId,employeeName:person.name,caliberCode:person.caliberCode,designation:person.designation,employeeKey:person.identityKey});
   const asset=assetMap.get(String(record.asset_id||d.assetId));
   if(asset)r.fleetKey=assetIdentity(asset);
   if(!asset)addIssue(r,'Equipment master match is missing.');

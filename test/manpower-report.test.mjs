@@ -84,8 +84,9 @@ test('ambiguous identity mapping is excluded instead of choosing a name',()=>{
 test('a card saved with only an Employee ID finds its master by the written forms of that ID, as the one-by-one check did',()=>{
  const only=(caliberId,list=employees)=>report([card(1,1,{employeeId:undefined,caliberId})],{employees:list});
  for(const written of ['101','CMLL101','CMLL-101','cmll 101'])assert.equal(only(written).details[0].employeeName,'Driver One',written);
- // CMPL101 is not a written form of 101 or CMLL101, so it stays unresolved.
- assert.match(only('CMPL101').exceptions[0].reason,/cannot be resolved/);
+ // Owner, 24 Nov 2026: CMPL101 and CMLL101 are one person (HR Pulse writes CMPL), so CMPL101 finds the CMLL101 line.
+ assert.equal(only('CMPL101').details[0].employeeName,'Driver One');
+ assert.match(only('CMPL102',[employees[0]]).exceptions[0].reason,/cannot be resolved/,'another number stays unresolved');
  // The same person in two masters: the first master record in order is used.
  assert.equal(only('101',[{id:'41',caliberId:'101',caliberCode:'CMLL101',name:'Driver One (ERP)'},...employees]).details[0].employeeName,'Driver One (ERP)');
  // Two different people answering to the same written ID: nobody is picked.

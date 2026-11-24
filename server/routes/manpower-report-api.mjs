@@ -5,6 +5,8 @@ import {sharedLogBookSites} from '../services/log-book-site-list.mjs';
 import {directLane,reportKey} from '../services/report-lane.mjs';
 import {buildReportInWorker} from '../services/report-build-pool.mjs';
 import {requireHrAttendance} from './hr-attendance-access.mjs';
+import {createAttendancePunches,punchKeysBetween} from '../services/attendance-punches.mjs';
+import {createHrEmployeeSync} from '../services/hr-employee-sync.mjs';
 import {attendanceAnswerCache,fingerprint,ATTENDANCE_WEEK_KEEP_MS,ATTENDANCE_RECENT_KEEP_MS} from '../services/attendance-answer-cache.mjs';
 import {HISTORY_CARD_FIELDS,ATTENDANCE_CARD_FIELDS,ATTENDANCE_BATCH_COLUMNS,attendanceDayStoreEnabled,cardSignatures,lockedDayCards,lockedSignedDays,dayCardBatchesText} from '../services/attendance-day-store.mjs';
 
@@ -43,7 +45,9 @@ export async function reportMastersText(client){
  return {shifts,mastersJson:row?.masters||'{"assets":[],"employees":[],"shifts":[]}'};
 }
 
-export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandovers=async(_,rows)=>rows,today=todayIst,lane=directLane,useDayStore=attendanceDayStoreEnabled(),buildInWorker=buildReportInWorker,answerCache=attendanceAnswerCache}){
+// readPunches: ({from,to}) => who punched the biometric machine ("number|siteKey|date"; server/services/attendance-punches.mjs).
+// A card left out for an ID mix-up counts when its Caliber ID punched (owner, 24 Nov 2026, "Card + punch").
+export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandovers=async(_,rows)=>rows,today=todayIst,lane=directLane,useDayStore=attendanceDayStoreEnabled(),buildInWorker=buildReportInWorker,answerCache=attendanceAnswerCache,readPunches=createAttendancePunches({pool,hrPunches:createHrEmployeeSync({pool}).biometricPunches})}){
  // The server's one list of sites that hold cards (server/services/log-book-site-list.mjs).
  const filterLogBookSites=sharedLogBookSites(pool);
  app.get('/api/reports/manpower',...protect,async(req,res,next)=>{
@@ -144,6 +148,9 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
    const body=await lane.run(reportKey(hr?'hr-attendance':'manpower-attendance',req),async()=>{
    let client,building=null;
    try{
+   // Who punched (machine and imported), read once for the whole range before a database connection is held (HR Pulse
+   // is waited for at most a few seconds); a failed read counts no punch.
+   const punched=await readPunches({from:filters.contextFrom,to:filters.contextTo}).catch(()=>[]);
    client=await pool.connect();
    await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
    const sites=await filterLogBookSites(client,req.logBookScope);
@@ -168,11 +175,11 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
    // days ago is not read or built again.
    const mastersKey=fingerprint(mastersJson),siteNames=[...new Set(batches.map(b=>b.site))],keepBefore=nextReportDate(today(),-1);
    const plans=attendanceWindows(filters.from,filters.to).map(window=>{const range=manpowerFilters(window);
-    return {window,range,days:lockedSignedDays(signatures,{from:range.contextFrom,to:range.contextTo},locked),attendance:present.filter(r=>r.date>=window.from&&r.date<=window.to),kept:Boolean(answerCache)&&window.to<keepBefore};});
+    return {window,range,days:lockedSignedDays(signatures,{from:range.contextFrom,to:range.contextTo},locked),attendance:present.filter(r=>r.date>=window.from&&r.date<=window.to),punched:punchKeysBetween(punched,range.contextFrom,range.contextTo),kept:Boolean(answerCache)&&window.to<keepBefore};});
    for(const plan of plans){
     plan.linksJson=hr?null:await dayCardBatchesText(client,plan.days);
     const weekBatches=batches.filter(b=>b.report_date>=plan.range.contextFrom&&b.report_date<=plan.range.contextTo).sort((a,b)=>String(a.id).localeCompare(String(b.id)));
-    plan.key=fingerprint('attendance-week',hr,scope.sites??null,plan.range,mastersKey,siteNames,weekBatches,plan.days.map(d=>[d.site,d.date,d.signature]),plan.linksJson,plan.attendance);
+    plan.key=fingerprint('attendance-week',hr,scope.sites??null,plan.range,mastersKey,siteNames,weekBatches,plan.days.map(d=>[d.site,d.date,d.signature]),plan.linksJson,plan.attendance,plan.punched);
    }
    const answerKey=fingerprint('attendance-answer',hr,scope.sites??null,filters,plans.map(p=>p.key),[...locked].sort());
    const ready=answerCache?.get(answerKey);
@@ -184,7 +191,7 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
     const read=await lockedDayCards(client,{from:plan.range.contextFrom,to:plan.range.contextTo},{sites,locked,signatures,useStore:useDayStore,asText:true});
     // One week is built at a time, so a month of cards is never held at once.
     if(building)await building;
-    building=buildInWorker('attendance-week',{cardsJson:read.cardsJson,linksJson:plan.linksJson,mastersJson,attendance:plan.attendance,batches,filters:plan.range,hr,scope})
+    building=buildInWorker('attendance-week',{cardsJson:read.cardsJson,linksJson:plan.linksJson,mastersJson,attendance:plan.attendance,batches,filters:plan.range,hr,scope,punched:plan.punched})
      .then(json=>{if(plan.kept)answerCache.set(plan.key,json,ATTENDANCE_WEEK_KEEP_MS);return {window:plan.window,json};});
     // A build that fails while the next week is read is reported when it is awaited, not as an unhandled error.
     building.catch(()=>{});
