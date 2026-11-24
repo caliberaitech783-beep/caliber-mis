@@ -1,4 +1,4 @@
-import {ACTIVE_VLB_ENTRY_FROM,ACTIVE_VLB_ENTRY_FILTER,readVlbCardCounts} from '../rules/vlb-card-counts.mjs';
+import {ACTIVE_VLB_ENTRY_FROM,ACTIVE_VLB_ENTRY_FILTER,readVlbCardCounts,readVlbBatchListCounts} from '../rules/vlb-card-counts.mjs';
 import {isMisAdministrator} from '../../shared/mis-admin-access.mjs';
 import {registerVlbBatchDeletions} from './vlb-batch-deletions.mjs';
 import {withVlbTripHandovers} from '../../shared/vlb-trip-handover.mjs';
@@ -120,10 +120,14 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
  // site scope, and each read ran the row-security site check on every log book since
  // 1 Nov: that day it held 73,000 connection-seconds in 2.6 h (more than every other
  // route together), so automatic card saves waited 18 s each for a connection.
- // The list is now one trusted read shared by every login. It holds no log-book
- // content, only per-batch card counts, and each caller still receives only the
- // batches of its own sites (siteAllowed below).
+ // Batch metadata is one trusted read shared by every login. Counts are shared
+ // per visible batch set, with no per-log-book row-security check; each caller
+ // still receives only batches of its own sites (siteAllowed below).
  const sharedBatchRows=createSharedRead({ttlMs:listCacheMs});
+ // Count reads share the metadata snapshot's lifetime and are coalesced for
+ // identical visible batch sets. A new snapshot (including after any write)
+ // cannot reuse old counts. Weak keys release expired snapshots automatically.
+ const countsByRows=new WeakMap();
  app.use('/api/vlb-batches',(req,res,next)=>{if(req.method!=='GET'&&req.method!=='HEAD')res.on('finish',()=>sharedBatchRows.clear());if(req.method!=='GET'&&req.method!=='HEAD')res.on('finish',()=>actorCache.clear());next();});
  // Every open batch board asks every 10 to 15 s, and each ask looked the actor up in the
  // Users master. The lookup is reused for ACTOR_CACHE_MS per login (a copy each time,
@@ -184,36 +188,28 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
  const recovery=registerVlbBatchDeletions(app,{pool,protect:recoveryProtect,handle,ensure,sendOtp,imageStorage});
  app.get('/api/vlb-batches',...protect,editRoute(async(req,res)=>{
   const rows=await sharedBatchRows(()=>withoutRowSecurityRequest(async()=>(await pool.query(`
-   WITH visible_batches AS (
-    SELECT * FROM mis_vlb_batches WHERE archived_at IS NULL AND book_date>=$$2026-11-01$$
-   ), vlb_counts AS (
-    SELECT e.batch_id,count(*)::int AS total
-    FROM ${ACTIVE_VLB_ENTRY_FROM} JOIN visible_batches b ON b.id=e.batch_id
-    WHERE ${ACTIVE_VLB_ENTRY_FILTER}
-    GROUP BY e.batch_id
-   ), elb_counts AS (
-    SELECT e.batch_id,count(*)::int AS total
-    FROM mis_elb_batch_entries e
-    JOIN mis_log_books l ON l.id=e.logbook_id
-    JOIN visible_batches b ON b.id=e.batch_id
-    WHERE l.deleted_at IS NULL
-    GROUP BY e.batch_id
-   )
-   SELECT b.*,b.book_date::text AS report_date,
-    COALESCE(v.total,0) AS entry_count,COALESCE(e.total,0) AS elb_entry_count
-   FROM visible_batches b
-   LEFT JOIN vlb_counts v ON v.batch_id=b.id
-   LEFT JOIN elb_counts e ON e.batch_id=b.id
+   SELECT b.*,b.book_date::text AS report_date
+   FROM mis_vlb_batches b WHERE b.archived_at IS NULL AND b.book_date>=$$2026-11-01$$
    ORDER BY (b.closed_at IS NULL) DESC,b.created_at DESC,b.id DESC
   `)).rows));
+  const visibleIds=rows.filter(b=>siteAllowed(req.logBookScope,b.site)).map(b=>b.id);
+  let scopedReads=countsByRows.get(rows);
+  if(!scopedReads){scopedReads=new Map();countsByRows.set(rows,scopedReads);}
+  const countKey=JSON.stringify(visibleIds);
+  let sharedCounts=scopedReads.get(countKey);
+  if(!sharedCounts){
+   if(scopedReads.size>=128)scopedReads.delete(scopedReads.keys().next().value);
+   sharedCounts=createSharedRead({ttlMs:listCacheMs});scopedReads.set(countKey,sharedCounts);
+  }
+  const counts=new Map((await sharedCounts(()=>withoutRowSecurityRequest(()=>readVlbBatchListCounts(pool,visibleIds)))).map(row=>[row.id,{entry_count:row.entry_count,elb_entry_count:row.elb_entry_count}]));
   const twoStage=twoStageEnabled();
   const waits=twoStage&&!batchLocksPaused()?batchStageWaits([...rows].reverse()):new Map();
-  const batches=rows.filter(b=>siteAllowed(req.logBookScope,b.site)).map(b=>({...b,created_by:creator(b),stageWait:waits.get(b.id)||'',twoStage,lockPaused:twoStage&&batchLocksPaused(),canClose:!waits.has(b.id)&&canClose(b,req.batchActor,twoStage),stage:twoStage?batchStage(b):(b.closed_at?'closed':'open')}));
+  const batches=rows.filter(b=>siteAllowed(req.logBookScope,b.site)).map(b=>({...b,...counts.get(b.id),created_by:creator(b),stageWait:waits.get(b.id)||'',twoStage,lockPaused:twoStage&&batchLocksPaused(),canClose:!waits.has(b.id)&&canClose(b,req.batchActor,twoStage),stage:twoStage?batchStage(b):(b.closed_at?'closed':'open')}));
   const openBatchStatuses=req.batchActor.mis?rows.filter(b=>!b.closed_at).map(b=>({
    site:b.site,date:b.report_date,shift:b.shift,stage:twoStage?batchStage(b):'vlb_open'
   })):undefined;
   const open=rows.find(b=>!b.closed_at&&(isOwner(b,req.batchActor)||batchLogin(creator(b))===req.batchActor.login));
-  const openBatch=open?(siteAllowed(req.logBookScope,open.site)?{...open,created_by:creator(open),stageWait:waits.get(open.id)||'',canClose:!waits.has(open.id)&&canClose(open,req.batchActor,twoStage)}:{id:open.id,restricted:true}):null;
+  const openBatch=open?(siteAllowed(req.logBookScope,open.site)?{...open,...counts.get(open.id),created_by:creator(open),stageWait:waits.get(open.id)||'',canClose:!waits.has(open.id)&&canClose(open,req.batchActor,twoStage)}:{id:open.id,restricted:true}):null;
   const lockPause=batchLockPause();
   res.json({twoStage,lockPause:{...lockPause,note:batchLockPauseNote(lockPause)},batches,openBatchStatuses,openBatch:openBatch&&!openBatch.restricted?{...openBatch,stage:twoStage?batchStage(openBatch):(openBatch.closed_at?'closed':'open')}:openBatch,actor:{login:req.batchActor.login,mis:req.batchActor.mis,pm:req.batchActor.pm,canCreate:req.batchActor.canCreate,admin:req.batchActor.admin}});
  }));
