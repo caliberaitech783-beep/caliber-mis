@@ -46,6 +46,7 @@ ${DEMO_PREFIX_RULES} ${METER_DIGIT_RULE} ${DOOR_RULES} ${NAME_AND_FORM_RULES} ${
 ${kind==='vehicle'?'trips.p is true. trips.r contains EVERY populated individual trip row across both columns of the whole card in printed order: [tripNo,equipmentType,equipmentNumber,loadingTime,unloadingTime]. The five cells are the printed trip number, literal M fleet text, literal NO digits, loading time and unloading time. For M=V and NO=5 return [1,"V","5","05:51","06:04"], not a row with equipment V alone. Preserve printed positive integer trip numbers, leading zeros in equipmentNumber and literal times. Use "" for blank cells and null for unreadable cells. Ignore unused blank rows. Never copy summary counts into individual rows, infer repeated equipment, invent times, or omit rows to match totals.':'trips must be {"p":false,"r":[]}. Never extract or invent vehicle trips or KMR fields for ELB.'}`;
 }
 const summaryMissing=(parsed,kind)=>kind==='vehicle'&&parsed.trips.r.length>0&&!parsed.fields.machineSummary.length;
+const summaryNeedsReview=(parsed,kind)=>kind==='vehicle'&&(summaryMissing(parsed,kind)||parsed.issues.some(issue=>/^(Machine summary|Summary row )/.test(issue))||parsed.fields.machineSummary.some(row=>row.equipmentName.status!=='clear'||row.tripCount.status!=='clear'||!/^\d+$/.test(row.tripCount.value)||Number(row.tripCount.value)<1));
 export function parseCardResponse(raw,kind){
  let parsed;try{parsed=JSON.parse(raw);}catch{throw Error('Gemini returned invalid JSON. The scan is retained; retry extraction.');}
  const expected=kind==='vehicle'?'VLB':'ELB';
@@ -189,7 +190,7 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
  async function run(image,kind,onProgress,forceRead=false,model=MODEL){
   if(!['vehicle','equipment'].includes(kind))throw Error('Invalid card type.');
   const imageHash=createHash('sha256').update(image).digest('hex'),file=path.join(cacheDir,`${imageHash}-${kind}-single-${kind==='vehicle'?'v17':'v16'}.json`);
-  let record;try{if(forceRead)throw Error('Fresh image read requested');const saved=JSON.parse(await fs.readFile(file,'utf8'));if(saved.imageHash===imageHash&&saved.model===model&&saved.kind===kind&&saved.finishReason==='STOP'&&saved.raw) {const parsed=parseCardResponse(saved.raw,kind);if(!parsed.issues.some(issue=>/equipment (?:number|fleet prefix) missing or unreadable/.test(issue))&&!summaryMissing(parsed,kind))record=saved;}}catch{}
+  let record;try{if(forceRead)throw Error('Fresh image read requested');const saved=JSON.parse(await fs.readFile(file,'utf8'));if(saved.imageHash===imageHash&&saved.model===model&&saved.kind===kind&&saved.finishReason==='STOP'&&saved.raw) {const parsed=parseCardResponse(saved.raw,kind);if(!parsed.issues.some(issue=>/equipment (?:number|fleet prefix) missing or unreadable/.test(issue))&&!summaryNeedsReview(parsed,kind))record=saved;}}catch{}
   if(!record){
    const key=await getKey(),gate=gateFor(key);await onProgress?.('extracting');
    const timing={prepMs:0,prepWaitMs:0,prepReused:true};
@@ -280,11 +281,12 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
      gate.successes=0;
     }
     const malformed=parsed.issues.filter(issue=>/invalid response|expected four cells|unreadable or invalid|printed trip number unreadable|duplicate printed numbers|gaps or out-of-order|not clearly confirmed|equipment (?:number|fleet prefix) missing or unreadable/i.test(issue));
-    const noSummary=summaryMissing(parsed,kind);
-    if(attempt<2&&(parsed.fields.site.status!=='clear'||malformed.length||noSummary)){
+    const noSummary=summaryMissing(parsed,kind),incompleteSummary=summaryNeedsReview(parsed,kind);
+    if(attempt<2&&(parsed.fields.site.status!=='clear'||malformed.length||incompleteSummary)){
      const siteMissing=parsed.fields.site.status!=='clear',missingMachineNumber=malformed.some(issue=>/equipment number missing or unreadable/.test(issue)),reason=[siteMissing?'printed site missing or unclear':'',missingMachineNumber?'equipment number missing in NO column':malformed.length?'malformed card content':'',noSummary?'machine-wise summary not returned':''].filter(Boolean).join('; ');
      retryInstruction=(noSummary?'The previous response returned no machine-wise summary. Re-inspect the MACHINE-WISE SUMMARY box below the trip table in the summary band views and return every populated row in fields.machineSummary. ':'')+(missingMachineNumber?'Re-inspect the M and adjacent NO columns for every populated trip and machine-summary row. The previous response dropped machine numbers. For a V in M and 5 in NO, transcribe equipmentType V and equipmentNumber 5. Read the number from that row; never guess it from another card or the fleet master. ':'')+(siteMissing?'Re-inspect the printed SITE header in the full image and upright header detail. If it is legible, transcribe it exactly with status clear; do not infer it from other fields. ':'')+(malformed.length?'The previous response contained malformed or incomplete content. Re-read every populated header, meter, summary and trip-table cell from the images. Return every trip row as exactly [tripNo,equipmentType,equipmentNumber,loadingTime,unloadingTime], preserving blank cells as empty strings and unreadable cells as null. Do not omit visible loading or unloading times.':'');
-     await onProgress?.('retrying',{attempt:2,maxAttempts:2,reason,delayMs:0});continue;
+     if(incompleteSummary)retryInstruction+=' Re-inspect both halves of the printed MACHINE-WISE SUMMARY in the upright summary detail views. Return fields.machineSummary as an array of {equipmentType:{value,status},equipmentNumber:{value,status},tripCount:{value,status}} for every populated row. Read each count from the printed Trips cell. Keep leading zeros and literal prefix punctuation, including colons and slashes. Use null and status unclear for unreadable cells; never calculate or invent summary rows from the trip table.';
+     await onProgress?.('retrying',{attempt:2,maxAttempts:2,reason:reason||'machine-wise summary incomplete',delayMs:0});continue;
     }
     await fs.mkdir(cacheDir,{recursive:true});const temp=file+'.'+randomUUID()+'.tmp';await fs.writeFile(temp,JSON.stringify(record),{mode:0o600});await fs.rename(temp,file);
     break;

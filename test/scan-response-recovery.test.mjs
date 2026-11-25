@@ -42,3 +42,14 @@ test('server scan checks treat a blank loader with both times as an unloading-on
  assert.equal(check.errors.some(message=>/flagged extraction|loading equipment|machine number/i.test(message)),false,JSON.stringify(check));
  assert.equal(check.warnings.some(message=>/machine-wise summary/i.test(message)),false);
 });
+
+test('punctuated literal prefixes and wrapped summaries preserve all printed evidence',()=>{
+ const input=response();input.trips.r=[[1,'L:P','07','12:28','12:39'],[2,'V/PC','005','12:40','12:50']];
+ input.fields.machineSummary={value:[{equipmentType:field('L:P'),equipmentNumber:field('07'),tripCount:field('1')}],status:'clear'};
+ const original=JSON.stringify(input),out=parseCardResponse(original,'vehicle');
+ assert.deepEqual(out.trips.r,[[1,'L:P07','12:28','12:39'],[2,'V/PC005','12:40','12:50']]);
+ assert.equal(out.fields.machineSummary[0].equipmentName.value,'L:P07');assert.deepEqual(out.issues,[]);
+ assert.equal(JSON.stringify(input),original);
+ input.trips.r=[[1,':','07','12:28','12:39']];
+ assert.ok(parseCardResponse(JSON.stringify(input),'vehicle').issues.some(issue=>issue.includes('fleet prefix missing')));
+});

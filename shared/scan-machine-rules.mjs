@@ -23,7 +23,7 @@ export const EQUIPMENT_MACHINE_RULES=[
  {code:'PL',label:'Pay Loader',aliases:['PL','PAY LOADER','PAYLOADER']},
  {code:'H',label:'Hydra',aliases:['H','HYDRA']},
 ];
-const prefixKey=value=>String(value||'').toUpperCase().replace(/[\s._/-]/g,'');
+const prefixKey=value=>String(value||'').toUpperCase().replace(/[\s._:/-]/g,'');
 const text=value=>String(value??'').normalize('NFKC').trim();
 const contextFor=kind=>kind==='vehicle'?'vehicle':'equipment';
 // Preserve legacy body-H interpretation for existing version-one scan drafts.
@@ -31,9 +31,9 @@ const LEGACY_TRIP_BODY_MACHINE_RULES=EQUIPMENT_MACHINE_RULES.map(rule=>({...rule
 const TRIP_BODY_MACHINE_RULES=EQUIPMENT_MACHINE_RULES.map(rule=>({...rule,aliases:rule.code==='TPC'?[...rule.aliases,'E']:rule.aliases}));
 export function identifyCardMachine(value,kind='equipment',{allowSuffix=false}={}){
  const original=text(value),withoutNumberLabel=original.replace(/\b(?:NUMBER|NO\.?)[ \t]*[:#=-]?[ \t]*(?=\d)/i,'');
- const input=(allowSuffix?(withoutNumberLabel.match(/^([A-Z][A-Z ._/-]*?\d+)(?:\s*[-·–—(].*)?$/i)?.[1]||withoutNumberLabel):withoutNumberLabel).toUpperCase();
- const numbered=input.match(/^([A-Z][A-Z ._/-]*?)[ \t]*(\d+)$/);
- const prefix=numbered?numbered[1]:/^[A-Z][A-Z ._/-]*$/.test(input)?input:'';
+ const input=(allowSuffix?(withoutNumberLabel.match(/^([A-Z][A-Z ._:/-]*?\d+)(?:\s*[-·–—(].*)?$/i)?.[1]||withoutNumberLabel):withoutNumberLabel).toUpperCase();
+ const numbered=input.match(/^([A-Z][A-Z ._:/-]*?)[ \t]*(\d+)$/);
+ const prefix=numbered?numbered[1]:/^[A-Z][A-Z ._:/-]*$/.test(input)?input:'';
  const rule=(kind==='trip-body-legacy'?LEGACY_TRIP_BODY_MACHINE_RULES:kind==='trip-body'?TRIP_BODY_MACHINE_RULES:contextFor(kind)==='vehicle'?VEHICLE_MACHINE_RULES:EQUIPMENT_MACHINE_RULES).find(r=>r.aliases.some(alias=>prefixKey(alias)===prefixKey(prefix)));
  if(!rule)return null;
  const number=numbered?.[2]||'';
@@ -42,8 +42,8 @@ export function identifyCardMachine(value,kind='equipment',{allowSuffix=false}={
 export function cardMachineKey(value,kind='equipment',{allowSuffix=true}={}){
  const identified=identifyCardMachine(value,kind,{allowSuffix});
  if(identified)return identified.key;
- const legacy=text(value).toUpperCase().match(/^([A-Z]{1,5})\s*[-/]?\s*(\d+)(?=$|[\s(·–—-])/);
- return legacy?legacy[1]+legacy[2].replace(/^0+(?=\d)/,''):text(value).toUpperCase().replace(/[^A-Z0-9]/g,'');
+ const legacy=text(value).toUpperCase().match(/^([A-Z][A-Z ._:/-]*?)\s*(\d+)(?=$|[\s(·–—-])/);
+ return legacy?prefixKey(legacy[1])+legacy[2].replace(/^0+(?=\d)/,''):text(value).toUpperCase().replace(/[^A-Z0-9]/g,'');
 }
 // The key a written door has when its first digit 1 is really the slash or dash
 // after the letters (V/334 read as V1334 -> V334, S/01 read as S101 -> S1).
