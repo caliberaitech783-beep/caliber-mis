@@ -32,14 +32,18 @@ const MASTER_NAMES=['Equipment master','Shift Master','Employee master','ERP Emp
 export async function reportMasters(client){
  const masters=(await client.query("SELECT id,master_name,record_data FROM master_records WHERE master_name=ANY($1::text[]) ORDER BY id",[MASTER_NAMES])).rows;
  const fromMaster=names=>masters.filter(r=>names.includes(r.master_name)).map(r=>({...r.record_data,id:String(r.id)}));
- return {assets:fromMaster(['Equipment master']),employees:fromMaster(MASTER_NAMES.slice(2)),shifts:fromMaster(['Shift Master'])};
+ // sourceMaster: Employee Master decides an ambiguous ID before the other lists (identityIndex in the report rules).
+ const employees=masters.filter(r=>MASTER_NAMES.slice(2).includes(r.master_name)).map(r=>({...r.record_data,id:String(r.id),sourceMaster:r.master_name}));
+ return {assets:fromMaster(['Equipment master']),employees,shifts:fromMaster(['Shift Master'])};
 }
 // The same masters as one JSON text for a report worker, built by Postgres (24 Nov 2026): the Employee master alone is about
 // 21,000 lines, and unpacking it on every attendance read held the main thread. Each line is its record with id = the row
 // id as text, as reportMasters gives it. The Shift Master is also read as rows: the main thread needs it for the locked days.
 const MASTER_LINES=`COALESCE(json_agg(record_data||jsonb_build_object('id',id::text) ORDER BY id) FILTER (WHERE master_name=ANY($1::text[])),'[]'::json)`;
+// Employee lines also name their list (sourceMaster), as in reportMasters: the report rules let Employee Master decide an ambiguous ID.
+const EMPLOYEE_LINES=`COALESCE(json_agg(record_data||jsonb_build_object('id',id::text,'sourceMaster',master_name) ORDER BY id) FILTER (WHERE master_name=ANY($1::text[])),'[]'::json)`;
 export async function reportMastersText(client){
- const {rows:[row]}=await client.query(`SELECT json_build_object('assets',${MASTER_LINES.replace('$1','$2')},'employees',${MASTER_LINES.replace('$1','$3')},'shifts',${MASTER_LINES.replace('$1','$4')})::text AS masters
+ const {rows:[row]}=await client.query(`SELECT json_build_object('assets',${MASTER_LINES.replace('$1','$2')},'employees',${EMPLOYEE_LINES.replace('$1','$3')},'shifts',${MASTER_LINES.replace('$1','$4')})::text AS masters
   FROM master_records WHERE master_name=ANY($1::text[])`,[MASTER_NAMES,['Equipment master'],MASTER_NAMES.slice(2),['Shift Master']]);
  const shifts=(await client.query("SELECT id,record_data FROM master_records WHERE master_name='Shift Master' ORDER BY id")).rows.map(r=>({...r.record_data,id:String(r.id)}));
  return {shifts,mastersJson:row?.masters||'{"assets":[],"employees":[],"shifts":[]}'};

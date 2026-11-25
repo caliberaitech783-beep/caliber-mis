@@ -81,6 +81,28 @@ test('unresolved and conflicting identities remain visible and cannot create OT'
 test('ambiguous identity mapping is excluded instead of choosing a name',()=>{
  const r=report([card()],{employees:[...employees,{id:'23',caliberId:'101',caliberCode:'OTHER101',name:'Other'}]});assert.equal(r.performance.length,0);assert.match(r.exceptions[0].reason,/ambiguous/);
 });
+test('Employee Master decides an ambiguous ID: an Employee Code or another list does not keep the card out (24 Nov 2026)',()=>{
+ const aabid={id:'13503',caliberId:'CMPL9040',employeeId:'CMPL9040',caliberCode:'CMLL9040',employeeCode:'9040',name:'MD AABID ANSARI',sourceMaster:'Employee master'};
+ const jashan={id:'13504',caliberId:'CMPLCMPL9040',employeeId:'CMPLCMPL9040',caliberCode:'',employeeCode:'CMPL9040',name:'JASHAN SINGH',sourceMaster:'Employee master'};
+ const cardOf=(patch={})=>card(1,1,{employeeId:13503,caliberId:'CMPL9040',employeeName:'MD AABID ANSARI',...patch});
+ // The Lalpeth line holds CMPL9040 only as its Employee Code: the card is Aabid's duty.
+ const coded=report([cardOf()],{employees:[aabid,jashan]});
+ assert.equal(coded.performance.length,1);assert.equal(coded.details[0].employeeName,'MD AABID ANSARI');
+ assert.equal(coded.exceptions.filter(e=>/ambiguous/.test(e.reason)).length,0);
+ // An ERP line of the same person with its Caliber ID written another way: Employee Master answers.
+ const erp={id:'90001',caliberId:'CMPL9040',caliberCode:'CMPL9040',name:'MD AABID ANSARI',sourceMaster:'ERP Employee master'};
+ const listed=report([cardOf()],{employees:[aabid,erp]});
+ assert.equal(listed.performance.length,1);assert.equal(listed.exceptions.filter(e=>/ambiguous/.test(e.reason)).length,0);
+ // A card linked to that ERP line counts as the Employee Master person.
+ const linked=report([cardOf({employeeId:90001})],{employees:[aabid,erp]});
+ assert.equal(linked.performance.length,1);assert.equal(linked.performance[0].caliberCode,'CMLL9040');
+ // Two Employee Master lines with different Caliber IDs for one Employee ID stay ambiguous.
+ const twice=report([cardOf()],{employees:[aabid,{...aabid,id:'13600',caliberCode:'CMLL19040'}]});
+ assert.equal(twice.performance.length,0);assert.match(twice.exceptions[0].reason,/ambiguous/);
+ // A person only in another list keeps the old check across every list.
+ const other=report([card(1,1,{employeeId:91,caliberId:'CMPL555',employeeName:'X'})],{employees:[{id:'91',caliberId:'CMPL555',caliberCode:'CMLL555',name:'X',sourceMaster:'ERP Employee master'},{id:'92',caliberId:'CMPL555',caliberCode:'CMLL5550',name:'Y',sourceMaster:'C-Dir Employee master'}]});
+ assert.equal(other.performance.length,0);assert.match(other.exceptions[0].reason,/ambiguous/);
+});
 test('a card saved with only an Employee ID finds its master by the written forms of that ID, as the one-by-one check did',()=>{
  const only=(caliberId,list=employees)=>report([card(1,1,{employeeId:undefined,caliberId})],{employees:list});
  for(const written of ['101','CMLL101','CMLL-101','cmll 101'])assert.equal(only(written).details[0].employeeName,'Driver One',written);
