@@ -84,8 +84,37 @@ export function biometricDays({content,rows}){
 // CMLL17817). Many machines send the same punch type for every punch, so a duty is read from the times: punches within
 // PAIR_HOURS of the first one are one duty (a night duty stays on the date it began); a punch marked IN after one marked
 // OUT starts the next duty. The first punch is the IN, the last the OUT; a lone punch is an IN, or an OUT when marked so.
-export function machineDays({punches=[],sites=[]}={},{siteName=name=>name}={}){
+//
+// Days HR corrected (owner, 25 Nov 2026): HR Pulse sends the days an HR administrator corrected on Attendance roster ›
+// Manual Biometric beside the punches: [[site index, date, employee code or machine ID, code, In, Out, reason, by]].
+// A corrected day stands in place of what the punches make of it:
+//  - an In (and Out) given: the day is that In and Out; the punches of that duty are not read for it. An Out not after
+//    the In is the next morning, and a duty of the next date that starts by CORRECTED_OUT_GRACE_MINUTES after that Out
+//    is the same night, so it is not read as a day of its own either.
+//  - A, WO, H, CO or L: no biometric day (the person was not at work).
+//  - P, HD or OD with no time: the day stands, with its punches if any, and is not a miss punch.
+export const CORRECTED_OUT_GRACE_MINUTES=180;
+export const HR_NOT_AT_WORK=['A','WO','H','CO','L'];
+const addOneDay=date=>new Date(Date.parse(date+'T00:00:00Z')+86400000).toISOString().slice(0,10);
+const CLOCK=/^([01]\d|2[0-3]):[0-5]\d$/;
+export function hrCorrections({corrections=[],sites=[]}={},{siteName=name=>name}={}){
+ const list=new Map();
+ for(const row of Array.isArray(corrections)?corrections:[]){
+  const [siteAt,date,code,status,inTime,outTime,reason,by]=Array.isArray(row)?row:[];
+  const number=employeeNumber(code),day=text(date),code_=text(status).toUpperCase();
+  if(!number||!/^\d{4}-\d{2}-\d{2}$/.test(day))continue;
+  const inT=CLOCK.test(text(inTime))?text(inTime):'',outT=inT&&CLOCK.test(text(outTime))?text(outTime):'';
+  if(!inT&&!code_)continue;
+  const overnight=Boolean(outT&&outT<=inT);
+  list.set(number+'|'+day,{caliberCode:number,date:day,status:code_,inTime:inT,outTime:outT,site:siteName(text(sites[siteAt])),reason:text(reason),by:text(by),
+   absent:HR_NOT_AT_WORK.includes(code_),overnight,nextDate:addOneDay(day),outAt:overnight?Date.parse(addOneDay(day)+'T'+outT+':00Z'):null});
+ }
+ return list;
+}
+
+export function machineDays({punches=[],sites=[],corrections=[]}={},{siteName=name=>name}={}){
  const byCode=new Map();let unread=0;
+ const fixes=hrCorrections({corrections,sites},{siteName}),nights=new Map([...fixes.values()].filter(c=>c.overnight).map(c=>[c.caliberCode+'|'+c.nextDate,c]));
  for(const row of Array.isArray(punches)?punches:[]){
   const [code,machineId,stamp,siteAt,type]=Array.isArray(row)?row:[];
   const number=employeeNumber(code)||employeeNumber(machineId),m=/^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})/.exec(text(stamp));
@@ -96,6 +125,12 @@ export function machineDays({punches=[],sites=[]}={},{siteName=name=>name}={}){
  const days=new Map();
  const keep=(code,duty)=>{
   const first=duty[0],last=duty.at(-1),lone=duty.length===1;
+  // A duty a correction replaces: its own date was given an In or a not-at-work code, or it is the morning of a
+  // corrected night.
+  const own=fixes.get(code+'|'+first.date);
+  if(own&&(own.inTime||own.absent))return;
+  const night=nights.get(code+'|'+first.date);
+  if(night&&first.at<=night.outAt+CORRECTED_OUT_GRACE_MINUTES*60000)return;
   const line={caliberCode:code,date:first.date,inTime:lone&&first.dir==='OUT'?'':first.time,outTime:lone?(first.dir==='OUT'?first.time:''):last.time,site:first.site||last.site,source:'machine'};
   const key=code+'|'+line.date,held=days.get(key);
   if(!held){days.set(key,line);return;}
@@ -113,6 +148,13 @@ export function machineDays({punches=[],sites=[]}={},{siteName=name=>name}={}){
   }
   if(duty.length)keep(code,duty);
  }
+ for(const [key,c] of fixes){
+  const held=days.get(key),hr={by:c.by,reason:c.reason,status:c.status,inTime:c.inTime,outTime:c.outTime};
+  if(c.absent){days.delete(key);continue;}
+  if(c.inTime){days.set(key,{caliberCode:c.caliberCode,date:c.date,inTime:c.inTime,outTime:c.outTime,site:c.site||held?.site||'',source:'machine',corrected:hr});continue;}
+  // P, HD or OD with no time: present by HR's word.
+  days.set(key,{caliberCode:c.caliberCode,date:c.date,inTime:held?.inTime||'',outTime:held?.outTime||'',site:held?.site||c.site,source:'machine',corrected:hr,presentByHr:true});
+ }
  return {days:[...days.values()],unread};
 }
 
@@ -121,12 +163,22 @@ export const importedDays=lines=>(Array.isArray(lines)?lines:[]).map(l=>({calibe
  .filter(d=>d.caliberCode&&d.date);
 
 export const SOURCE_LABEL={machine:'Machine',imported:'Imported','machine+imported':'Machine + Imported'};
-// One line per employee and date from both: the earliest IN and the latest OUT; the machine's site first.
+// A day HR corrected says so beside its source, with who corrected it and why.
+export const correctionText=day=>day?.corrected?'Corrected in HR'+(day.corrected.by?' by '+day.corrected.by:'')+(day.corrected.reason?': '+day.corrected.reason:''):'';
+export const sourceLabelOf=day=>day?(SOURCE_LABEL[day.source]||'')+(day.corrected?' · corrected in HR':''):'';
+// One line per employee and date from both: the earliest IN and the latest OUT; the machine's site first. A day HR
+// corrected keeps the corrected In and Out (the imported punches of it are what HR corrected).
 export function mergeBiometricDays(...lists){
  const days=new Map();
  for(const d of lists.flat()){
   const key=d.caliberCode+'|'+d.date,held=days.get(key);
   if(!held){days.set(key,{...d});continue;}
+  if(held.corrected||d.corrected){
+   const fixed=held.corrected?held:{...d},other=held.corrected?d:held;
+   if(!fixed.site)fixed.site=other.site;
+   if(fixed.source!==other.source)fixed.source='machine+imported';
+   days.set(key,fixed);continue;
+  }
   if(d.inTime&&(!held.inTime||d.inTime<held.inTime))held.inTime=d.inTime;
   if(d.outTime&&(!held.outTime||d.outTime>held.outTime))held.outTime=d.outTime;
   if(!held.site)held.site=d.site;
@@ -159,7 +211,7 @@ export function tripBiometricCheck({days=[],lines=[],lockedDays=[],people=[],sit
  // A day with no site of its own (an uploaded device file) is a day at the chosen site.
  const punchedHere=d=>!d.site||canonicalSiteName(d.site)===siteKey;
  const inFile=new Set(days.filter(punchedHere).map(d=>d.caliberCode));
- const sourceOf=new Map(days.map(d=>[d.caliberCode+'|'+d.date,d.source||'']));
+ const dayOf=new Map(days.map(d=>[d.caliberCode+'|'+d.date,d]));
  // Drivers and operators only: Employee Master says so, or the person is on a trip card of this site.
  const scope=code=>onCards.has(code)||isDriverOrOperator(master.get(code)?.designation);
  const notInMaster=[...inFile].filter(code=>!master.get(code)?.found&&!onCards.has(code)).sort((a,b)=>a-b);
@@ -171,8 +223,8 @@ export function tripBiometricCheck({days=[],lines=[],lockedDays=[],people=[],sit
  // A mismatch of this site: the trip card is here, or the punch is.
  const ofSite=f=>canonicalSiteName(f.siteKey||f.site)===siteKey||(f.type!=='no-biometric'&&canonicalSiteName(f.punchSite)===siteKey);
  const findings=found.filter(f=>KEYS.includes(f.type)&&ofSite(f)).map(f=>{
-  const m=master.get(f.caliberCode),source=f.type==='no-biometric'?'':sourceOf.get(f.caliberCode+'|'+f.date)||'';
-  return {...f,employeeId:'CMLL'+f.caliberCode,employeeName:m?.name||f.employeeName||'',designation:m?.designation||'',label:FINDINGS.find(x=>x.key===f.type).label,source,sourceLabel:SOURCE_LABEL[source]||''};
+  const m=master.get(f.caliberCode),day=f.type==='no-biometric'?null:dayOf.get(f.caliberCode+'|'+f.date),source=day?.source||'';
+  return {...f,employeeId:'CMLL'+f.caliberCode,employeeName:m?.name||f.employeeName||'',designation:m?.designation||'',label:FINDINGS.find(x=>x.key===f.type).label,source,sourceLabel:sourceLabelOf(day),hrCorrection:correctionText(day),detail:[f.detail,correctionText(day)].filter(Boolean).join(' · ')};
  });
  // One line per person: days on the device, days on trip cards, days on both, and each finding.
  const people_=new Map();
@@ -192,7 +244,7 @@ export function tripBiometricCheck({days=[],lines=[],lockedDays=[],people=[],sit
   const dates=[...new Set([...p.bioDays,...p.tripDays,...findingByDate.keys()])].sort();
   const details=dates.map(date=>{
    const bio= bioByDate.get(date),cards=dutyByDate.get(date)||[],finding=findingByDate.get(date);
-   return {date,biometric:Boolean(bio),logBook:cards.length>0,both:Boolean(bio&&cards.length),sourceLabel:SOURCE_LABEL[bio?.source]||'',punchSite:bio?.site||'',inTime:bio?.inTime||'',outTime:bio?.outTime||'',
+   return {date,biometric:Boolean(bio),logBook:cards.length>0,both:Boolean(bio&&cards.length),sourceLabel:sourceLabelOf(bio),punchSite:bio?.site||'',inTime:bio?.inTime||'',outTime:bio?.outTime||'',
     shift:[...new Set(cards.map(l=>l.shift).filter(Boolean))].join(', '),tripSite:[...new Set(cards.map(l=>l.site).filter(Boolean))].join(', '),equipment:[...new Set(cards.flatMap(l=>String(l.doors||l.equipment||'').split(',')).map(text).filter(Boolean))].join(', '),
     books:[...new Set(cards.flatMap(l=>Array.isArray(l.books)?l.books:String(l.books||l.logBook||'').split(',')).map(text).filter(Boolean))].join(', '),findingType:finding?.type||'',findingLabel:finding?.label||'',detail:finding?.detail||''};
   });
