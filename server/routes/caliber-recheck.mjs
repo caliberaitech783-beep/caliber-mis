@@ -46,6 +46,7 @@ import {cardRecheck} from '../../shared/caliber-card-recheck.mjs';
 import {machineDays,importedDays,mergeBiometricDays} from '../../shared/trip-biometric-check.mjs';
 import {employeeNumber,hrSiteName} from '../../shared/hr-employee-master.mjs';
 import {createHrEmployeeSync} from '../services/hr-employee-sync.mjs';
+import {readHrPunchesWithDayBefore} from '../services/hr-machine-punches.mjs';
 import {machineCategoryIssues} from '../../shared/machine-category-recheck.mjs';
 import {machineRoster,ROSTER_VIEWS} from '../../shared/machine-roster.mjs';
 
@@ -254,7 +255,7 @@ export function registerCaliberRecheck(app,{pool,requireSession,requireAdministr
  const readPunches=async(from,to)=>{
   const machine={connected:false,error:''};
   const [machineList,importedList]=await Promise.all([
-   Promise.resolve().then(()=>hrPunches({from,to})).then(answer=>{machine.connected=true;return machineDays(answer,{siteName:name=>hrSiteName(name)||name}).days;},
+   Promise.resolve().then(()=>readHrPunchesWithDayBefore(hrPunches,{from,to})).then(answer=>{machine.connected=true;return machineDays(answer,{siteName:name=>hrSiteName(name)||name}).days;},
     error=>{machine.error=error?.status===503?'Pulse-II is not connected to HR Pulse, so the machine punches could not be read.':'HR Pulse did not give the machine punches ('+(error?.message||'no answer')+').';return [];}),
    pool.query(IMPORTED_PUNCHES_SQL,[from,to]).then(result=>importedDays(result.rows.map(row=>({caliberCode:row.caliber_code,date:row.date,inTime:row.in_time,outTime:row.out_time,site:row.site})))).catch(error=>{if(error.code==='42P01'||/does not exist/.test(error.message))return [];throw error;}),
   ]);

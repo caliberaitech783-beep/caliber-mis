@@ -8,6 +8,7 @@
 // when it does not answer, the attendance read goes on with the imported punches, exactly as without punches.
 import {employeeNumber,hrSiteName} from '../../shared/hr-employee-master.mjs';
 import {canonicalSiteName} from '../../shared/site-location.mjs';
+import {readHrPunchesWithDayBefore} from './hr-machine-punches.mjs';
 import {importedDays,machineDays,mergeBiometricDays} from '../../shared/trip-biometric-check.mjs';
 
 const IMPORTED_PUNCHES_SQL="SELECT caliber_code,punch_date::text AS date,in_time,out_time,site FROM mis_biometric_punches WHERE punch_date BETWEEN $1 AND $2 LIMIT 100001";
@@ -35,7 +36,7 @@ export function createAttendancePunches({pool,hrPunches=null,waitMs=10_000,keepM
   if(held&&held.until>now())return held.days;
   let timer;
   const days=Promise.race([
-   Promise.resolve().then(()=>hrPunches({from,to})).then(answer=>machineDays(answer,{siteName:name=>hrSiteName(name)||name}).days),
+   Promise.resolve().then(()=>readHrPunchesWithDayBefore(hrPunches,{from,to})).then(answer=>machineDays(answer,{siteName:name=>hrSiteName(name)||name}).days),
    new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('HR Pulse took too long')),waitMs);}),
   ]).finally(()=>clearTimeout(timer));
   const entry={days:days.catch(()=>{entry.until=now()+failedKeepMs;return [];}),until:now()+keepMs};

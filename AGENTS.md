@@ -184,3 +184,11 @@ Set by the owner on 25 November 2026: a vehicle and equipment roster, site-wise 
 - **Step 1** one line per site: active VLB (Vehicle), ELB (Equipment) and LMV machines in the Equipment Master, all active, category not set (judged by group) and not active. Every figure opens **Step 2** under it with those machines (door, registration, book, name, category, group, make · model, status). The roster has no dates, so it has no date by shift step.
 - The figures use the same rules as the batch page's machine coverage (`siteRoster` in `shared/batch-fleet-coverage.mjs`), so they are the machines a batch of the site has to answer for.
 - `GET /api/caliber-recheck/roster`; rule `shared/machine-roster.mjs`, screen `src/machine-roster.jsx`; `test/machine-roster.test.mjs` checks it.
+
+# HR's corrected attendance reaches the biometric mismatch
+
+Set by the owner on 25 November 2026: a day an HR administrator corrects on HR Pulse's Attendance roster › Manual Biometric must show in Pulse-II's Biometric vs trip card mismatch too.
+
+- HR Pulse sends its corrected days beside the machine punches (`corrections` in caliber-hr `server/mis-biometric-punches.mjs`). Pulse-II's `machineDays` (`shared/trip-biometric-check.mjs`) puts the corrected In / Out in place of that day's punches; an Out not after the In is the next morning, and a next-date duty that starts within 3 hours of it is the same night. A, WO, H, CO or L leave no biometric day; P, HD or OD with no time is present and not a miss punch. Imported punches of that day never undo the correction. The line says "corrected in HR" with who and why.
+- HR Pulse is asked from the day before the first date (`server/services/hr-machine-punches.mjs`), so a night duty that began that evening is read whole and its morning Out is not a day of the first date. With 31 dates asked, the day before is a second small read.
+- Used by Attendance Sheet Mismatch, Caliber Punch Re-check and the attendance "card + punch" read. `test/hr-punch-corrections.test.mjs` checks this.

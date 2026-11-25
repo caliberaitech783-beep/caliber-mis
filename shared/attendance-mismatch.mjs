@@ -151,7 +151,8 @@ export function compareAttendance({punches=[],duties=[],lockedDays=[],from='',to
   const shift=own?.shift||shiftOfPunch(p.inTime||p.outTime,site||own?.site,masters);
   const base={caliberCode:code,employeeName:p.employeeName||own?.employeeName||'',date:p.date,shift,site:own?own.site:siteLabel,siteKey:own?canonicalSiteName(own.site)||own.site:site||NO_SITE,
    inTime:p.inTime||'',outTime:p.outTime||'',punchSite:siteLabel,tripSite,tripShift:shiftsOf(list),equipment:joined(list,'equipment'),doors:joined(list,'doors'),books:joined(list,'books')};
-  if(!p.inTime||!p.outTime)add('miss-punch',base,{detail:p.inTime?'In punch '+p.inTime+', no Out punch.':'Out punch '+p.outTime+', no In punch.'});
+  // A day HR marked P, HD or OD with no time (caliber-hr Manual Biometric correction) is not a miss punch.
+  if((!p.inTime||!p.outTime)&&!p.presentByHr)add('miss-punch',base,{detail:p.inTime?'In punch '+p.inTime+', no Out punch.':'Out punch '+p.outTime+', no In punch.'});
   if(!list.length){
    const dayLocked=site?locked.has(site+'|'+p.date):lockedDates.has(p.date);
    if(dayLocked)add('no-trip-card',base,{detail:'Punched on the biometric device, no trip card, log book or zero-trip entry.'});
