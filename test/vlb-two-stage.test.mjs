@@ -7,6 +7,7 @@ import {LOG_BOOK_SCHEMA,registerLogBooks} from '../server/routes/log-book.mjs';
 import {twoStageEnabled,validateFleetEntry,buildMachineSnapshot,buildFleetList,closureBlockers,fleetProgress,activeSiteHolds,holdSummary,machineReportRows} from '../server/rules/vlb-two-stage.mjs';
 process.env.VLB_BATCH_ORDER_FROM='off'; // The configured shift-order gate is covered separately.
 process.env.VLB_BATCH_LOCK_PAUSE_UNTIL='off'; // The stage locks are tested here; the five-day pause is covered in batch-lock-pause.test.mjs.
+process.env.VLB_MULTI_DAY_BATCHES_UNTIL='off'; // The seven-day multi-day window is covered in multi-day-batches.test.mjs.
 
 const assets=[
  {id:'1',category:'Vehicle',door:'V1',currentLocation:'Sasti OC'},

@@ -1,6 +1,7 @@
 import {canonicalSiteName} from '../../shared/site-location.mjs';
 import {batchStage} from './vlb-two-stage.mjs';
 import {batchLocksPaused} from '../../shared/batch-lock-pause.mjs';
+import {multiDayBatches} from '../../shared/multi-day-batches.mjs';
 
 const stageOrder=['vlb_open','lmv_open','elb_open'];
 const stageNames=['VLB','LMV','ELB'];
@@ -23,7 +24,8 @@ export function batchStageWaits(rows){
 
 export async function readBatchStageWait(client,batch){
  // No batch waits for an older one while locking is paused (shared/batch-lock-pause.mjs).
- if(batchLocksPaused())return '';
+ // Nor while several days' batches may be open together (shared/multi-day-batches.mjs).
+ if(batchLocksPaused()||multiDayBatches())return '';
  if(!active(batch)||batchStage(batch)==='vlb_open')return '';
  const {rows}=await client.query(`
   SELECT older.id,older.name,older.site,older.stage

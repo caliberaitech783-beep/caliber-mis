@@ -6,6 +6,7 @@ import {PGlite} from '@electric-sql/pglite';
 import {registerVlbBatches} from '../server/routes/vlb-batches.mjs';
 import {LOG_BOOK_SCHEMA} from '../server/routes/log-book.mjs';
 import {previousBatchScope,batchOrderFrom,VLB_BATCH_ORDER_FROM} from '../shared/vlb-batch-order.mjs';
+process.env.VLB_MULTI_DAY_BATCHES_UNTIL='off'; // The seven-day multi-day window is covered in multi-day-batches.test.mjs.
 
 test('each shift waits for the shift before it; the first shift of a day waits for the last of the day before',()=>{
  const from='2026-11-19';
