@@ -3,9 +3,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {pulseShiftStatus,sitePulseRequests,shiftWindow,pulseTime} from '../shared/pulse-shift-status.mjs';
 import {PGlite} from '@electric-sql/pglite';
-import {batchFleetCoverage,siteRoster,assetCoverageKind,idleAnswerIssue,pulseAnswerStatus,answerMachineIssue,IDLE_REASONS} from '../shared/batch-fleet-coverage.mjs';
-import {BATCH_MACHINE_ANSWER_SCHEMA,readBatchMachineAnswers,saveIdleAnswer,savePulseAnswer,clearMachineAnswer} from '../server/rules/batch-machine-answers.mjs';
+import {batchFleetCoverage,siteRoster,assetCoverageKind,idleAnswerIssue,answerMachineIssue,IDLE_REASONS} from '../shared/batch-fleet-coverage.mjs';
+import {BATCH_MACHINE_ANSWER_SCHEMA,readBatchMachineAnswers,saveIdleAnswer,clearMachineAnswer} from '../server/rules/batch-machine-answers.mjs';
 
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 const asset=(id,door,category,site='Sasti OC',extra={})=>({id,door,category,currentLocation:site,equipmentName:door+' machine',...extra});
@@ -70,27 +71,68 @@ test('the batch page gets the coverage from the stage details and shows it',()=>
  assert.match(panel,/book&&<ReportSection[^>]*'Step 2 · '/,'Step 2 opens under Step 1');
 });
 
-// Part 2 (owner, 25 Nov 2026): a VLB or LMV machine with no card is answered by its breakdown in Pulse-1 or an idle reason.
-test('a Pulse-1 whole-shift breakdown or an idle reason answers a VLB / LMV machine; a part-shift breakdown still wants a card',()=>{
- assert.equal(pulseAnswerStatus(8,8),'pulse');
- assert.equal(pulseAnswerStatus(12,12),'pulse');
- assert.equal(pulseAnswerStatus(3,8),'pulse_partial');
- assert.equal(pulseAnswerStatus(0,8),'','no breakdown in Pulse-1 answers nothing');
- const coverage=batchFleetCoverage({assets,site:'Sasti OC',vlbRecords:[{asset_id:'1',data:{}}],answers:[
-  {book:'vlb',assetId:'2',status:'pulse',breakdownHours:8,shiftHours:8},
-  {book:'vlb',assetId:'3',status:'pulse_partial',breakdownHours:2,shiftHours:8},
-  {book:'lmv',assetId:'6',status:'no_operator',reason:'Driver on leave'},
-  {book:'lmv',assetId:'7',status:'standby',reason:'Kept for GM visit'},
-  {book:'vlb',assetId:'1',status:'not_in_use',reason:'old answer'},
- ]});
+
+// Part 2 (owner, 25 Nov 2026): "if any vehicle or equipment is in maintenance or idle it should fetch from pulse.cmll.in".
+// What Pulse-1 holds for the shift is read by itself for every VLB and LMV machine; only the rest take a reason by hand.
+const window=shiftWindow('2026-11-20','05:00:00',8);// 05:00-13:00 IST
+const NOW=Date.parse('2026-11-21T00:00:00+05:30');
+const request=(door,start,closedAt,extra={})=>({ref:'BD-'+door,site:'Sasti OC',door,start,closedAt,description:'Engine work',...extra});
+
+test('the shift window is the report date and Shift Master start in India, for its hours',()=>{
+ assert.equal(new Date(window.start).toISOString(),'2026-11-19T23:30:00.000Z');
+ assert.equal(window.hours,8);
+ assert.equal(shiftWindow('2026-11-20','5:00',8).start,window.start,'a one-digit hour reads the same');
+ assert.equal(shiftWindow('2026-11-20','',8),null);
+ assert.ok(Number.isNaN(pulseTime('—')));
+});
+
+test('Pulse-1: a breakdown covering the shift is whole; part of it is not; an idle request gives its reason; other sites and machines do not count',()=>{
+ const requests=sitePulseRequests([
+  request('DT-01','2026-11-19 22:00','2026-11-20 14:00'),
+  request('DT-02','2026-11-20 07:00','2026-11-20 09:30'),
+  request('DT-02','2026-11-20 09:00','2026-11-20 10:00'),
+  request('DT-03','2026-11-18 10:00','—',{vehicleIdle:true,idealApprovedAt:'2026-11-20 08:00',idleReason:'No work',description:'Face closed'}),
+  request('DT-01','2026-11-20 06:00','2026-11-20 08:00',{site:'Durgapur'}),
+  request('DT-01','2026-11-20 06:00','2026-11-20 08:00',{archivedAt:'2026-11-20'}),
+ ],'Sasti OC');
+ const one=pulseShiftStatus(assets[0],requests,window,NOW);
+ assert.deepEqual([one.breakdownHours,one.wholeShift,one.idle],[8,true,null]);
+ assert.deepEqual(one.references,['BD-DT-01']);
+ const two=pulseShiftStatus(assets[1],requests,window,NOW);
+ assert.deepEqual([two.breakdownHours,two.wholeShift],[3,false],'overlapping requests are merged: 07:00-10:00');
+ const three=pulseShiftStatus(assets[2],requests,window,NOW);
+ assert.deepEqual(three.idle,{reason:'No work',remarks:'Face closed',reference:'BD-DT-03'});
+ assert.equal(three.breakdownHours,3,'the time before the idle approval (05:00-08:00) is breakdown');
+ const lmv=pulseShiftStatus(assets[5],requests,window,NOW);
+ assert.deepEqual([lmv.breakdownHours,lmv.idle],[0,null]);
+});
+
+test('a shift still running counts a breakdown from its start until now as whole',()=>{
+ const requests=sitePulseRequests([request('DT-01','2026-11-20 04:00','—')],'Sasti OC');
+ const status=pulseShiftStatus(assets[0],requests,window,Date.parse('2026-11-20T09:00:00+05:30'));
+ assert.deepEqual([status.breakdownHours,status.wholeShift],[4,true]);
+});
+
+test('coverage: Pulse-1 answers a whole-shift breakdown and an idle request; a part-shift breakdown and a card stay as they are',()=>{
+ const rows=[request('DT-02','2026-11-19 22:00','2026-11-20 14:00'),request('DT-03','2026-11-20 06:00','2026-11-20 07:00'),
+  request('LMV-01','2026-11-19 10:00','—',{vehicleIdle:true,idleReason:'Standby'}),request('DT-01','2026-11-19 22:00','2026-11-20 14:00')];
+ const coverage=batchFleetCoverage({assets,site:'Sasti OC',vlbRecords:[{asset_id:'1',data:{}}],pulse:{rows,window,now:NOW,readAt:NOW}});
  const {vlb,lmv}=coverage.books;
- assert.deepEqual([vlb.total,vlb.answered,vlb.cards,vlb.pulse,vlb.idle,vlb.remaining],[3,2,1,1,0,1]);
- assert.equal(vlb.rows.find(r=>r.door==='DT-01').answer,'card','a card wins over a saved answer');
+ assert.equal(coverage.pulseRead.ok,true);
+ assert.equal(vlb.rows.find(r=>r.door==='DT-01').answer,'card','a card wins over Pulse-1');
+ assert.equal(vlb.rows.find(r=>r.door==='DT-01').pulse.wholeShift,true,'Pulse-1 is still shown beside it');
+ assert.equal(vlb.rows.find(r=>r.door==='DT-02').answer,'pulse');
+ assert.equal(vlb.rows.find(r=>r.door==='DT-03').answer,'');
  assert.match(vlb.rows.find(r=>r.door==='DT-03').note,/card needed/);
- assert.deepEqual(vlb.missing.map(r=>r.door),['DT-03']);
- assert.deepEqual([lmv.answered,lmv.idle,lmv.complete],[2,2,true]);
- assert.equal(vlb.takesAnswers,true);
- assert.equal(coverage.books.elb.takesAnswers,false,'ELB is answered on its fleet list');
+ assert.deepEqual([vlb.total,vlb.cards,vlb.pulse,vlb.idle,vlb.remaining],[3,1,1,0,1]);
+ assert.equal(lmv.rows.find(r=>r.door==='LMV-01').answer,'pulse_idle');
+ assert.deepEqual([lmv.idle,lmv.remaining],[1,1]);
+ // A reason saved by hand wins over Pulse-1; without the Pulse copy, nothing is taken from it and the page says so.
+ const byHand=batchFleetCoverage({assets,site:'Sasti OC',pulse:{rows,window,now:NOW},answers:[{book:'vlb',assetId:'2',status:'no_work',reason:'Face closed'}]});
+ assert.equal(byHand.books.vlb.rows.find(r=>r.door==='DT-02').answer,'no_work');
+ const unread=batchFleetCoverage({assets,site:'Sasti OC',pulse:{error:'Pulse-1 did not answer in time.'}});
+ assert.deepEqual(unread.pulseRead,{ok:false,error:'Pulse-1 did not answer in time.'});
+ assert.equal(unread.books.vlb.remaining,3);
 });
 
 test('an idle reason needs a VLB / LMV book, a listed reason and written details; the machine must be of the site and book',()=>{
@@ -105,7 +147,7 @@ test('an idle reason needs a VLB / LMV book, a listed reason and written details
  assert.match(answerMachineIssue(assets[8],{site:'Sasti OC',book:'vlb'}),/not active/);
 });
 
-test('answers are saved once per batch and machine, replaced, cleared, and refused on a closed batch',async()=>{
+test('answers by hand are saved once per batch and machine, replaced, cleared, and refused on a closed batch',async()=>{
  const db=new PGlite();
  await db.exec('CREATE TABLE mis_vlb_batches(id UUID PRIMARY KEY);CREATE TABLE master_records(id BIGINT PRIMARY KEY,master_name TEXT,record_data JSONB);');
  await db.exec(BATCH_MACHINE_ANSWER_SCHEMA);
@@ -115,32 +157,27 @@ test('answers are saved once per batch and machine, replaced, cleared, and refus
  const batch={id,name:'B1',site:'Sasti OC',closed_at:null};
  const saved=await saveIdleAnswer(db,batch,'2',{book:'vlb',status:'no_operator',reason:'Driver absent'},'mis1');
  assert.deepEqual([saved.status,saved.reason],['no_operator','Driver absent']);
+ await saveIdleAnswer(db,batch,'2',{book:'vlb',status:'standby',reason:'GM visit'},'mis1');
  await assert.rejects(saveIdleAnswer(db,batch,'6',{book:'vlb',status:'no_work',reason:'xyz'},'mis1'),/does not belong to the VLB book/);
- const none=await savePulseAnswer(db,batch,'3','vlb',{breakdownHours:0,shiftHours:8,breakdowns:[]},'mis1');
- assert.equal(none.saved,false);
- assert.match(none.message,/no breakdown/);
- const pulse=await savePulseAnswer(db,batch,'2','vlb',{breakdownHours:8,shiftHours:8,breakdowns:[{reference:'BD-7',description:'Engine overheating'}]},'mis1');
- assert.deepEqual([pulse.saved,pulse.status,pulse.reason],[true,'pulse','Engine overheating'],'Pulse-1 replaces the earlier answer');
  const rows=await readBatchMachineAnswers(db,batch);
- assert.equal(rows.length,1);
- assert.equal(rows[0].breakdownHours,8);
- assert.equal(rows[0].pulse.breakdowns[0].reference,'BD-7');
+ assert.deepEqual(rows.map(r=>[r.assetId,r.status,r.reason]),[['2','standby','GM visit']]);
  assert.deepEqual(await clearMachineAnswer(db,batch,'2'),{cleared:true});
  assert.equal((await readBatchMachineAnswers(db,batch)).length,0);
  await assert.rejects(saveIdleAnswer(db,{...batch,closed_at:new Date()},'2',{book:'vlb',status:'no_work',reason:'xyz'},'mis1'),/closed/);
  await db.close();
 });
 
-test('the routes read Pulse-1 before the batch lock and write an audit line; the panel offers Pulse-1, idle reasons and Clear',()=>{
+test('the batch routes read the Pulse-1 copy before the batch lock, with a time limit, for the page, Lock VLB, Lock LMV and Close',()=>{
  const route=read('server/routes/vlb-batches.mjs');
- const pulse=route.slice(route.indexOf("'/api/vlb-batches/:id/machines/:assetId/pulse'"),route.indexOf("'/api/vlb-batches/:id/machines/:assetId/answer'"));
- assert.ok(pulse.indexOf('readBatchShiftBreakdowns(pool')>0);
- assert.ok(pulse.indexOf('readBatchShiftBreakdowns(pool')<pulse.indexOf('batchTransaction('),'Pulse-1 is read outside the lock');
- assert.match(pulse,/machine_answer_pulse/);
+ assert.doesNotMatch(route,/machines\/:assetId\/pulse/,'no Fetch Pulse-1 by hand any more');
+ assert.match(route,/const coveragePulseRows=async req=>\{[\s\S]*?Promise\.race\(\[prefetchFleetBreakdownRows\(req\.batchActor\?\.login\)[\s\S]*?5000/);
+ for(const action of ['close','lock-vlb','lock-lmv'])assert.ok(route.includes("app.post('/api/vlb-batches/:id/"+action+"',...protect,handle(async(req,res)=>{const pulseRows=await coveragePulseRows(req);await batchTransaction("),action+' reads Pulse-1 before its lock');
  assert.match(route,/app\.put\('\/api\/vlb-batches\/:id\/machines\/:assetId\/answer'[\s\S]*?machine_answer_idle/);
  assert.match(route,/app\.delete\('\/api\/vlb-batches\/:id\/machines\/:assetId\/answer'[\s\S]*?machine_answer_cleared/);
- assert.match(read('server/rules/vlb-batch-stages.mjs'),/answers:await readBatchMachineAnswers\(client,batch\)/);
  assert.match(route,/await pool\.query\(BATCH_MACHINE_ANSWER_SCHEMA\)/);
+ const stages=read('server/rules/vlb-batch-stages.mjs');
+ assert.match(stages,/answers:await readBatchMachineAnswers\(client,batch\),pulse\}/);
  const panel=read('src/batch-fleet-coverage.jsx');
- for(const label of ['Fetch Pulse-1','Idle reason…','>Clear<','Fetch Pulse-1 for all'])assert.ok(panel.includes(label),label);
+ assert.doesNotMatch(panel,/Fetch Pulse-1/);
+ for(const label of ["label:'Pulse-1 (this shift)'",'Idle reason…','>Clear<','are read from Pulse-1 (pulse.cmll.in)'])assert.ok(panel.includes(label),label);
 });

@@ -1,7 +1,7 @@
-// The answer of a VLB or LMV machine that has no card in a batch (owner, 25 Nov 2026): its breakdown /
-// maintenance read from Pulse-1, or an idle reason. One answer per batch and machine. A card saved later
+// The answer by hand of a VLB or LMV machine that has no card in a batch and nothing in Pulse-1 (owner, 25 Nov 2026):
+// an idle reason. (Answers saved as 'pulse' by an earlier version still count.) One answer per batch and machine. A card saved later
 // for the machine wins over it (shared/batch-fleet-coverage.mjs); nothing here writes a card.
-import {ANSWER_BOOKS,IDLE_REASONS,idleAnswerIssue,pulseAnswerStatus,answerMachineIssue} from '../../shared/batch-fleet-coverage.mjs';
+import {ANSWER_BOOKS,IDLE_REASONS,idleAnswerIssue,answerMachineIssue} from '../../shared/batch-fleet-coverage.mjs';
 
 export const BATCH_MACHINE_ANSWER_SCHEMA=`
  CREATE TABLE IF NOT EXISTS mis_batch_machine_answers(
@@ -43,18 +43,6 @@ export async function saveIdleAnswer(client,batch,assetId,input={},actor){
  const issue=idleAnswerIssue({book,status,reason});
  if(issue)fail(issue,400);
  return writeAnswer(client,batch,assetId,{book,status,reason},actor);
-}
-
-// pulse: what readBatchShiftBreakdowns returned for the machine. No breakdown in Pulse-1 saves nothing.
-export async function savePulseAnswer(client,batch,assetId,book,pulse,actor){
- await checkMachine(client,batch,assetId,book);
- const status=pulseAnswerStatus(pulse?.breakdownHours,pulse?.shiftHours);
- if(!status)return {saved:false,assetId:String(assetId),breakdownHours:Number(pulse?.breakdownHours)||0,shiftHours:pulse?.shiftHours,
-  message:'Pulse-1 shows no breakdown or maintenance for this machine in this shift. Add its card, or choose an idle reason.'};
- const breakdowns=(pulse.breakdowns||[]).slice(0,20).map(item=>({reference:text(item.reference),description:text(item.description).slice(0,300),hours:item.hours??item.breakdownHours??null}));
- const reason=breakdowns.map(item=>item.description||item.reference).filter(Boolean).join('; ').slice(0,500)||'Breakdown recorded in Pulse-1';
- const saved=await writeAnswer(client,batch,assetId,{book,status,reason,breakdownHours:Number(pulse.breakdownHours),shiftHours:Number(pulse.shiftHours),pulse:{breakdowns}},actor);
- return {saved:true,...saved,message:status==='pulse'?'Breakdown for the whole shift in Pulse-1: answered.':'Pulse-1 shows a part-shift breakdown ('+pulse.breakdownHours+' of '+pulse.shiftHours+' h), so the machine also worked: add its card.'};
 }
 
 export async function clearMachineAnswer(client,batch,assetId){

@@ -46,5 +46,7 @@ export function coverageBlockers(coverage,books,stop){
   const how=key==='elb'?'Save its ELB on the Equipment ELB list (working, breakdown, maintenance, no operator or not in use).':'Add the card, fetch Pulse-1 or give an idle reason under Machine coverage.';
   out.push(`Every ${book.label} machine needs an answer: ${book.answered}/${book.total} answered; no answer yet: ${shown.join(', ')}${more>0?` and ${more} more`:''}. ${how}`);
  }
+ // Machines in breakdown or idle in Pulse-1 are answered from it; when it could not be read they may be among those listed.
+ if(out.length&&coverage.pulseRead&&!coverage.pulseRead.ok&&books.some(key=>key!=='elb'))out.push('Pulse-1 could not be read just now ('+coverage.pulseRead.error+'), so machines in breakdown or idle there are not counted: try again in a minute.');
  return out;
 }

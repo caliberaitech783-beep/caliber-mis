@@ -42,7 +42,9 @@ test('Lock VLB and Lock LMV wait for every machine of their book; Close waits fo
  const masters=[
   ['Equipment master',{category:'Vehicle',door:'V1',currentLocation:'Sasti OC',equipmentName:'Tipper'}],
   ['Equipment master',{category:'Vehicle',door:'V2',currentLocation:'Sasti OC',equipmentName:'Tipper'}],
+  ['Equipment master',{category:'Vehicle',door:'V3',currentLocation:'Sasti OC',equipmentName:'Tipper'}],
   ['Equipment master',{category:'LMV',door:'L1',currentLocation:'Sasti OC',equipmentName:'Pickup'}],
+  ['Equipment master',{category:'LMV',door:'L2',currentLocation:'Sasti OC',equipmentName:'Pickup'}],
   ['Equipment master',{category:'Equipment',door:'VPC-019',equipmentName:'VPC 019',group:'Excavator',currentLocation:'Sasti OC'}],
   ['Users & employees',{login:'alice',employee:'Alice',employeeId:'CM-1',userRoles:'MIS User',status:'active',site:'Sasti OC'}],
   ['Shift Master',{site:'Sasti OC',shiftName:'Shift A',shiftCode:'I',startTime:'05:00:00',endTime:'13:00:00'}],
@@ -50,46 +52,50 @@ test('Lock VLB and Lock LMV wait for every machine of their book; Close waits fo
  const ids={};for(const [name,data] of masters){const {rows}=await db.query('INSERT INTO master_records(master_name,record_data) VALUES($1,$2) RETURNING id',[name,JSON.stringify(data)]);ids[data.door||data.login||data.shiftName]=String(rows[0].id);}
  const query=(sql,args)=>sql.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):!args&&sql.includes(';')?db.exec(sql):db.query(sql,args);
  const pool={query,connect:async()=>({query,release(){}})};
+ // Pulse-1 for the shift (20 Nov, 05:00-13:00): V2 in breakdown all shift, L1 idle (approved), nothing for V3 and L2.
+ const pulseRequests=[
+  {ref:'BD-501',site:'Sasti OC',door:'V2',start:'2026-11-20 03:00',closedAt:'2026-11-20 15:00',description:'Gearbox'},
+  {ref:'BD-502',site:'Sasti OC',door:'L1',start:'2026-11-19 10:00',closedAt:'—',vehicleIdle:true,idealApprovedAt:'2026-11-19 12:00',idleReason:'No work'},
+ ];
  const app=express();app.use(express.json({limit:'5mb'}));
  const requireSession=(req,res,next)=>{if(!req.headers.authorization)return res.status(401).json({error:'Sign in'});req.session={login:req.headers.authorization,role:'super',permissions:{adminLevel:'Admin'}};next()};
- registerLogBooks(app,{pool,requireSession,requireAdministrator:(req,res,next)=>next(),pulseMasterSync:{status:()=>({connected:false}),readBreakdownRequests:async()=>[]}});
+ registerLogBooks(app,{pool,requireSession,requireAdministrator:(req,res,next)=>next(),pulseMasterSync:{status:()=>({connected:false}),readBreakdownRequests:async()=>pulseRequests}});
  app.use((error,req,res,next)=>res.status(500).json({error:error.message}));
  const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.on('listening',resolve));t.after(()=>{server.closeAllConnections();server.close()});
  const base=`http://127.0.0.1:${server.address().port}`;
  const call=async(route,method='GET',body)=>{const r=await fetch(base+route,{method,headers:{Authorization:'alice','Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,data:await r.json()}};
- const created=await call('/api/vlb-batches','POST',{site:'Sasti OC',date:'2026-12-18',shift:'S1',requestKey:randomUUID()});
+ const created=await call('/api/vlb-batches','POST',{site:'Sasti OC',date:'2026-11-20',shift:'S1',requestKey:randomUUID()});
  assert.equal(created.status,201,JSON.stringify(created.data));
  const batch='/api/vlb-batches/'+created.data.id;
- const card=await call('/api/log-books/vehicle','POST',{bookDate:'2026-12-18',location:'Sasti OC',assetId:ids.V1,employeeId:ids.alice,shiftId:ids['Shift A'],shiftHours:8,cardShift:'I',openingKmr:1000,closingKmr:1050,openingHmr:100,closingHmr:106,timeMode:'without',trips:[{equipmentName:'VPC 019',tripCount:3}],requestKey:randomUUID()});
+ const card=await call('/api/log-books/vehicle','POST',{bookDate:'2026-11-20',location:'Sasti OC',assetId:ids.V1,employeeId:ids.alice,shiftId:ids['Shift A'],shiftHours:8,cardShift:'I',openingKmr:1000,closingKmr:1050,openingHmr:100,closingHmr:106,timeMode:'without',trips:[{equipmentName:'VPC 019',tripCount:3}],requestKey:randomUUID()});
  assert.equal(card.status,201,JSON.stringify(card.data));
 
- // V2 has no card: the page says so in red and Lock VLB is refused, naming it.
+ // Pulse-1 answers V2 (breakdown) and L1 (idle) by itself; V3 has nothing, so Lock VLB is refused, naming only V3.
  let view=await call(batch);
- assert.equal(view.data.fleetCoverage.mode,'stop');
- assert.deepEqual(view.data.fleetCoverage.books.vlb.missing.map(row=>row.door),['V2']);
+ const coverage=view.data.fleetCoverage;
+ assert.equal(coverage.mode,'stop');
+ assert.equal(coverage.pulseRead.ok,true,JSON.stringify(coverage.pulseRead));
+ const v2=coverage.books.vlb.rows.find(row=>row.door==='V2');
+ assert.equal(v2.answer,'pulse');assert.deepEqual([v2.pulse.breakdownHours,v2.pulse.references],[8,['BD-501']]);
+ assert.equal(coverage.books.lmv.rows.find(row=>row.door==='L1').answer,'pulse_idle');
+ assert.deepEqual(coverage.books.vlb.missing.map(row=>row.door),['V3']);
  assert.equal(view.data.canLockVlb,false);
- assert.match(view.data.lockBlockers.join(' '),/Every VLB machine needs an answer: 1\/2 answered; no answer yet: V2\./);
+ assert.match(view.data.lockBlockers.join(' '),/Every VLB machine needs an answer: 2\/3 answered; no answer yet: V3\./);
  let lock=await call(batch+'/lock-vlb','POST',{});
- assert.equal(lock.status,409);assert.match(lock.data.error,/no answer yet: V2/);
+ assert.equal(lock.status,409);assert.match(lock.data.error,/no answer yet: V3\./);
 
- // An idle reason answers V2; Lock VLB goes through.
- const idle=await call(batch+'/machines/'+ids.V2+'/answer','PUT',{book:'vlb',status:'no_operator',reason:'Driver on leave'});
+ // An idle reason by hand answers V3; Lock VLB goes through.
+ const idle=await call(batch+'/machines/'+ids.V3+'/answer','PUT',{book:'vlb',status:'no_operator',reason:'Driver on leave'});
  assert.equal(idle.status,200,JSON.stringify(idle.data));
  lock=await call(batch+'/lock-vlb','POST',{});
  assert.equal(lock.status,200,JSON.stringify(lock.data));assert.equal(lock.data.stage,'lmv_open');
 
- // L1 has no card: Lock LMV waits for it.
+ // L1 is idle in Pulse-1; L2 has nothing: Lock LMV waits for L2 only.
  view=await call(batch);
  assert.equal(view.data.canLockLmv,false);
  lock=await call(batch+'/lock-lmv','POST',{});
- assert.equal(lock.status,409);assert.match(lock.data.error,/Every LMV machine needs an answer: 0\/1 answered; no answer yet: L1\./);
- // Pulse-1 shows no breakdown for L1 here: nothing is saved and the user is told.
- const pulse=await call(batch+'/machines/'+ids.L1+'/pulse','POST',{book:'lmv'});
- assert.equal(pulse.status,200,JSON.stringify(pulse.data));
- assert.equal(pulse.data.saved,false,JSON.stringify(pulse.data));
- assert.match(pulse.data.message,/no breakdown or maintenance/);
- assert.equal((await call(batch+'/lock-lmv','POST',{})).status,409,'still no answer for L1');
- assert.equal((await call(batch+'/machines/'+ids.L1+'/answer','PUT',{book:'lmv',status:'standby',reason:'Kept at the office'})).status,200);
+ assert.equal(lock.status,409);assert.match(lock.data.error,/Every LMV machine needs an answer: 1\/2 answered; no answer yet: L2\./);
+ assert.equal((await call(batch+'/machines/'+ids.L2+'/answer','PUT',{book:'lmv',status:'standby',reason:'Kept at the office'})).status,200);
  lock=await call(batch+'/lock-lmv','POST',{});
  assert.equal(lock.status,200,JSON.stringify(lock.data));assert.equal(lock.data.stage,'elb_open');
 
@@ -99,8 +105,9 @@ test('Lock VLB and Lock LMV wait for every machine of their book; Close waits fo
  const close=await call(batch+'/close','POST',{});
  assert.equal(close.status,409);assert.match(close.data.error,/VPC-019/);
 
- // Clearing an answer brings the warning back on the page; a closed batch takes no answer (checked in batch-fleet-coverage).
- assert.deepEqual((await call(batch+'/machines/'+ids.V2+'/answer','DELETE')).data,{cleared:true});
+ // Clearing an answer brings the warning back on the page; Fetch Pulse-1 by hand is gone.
+ assert.deepEqual((await call(batch+'/machines/'+ids.V3+'/answer','DELETE')).data,{cleared:true});
  view=await call(batch);
- assert.deepEqual(view.data.fleetCoverage.books.vlb.missing.map(row=>row.door),['V2']);
+ assert.deepEqual(view.data.fleetCoverage.books.vlb.missing.map(row=>row.door),['V3']);
+ assert.equal((await fetch(base+batch+'/machines/'+ids.V2+'/pulse',{method:'POST',headers:{Authorization:'alice'}})).status,404);
 });
