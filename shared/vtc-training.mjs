@@ -11,3 +11,24 @@ export const TRAINING_STATUS='Present — VTC Training';
 export const TRAINING_FLAG_LABEL='PURPLE — VTC Training';
 export const TRAINING_SOURCE='training';
 export const isTrainingEntry=entry=>String(entry?.reason??'').trim()===VTC_TRAINING_REASON;
+
+// Owner, 25 Nov 2026 (second order): "here i need from date to date ... and remove shift". One save covers every day
+// From to To. A training day has no shift of its own: each day is kept once, in the first shift (TRAINING_SHIFT), so
+// attendance counts the person present once that day. At most TRAINING_MAX_DAYS days, none after today (India).
+export const TRAINING_SHIFT='S1';
+export const TRAINING_MAX_DAYS=31;
+const ISO=/^\d{4}-\d{2}-\d{2}$/;
+const realDate=d=>ISO.test(String(d))&&new Date(d+'T00:00:00Z').toISOString().slice(0,10)===d;
+export const indiaToday=(now=Date.now())=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(now));
+// The days of a training range, or {error}.
+export function trainingDays(from,to,{today=indiaToday(),start='2026-11-01'}={}){
+ if(!realDate(from)||!realDate(to))return {error:'Select the From and To dates of the training.'};
+ if(to<from)return {error:'To date cannot be before From date.'};
+ if(from<start)return {error:'Operations start on 1 November 2026. Earlier dates and testing data are locked for all users.'};
+ if(to>today)return {error:'VTC Training can be saved up to today, not for a later date.'};
+ const days=[];
+ for(let d=from;d<=to;d=new Date(Date.parse(d+'T00:00:00Z')+86400000).toISOString().slice(0,10)){
+  days.push(d);if(days.length>TRAINING_MAX_DAYS)return {error:`Select up to ${TRAINING_MAX_DAYS} days at a time.`};
+ }
+ return {days};
+}
