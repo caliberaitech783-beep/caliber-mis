@@ -58,11 +58,11 @@ test('all answered: complete with no warning',()=>{
  assert.deepEqual(coverage.warnings,[]);
 });
 
-test('the batch page gets the coverage and shows it; it stops no lock or close yet',()=>{
+test('the batch page gets the coverage from the stage details and shows it',()=>{
  const route=read('server/routes/vlb-batches.mjs');
- assert.match(route,/batchFleetCoverage\(\{assets,site:batch\.site,vlbRecords:records,lmvRecords/);
- assert.match(route,/zeroTripEntries,fleetCoverage,/);
- for(const file of ['server/rules/vlb-two-stage.mjs','server/rules/vlb-batch-stages.mjs'])assert.doesNotMatch(read(file),/fleetCoverage|batch-fleet-coverage|batch-machine-answers/,'warning mode: no blocker reads it');
+ assert.match(route,/stageDetails\(client,batch,\{assets,vlbCards:records,lmvRecords,/);
+ const stages=read('server/rules/vlb-batch-stages.mjs');
+ assert.match(stages,/fleetCoverage=await machineCoverage\(/);
  const page=read('src/vlb-create-batch.jsx');
  assert.match(page,/<BatchFleetCoverage key=\{viewed\.id\} coverage=\{viewed\.fleetCoverage\}/);
  const panel=read('src/batch-fleet-coverage.jsx');
@@ -139,7 +139,7 @@ test('the routes read Pulse-1 before the batch lock and write an audit line; the
  assert.match(pulse,/machine_answer_pulse/);
  assert.match(route,/app\.put\('\/api\/vlb-batches\/:id\/machines\/:assetId\/answer'[\s\S]*?machine_answer_idle/);
  assert.match(route,/app\.delete\('\/api\/vlb-batches\/:id\/machines\/:assetId\/answer'[\s\S]*?machine_answer_cleared/);
- assert.match(route,/answers:await readBatchMachineAnswers\(client,batch\)/);
+ assert.match(read('server/rules/vlb-batch-stages.mjs'),/answers:await readBatchMachineAnswers\(client,batch\)/);
  assert.match(route,/await pool\.query\(BATCH_MACHINE_ANSWER_SCHEMA\)/);
  const panel=read('src/batch-fleet-coverage.jsx');
  for(const label of ['Fetch Pulse-1','Idle reason…','>Clear<','Fetch Pulse-1 for all'])assert.ok(panel.includes(label),label);

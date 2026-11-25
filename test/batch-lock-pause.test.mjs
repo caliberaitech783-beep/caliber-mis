@@ -6,6 +6,7 @@ import {randomUUID} from 'node:crypto';
 import {PGlite} from '@electric-sql/pglite';
 import {LOG_BOOK_SCHEMA,registerLogBooks} from '../server/routes/log-book.mjs';
 import {PAUSE_UNTIL,batchLockPause,batchLockPauseUntil,batchLockPauseEndsAt,batchLocksPaused,batchLockPauseNote} from '../shared/batch-lock-pause.mjs';
+process.env.BATCH_COVERAGE_STOP_FROM='off'; // Every machine needs an answer before lock / close: covered in batch-fleet-coverage.test.mjs.
 process.env.VLB_BATCH_ORDER_FROM='off'; // The shift-order gate is covered in vlb-batch-order.test.mjs.
 
 // Owner, 24 Nov 2026: VLB, LMV and ELB locking off for five days.

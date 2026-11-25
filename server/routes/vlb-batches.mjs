@@ -14,10 +14,9 @@ import {createBreakdownRowsPrefetchCache,lockedReadHours} from '../../shared/bre
 import {jsonEntityTag,requestEtagMatches} from '../services/response-etag.mjs';
 import {withoutRowSecurityRequest} from '../services/row-security.mjs';
 import {vlbBatchActor,batchPmAtSite} from '../rules/vlb-batch-access.mjs';
-import {readFleetBreakdowns,readBatchShiftBreakdowns,stageDetails,lockVlb,lockLmv,unlockVlb,assertCloseAllowed,saveFleetDraft,saveFleetEntry,equipmentAssets} from '../rules/vlb-batch-stages.mjs';
+import {readFleetBreakdowns,readBatchShiftBreakdowns,batchLmvRecords,stageDetails,lockVlb,lockLmv,unlockVlb,assertCloseAllowed,saveFleetDraft,saveFleetEntry,equipmentAssets} from '../rules/vlb-batch-stages.mjs';
 import {twoStageEnabled,batchStage,FLEET_STATUSES} from '../rules/vlb-two-stage.mjs';
-import {batchFleetCoverage} from '../../shared/batch-fleet-coverage.mjs';
-import {BATCH_MACHINE_ANSWER_SCHEMA,readBatchMachineAnswers,saveIdleAnswer,savePulseAnswer,clearMachineAnswer} from '../rules/batch-machine-answers.mjs';
+import {BATCH_MACHINE_ANSWER_SCHEMA,saveIdleAnswer,savePulseAnswer,clearMachineAnswer} from '../rules/batch-machine-answers.mjs';
 import {consumeApprovalOtp,liveApprovalOtps,publicApprovalOtp} from '../services/vlb-approval-otp.mjs';
 import {batchStageWaits} from '../rules/vlb-batch-queue.mjs';
 import {previousBatchScope,batchOrderBlock} from '../../shared/vlb-batch-order.mjs';
@@ -93,16 +92,12 @@ async function details(client,batch,req){
  // retired PM-approval pause stays open until it is closed.
  const trialExpired=false;
  const assets=twoStageEnabled()?await equipmentAssets(client):undefined;
- const stageInfo=await stageDetails(client,batch,{assets,tripCardRecords:records.filter(record=>siteAllowed(req.logBookScope,record.site||record.data?.location))});
+ const lmvRecords=await batchLmvRecords(client,batch);
+ const stageInfo=await stageDetails(client,batch,{assets,vlbCards:records,lmvRecords,tripCardRecords:records.filter(record=>siteAllowed(req.logBookScope,record.site||record.data?.location))});
  const owner=isOwner(batch,req.batchActor);
- const lmvRecords=(await client.query(
-  "SELECT id,book_no,book_type,data,revision FROM mis_log_books WHERE book_type='lmv' AND book_date=$1 AND deleted_at IS NULL ORDER BY id",
-  [batch.report_date])).rows.filter(record=>canonicalSiteName(record.data.location)===canonicalSiteName(batch.site)&&vlbRecordScope(record.data).shift===batch.shift);
  // "Present — 0 trips" entries of this site, date and shift (shared/vlb-zero-trip-entries.mjs).
  const zeroTripEntries=await readVlbZeroTripEntries(client,batch);
- // Every machine of the site needs an answer for the shift; for now this only warns (shared/batch-fleet-coverage.mjs).
- const fleetCoverage=stageInfo.twoStage?batchFleetCoverage({assets,site:batch.site,vlbRecords:records,lmvRecords,elbFleet:stageInfo.fleet||[],elbRecords:stageInfo.elbRecords||[],answers:await readBatchMachineAnswers(client,batch)}):null;
- return {...batch,canEditSavedFleet:Boolean(req.batchActor.mis||req.batchActor.admin||req.batchActor.siteEditor&&!batch.closed_at),created_by:creator(batch),trialExpired,records,lmvRecords,zeroTripEntries,fleetCoverage,canLockLmv:!stageInfo.stageWait&&stageInfo.stage==='lmv_open'&&(owner||req.batchActor.admin)&&!trialExpired&&!stageInfo.lmvLockBlockers?.length,entry_count:records.length,requests,audit,approvalOtps,...stageInfo,canLockVlb:stageInfo.twoStage&&stageInfo.stage==='vlb_open'&&(owner||req.batchActor.admin)&&!trialExpired&&!stageInfo.lockBlockers.length,canUnlockVlb:stageInfo.twoStage&&['lmv_open','elb_open'].includes(stageInfo.stage)&&mayUnlockVlb(batch,req.batchActor),canEnterFleet:!stageInfo.stageWait&&stageInfo.twoStage&&stageInfo.stage==='elb_open'&&!trialExpired&&mayEnterFleet(batch,req.batchActor),canContinue:!trialExpired&&!batch.closed_at&&(!stageInfo.twoStage||stageInfo.stage==='vlb_open'||batchLocksPaused()),lockPaused:Boolean(stageInfo.twoStage)&&batchLocksPaused(),lockPause:{...batchLockPause(),note:batchLockPauseNote(batchLockPause())},canClose:!stageInfo.stageWait&&canClose(batch,req.batchActor,stageInfo.twoStage),canRequestReopen:Boolean(batch.closed_at),canReopen:Boolean(batch.closed_at&&(req.batchActor.admin||req.batchActor.pm||req.batchActor.mis)),approvalExpired:false};
+ return {...batch,canEditSavedFleet:Boolean(req.batchActor.mis||req.batchActor.admin||req.batchActor.siteEditor&&!batch.closed_at),created_by:creator(batch),trialExpired,records,lmvRecords,zeroTripEntries,canLockLmv:!stageInfo.stageWait&&stageInfo.stage==='lmv_open'&&(owner||req.batchActor.admin)&&!trialExpired&&!stageInfo.lmvLockBlockers?.length,entry_count:records.length,requests,audit,approvalOtps,...stageInfo,canLockVlb:stageInfo.twoStage&&stageInfo.stage==='vlb_open'&&(owner||req.batchActor.admin)&&!trialExpired&&!stageInfo.lockBlockers.length,canUnlockVlb:stageInfo.twoStage&&['lmv_open','elb_open'].includes(stageInfo.stage)&&mayUnlockVlb(batch,req.batchActor),canEnterFleet:!stageInfo.stageWait&&stageInfo.twoStage&&stageInfo.stage==='elb_open'&&!trialExpired&&mayEnterFleet(batch,req.batchActor),canContinue:!trialExpired&&!batch.closed_at&&(!stageInfo.twoStage||stageInfo.stage==='vlb_open'||batchLocksPaused()),lockPaused:Boolean(stageInfo.twoStage)&&batchLocksPaused(),lockPause:{...batchLockPause(),note:batchLockPauseNote(batchLockPause())},canClose:!stageInfo.stageWait&&canClose(batch,req.batchActor,stageInfo.twoStage),canRequestReopen:Boolean(batch.closed_at),canReopen:Boolean(batch.closed_at&&(req.batchActor.admin||req.batchActor.pm||req.batchActor.mis)),approvalExpired:false};
 }
 // One read shared by callers that arrive together and reused for ttlMs. clear() drops the
 // copy, and a read already running when clear() is called is not handed to later callers.
@@ -333,7 +328,7 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
  // A VLB or LMV machine with no card: its breakdown from Pulse-1, or an idle reason (owner, 25 Nov 2026;
  // server/rules/batch-machine-answers.mjs). Pulse-1 is read before the batch lock, as for the ELB fleet list.
  app.post('/api/vlb-batches/:id/machines/:assetId/pulse',...protect,editRoute(async(req,res)=>{
-  if(!/^d+$/.test(req.params.assetId))fail('Invalid machine.',400);
+  if(!/^\d+$/.test(req.params.assetId))fail('Invalid machine.',400);
   const book=String(req.body?.book||'');
   const batch=await visible(pool,req.params.id,req);
   if(!mayEnterFleet(batch,req.batchActor))fail('Only the batch owner, an MIS user or an MIS administrator can answer machines for this batch.',403);
@@ -347,7 +342,7 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
   res.json(answer);
  }));
  app.put('/api/vlb-batches/:id/machines/:assetId/answer',...protect,editRoute(async(req,res)=>{
-  if(!/^d+$/.test(req.params.assetId))fail('Invalid machine.',400);
+  if(!/^\d+$/.test(req.params.assetId))fail('Invalid machine.',400);
   res.json(await batchTransaction(req,async(client,batch)=>{
    if(!mayEnterFleet(batch,req.batchActor))fail('Only the batch owner, an MIS user or an MIS administrator can answer machines for this batch.',403);
    const saved=await saveIdleAnswer(client,batch,req.params.assetId,req.body||{},req.batchActor.login);
@@ -356,7 +351,7 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
   }));
  }));
  app.delete('/api/vlb-batches/:id/machines/:assetId/answer',...protect,editRoute(async(req,res)=>{
-  if(!/^d+$/.test(req.params.assetId))fail('Invalid machine.',400);
+  if(!/^\d+$/.test(req.params.assetId))fail('Invalid machine.',400);
   res.json(await batchTransaction(req,async(client,batch)=>{
    if(!mayEnterFleet(batch,req.batchActor))fail('Only the batch owner, an MIS user or an MIS administrator can answer machines for this batch.',403);
    const done=await clearMachineAnswer(client,batch,req.params.assetId);

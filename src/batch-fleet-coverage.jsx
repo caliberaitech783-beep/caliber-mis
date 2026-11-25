@@ -1,8 +1,10 @@
 import React,{useState} from 'react';
+import {coverageStopNote} from '../shared/batch-coverage-stop.mjs';
 
 // Every machine of the site needs an answer for the shift (owner, 25 Nov 2026). The batch page shows how many VLB,
 // ELB and LMV machines have one. A VLB or LMV machine with no card is answered in Step 2: its breakdown read from
-// Pulse-1, or an idle reason. It only warns; nothing is stopped yet.
+// Pulse-1, or an idle reason. From the stop date Lock VLB, Lock LMV and Close batch wait for every answer
+// (shared/batch-coverage-stop.mjs); before it the page only warns.
 const FIGURES=[
  {key:'total',label:'Machines at site'},
  {key:'cards',label:'Card saved'},
@@ -98,8 +100,8 @@ export default function BatchFleetCoverage({coverage,ReportSection,batch,session
  const viewLabel=picked&&FIGURES.find(one=>one.key===picked.view)?.label;
  const unanswered=book?.takesAnswers?book.rows.filter(row=>row.atSite&&!row.answer):[];
  return <section className="batch-fleet-coverage" aria-label="Machine coverage">
-  <p className={'logbook-message'+(coverage.complete?'':' batch-coverage-warning')} role="status">
-   {coverage.complete?'Every VLB, ELB and LMV machine of this site has an answer for this shift.':'Warning only, nothing is stopped yet: '+coverage.warnings.join(' ')}
+  <p className={'logbook-message'+(coverage.complete?'':coverage.mode==='stop'?' batch-coverage-stop':' batch-coverage-warning')} role={coverage.complete?'status':coverage.mode==='stop'?'alert':'status'}>
+   {coverage.complete?'Every VLB, ELB and LMV machine of this site has an answer for this shift.':coverageStopNote(coverage.stop)+' '+coverage.warnings.join(' ')}
   </p>
   <ReportSection key="coverage-books" title={'Step 1 · Machine coverage · '+(batch?.name||'')} category="batch-fleet-coverage" rows={books} columns={columns} rowKey={row=>row.book}
    rowClassName={row=>picked?.book===row.book?'report-row-picked':''} showSearch={false} recordDateFilter={false} emptyMessage="No machines in the Equipment Master for this site."/>
