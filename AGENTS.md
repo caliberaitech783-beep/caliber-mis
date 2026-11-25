@@ -152,3 +152,12 @@ Set by the owner on 25 November 2026: "TRAINING VTC ka option alag colour me do 
 - It is kept in `mis_shift_attendance` with the reason `VTC Training`, so Attendance Batch-wise / Month-wise, the HR feed and the sheet checks count it as present (P). It is drawn purple ("VTC Training (present)"), has no trips, its source is `training`, and it is never listed or counted as a zero-trip entry (not in a batch's Present — 0 trips list, not in the zero-trip reasons).
 - One person has one entry per date, site and shift: saving Present — 0 trips or VTC Training for the same shift replaces the other. A saved card of that shift goes first.
 - `shared/vtc-training.mjs` holds the rule; `test/vtc-training.test.mjs` checks it.
+
+# Batches for several days open together for seven days
+
+Set by the owner on 25 November 2026: "I need to open multiple batch for multiple days....fix it for 7 days".
+
+- Until the end of 1 Dec 2026 (India time) a site can have batches of several report dates open at once: an open batch of an earlier date no longer stops a later date ("Fully close … first"), the shift-order rule (the shift before must exist with VLB locked) is off, and no batch waits for an older batch to lock LMV or close.
+- Still kept: one batch per site, date and shift, and one VLB-open batch per site and date, so another shift of the same date still needs Lock VLB first.
+- From 2 Dec 2026 00:00 IST the old rules return by themselves. The Azure setting `VLB_MULTI_DAY_BATCHES_UNTIL=YYYY-MM-DD` moves the last day, `=off` ends it at once.
+- `shared/multi-day-batches.mjs` holds the rule; `test/multi-day-batches.test.mjs` checks it.

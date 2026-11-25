@@ -19,6 +19,7 @@ import {twoStageEnabled,batchStage,FLEET_STATUSES} from '../rules/vlb-two-stage.
 import {consumeApprovalOtp,liveApprovalOtps,publicApprovalOtp} from '../services/vlb-approval-otp.mjs';
 import {batchStageWaits} from '../rules/vlb-batch-queue.mjs';
 import {previousBatchScope,batchOrderBlock} from '../../shared/vlb-batch-order.mjs';
+import {multiDayBatches} from '../../shared/multi-day-batches.mjs';
 import {batchLockPause,batchLocksPaused,batchLockPauseNote} from '../../shared/batch-lock-pause.mjs';
 export {VLB_BATCH_SCHEMA} from '../rules/vlb-batch-policy.mjs';
 const uuid=value=>/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value||'');
@@ -38,13 +39,15 @@ async function eligible(client,selection){
  AND NOT EXISTS(SELECT 1 FROM mis_vlb_batch_entries e WHERE e.logbook_id=l.id) ORDER BY l.id FOR UPDATE OF l`,[selection.date]);
  return rows.filter(r=>canonicalSiteName(r.site)===selection.site&&vlbRecordShift(r.data)===selection.shift);
 }
-async function openSiteBatch(client,site,{excludeId,creationDate=null}={}){
- const rows=(await client.query("SELECT *,book_date::text AS report_date FROM mis_vlb_batches WHERE book_date>=$$2026-11-01$$ AND closed_at IS NULL AND archived_at IS NULL AND deleted_at IS NULL AND ($1::uuid IS NULL OR id<>$1) AND ($2::date IS NULL OR book_date<$2 OR (book_date=$2 AND stage='vlb_open')) ORDER BY book_date,created_at,id",[excludeId||null,creationDate])).rows;
+async function openSiteBatch(client,site,{excludeId,creationDate=null,sameDateOnly=false}={}){
+ const rows=(await client.query("SELECT *,book_date::text AS report_date FROM mis_vlb_batches WHERE book_date>=$$2026-11-01$$ AND closed_at IS NULL AND archived_at IS NULL AND deleted_at IS NULL AND ($1::uuid IS NULL OR id<>$1) AND ($2::date IS NULL OR (NOT $3::boolean AND book_date<$2) OR (book_date=$2 AND stage='vlb_open')) ORDER BY book_date,created_at,id",[excludeId||null,creationDate,sameDateOnly])).rows;
  return rows.find(batch=>canonicalSiteName(batch.site)===canonicalSiteName(site))||null;
 }
 async function openBatchCreationBlock(client,selection){
  const twoStage=twoStageEnabled();
- const siteOpenBatch=await openSiteBatch(client,selection.site,{creationDate:twoStage?selection.date:null});
+ // While several days' batches may be open (shared/multi-day-batches.mjs) only a VLB-open batch of the same date blocks.
+ const multiDay=multiDayBatches();
+ const siteOpenBatch=await openSiteBatch(client,selection.site,{creationDate:twoStage||multiDay?selection.date:null,sameDateOnly:multiDay});
  if(!siteOpenBatch)return {siteOpenBatch:null,creationBlocker:null};
  const creationBlocker=twoStage&&siteOpenBatch.report_date===selection.date
   ?'Lock VLB in '+siteOpenBatch.name+' before creating another shift for this report date.'
@@ -53,6 +56,7 @@ async function openBatchCreationBlock(client,selection){
 }
 // Batches of a site open in shift order: the shift before this one must exist with its VLB locked.
 async function previousShiftBlock(client,selection){
+ if(multiDayBatches())return null;
  const scope=previousBatchScope(selection);if(!scope)return null;
  const rows=(await client.query('SELECT *,book_date::text AS report_date FROM mis_vlb_batches WHERE book_date=$1 AND shift=$2 AND archived_at IS NULL AND deleted_at IS NULL ORDER BY created_at DESC,id DESC',[scope.date,scope.shift])).rows;
  const previous=rows.find(batch=>canonicalSiteName(batch.site)===selection.site)||null;
@@ -203,7 +207,7 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
   }
   const counts=new Map((await sharedCounts(()=>withoutRowSecurityRequest(()=>readVlbBatchListCounts(pool,visibleIds)))).map(row=>[row.id,{entry_count:row.entry_count,elb_entry_count:row.elb_entry_count}]));
   const twoStage=twoStageEnabled();
-  const waits=twoStage&&!batchLocksPaused()?batchStageWaits([...rows].reverse()):new Map();
+  const waits=twoStage&&!batchLocksPaused()&&!multiDayBatches()?batchStageWaits([...rows].reverse()):new Map();
   const batches=rows.filter(b=>siteAllowed(req.logBookScope,b.site)).map(b=>({...b,...counts.get(b.id),created_by:creator(b),stageWait:waits.get(b.id)||'',twoStage,lockPaused:twoStage&&batchLocksPaused(),canClose:!waits.has(b.id)&&canClose(b,req.batchActor,twoStage),stage:twoStage?batchStage(b):(b.closed_at?'closed':'open')}));
   const openBatchStatuses=req.batchActor.mis?rows.filter(b=>!b.closed_at).map(b=>({
    site:b.site,date:b.report_date,shift:b.shift,stage:twoStage?batchStage(b):'vlb_open'

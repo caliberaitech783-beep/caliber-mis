@@ -9,6 +9,7 @@ import {vlbBatchName,vlbBatchSelection} from '../shared/vlb-batch-format.mjs';
 process.env.VLB_BATCH_ORDER_FROM='off'; // these tests open batches out of shift order; vlb-batch-order.test.mjs covers the order
 
 process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
+process.env.VLB_MULTI_DAY_BATCHES_UNTIL='off'; // the seven-day multi-day window is covered in multi-day-batches.test.mjs
 test('batch format uses site, ordinal date, shift and padded sequence',()=>{
  assert.equal(vlbBatchName({site:'Sasti OC',date:'2026-12-30',shift:'I'},1),'CMLL/SASTI OC/30TH -DEC-26/S1/B01');
  for(const [day,suffix] of [[1,'ST'],[2,'ND'],[3,'RD'],[11,'TH'],[12,'TH'],[13,'TH'],[21,'ST'],[22,'ND'],[23,'RD'],[31,'ST']])assert.match(vlbBatchName({site:'Sasti OC',date:'2026-12-'+String(day).padStart(2,'0'),shift:'Shift B'},100),new RegExp('/'+day+suffix+' -DEC-26/S2/B100$'));
