@@ -177,6 +177,15 @@ Set by the owner on 25 November 2026: when VLB, ELB and LMV close, the MIS user 
 - The Azure setting `BATCH_COVERAGE_STOP_FROM=YYYY-MM-DD` moves the first day; `=off` keeps it a warning (a setting change restarts the app, no release).
 - `shared/batch-fleet-coverage.mjs` holds the rule, `shared/pulse-shift-status.mjs` the Pulse-1 read, `shared/batch-coverage-stop.mjs` the stop, `src/batch-fleet-coverage.jsx` the panel; `test/batch-fleet-coverage.test.mjs` and `test/batch-coverage-stop.test.mjs` check it. Older tests that lock or close batches on later dates set `BATCH_COVERAGE_STOP_FROM='off'` themselves.
 
+# Machine Roster
+
+Set by the owner on 25 November 2026: a vehicle and equipment roster, site-wise machine list.
+
+- Masters › Machine Roster, after Equipment master, for the same people as Caliber ID Re-check, each for the sites of their login. Read only: a machine is moved or changed in Pulse.
+- **Step 1** one line per site: active VLB (Vehicle), ELB (Equipment) and LMV machines in the Equipment Master, all active, category not set (judged by group) and not active. Every figure opens **Step 2** under it with those machines (door, registration, book, name, category, group, make · model, status). The roster has no dates, so it has no date by shift step.
+- The figures use the same rules as the batch page's machine coverage (`siteRoster` in `shared/batch-fleet-coverage.mjs`), so they are the machines a batch of the site has to answer for.
+- `GET /api/caliber-recheck/roster`; rule `shared/machine-roster.mjs`, screen `src/machine-roster.jsx`; `test/machine-roster.test.mjs` checks it.
+
 # HR's corrected attendance reaches the biometric mismatch
 
 Set by the owner on 25 November 2026: a day an HR administrator corrects on HR Pulse's Attendance roster › Manual Biometric must show in Pulse-II's Biometric vs trip card mismatch too.
