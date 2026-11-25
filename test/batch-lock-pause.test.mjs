@@ -8,6 +8,7 @@ import {LOG_BOOK_SCHEMA,registerLogBooks} from '../server/routes/log-book.mjs';
 import {PAUSE_UNTIL,batchLockPause,batchLockPauseUntil,batchLockPauseEndsAt,batchLocksPaused,batchLockPauseNote} from '../shared/batch-lock-pause.mjs';
 process.env.BATCH_COVERAGE_STOP_FROM='off'; // Every machine needs an answer before lock / close: covered in batch-fleet-coverage.test.mjs.
 process.env.VLB_BATCH_ORDER_FROM='off'; // The shift-order gate is covered in vlb-batch-order.test.mjs.
+process.env.VLB_MULTI_DAY_BATCHES_UNTIL='off'; // the multi-day, multi-shift window is covered in multi-day-batches.test.mjs
 
 // Owner, 24 Nov 2026: VLB, LMV and ELB locking off for five days; extended to the end of 1 Dec 2026 on 25 Nov.
 test('the pause runs to the end of 1 Dec 2026 in India and can be moved or ended by the Azure setting',()=>{

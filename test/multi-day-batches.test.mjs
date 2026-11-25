@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
 import {registerVlbBatches} from '../server/routes/vlb-batches.mjs';
@@ -20,7 +21,7 @@ test('the window runs to the end of 1 Dec 2026 in India and can be moved or ende
  assert.equal(multiDayBatches({VLB_MULTI_DAY_BATCHES_UNTIL:'2026-12-05'},new Date('2026-12-04T10:00:00Z')),true,'the setting moves the last day');
 });
 
-test('while the window runs, batches of several days open together; one VLB-open batch per site and date stays',async t=>{
+test('while the window runs, batches of several days and several shifts of one date open together',async t=>{
  const saved={two:process.env.VLB_TWO_STAGE_BATCHES,from:process.env.VLB_BATCH_ORDER_FROM,multi:process.env.VLB_MULTI_DAY_BATCHES_UNTIL,pause:process.env.VLB_BATCH_LOCK_PAUSE_UNTIL};
  process.env.VLB_TWO_STAGE_BATCHES='1';process.env.VLB_BATCH_ORDER_FROM='2026-11-19';process.env.VLB_MULTI_DAY_BATCHES_UNTIL='2099-12-31';process.env.VLB_BATCH_LOCK_PAUSE_UNTIL='off';
  t.after(()=>{for(const [key,value] of [['VLB_TWO_STAGE_BATCHES',saved.two],['VLB_BATCH_ORDER_FROM',saved.from],['VLB_MULTI_DAY_BATCHES_UNTIL',saved.multi],['VLB_BATCH_LOCK_PAUSE_UNTIL',saved.pause]])value===undefined?delete process.env[key]:process.env[key]=value;});
@@ -43,9 +44,15 @@ test('while the window runs, batches of several days open together; one VLB-open
   assert.equal(p.data.creationBlocker,null);assert.equal(p.data.previousShift,null);
   const res=await create(date,'S1');assert.equal(res.status,201,JSON.stringify(res.data));
  }
- // Another shift of a date whose VLB is open still waits for Lock VLB.
- const same=await create('2026-11-25','S2');
- assert.equal(same.status,409);assert.match(same.data.error,/Lock VLB in .* before creating another shift/);
+ // Owner, 25 Nov 2026: several shifts of the same date open together, all VLB-open.
+ for(const shift of ['S2','S3']){
+  const p=await preview('2026-11-25',shift);assert.equal(p.data.creationBlocker,null);assert.equal(p.data.previousShift,null);
+  const res=await create('2026-11-25',shift);assert.equal(res.status,201,JSON.stringify(res.data));
+ }
+ assert.equal((await db.query("SELECT COUNT(*)::int AS n FROM mis_vlb_batches WHERE book_date='2026-11-25' AND stage='vlb_open'")).rows[0].n,3);
+ // One batch per site, date and shift stays.
+ const again=await create('2026-11-25','S2');
+ assert.equal(again.status,409);assert.match(again.data.error,/already exists for this site, date and shift/);
  // No batch waits for an older one to lock LMV or close.
  const {data}=await call('');
  assert.ok(data.batches.length>=3);
@@ -55,4 +62,23 @@ test('while the window runs, batches of several days open together; one VLB-open
 test('the stage queue itself is unchanged when the window is off',()=>{
  const rows=[{id:'a',name:'A',site:'Sasti OC',stage:'lmv_open'},{id:'b',name:'B',site:'Sasti OC',stage:'lmv_open'}];
  assert.match(batchStageWaits(rows).get('b'),/Lock LMV in A first/);
+});
+
+test('after the window the one-VLB-open index returns only when no site and date holds two VLB-open batches',async t=>{
+ const db=new PGlite();t.after(()=>db.close());
+ const policy=readFileSync(new URL('../server/rules/vlb-batch-policy.mjs',import.meta.url),'utf8');
+ assert.match(policy,/IF \$\{MULTI_DAY_INDEX_OFF_SQL\} THEN DROP INDEX IF EXISTS mis_vlb_one_open_vlb_per_site_date;/);
+ assert.match(policy,/GROUP BY site,book_date HAVING COUNT\(\*\)>1\) THEN\r?\n\s+CREATE UNIQUE INDEX IF NOT EXISTS mis_vlb_one_open_vlb_per_site_date/);
+ await db.exec("CREATE TABLE mis_vlb_batches(id INT PRIMARY KEY,site TEXT,book_date DATE,stage TEXT,closed_at TIMESTAMPTZ,archived_at TIMESTAMPTZ,deleted_at TIMESTAMPTZ)");
+ const block=off=>`DO $vlbopen$ BEGIN
+  IF ${off} THEN DROP INDEX IF EXISTS mis_vlb_one_open_vlb_per_site_date;
+  ELSIF NOT EXISTS(SELECT 1 FROM mis_vlb_batches WHERE closed_at IS NULL AND archived_at IS NULL AND deleted_at IS NULL AND stage='vlb_open' AND book_date>=DATE '2026-11-01' GROUP BY site,book_date HAVING COUNT(*)>1) THEN
+   CREATE UNIQUE INDEX IF NOT EXISTS mis_vlb_one_open_vlb_per_site_date ON mis_vlb_batches(site,book_date) WHERE closed_at IS NULL AND archived_at IS NULL AND deleted_at IS NULL AND stage='vlb_open' AND book_date>=DATE '2026-11-01';
+  END IF; END $vlbopen$;`;
+ const hasIndex=async()=>(await db.query("SELECT 1 FROM pg_indexes WHERE indexname='mis_vlb_one_open_vlb_per_site_date'")).rows.length===1;
+ await db.exec("INSERT INTO mis_vlb_batches VALUES(1,'Sasti OC','2026-11-25','vlb_open',NULL,NULL,NULL),(2,'Sasti OC','2026-11-25','vlb_open',NULL,NULL,NULL)");
+ await db.exec(block('TRUE'));assert.equal(await hasIndex(),false,'dropped while the window runs');
+ await db.exec(block('FALSE'));assert.equal(await hasIndex(),false,'two VLB-open batches of one date: the start goes on without the index');
+ await db.exec("UPDATE mis_vlb_batches SET stage='lmv_open' WHERE id=2");
+ await db.exec(block('FALSE'));assert.equal(await hasIndex(),true,'back once the date holds one VLB-open batch');
 });
