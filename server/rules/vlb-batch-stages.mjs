@@ -195,6 +195,12 @@ export async function readFleetBreakdowns(client,batch,assetId,readHours,actor,i
  if(typeof readHours!=='function')fail('Pulse breakdown lookup is unavailable.',503);
  const row=(await client.query('SELECT asset_id FROM mis_vlb_batch_fleet WHERE batch_id=$1 AND asset_id=$2',[batch.id,assetId])).rows[0];
  if(!row)fail('This machine is not in the batch fleet list.',404);
+ return readBatchShiftBreakdowns(client,batch,assetId,readHours,actor,input);
+}
+// Pulse-1 breakdown hours of one machine for the batch's date, site and shift (ELB fleet lines, and VLB / LMV machines
+// with no card, answered on the batch page).
+export async function readBatchShiftBreakdowns(client,batch,assetId,readHours,actor,input={}){
+ if(typeof readHours!=='function')fail('Pulse breakdown lookup is unavailable.',503);
  const shift=await shiftMasterFor(client,batch.site,batch.shift);
  if(!shift)fail('No active Shift Master entry matches this batch.',409);
  const shiftHours=input.shiftHours!==undefined&&input.shiftHours!==''?manualShiftHours({...input,location:batch.site,bookShiftCode:batch.shift}):fleetShiftHours(shift);

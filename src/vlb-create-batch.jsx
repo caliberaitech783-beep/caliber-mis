@@ -280,7 +280,7 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
      <button type="button" aria-pressed={entryFilter==='upload'} disabled={busy||detailLoading} onClick={()=>setEntryFilter(value=>value==='upload'?'':'upload')}>PDF ({entryCounts.upload})</button>
    </div>}
    {viewed&&twoStage&&<div className="vlb-two-stage">
-    {viewed.fleetCoverage&&<BatchFleetCoverage key={viewed.id} coverage={viewed.fleetCoverage} ReportSection={ReportSection} batchName={viewed.name}/>}
+    {viewed.fleetCoverage&&<BatchFleetCoverage key={viewed.id} coverage={viewed.fleetCoverage} ReportSection={ReportSection} batch={viewed} session={session} onChanged={()=>setRefresh(n=>n+1)}/>}
     {lockPaused&&['vlb_open','lmv_open'].includes(stage)&&<div className="vlb-batch-actions" role="group" aria-label="Entry while locking is off">
      {stage==='vlb_open'&&onLmvManual&&<button type="button" onClick={()=>onLmvManual(viewed)}>Add LMV manually</button>}
      {stage==='vlb_open'&&onLmvScan&&<button type="button" onClick={()=>onLmvScan(viewed)}>Scan or upload LMV PDF</button>}
