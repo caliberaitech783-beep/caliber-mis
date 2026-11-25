@@ -40,15 +40,15 @@ async function eligible(client,selection){
  AND NOT EXISTS(SELECT 1 FROM mis_vlb_batch_entries e WHERE e.logbook_id=l.id) ORDER BY l.id FOR UPDATE OF l`,[selection.date]);
  return rows.filter(r=>canonicalSiteName(r.site)===selection.site&&vlbRecordShift(r.data)===selection.shift);
 }
-async function openSiteBatch(client,site,{excludeId,creationDate=null,sameDateOnly=false}={}){
- const rows=(await client.query("SELECT *,book_date::text AS report_date FROM mis_vlb_batches WHERE book_date>=$$2026-11-01$$ AND closed_at IS NULL AND archived_at IS NULL AND deleted_at IS NULL AND ($1::uuid IS NULL OR id<>$1) AND ($2::date IS NULL OR (NOT $3::boolean AND book_date<$2) OR (book_date=$2 AND stage='vlb_open')) ORDER BY book_date,created_at,id",[excludeId||null,creationDate,sameDateOnly])).rows;
+async function openSiteBatch(client,site,{excludeId,creationDate=null}={}){
+ const rows=(await client.query("SELECT *,book_date::text AS report_date FROM mis_vlb_batches WHERE book_date>=$$2026-11-01$$ AND closed_at IS NULL AND archived_at IS NULL AND deleted_at IS NULL AND ($1::uuid IS NULL OR id<>$1) AND ($2::date IS NULL OR book_date<$2 OR (book_date=$2 AND stage='vlb_open')) ORDER BY book_date,created_at,id",[excludeId||null,creationDate])).rows;
  return rows.find(batch=>canonicalSiteName(batch.site)===canonicalSiteName(site))||null;
 }
 async function openBatchCreationBlock(client,selection){
  const twoStage=twoStageEnabled();
- // While several days' batches may be open (shared/multi-day-batches.mjs) only a VLB-open batch of the same date blocks.
- const multiDay=multiDayBatches();
- const siteOpenBatch=await openSiteBatch(client,selection.site,{creationDate:twoStage||multiDay?selection.date:null,sameDateOnly:multiDay});
+ // While several days' and shifts' batches may be open together (shared/multi-day-batches.mjs) no open batch blocks.
+ if(multiDayBatches())return {siteOpenBatch:null,creationBlocker:null};
+ const siteOpenBatch=await openSiteBatch(client,selection.site,{creationDate:twoStage?selection.date:null});
  if(!siteOpenBatch)return {siteOpenBatch:null,creationBlocker:null};
  const creationBlocker=twoStage&&siteOpenBatch.report_date===selection.date
   ?'Lock VLB in '+siteOpenBatch.name+' before creating another shift for this report date.'
@@ -411,9 +411,11 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
    if(!batch.closed_at)fail('This batch is already open.');
    await matchingVlbBatch(client,{location:batch.site,bookDate:batch.report_date,bookShiftCode:batch.shift});
    await lockVlbBatchSite(client,batch.site);
-   const siteOpen=await openSiteBatch(client,batch.site,{excludeId:batch.id});if(siteOpen)fail('Close the open batch '+siteOpen.name+' before reopening another batch for this site.');
+   // While several batches may be open together (shared/multi-day-batches.mjs) another open batch does not stop a reopen.
+   const multiDay=multiDayBatches();
+   const siteOpen=!multiDay&&await openSiteBatch(client,batch.site,{excludeId:batch.id});if(siteOpen)fail('Close the open batch '+siteOpen.name+' before reopening another batch for this site.');
    const request=(await client.query("SELECT * FROM mis_vlb_reopen_requests WHERE batch_id=$1 AND requested_by=$2 AND closure_revision=$3 AND status='approved' ORDER BY decided_at DESC LIMIT 1 FOR UPDATE",[batch.id,req.batchActor.login,batch.closure_revision])).rows[0];
-   if(!req.batchActor.admin&&(await client.query('SELECT id FROM mis_vlb_batches WHERE book_date>=$$2026-11-01$$ AND closed_at IS NULL AND (lower(COALESCE(creator_login,created_by))=ANY($1::text[]) OR lower(amendment_by)=$2)',[[req.batchActor.login,batchLogin(creator(batch))],req.batchActor.login])).rows.length)fail('Close the existing open batch before reopening this batch.');
+   if(!multiDay&&!req.batchActor.admin&&(await client.query('SELECT id FROM mis_vlb_batches WHERE book_date>=$$2026-11-01$$ AND closed_at IS NULL AND (lower(COALESCE(creator_login,created_by))=ANY($1::text[]) OR lower(amendment_by)=$2)',[[req.batchActor.login,batchLogin(creator(batch))],req.batchActor.login])).rows.length)fail('Close the existing open batch before reopening this batch.');
    const opened=(await client.query("UPDATE mis_vlb_batches SET closed_at=NULL,amendment_by=$1,trial_reopened_until=NULL,creator_login=COALESCE(creator_login,created_by),created_by=NULL,stage=CASE WHEN vlb_locked_at IS NOT NULL THEN 'elb_open' ELSE 'vlb_open' END WHERE id=$2 RETURNING *,book_date::text AS report_date",[req.batchActor.login,batch.id])).rows[0];
    if(request)await client.query("UPDATE mis_vlb_reopen_requests SET status='used',used_at=NOW() WHERE id=$1",[request.id]);
    await auditVlbBatch(client,batch,req.batchActor.login,'reopened',{requestId:request?.id||null,approvedBy:request?.decided_by||null,pmApproval:request?'approved':'not required'});

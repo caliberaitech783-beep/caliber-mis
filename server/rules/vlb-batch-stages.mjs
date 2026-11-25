@@ -16,6 +16,7 @@ import {twoStageEnabled,batchStage,activeSiteHolds,holdSummary,buildMachineSnaps
 import {pendingTransferFor} from '../routes/vehicle-transfer-express.mjs';
 
 import {readBatchStageWait} from './vlb-batch-queue.mjs';
+import {multiDayBatches} from '../../shared/multi-day-batches.mjs';
 import {batchLocksPaused} from '../../shared/batch-lock-pause.mjs';
 import {batchFleetCoverage} from '../../shared/batch-fleet-coverage.mjs';
 import {coverageStop,coverageBlockers} from '../../shared/batch-coverage-stop.mjs';
@@ -194,7 +195,8 @@ export async function unlockVlb(client,batch,actor,{reason='',approvedBy=null,vi
  if(!['lmv_open','elb_open'].includes(batchStage(batch)))fail(batch.closed_at?'Reopen the batch before unlocking VLB.':'VLB is not locked for this batch.',409);
  // Unlock routes hold the exclusive batch write lock because this can make a later stage wait again.
  const {rows}=await client.query("SELECT site,name FROM mis_vlb_batches WHERE id<>$1 AND book_date=$2 AND stage='vlb_open' AND closed_at IS NULL AND archived_at IS NULL AND deleted_at IS NULL AND book_date>=$$2026-11-01$$",[batch.id,batch.report_date||batch.book_date]);
- const active=rows.find(row=>canonicalSiteName(row.site)===canonicalSiteName(batch.site));
+ // While several shifts of a date may be open together (shared/multi-day-batches.mjs) another VLB-open batch does not stop it.
+ const active=!multiDayBatches()&&rows.find(row=>canonicalSiteName(row.site)===canonicalSiteName(batch.site));
  if(active)fail('Lock VLB in '+active.name+' before unlocking VLB for this batch.',409);
  await client.query('DELETE FROM mis_vlb_batch_machines WHERE batch_id=$1',[batch.id]);
  const opened=(await client.query("UPDATE mis_vlb_batches SET stage='vlb_open',lmv_locked_at=NULL,vlb_locked_at=NULL,vlb_locked_by=NULL WHERE id=$1 RETURNING *,book_date::text AS report_date",[batch.id])).rows[0];

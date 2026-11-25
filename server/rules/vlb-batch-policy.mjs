@@ -5,8 +5,12 @@ import {vlbRecordShift} from '../../shared/vlb-batch-format.mjs';
 import {VLB_TWO_STAGE_SCHEMA,twoStageEnabled} from './vlb-two-stage.mjs';
 import {readBatchStageWait} from './vlb-batch-queue.mjs';
 import {batchLocksPaused} from '../../shared/batch-lock-pause.mjs';
+import {multiDayBatchesUntil,multiDayBatchesEndAt} from '../../shared/multi-day-batches.mjs';
 import {VLB_APPROVAL_OTP_SCHEMA} from '../services/vlb-approval-otp.mjs';
 
+// Read when the server starts: the window's end decides whether the one-VLB-open index is kept.
+const multiDayEnd=multiDayBatchesEndAt(multiDayBatchesUntil());
+const MULTI_DAY_INDEX_OFF_SQL=multiDayEnd?`NOW()<TIMESTAMPTZ '${multiDayEnd.toISOString()}'`:'FALSE';
 export const VLB_BATCH_SCHEMA=`
  CREATE TABLE IF NOT EXISTS mis_vlb_batches(
  id UUID PRIMARY KEY,name TEXT UNIQUE NOT NULL,site TEXT NOT NULL,book_date DATE NOT NULL,shift TEXT NOT NULL,
@@ -73,8 +77,16 @@ export const VLB_BATCH_SCHEMA=`
  SELECT id,created_by,'saved_lock_policy_enabled','{"reason":"Saved batches require PM approval and lock again after saving."}'::jsonb FROM migrated;
  ${VLB_TWO_STAGE_SCHEMA}
  DROP INDEX IF EXISTS mis_vlb_one_open_vlb_per_site;
- CREATE UNIQUE INDEX IF NOT EXISTS mis_vlb_one_open_vlb_per_site_date ON mis_vlb_batches(site,book_date)
-  WHERE closed_at IS NULL AND archived_at IS NULL AND deleted_at IS NULL AND stage='vlb_open' AND book_date>=$$2026-11-01$$;
+ -- One VLB-open batch per site and date, except while several shifts may be open together
+ -- (shared/multi-day-batches.mjs). After the window the index returns at the next start, but only when
+ -- no site and date still holds two VLB-open batches, so a start never fails on it.
+ DO $vlbopen$ BEGIN
+  IF ${MULTI_DAY_INDEX_OFF_SQL} THEN DROP INDEX IF EXISTS mis_vlb_one_open_vlb_per_site_date;
+  ELSIF NOT EXISTS(SELECT 1 FROM mis_vlb_batches WHERE closed_at IS NULL AND archived_at IS NULL AND deleted_at IS NULL AND stage='vlb_open' AND book_date>=DATE '2026-11-01' GROUP BY site,book_date HAVING COUNT(*)>1) THEN
+   CREATE UNIQUE INDEX IF NOT EXISTS mis_vlb_one_open_vlb_per_site_date ON mis_vlb_batches(site,book_date)
+    WHERE closed_at IS NULL AND archived_at IS NULL AND deleted_at IS NULL AND stage='vlb_open' AND book_date>=DATE '2026-11-01';
+  END IF;
+ END $vlbopen$;
  ${VLB_APPROVAL_OTP_SCHEMA}`;
 export const batchLogin=value=>String(value||'').trim().toLowerCase();
 export const batchFail=(message,status=409)=>{throw Object.assign(new Error(message),{status})};

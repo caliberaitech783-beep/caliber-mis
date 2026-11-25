@@ -140,7 +140,7 @@ Extended by the owner on 25 November 2026 to the end of 1 Dec 2026, the same day
 
 - Until the end of 1 Dec 2026 (India time) a batch's stages stop nobody: VLB, LMV and ELB cards are added and changed in every open stage (VLB open, LMV open, ELB open), by hand or by scan. A VLB card changed after Lock VLB updates the batch's machine trips at once; a machine no card loads any more drops to 0 trips.
 - No batch waits for an older batch of the site to lock LMV or close. Close batch is offered in every open stage and does Lock VLB and Lock LMV itself, with their checks; everything a close checks (an ELB for every loading machine, transfers, waiting scans, duplicate ELBs) is unchanged.
-- Not changed: a closed batch is reopened before its cards change, and another shift of the same date still needs Lock VLB first (a site and date hold one VLB-open batch). Deleting a card outside its open stage still goes through Deletion.
+- Not changed: a closed batch is reopened before its cards change. (Until 1 Dec 2026 several shifts of one date may be open together; see the multi-day batches section.) Deleting a card outside its open stage still goes through Deletion.
 - The batch page says so ("Locking is off until …"). From 2 Dec 2026 00:00 IST the locks return by themselves; nothing has to be switched back.
 - The Azure setting `VLB_BATCH_LOCK_PAUSE_UNTIL=YYYY-MM-DD` moves the last day, `VLB_BATCH_LOCK_PAUSE_UNTIL=off` ends the pause at once (a setting change restarts the app, no release).
 - `shared/batch-lock-pause.mjs` holds the rule; `test/batch-lock-pause.test.mjs` checks it.
@@ -161,7 +161,8 @@ Set by the owner on 25 November 2026: "TRAINING VTC ka option alag colour me do 
 Set by the owner on 25 November 2026: "I need to open multiple batch for multiple days....fix it for 7 days".
 
 - Until the end of 1 Dec 2026 (India time) a site can have batches of several report dates open at once: an open batch of an earlier date no longer stops a later date ("Fully close … first"), the shift-order rule (the shift before must exist with VLB locked) is off, and no batch waits for an older batch to lock LMV or close.
-- Still kept: one batch per site, date and shift, and one VLB-open batch per site and date, so another shift of the same date still needs Lock VLB first.
+- Several shifts of the same date open together too (owner, 25 Nov 2026: "allow multiple shifts of same date open too"): no Lock VLB first; Unlock VLB and reopen are not stopped by another open batch. The database index `mis_vlb_one_open_vlb_per_site_date` is dropped at start while the window runs and comes back at a start after it, only if no site and date still has two VLB-open batches.
+- Still kept: one batch per site, date and shift.
 - From 2 Dec 2026 00:00 IST the old rules return by themselves. The Azure setting `VLB_MULTI_DAY_BATCHES_UNTIL=YYYY-MM-DD` moves the last day, `=off` ends it at once.
 - `shared/multi-day-batches.mjs` holds the rule; `test/multi-day-batches.test.mjs` checks it.
 

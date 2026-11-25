@@ -3,8 +3,8 @@
 // hata sakta hu kya 5 din ke liye"). While the pause runs, a batch's stages never stop anyone:
 // - VLB, LMV and ELB cards can be added and changed in every open stage (VLB open, LMV open, ELB open);
 //   a VLB change after Lock VLB updates the machine trips of the batch at once.
-// - A batch never waits for an older batch of the site to lock its LMV or close. A new batch still waits for
-//   Lock VLB of the shift before it: a site and date hold only one VLB-open batch (mis_vlb_one_open_vlb_per_site_date).
+// - A batch never waits for an older batch of the site to lock its LMV or close. Until 1 Dec 2026 several shifts
+//   of one date may also be VLB-open together (shared/multi-day-batches.mjs).
 // - Close batch does Lock VLB and Lock LMV by itself. What a close checks (ELB for every loading machine,
 //   transfers, waiting scans, duplicates) is unchanged, and a closed batch is still reopened as before.
 // The pause ends by itself at the end of PAUSE_UNTIL (India time). The Azure setting

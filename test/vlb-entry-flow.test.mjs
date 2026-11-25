@@ -8,6 +8,7 @@ import {VLB_TRIP_HANDOVER_SCHEMA} from '../server/rules/vlb-trip-handover-schema
 import {syncVlbBatchRecord} from '../server/rules/vlb-batch-policy.mjs';
 import {vlbEntryContext,vlbEntryFields,sameVlbEntryContext,withLmvEntrySite} from '../src/vlb-entry-context.mjs';
 process.env.VLB_BATCH_ORDER_FROM='off'; // these tests open batches out of shift order; vlb-batch-order.test.mjs covers the order
+process.env.VLB_MULTI_DAY_BATCHES_UNTIL='off'; // the multi-day, multi-shift window is covered in multi-day-batches.test.mjs
 
 test('LMV defaults to the assigned site or a previously selected authorized VLB or ELB batch site',async()=>{
  const options={sites:['Sasti OC','Jayant OC']};
