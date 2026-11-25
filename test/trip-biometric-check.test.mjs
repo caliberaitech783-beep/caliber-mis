@@ -51,6 +51,9 @@ test('drivers and operators only; each mismatch kind is found',()=>{
  assert.ok(!r.perPerson.some(p=>p.caliberCode==='9004'),'a helper is not compared');
  assert.equal(r.otherStaff,1);
  assert.equal(r.findings.find(f=>f.type==='no-biometric').employeeId,'CMLL9007');
+ const ram=r.perPerson.find(p=>p.caliberCode==='9001'),mohan=r.perPerson.find(p=>p.caliberCode==='9003');
+ assert.deepEqual(ram.details,[{date:'2026-11-02',biometric:true,logBook:true,both:true,sourceLabel:'',punchSite:'Sasti OC',inTime:'05:50',outTime:'14:05',shift:'S1',tripSite:'Sasti OC',equipment:'T-1',books:'VLB-1',findingType:'',findingLabel:'',detail:''}]);
+ assert.equal(mohan.details[0].findingType,'miss-punch');assert.equal(mohan.details[0].outTime,'');
  assert.deepEqual(r.notInMaster,[]);
  const book=tripBiometricWorkbook(r,{fileName:'x.dat'});
  assert.deepEqual(book.sheets.map(s=>s.name),['Mismatches','Per employee','Summary']);

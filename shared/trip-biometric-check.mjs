@@ -185,7 +185,18 @@ export function tripBiometricCheck({days=[],lines=[],lockedDays=[],people=[],sit
   const both=[...p.bioDays].filter(d=>p.tripDays.has(d)).length;
   const issues=KEYS.reduce((s,k)=>s+p[k],0);
   if(!p.name){const d=duties.find(l=>l.caliberCode===p.caliberCode);p.name=text(d?.employeeName);}
-  return {...p,bioDays:p.bioDays.size,tripDays:p.tripDays.size,both,issues};
+  const bioByDate=new Map(punches.filter(d=>d.caliberCode===p.caliberCode&&punchedHere(d)).map(d=>[d.date,d]));
+  const dutyByDate=new Map();
+  for(const duty of duties.filter(l=>l.caliberCode===p.caliberCode&&here(l)))(dutyByDate.get(duty.date)||dutyByDate.set(duty.date,[]).get(duty.date)).push(duty);
+  const findingByDate=new Map(findings.filter(f=>f.caliberCode===p.caliberCode).map(f=>[f.date,f]));
+  const dates=[...new Set([...p.bioDays,...p.tripDays,...findingByDate.keys()])].sort();
+  const details=dates.map(date=>{
+   const bio= bioByDate.get(date),cards=dutyByDate.get(date)||[],finding=findingByDate.get(date);
+   return {date,biometric:Boolean(bio),logBook:cards.length>0,both:Boolean(bio&&cards.length),sourceLabel:SOURCE_LABEL[bio?.source]||'',punchSite:bio?.site||'',inTime:bio?.inTime||'',outTime:bio?.outTime||'',
+    shift:[...new Set(cards.map(l=>l.shift).filter(Boolean))].join(', '),tripSite:[...new Set(cards.map(l=>l.site).filter(Boolean))].join(', '),equipment:[...new Set(cards.flatMap(l=>String(l.doors||l.equipment||'').split(',')).map(text).filter(Boolean))].join(', '),
+    books:[...new Set(cards.flatMap(l=>Array.isArray(l.books)?l.books:String(l.books||l.logBook||'').split(',')).map(text).filter(Boolean))].join(', '),findingType:finding?.type||'',findingLabel:finding?.label||'',detail:finding?.detail||''};
+  });
+  return {...p,bioDays:p.bioDays.size,tripDays:p.tripDays.size,both,issues,details};
  }).sort((a,b)=>b.issues-a.issues||a.caliberCode.localeCompare(b.caliberCode,undefined,{numeric:true}));
  const counts=Object.fromEntries(KEYS.map(k=>[k,findings.filter(f=>f.type===k).length]));
  const locked=lockedDays.filter(k=>canonicalSiteName(k.slice(0,k.lastIndexOf('|')))===siteKey).map(k=>k.slice(k.lastIndexOf('|')+1)).filter(inRange);
