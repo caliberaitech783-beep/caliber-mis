@@ -10,7 +10,7 @@ import {createGeminiCardReader} from '../server/services/gemini-card-reader.mjs'
 import {aFields} from '../server/services/gemini-hybrid.mjs';
 
 const field=value=>({value,status:value===null?'missing':'clear'});
-const response=()=>({documentType:'ELB',fields:{...Object.fromEntries(aFields('equipment').map(key=>[key,field(null)])),site:field('Sasti OC'),machineSummary:[]},trips:{p:false,r:[]}});
+const response=()=>({documentType:'ELB',fields:{...Object.fromEntries(aFields('equipment').map(key=>[key,field(null)])),site:field('Sasti OC'),openingHmr:field('100'),closingHmr:field('106'),machineSummary:[]},trips:{p:false,r:[]}});
 const ok=()=>({ok:true,json:async()=>({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify(response())}]}}]})});
 async function temporary(t){const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-speed-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));return dir;}
 
