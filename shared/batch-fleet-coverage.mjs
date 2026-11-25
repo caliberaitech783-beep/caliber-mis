@@ -47,9 +47,9 @@ export function pulseAnswerStatus(breakdownHours,shiftHours){
 }
 
 const RETIRED=/inactive|scrap|sold|dispos|written.?off|retired/i;
-const assetSite=asset=>text(equipmentSiteName(asset)||asset?.currentLocation||asset?.site||asset?.location);
-const assetDoor=asset=>text(asset?.door||asset?.doorNo||asset?.lmvDoor||equipmentDoorNumber(asset||{}))||text(asset?.registration||asset?.equipmentName||asset?.equipment||asset?.name);
-const assetName=asset=>text(asset?.equipmentName||asset?.equipment||asset?.name||asset?.group||asset?.equipmentGroup);
+export const assetSite=asset=>text(equipmentSiteName(asset)||asset?.currentLocation||asset?.site||asset?.location);
+export const assetDoor=asset=>text(asset?.door||asset?.doorNo||asset?.lmvDoor||equipmentDoorNumber(asset||{}))||text(asset?.registration||asset?.equipmentName||asset?.equipment||asset?.name);
+export const assetName=asset=>text(asset?.equipmentName||asset?.equipment||asset?.name||asset?.group||asset?.equipmentGroup);
 const byDoor=(a,b)=>String(a.door).localeCompare(String(b.door),undefined,{numeric:true});
 
 // The book a machine belongs to: its Equipment category in the master, else its group (as the save does).

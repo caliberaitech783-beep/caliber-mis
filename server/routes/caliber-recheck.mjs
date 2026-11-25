@@ -47,6 +47,7 @@ import {machineDays,importedDays,mergeBiometricDays} from '../../shared/trip-bio
 import {employeeNumber,hrSiteName} from '../../shared/hr-employee-master.mjs';
 import {createHrEmployeeSync} from '../services/hr-employee-sync.mjs';
 import {machineCategoryIssues} from '../../shared/machine-category-recheck.mjs';
+import {machineRoster,ROSTER_VIEWS} from '../../shared/machine-roster.mjs';
 
 export const CALIBER_RECHECK_SCHEMA=`
  CREATE TABLE IF NOT EXISTS mis_caliber_corrections(
@@ -334,6 +335,15 @@ export function registerCaliberRecheck(app,{pool,requireSession,requireAdministr
     cardNo:row.book_type==='equipment'?row.job_card:row.a_form,scanned:Boolean(row.scan_card_id),savedId:row.caliber_id,savedName:row.employee_name,issues});
   }
   res.json({from,to,cards:judged,listed,sites:[...sites.values()],tookMs:Date.now()-started});
+ }));
+
+ // Machine Roster (owner, 25 Nov 2026): every machine the Equipment master puts at each site of the login, by book
+ // (shared/machine-roster.mjs). Read only: a machine is changed in Pulse.
+ app.get('/api/caliber-recheck/roster',...protect,wrap(async(req,res)=>{
+  const scope=await getSiteScope(req.session),started=Date.now();
+  const masters=(await readMasters(pool)).rows.filter(row=>row.master_name==='Equipment master');
+  const roster=machineRoster(masters.map(row=>[row.id,row.record_data||{}]),{allowed:site=>siteAllowed(scope,site)});
+  res.json({...roster,views:ROSTER_VIEWS,tookMs:Date.now()-started});
  }));
 
  app.post('/api/caliber-recheck/pick',...protect,wrap(async(req,res)=>{
