@@ -161,3 +161,12 @@ Set by the owner on 25 November 2026: "I need to open multiple batch for multipl
 - Still kept: one batch per site, date and shift, and one VLB-open batch per site and date, so another shift of the same date still needs Lock VLB first.
 - From 2 Dec 2026 00:00 IST the old rules return by themselves. The Azure setting `VLB_MULTI_DAY_BATCHES_UNTIL=YYYY-MM-DD` moves the last day, `=off` ends it at once.
 - `shared/multi-day-batches.mjs` holds the rule; `test/multi-day-batches.test.mjs` checks it.
+
+# Every VLB, ELB and LMV machine of the site needs an answer (warning first)
+
+Set by the owner on 25 November 2026: when VLB, ELB and LMV close, the MIS user fills in every machine of the site: 100 VLB means every vehicle has a log book card, or its maintenance from Pulse-1, or an idle / 0 trip reason; the same for every ELB and LMV.
+
+- Part 1, built now: the batch page shows **Step 1 · Machine coverage** per book (VLB, ELB, LMV): machines the Equipment Master puts at the site (active, by Equipment category), how many have a saved card of the batch, how many have none, and cards of machines from another site. Pressing a figure opens **Step 2** with those machines. An ELB saved with a status on the fleet list (breakdown, maintenance, no operator…) counts as answered.
+- It only warns ("Warning only, nothing is stopped yet"): no lock or close reads it.
+- Still to build: Pulse-1 maintenance fetch and an idle / 0 trip reason for VLB and LMV machines, then the stop at Lock VLB, Lock LMV and Close batch behind a setting, after the lock pause (29 Nov) and multi-day batches (1 Dec) end.
+- `shared/batch-fleet-coverage.mjs` holds the rule, `src/batch-fleet-coverage.jsx` the panel; `test/batch-fleet-coverage.test.mjs` checks it.
