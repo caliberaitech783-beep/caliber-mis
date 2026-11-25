@@ -1,4 +1,5 @@
 // VLB, LMV and ELB locking paused for five days (owner, 24 Nov 2026: "locking of VLB, LMB and ELB ka lock
+// Extended to the end of 1 Dec 2026 (owner, 25 Nov 2026), with the multi-day batch window (shared/multi-day-batches.mjs).
 // hata sakta hu kya 5 din ke liye"). While the pause runs, a batch's stages never stop anyone:
 // - VLB, LMV and ELB cards can be added and changed in every open stage (VLB open, LMV open, ELB open);
 //   a VLB change after Lock VLB updates the machine trips of the batch at once.
@@ -8,7 +9,7 @@
 //   transfers, waiting scans, duplicates) is unchanged, and a closed batch is still reopened as before.
 // The pause ends by itself at the end of PAUSE_UNTIL (India time). The Azure setting
 // VLB_BATCH_LOCK_PAUSE_UNTIL=YYYY-MM-DD moves the last day; VLB_BATCH_LOCK_PAUSE_UNTIL=off ends it at once.
-export const PAUSE_UNTIL='2026-11-29';
+export const PAUSE_UNTIL='2026-12-01';
 const IST_OFFSET_MS=330*60*1000;
 const OFF=['0','off','false','no'];
 
