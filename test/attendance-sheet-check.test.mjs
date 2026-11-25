@@ -320,7 +320,9 @@ test('the tab sits after the sheet upload tab, which is beside Attendance Month-
  const screen=read('../src/manpower-reports.jsx');
  assert.match(screen,/\['attendance-month','Attendance Month-wise'\],\['attendance-site-sheet','Site Sheet vs Trip Card'\],\['attendance-sheet','Attendance Sheet Mismatch'\],\['attendance-trip-bio','Trip Card vs Bio-punch'\]\];/);
  assert.match(screen,/if\(!valid\|\|sheetCheck\)\{setBusy\(false\)/,'the tab does not start the Manpower read');
- assert.match(screen,/if\(sheetCheck\)return <section[\s\S]*?<AttendanceSheetCheck session=\{session\}\/>/);
+ // Owner, 25 Nov 2026: the tab holds two checks, HR sheet vs Biometric first and this one (Trip card vs Biometric).
+ assert.match(screen,/if\(sheetCheck\)return <section[\s\S]*?<AttendanceSheetMismatch session=\{session\} ReportSection=\{ReportSection\}\/>/);
+ assert.match(read('../src/hr-sheet-biometric.jsx'),/<AttendanceSheetCheck session=\{session\}\/>/);
  assert.match(read('../src/operations-reports.jsx'),/'attendance-batch','attendance-month','attendance-sheet','attendance-site-sheet','attendance-trip-bio'\]\.includes\(props\.reportId\)\)return <ManpowerReports/);
  const page=read('../src/attendance-sheet-check.jsx');
  assert.match(page,/accept="\.dat,\.txt,\.csv,\.xlsx,\.xlsm"/,'the device attlog .dat or its export');

@@ -1,0 +1,33 @@
+/* Attendance Sheet Mismatch › HR sheet vs Biometric (src/hr-sheet-biometric.jsx). Upload boxes reuse attendance-sheet-check.css. */
+.hsb-modes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+@media(max-width:720px){.hsb-modes{grid-template-columns:1fr}}
+.hsb-modes button{display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:12px 14px;border:2px solid #c7b5dd;border-radius:12px;background:var(--card,#fff);color:inherit;font:inherit;text-align:left;cursor:pointer}
+.hsb-modes button b{font-size:17px}
+.hsb-modes button span{font-size:13px;color:var(--muted,#665e75)}
+.hsb-modes button[aria-selected="true"]{background:#5b2d91;border-color:#5b2d91;color:#fff;box-shadow:0 3px 0 #2a1d40}
+.hsb-modes button[aria-selected="true"] span{color:#e8dcf7}
+.hsb-steps{grid-template-columns:1fr}
+.hsb-ways{display:flex;flex-direction:column;gap:6px}
+.hsb-ways label{display:flex;gap:8px;align-items:flex-start}
+.hsb-field{display:flex;flex-direction:column;gap:4px;width:100%;max-width:420px;font-weight:600}
+.hsb-field select{width:100%;padding:9px 10px;border:1px solid #c7b5dd;border-radius:8px;background:var(--card,#fff);color:inherit;font:inherit;font-weight:400}
+.hsb-num{display:inline-flex;flex-direction:column;align-items:flex-end;padding:4px 10px;border:1px solid transparent;border-radius:8px;font:inherit;font-weight:700;cursor:pointer;color:#fff}
+.hsb-num small{font-weight:500;font-size:12px}
+.hsb-num:disabled{background:#eee!important;color:#555!important;cursor:default}
+.hsb-num[aria-pressed="true"]{outline:3px solid #2a1d40;outline-offset:1px}
+.hsb-num.hsb-red{background:#c62828}.hsb-num.hsb-yellow{background:#f5c542;color:#3d2e00}.hsb-num.hsb-purple{background:#6a3fa0}.hsb-num.hsb-blue{background:#1d5fd1}
+.hsb-num.hsb-orange{background:#d46a00}.hsb-num.hsb-teal{background:#0f766e}
+.hsb-page .dsg-box.hsb-red,.hsb-page .hsb-kinds button.hsb-red[aria-pressed="true"]{background:#c62828;color:#fff;border-color:#9a1f1f}
+.hsb-page .dsg-box.hsb-yellow,.hsb-page .hsb-kinds button.hsb-yellow[aria-pressed="true"]{background:#f5c542;color:#3d2e00;border-color:#c99a1a}
+.hsb-page .dsg-box.hsb-purple,.hsb-page .hsb-kinds button.hsb-purple[aria-pressed="true"]{background:#6a3fa0;color:#fff;border-color:#4e2d78}
+.hsb-page .dsg-box.hsb-blue,.hsb-page .hsb-kinds button.hsb-blue[aria-pressed="true"]{background:#1d5fd1;color:#fff;border-color:#174ea8}
+.hsb-kinds{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 10px}
+.hsb-kinds button{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border:1px solid #c7b5dd;border-radius:999px;background:#fff;color:#2a1d40;font:inherit;font-weight:600;cursor:pointer}
+.hsb-kinds button[aria-pressed="true"]{background:#3d2a5c;color:#fff;border-color:#3d2a5c}
+.hsb-kinds button:disabled{opacity:.5;cursor:default}
+.hsb-page tr.hsb-row-red td{background:#fde8e8;color:#4a1010}
+.hsb-page tr.hsb-row-yellow td{background:#fff6cc;color:#3d2e00}
+.hsb-page tr.hsb-row-purple td{background:#f1e9fb;color:#2a1d40}
+.hsb-page tr.hsb-row-blue td{background:#e8f0ff;color:#1e293b}
+.hsb-page tr.hsb-row-grey td{background:#f3f3f3;color:#444}
+.hsb-notice{margin:0;padding:10px 12px;border:1px dashed #c7b5dd;border-radius:10px;background:#faf7fe;color:#3d2a5c}

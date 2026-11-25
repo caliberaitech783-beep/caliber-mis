@@ -193,3 +193,13 @@ Set by the owner on 25 November 2026: a day an HR administrator corrects on HR P
 - HR Pulse sends its corrected days beside the machine punches (`corrections` in caliber-hr `server/mis-biometric-punches.mjs`). Pulse-II's `machineDays` (`shared/trip-biometric-check.mjs`) puts the corrected In / Out in place of that day's punches; an Out not after the In is the next morning, and a next-date duty that starts within 3 hours of it is the same night. A, WO, H, CO or L leave no biometric day; P, HD or OD with no time is present and not a miss punch. Imported punches of that day never undo the correction. The line says "corrected in HR" with who and why.
 - HR Pulse is asked from the day before the first date (`server/services/hr-machine-punches.mjs`), so a night duty that began that evening is read whole and its morning Out is not a day of the first date. With 31 dates asked, the day before is a second small read.
 - Used by Attendance Sheet Mismatch, Caliber Punch Re-check and the attendance "card + punch" read. `test/hr-punch-corrections.test.mjs` checks this.
+
+# Attendance Sheet Mismatch: HR sheet vs Biometric
+
+Set by the owner on 25 November 2026: the attendance Excel HR makes by hand is uploaded and checked against the biometric HR Pulse holds, the same process as Site Sheet vs Trip Card.
+
+- The tab has two buttons: **HR sheet vs Biometric** (opens first) and **Trip card vs Biometric** (the earlier check, unchanged).
+- 1 · the HR Excel (EMP. ID, NAME, DESIGNATION, one column per date, read as the site sheet is), 2 · the biometric: the punches Pulse-II holds (HR Pulse machine punches with HR's corrections, and the imported ones) or a device file uploaded there, 3 · the site and Check. The dates are the sheet's marked dates up to today, at most 31.
+- Everyone on the sheet is compared, staff and helpers too. P with a full punch (or a day HR marked present) is the same; P with only IN or OUT is a miss punch; P with a punch only at another site, and P with no punch, are mismatches; A, WO, L, CO, H, - or blank with no punch is the same, with a punch at this site it is "Punch, HR sheet not P". A mark not understood is not compared. Trip cards are shown beside a day, never counted.
+- Also listed: EMP. ID and name to correct, and people who punched at the site and are not on the sheet. The Excel gives the HR sheet back coloured, with these lists.
+- Rule: `shared/hr-sheet-biometric.mjs`; run: `src/hr-sheet-biometric-run.mjs`; screen: `src/hr-sheet-biometric.jsx`; `test/hr-sheet-biometric.test.mjs` checks it. Nothing is changed in Pulse-II.

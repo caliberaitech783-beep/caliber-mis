@@ -7,7 +7,7 @@ import TableSmartPrint from './table-smart-print.jsx';
 import {SortableHeader,sortRowsBlanksLast} from './sortable-table.jsx';
 import {DateShiftGrid,dateShiftGrid} from './date-shift-grid.jsx';
 import AttendanceRegister from './attendance-register.jsx';
-import AttendanceSheetCheck from './attendance-sheet-check.jsx';
+import {AttendanceSheetMismatch} from './hr-sheet-biometric.jsx';
 import SiteSheetTripCard from './site-sheet-trip-card.jsx';
 import TripCardBioPunch from './trip-card-biopunch.jsx';
 import {canonicalSiteName} from '../shared/site-location.mjs';
@@ -676,9 +676,9 @@ export default function ManpowerReports({session,reportId='manpower',onSelect,Re
  const selectors=<><label>From<input type="date" min={OPERATIONAL_START} value={filters.from} onChange={e=>set('from',e.target.value)}/></label><label>To<input type="date" min={OPERATIONAL_START} value={filters.to} onChange={e=>set('to',e.target.value)}/></label>{choice('site','Site',(options.sites||[]).filter(isSiteName))}{choice('shift','Shift',(options.shifts||[]).map(code=>({value:code,label:shiftName(code)})).sort((x,y)=>compareShiftLabels(x.label,y.label)))}{choice('batch','Saved batch',options.batches)}{choice('employee','Employee',options.employees)}{choice('asset','Door / equipment',options.assets)}<button type="button" onClick={()=>{const date=today();setFilters(f=>({...f,from:date,to:date}));}}>Today</button><button type="button" onClick={()=>setFilters(f=>({...f,site:'',shift:'',batch:'',employee:'',asset:''}))}>Clear selections</button></>;
  // Attendance Sheet Mismatch: the same heading and tabs, then its own upload; no date or site selectors of this page.
  if(sheetCheck)return <section className="mp-reports" aria-label="Manpower and OT reports">
-  <header className="mp-heading"><div><small>REPORTS / MANPOWER & OT</small><h1>{title}</h1><p>{tripBio?"Trip cards against the biometric punches Pulse-II holds: OK cards counted, only the ones that need attention listed; the summary comes back as an Excel.":siteSheet?"The site's own attendance Excel against Pulse-II trip cards, one log book at a time (VLB, ELB, LMV), date by shift, both ways; the corrections needed come back as an Excel.":"The site's own attendance Excel against Pulse-II; the corrections needed come back as an Excel."}</p></div></header>
+  <header className="mp-heading"><div><small>REPORTS / MANPOWER & OT</small><h1>{title}</h1><p>{tripBio?"Trip cards against the biometric punches Pulse-II holds: OK cards counted, only the ones that need attention listed; the summary comes back as an Excel.":siteSheet?"The site's own attendance Excel against Pulse-II trip cards, one log book at a time (VLB, ELB, LMV), date by shift, both ways; the corrections needed come back as an Excel.":"HR's attendance Excel against the biometric, or trip cards against the biometric; the mismatches come back as an Excel."}</p></div></header>
   <nav className="mp-tabs" aria-label="Manpower report views">{views.map(([id,label])=><button key={id} type="button" aria-current={reportId===id?'page':undefined} onClick={()=>onSelect(id)}>{label}</button>)}</nav>
-  {tripBio?<TripCardBioPunch session={session} ReportSection={ReportSection}/>:siteSheet?<SiteSheetTripCard session={session} ReportSection={ReportSection}/>:<AttendanceSheetCheck session={session}/>}
+  {tripBio?<TripCardBioPunch session={session} ReportSection={ReportSection}/>:siteSheet?<SiteSheetTripCard session={session} ReportSection={ReportSection}/>:<AttendanceSheetMismatch session={session} ReportSection={ReportSection}/>}
  </section>;
  // On the dashboard the heading and the selectors share one row; the list for the MIS team and the rules stay on the Reports page.
  return <section className="mp-reports" aria-label="Manpower and OT reports">
