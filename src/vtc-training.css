@@ -1,0 +1,13 @@
+/* VTC Training: choosing several people at once (src/vtc-training-people.jsx). Purple, like VTC Training in attendance. */
+.vtc-people{gap:8px}
+.vtc-people-chosen{display:flex;flex-wrap:wrap;gap:6px}
+.vtc-people .vtc-chip{padding:4px 9px;border:1px solid #b99be0;border-radius:999px;background:#ecdffb;color:#5b2296;font:600 12px system-ui;cursor:pointer}
+.vtc-people-tools{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.vtc-people-tools input[type=search]{flex:1 1 220px;max-width:360px}
+.vtc-people-all{display:flex;align-items:center;gap:6px;font-size:13px;white-space:nowrap}
+.vtc-people-all input,.vtc-person input{width:auto}
+.vtc-people-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:4px 12px;max-height:260px;overflow:auto;padding:8px;border:1px solid #ded3e8;border-radius:7px}
+.vtc-person{display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:5px;font-size:13px;cursor:pointer;min-width:0;overflow-wrap:anywhere}
+.vtc-person.is-picked{background:#ecdffb;color:#5b2296}
+.vtc-people-empty{margin:4px;color:#8a7b96;font-size:13px}
+:root[data-theme="dark"] .vtc-people .vtc-chip,:root[data-theme="dark"] .vtc-person.is-picked{background:#3a2458;color:#e6d6ff;border-color:#7b3fc4}

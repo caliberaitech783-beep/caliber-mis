@@ -17,6 +17,8 @@ export const isTrainingEntry=entry=>String(entry?.reason??'').trim()===VTC_TRAIN
 // attendance counts the person present once that day. At most TRAINING_MAX_DAYS days, none after today (India).
 export const TRAINING_SHIFT='S1';
 export const TRAINING_MAX_DAYS=31;
+// One save may take several people (owner, 25 Nov 2026: bulk), up to TRAINING_MAX_PEOPLE.
+export const TRAINING_MAX_PEOPLE=100;
 const ISO=/^\d{4}-\d{2}-\d{2}$/;
 const realDate=d=>ISO.test(String(d))&&new Date(d+'T00:00:00Z').toISOString().slice(0,10)===d;
 export const indiaToday=(now=Date.now())=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(now));

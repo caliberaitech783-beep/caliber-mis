@@ -20,6 +20,8 @@ test('VTC Training saves every day From to To, with no shift and no machine, and
  await pool.exec(`CREATE TABLE master_records (id BIGINT PRIMARY KEY, master_name TEXT, record_data JSONB);
   INSERT INTO master_records VALUES
    (1,'Employee master','{"name":"Driver","site":"Sasti OC"}'),
+   (3,'Employee master','{"name":"Second","site":"Sasti OC"}'),
+   (4,'Employee master','{"name":"Elsewhere","site":"Jayant OC"}'),
    (2,'Shift Master','{"shiftCode":"A","site":"Sasti OC"}');`+SHIFT_ATTENDANCE_SCHEMA);
  const handlers={};
  registerShiftAttendance({post(path,...steps){handlers[path]=steps.at(-1);}},{pool,protect:[],ensureBooks:async()=>{},today:()=>'2026-11-25'});
@@ -39,10 +41,21 @@ test('VTC Training saves every day From to To, with no shift and no machine, and
  assert.equal((await save('/api/training-attendance',{fromDate:'2026-10-31'})).status,400,'not before 1 Nov 2026');
  assert.equal((await save('/api/training-attendance',{employeeId:'9'})).status,400,'an employee of this site');
  const {rows:none}=await pool.query('SELECT count(*)::int AS n FROM mis_shift_attendance');assert.equal(none[0].n,0,'a refused range saves nothing');
- assert.deepEqual((await save('/api/training-attendance',{reason:'Rain',shiftId:'2'})).payload,{present:true,training:true,days:3,from:'2026-11-02',to:'2026-11-04'});
+ assert.deepEqual((await save('/api/training-attendance',{reason:'Rain',shiftId:'2'})).payload,{present:true,training:true,people:1,days:3,from:'2026-11-02',to:'2026-11-04'});
  const {rows}=await pool.query('SELECT book_date::text AS date,site,shift,asset_id,kind,reason,remarks FROM mis_shift_attendance ORDER BY book_date');
  assert.deepEqual(rows,['2026-11-02','2026-11-03','2026-11-04'].map(date=>({date,site:'sasti ob',shift:TRAINING_SHIFT,asset_id:null,kind:'vehicle',reason:VTC_TRAINING_REASON,remarks:'VTC Nagpur'})),
   'one line a day, in the first shift, always VTC Training whatever shift or reason is sent');
+ await pool.query('DELETE FROM mis_shift_attendance');
+ // Several people in one save (owner, 25 Nov 2026: bulk): every person every day, or nothing when one is refused.
+ const refused=await save('/api/training-attendance',{employeeId:undefined,employeeIds:['1','3','4']});
+ assert.equal(refused.status,400);assert.deepEqual(refused.payload.refused,['4']);
+ assert.equal((await pool.query('SELECT count(*)::int AS n FROM mis_shift_attendance')).rows[0].n,0,'one refused person saves nobody');
+ assert.equal((await save('/api/training-attendance',{employeeId:undefined,employeeIds:[]})).status,400);
+ assert.equal((await save('/api/training-attendance',{employeeId:undefined,employeeIds:Array.from({length:101},(_,i)=>String(i+1))})).status,400,'up to 100 people');
+ assert.deepEqual((await save('/api/training-attendance',{employeeId:undefined,employeeIds:['1','3','3']})).payload,{present:true,training:true,people:2,days:3,from:'2026-11-02',to:'2026-11-04'});
+ const {rows:many}=await pool.query('SELECT employee_id::text AS id,count(*)::int AS days FROM mis_shift_attendance GROUP BY employee_id ORDER BY employee_id');
+ assert.deepEqual(many,[{id:'1',days:3},{id:'3',days:3}]);
+ await pool.query('DELETE FROM mis_shift_attendance WHERE employee_id=3');
  assert.equal((await save('/api/training-attendance',{fromDate:'2026-11-04',toDate:'2026-11-05',remarks:'VTC Chandrapur'})).payload.days,2);
  const {rows:again}=await pool.query('SELECT count(*)::int AS n, count(*) FILTER (WHERE remarks=$1)::int AS updated FROM mis_shift_attendance',['VTC Chandrapur']);
  assert.deepEqual(again[0],{n:4,updated:2},'saving a day again replaces it, never doubles it');
@@ -105,7 +118,10 @@ test('VLB / ELB Manual has its own VTC Training button and form, and the colour 
  assert.match(workspace,/setAttendanceOpen\('training'\)\}>VTC Training<\/button>/);
  const form=read('../src/shift-attendance.jsx');
  assert.match(form,/training\?'\/api\/training-attendance':'\/api\/shift-attendance'/);
- assert.match(form,/\{kind,location:site,fromDate:date,toDate,employeeId,remarks\}/,'From and To date, no shift');
+ assert.match(form,/\{kind,location:site,fromDate:date,toDate,employeeIds:trainees,remarks\}/,'From and To date, no shift, every ticked person');
+ assert.match(form,/training\?<VtcTrainingPeople /,'VTC Training picks several people');
+ const people=read('../src/vtc-training-people.jsx');
+ assert.match(people,/type="checkbox"/);assert.match(people,/Select all shown/);assert.match(people,/TRAINING_MAX_PEOPLE/);
  assert.match(form,/training\?<>\s*<label className="logbook-field">From date[\s\S]*To date[\s\S]*<\/>:<>\s*<label className="logbook-field">Book date[\s\S]*Shift<select/,'the shift box is only on Present — 0 trips');
  assert.match(read('../src/attendance-register.jsx'),/\['training','Purple','VTC Training \(present\)'\]/);
  assert.match(read('../src/manpower-reports.jsx'),/\['training','Purple','VTC Training \(present\)'\]/);
