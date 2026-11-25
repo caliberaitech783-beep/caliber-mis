@@ -10,28 +10,39 @@ export function punchDefaultRange(today){
  const from=addDays(today,-(PUNCH_DEFAULT_DAYS-1));
  return {from:from<OPERATIONAL_START?OPERATIONAL_START:from,to:today};
 }
-export const emptyPunchRecheck=()=>({answers:new Map(),lines:[],sites:new Map(),punches:0,machineErrors:[]});
+export const emptyPunchRecheck=()=>({answers:new Map(),lines:[],sites:new Map(),punches:0,machineErrors:[],hrSites:[],machineDays:0,imported:0,unplaced:0});
+const SITE_FIGURES=['punched','counted','toFix','noCard','received','unknown','notDriver'];
 // A date asked again (after a card is put right) replaces its earlier answer.
 export function addPunchAnswer(held,answer){
  const answers=new Map(held.answers);answers.set(answer.from,answer);
- const lines=[],sites=new Map(),errors=new Set();let punches=0;
+ const lines=[],sites=new Map(),errors=new Set(),hr=new Map();let punches=0,machineDays=0,imported=0,unplaced=0;
  for(const one of [...answers.values()].sort((a,b)=>a.from<b.from?-1:1)){
-  lines.push(...(one.lines||[]));punches+=one.punches||0;
+  lines.push(...(one.lines||[]));punches+=one.punches||0;machineDays+=one.machine?.days||0;imported+=one.imported||0;unplaced+=one.unplaced||0;
+  for(const site of one.machine?.sites||[])hr.set(site.site,(hr.get(site.site)||0)+site.days);
   if(one.machine?.error)errors.add(one.machine.error);
   for(const site of one.sites||[]){
-   const now=sites.get(site.key)||{key:site.key,site:site.site,punched:0,counted:0,toFix:0,noCard:0};
-   sites.set(site.key,{...now,punched:now.punched+site.punched,counted:now.counted+site.counted,toFix:now.toFix+site.toFix,noCard:now.noCard+site.noCard});
+   const now=sites.get(site.key)||{key:site.key,site:site.site,punched:0,counted:0,toFix:0,noCard:0,received:0,unknown:0,notDriver:0};
+   sites.set(site.key,{...now,...Object.fromEntries(SITE_FIGURES.map(key=>[key,now[key]+(site[key]||0)]))});
   }
  }
- return {answers,lines,sites,punches,machineErrors:[...errors]};
+ return {answers,lines,sites,punches,machineErrors:[...errors],hrSites:[...hr].map(([site,days])=>({site,days})).sort((a,b)=>b.days-a.days),machineDays,imported,unplaced};
 }
 // Step 1: one line per site, the most people to fix on top, and the line of all sites.
 export function punchSiteRows(held){
- const rows=[...held.sites.values()].map(site=>({id:site.key,...site})).sort((a,b)=>b.toFix-a.toFix||a.site.localeCompare(b.site));
+ const rows=[...held.sites.values()].map(site=>({id:site.key,...site})).sort((a,b)=>b.toFix-a.toFix||b.punched-a.punched||b.received-a.received||a.site.localeCompare(b.site));
  const sum=key=>rows.reduce((total,row)=>total+row[key],0);
- return {rows,total:{id:EVERY,key:EVERY,total:true,site:'All sites',punched:sum('punched'),counted:sum('counted'),toFix:sum('toFix'),noCard:sum('noCard')}};
+ return {rows,total:{id:EVERY,key:EVERY,total:true,site:'All sites',...Object.fromEntries(SITE_FIGURES.map(key=>[key,sum(key)]))}};
 }
-export const linesOfSite=(held,siteKey)=>siteKey===EVERY?held.lines:held.lines.filter(line=>line.siteKey===siteKey);
+// The lists a Step 1 figure opens (owner, 24 Nov 2026: "make it drill down for all"). 'punched' is every line.
+export const PUNCH_VIEWS=[
+ {key:'punched',label:'Drivers / operators punched',short:'All punched'},
+ {key:'counted',label:'Attendance from a card',short:'Attendance from a card'},
+ {key:'toFix',label:'To fix here (a card has an error)',short:'To fix here'},
+ {key:'noCard',label:'Punched, no card at all',short:'Punched, no card'},
+];
+export const STATUS_LABEL={counted:'Attendance from a card',toFix:'Card has an error',noCard:'No card'};
+export const ofView=(lines,view)=>view==='punched'?lines:lines.filter(line=>line.status===view);
+export const linesOfSite=(held,siteKey,view='toFix')=>ofView(siteKey===EVERY?held.lines:held.lines.filter(line=>line.siteKey===siteKey),view);
 // Step 2: one row per date and shift (and site, when all sites are open) with its people to fix.
 export function punchSlotRows(lines,{manySites=false}={}){
  const slots=new Map();

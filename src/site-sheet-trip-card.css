@@ -2,7 +2,9 @@
 /* The log book of the sheet is chosen first (owner, 24 Nov 2026): three tabs, each with its own file and result. */
 .ssc-books{display:flex;flex-direction:column;gap:10px;padding:16px;border:1px solid #ddd1ea;border-radius:12px;background:var(--card,#fff)}
 .ssc-books h2{margin:0;font-size:16px}
-.ssc-book-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+/* Four tabs since 24 Nov 2026 afternoon: VLB, ELB, LMV and All sheets (the three together). */
+.ssc-book-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+@media(max-width:1100px){.ssc-book-tabs{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .ssc-book-tabs button{display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-width:0;padding:12px 14px;border:2px solid #c7b5dd;border-radius:12px;background:var(--card,#fff);color:inherit;font:inherit;text-align:left;cursor:pointer}
 .ssc-book-tabs button b{font-size:18px}
 .ssc-book-tabs button span{font-size:13px;color:var(--muted,#665e75)}
@@ -14,6 +16,7 @@
 .ssc-book-tabs button[aria-selected="true"]{background:#5b2d91;border-color:#5b2d91;color:#fff;box-shadow:0 3px 0 #2a1d40}
 .ssc-book-tabs button[aria-selected="true"] span{color:#e8dcf7}
 @media(max-width:720px){.ssc-book-tabs{grid-template-columns:1fr}}
+.ssc-mixed-sheet{margin:0;padding:12px 14px;border:1px solid #9fd2c9;border-radius:10px;background:#eef9f6;color:#0f3d38}
 .ssc-wrong-tab{margin:0;padding:12px 14px;border:2px solid #d46a00;border-radius:10px;background:#fff4e6;color:#5a2b00;font-weight:600}
 .ssc-num.ssc-teal{background:#0f766e}
 .ssc-page tr.ssc-row-teal td{background:#e2f5f1;color:#0f3d38}
@@ -26,7 +29,9 @@
 .ssc-kinds small{font-weight:700}
 .ssc-num{display:inline-flex;flex-direction:column;align-items:flex-end;padding:4px 10px;border:1px solid transparent;border-radius:8px;font:inherit;font-weight:700;cursor:pointer;color:#fff}
 .ssc-num small{font-weight:500;font-size:12px}
-.ssc-num.ssc-blue{background:#1d5fd1}.ssc-num.ssc-orange{background:#d46a00}.ssc-num.ssc-purple{background:#6a3fa0}
+.ssc-num.ssc-blue{background:#1d5fd1}.ssc-num.ssc-orange{background:#d46a00}.ssc-num.ssc-purple{background:#6a3fa0}.ssc-num.ssc-pink{background:#c2185b}
+.ssc-page .dsg-box.ssc-pink,.ssc-page .ssc-kinds button.ssc-pink[aria-pressed="true"]{background:#c2185b;color:#fff;border-color:#961247}
+.ssc-page tr.ssc-row-pink td{background:#fde7f0;color:#4a0f26}
 .ssc-num:disabled{background:#eee;color:#555;cursor:default}
 .ssc-num[aria-pressed="true"]{outline:3px solid #2a1d40;outline-offset:1px}
 .ssc-legend{display:flex;flex-wrap:wrap;gap:8px 16px;margin:0 0 8px;font-size:13px;color:#3d2a5c}

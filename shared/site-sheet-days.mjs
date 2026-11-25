@@ -7,6 +7,8 @@
 //   card    the sheet says A, PL, - or blank; Pulse-II has a trip card, log book or zero-trip entry at this site (blue)
 //   noCard  the sheet says P; Pulse-II has no duty that date at all (orange)
 //   away    the sheet says P; Pulse-II has that date's duty at another site (purple)
+//   uncounted the sheet says P; a trip card of that date is saved but attendance does not count it: its driver matches no
+//           single Employee Master person, or its shift or date conflicts (pink). Corrected on Caliber ID Re-check.
 // The site's sheet has dates only, no shift. A line takes the shift of its Pulse-II duty; a "sheet P, no trip card" line
 // has no duty, so its shift is not known and it sits in its own column. Its nearest worked shift at this site is given as a
 // hint for finding the missing card; it is never counted as that shift.
@@ -17,6 +19,7 @@ export const DAY_KINDS=[
  {key:'card',label:'Trip card present, sheet not P',short:'Trip card, sheet not P',tone:'blue'},
  {key:'noCard',label:'Sheet P, no trip card',short:'Sheet P, no trip card',tone:'orange'},
  {key:'away',label:'Sheet P, trip card at another site',short:'Sheet P, card at another site',tone:'purple'},
+ {key:'uncounted',label:'Sheet P, trip card saved but not counted',short:'Sheet P, card not counted',tone:'pink'},
 ];
 export const kindLabel=key=>DAY_KINDS.find(k=>k.key===key)?.label||'';
 // Owner, 24 Nov 2026: the site's sheet is uploaded one log book at a time. The user first says which log book the file is
@@ -27,6 +30,14 @@ export const SHEET_BOOKS=[
  {key:'ELB',label:'ELB sheet',about:'Equipment Log Book · excavators, dozers, graders, loaders, drills'},
  {key:'LMV',label:'LMV sheet',about:'LMV Log Book · light vehicles'},
 ];
+// Owner, 24 Nov 2026 (afternoon): "also give the option to select all ... the combine of three of them, VLB, ELB and LMV".
+// A fourth tab: one sheet compared with the trip cards of VLB, ELB and LMV together (siteSheetView with no sheetBook).
+export const ALL_SHEETS={key:'ALL',label:'All sheets',about:'VLB + ELB + LMV together · one sheet for everyone',name:'VLB + ELB + LMV'};
+export const SHEET_TABS=[...SHEET_BOOKS,ALL_SHEETS];
+// The sheetBook of a tab for siteSheetView: '' for All (every log book), else the log book itself.
+export const sheetBookOf=key=>key===ALL_SHEETS.key?'':key;
+// The name of a tab in sentences: "VLB", or "VLB + ELB + LMV" for All.
+export const sheetTabName=key=>key===ALL_SHEETS.key?ALL_SHEETS.name:key;
 export const shiftName=shift=>shift===UNKNOWN_SHIFT?'Shift not in sheet':/^[A-C]$/.test(String(shift))?'Shift '+shift:String(shift||'');
 
 const text=value=>value===null||value===undefined?'':String(value).trim();
@@ -41,6 +52,7 @@ const ADVICE={
  card:'The sheet does not say P; Pulse-II has a duty saved for this date and shift. Correct the sheet to P, or correct the Caliber ID on that card if another person worked.',
  noCard:'The sheet says P; Pulse-II has no trip card, log book or zero-trip entry for this date. Save the missing card or zero-trip entry, or correct the sheet to A.',
  away:'The sheet says P here; Pulse-II has the duty of this date at another site. Correct the sheet, or correct the site or the Caliber ID on that card.',
+ uncounted:'A trip card of this date is saved, but attendance does not count it. Open Masters > Caliber ID Re-check: put the right person on the card, or correct the duplicate line in HR Pulse Employee Master, or save the shift. Not a missing card.',
 };
 
 // The nearest dates before and after `date` with a duty at this site, with their shifts: a hint for a missing card.
@@ -75,6 +87,12 @@ export function sheetDayLines(result){
     }
    }else if(c.state==='noDuty'){
     lines.push({...base,logBooks:[],batches:[],kind:'noCard',date:c.date,shift:UNKNOWN_SHIFT,sheetSays:c.mark,pulseSays:'No duty saved',books:'',equipment:'',site:'',nearest:nearestShift(worked,c.date),correction:ADVICE.noCard});
+   }else if(c.state==='uncounted'){
+    const cards=c.uncounted||[];
+    for(const shift of uniq(cards.map(d=>d.shift)).length?uniq(cards.map(d=>d.shift)):[UNKNOWN_SHIFT]){
+     const own=cards.filter(d=>(d.shift||UNKNOWN_SHIFT)===shift);
+     lines.push({...base,...tags(own),kind:'uncounted',date:c.date,shift,sheetSays:c.mark,pulseSays:'Card saved, not counted: '+joined(own,'reason'),books:joined(own,'books'),equipment:joined(own,'doors'),site:joined(own,'site'),nearest:'',correction:ADVICE.uncounted});
+    }
    }else if(c.state==='site'){
     const away=c.away||[];
     for(const shift of uniq(away.map(d=>d.shift)).length?uniq(away.map(d=>d.shift)):['']){
@@ -92,7 +110,7 @@ export function dayShiftRows(lines){
  const rows=new Map();
  for(const l of lines){
   const id=l.date+'|'+l.shift;
-  const row=rows.get(id)||rows.set(id,{id,date:l.date,shift:l.shift,total:0,card:0,noCard:0,away:0}).get(id);
+  const row=rows.get(id)||rows.set(id,{id,date:l.date,shift:l.shift,total:0,card:0,noCard:0,away:0,uncounted:0}).get(id);
   row.total++;row[l.kind]++;
  }
  return [...rows.values()].sort(byDateShift);
@@ -104,15 +122,16 @@ export function kindTotals(lines){
 }
 
 // One person day by day: the sheet's mark beside Pulse-II for every date of the sheet that is filled.
-const STATE_WORDS={duty:'Trip card present, sheet not P',noDuty:'Sheet P, no trip card',site:'Sheet P, trip card at another site',book:'Sheet P, belongs to another log book',skip:'Not compared',
+const STATE_WORDS={duty:'Trip card present, sheet not P',noDuty:'Sheet P, no trip card',site:'Sheet P, trip card at another site',uncounted:'Sheet P, trip card saved but not counted',book:'Sheet P, belongs to another log book',skip:'Not compared',
  '':'Same in both'};
 // A duty of another log book on a date (only when the sheet was uploaded as one log book): "ELB card in Shift A".
 const otherSays=c=>uniq(c.other.flatMap(d=>d.logBooks)).join(' + ')+' card in '+uniq(c.other.map(d=>shiftName(d.shift))).join(' + ');
 export function personDays(row){
  return (row?.cells||[]).map(c=>{
-  const cards=[...(c.duties||[]),...(c.away||[]),...(c.other||[])],own=c.duties?.length||c.away?.length;
+  const cards=[...(c.duties||[]),...(c.away||[]),...(c.uncounted||[]),...(c.other||[])],own=c.duties?.length||c.away?.length;
   return {id:c.date,date:c.date,sheetSays:c.mark||'(blank)',
-   pulseSays:c.duties?.length?'Duty in '+uniq(c.duties.map(d=>shiftName(d.shift))).join(' + '):c.away?.length?'Duty at '+joined(c.away,'site'):c.other?.length?otherSays(c)
+   pulseSays:c.duties?.length?'Duty in '+uniq(c.duties.map(d=>shiftName(d.shift))).join(' + '):c.away?.length?'Duty at '+joined(c.away,'site')
+    :c.uncounted?.length?'Card saved, not counted: '+joined(c.uncounted,'reason'):c.other?.length?otherSays(c)
     :c.state==='book'?(row.byDesignation?'No trip card in any log book; the designation belongs to '+row.otherBooks:'No trip card; his trip cards are '+(row.otherBooks||'in another log book'))
     :c.pulse==='?'?'Date not locked yet':c.pulse?'No duty':'Not compared',
    books:joined(cards,'books'),equipment:joined(cards,'doors'),
@@ -123,13 +142,20 @@ export function personDays(row){
 // A file uploaded under the wrong tab (the ELB sheet under VLB): more people of the file belong wholly to another log
 // book (every trip card there, or no card and that designation) than are compared here. Returns that log book and how
 // many of them, or null when the file fits its tab.
+// Owner, 24 Nov 2026: Sasti keeps ONE sheet for the whole site, so under the ELB tab 409 of its 940 people were VLB people
+// and the screen asked "Is this the VLB sheet?" although 143 ELB people were compared. When at least MIXED_SHEET_PEOPLE
+// people are compared here the file holds this log book's people too: mixed is true, and the screen says what was
+// compared instead of calling it the wrong tab. books: each other log book and how many belong wholly to it.
+export const MIXED_SHEET_PEOPLE=10;
 export function wrongTab(result){
- const whole=(result?.otherBook||[]).filter(p=>p.whole);
- if(whole.length<3||whole.length<=(result.totals?.judged||0))return null;
+ const whole=(result?.otherBook||[]).filter(p=>p.whole),judged=result?.totals?.judged||0;
+ if(whole.length<3||whole.length<=judged)return null;
  const count=new Map();
  for(const p of whole)for(const book of p.books.split(' + '))count.set(book,(count.get(book)||0)+1);
- const [book,people]=[...count].sort((a,b)=>b[1]-a[1])[0];
- return {book,people,whole:whole.length};
+ const books=[...count].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0])).map(([name,people])=>({book:name,people}));
+ // shared: people counted under more than one of those log books (cards in both LMV and VLB).
+ return {book:books[0].book,people:books[0].people,whole:whole.length,judged,mixed:judged>=MIXED_SHEET_PEOPLE,books,
+  shared:whole.filter(p=>p.books.includes(' + ')).length};
 }
 // The people of a one-log-book sheet who belong to another log book, for the screen: one line per person. "Which days":
 // some days (those cards are in another log book), every trip card, or by designation (no card at all).
@@ -145,22 +171,26 @@ export function sheetDaySheets(result,lines=sheetDayLines(result)){
  const rows=dayShiftRows(lines);
  const shifts=uniq(rows.map(r=>r.shift)).sort((a,b)=>shiftRank(a)-shiftRank(b)||a.localeCompare(b));
  // One column per shift and kind that occurs, then the day totals.
+ // "Card not counted" is new (24 Nov 2026): its day column and its sheet are there only when such a line is.
+ const dayKinds=DAY_KINDS.filter(k=>k.key!=='uncounted'||rows.some(r=>r.uncounted>0));
  const cols=shifts.flatMap(shift=>DAY_KINDS.filter(k=>rows.some(r=>r.shift===shift&&r[k.key]>0)).map(k=>({shift,kind:k.key,label:shiftName(shift)+' · '+k.short})));
  const dates=uniq(rows.map(r=>r.date)).sort();
  const count=(date,shift,kind)=>rows.filter(r=>(!date||r.date===date)&&(!shift||r.shift===shift)).reduce((n,r)=>n+(kind?r[kind]:r.total),0);
- const gridRow=date=>[date?dmy(date):'All dates',...cols.map(c=>String(count(date,c.shift,c.kind))),...DAY_KINDS.map(k=>String(count(date,'',k.key))),String(count(date,'',''))];
+ const gridRow=date=>[date?dmy(date):'All dates',...cols.map(c=>String(count(date,c.shift,c.kind))),...dayKinds.map(k=>String(count(date,'',k.key))),String(count(date,'',''))];
  const grid={name:'Date x shift',title:result.site+' · Trip card against the sheet · date by shift · '+period,plainSerial:true,
   headerRows:[result.site+' · Trip card against the sheet · date by shift · '+period,
    'Each figure is people on that date and shift. Trip card, sheet not P: Pulse-II has a duty, the sheet says A, PL, - or blank. Sheet P, no trip card: the sheet says P, Pulse-II has no duty that date.',
-   'The site sheet has dates only, no shift: a "sheet P, no trip card" line has no duty to take a shift from, so it is under "Shift not in sheet".'],
-  columns:['Date',...cols.map(c=>c.label),...DAY_KINDS.map(k=>'Day · '+k.short),'Day · all'].map(label=>({label})),
+   'The site sheet has dates only, no shift: a "sheet P, no trip card" line has no duty to take a shift from, so it is under "Shift not in sheet".',
+   'Sheet P, card not counted: a trip card of that date is saved, but attendance does not count it (its driver matches no single person in Employee Master, or its shift conflicts). Correct it on Caliber ID Re-check; it is not a missing card.'],
+  columns:['Date',...cols.map(c=>c.label),...dayKinds.map(k=>'Day · '+k.short),'Day · all'].map(label=>({label})),
   rows:[...dates.map(gridRow),gridRow('')],highlightedRows:new Set([dates.length])};
  const detail=(kinds,name,title,withNearest)=>({name,title:result.site+' · '+title+' · '+period,plainSerial:true,
   columns:['Date','Shift','Row in sheet','EMP. ID','Name in sheet','Name in Pulse-II','Designation','Sheet says','Pulse-II says',...(withNearest?['Nearest shift worked here']:[]),'Trip cards / log books','Equipment','Correction required'].map(label=>({label})),
   rows:lines.filter(l=>kinds.includes(l.kind)).map(l=>[dmy(l.date),shiftName(l.shift),String(l.row),l.id,l.name,l.pulseName,l.designation,l.sheetSays,l.pulseSays,...(withNearest?[l.nearest]:[]),l.books,l.equipment,l.correction])});
  return [grid,
   detail(['card'],'Trip card, sheet not P','Trip card present, sheet not P',false),
-  detail(['noCard','away'],'Sheet P, no trip card','Sheet P, no trip card at this site',true)];
+  detail(['noCard','away'],'Sheet P, no trip card','Sheet P, no trip card at this site',true),
+  ...(lines.some(l=>l.kind==='uncounted')?[detail(['uncounted'],'Card not counted','Sheet P, trip card saved but not counted',false)]:[])];
 }
 // One more sheet when the file was uploaded as one log book: the people marked P whose trip card is in another log book.
 export function otherBookSheet(result){

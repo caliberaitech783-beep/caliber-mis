@@ -14,7 +14,8 @@ import {shiftChoiceLabel} from '../shared/report-filter-options.mjs';
 import {OPERATIONAL_START} from '../shared/operational-start.mjs';
 import {REFRESH_HINT} from '../shared/caliber-id-check.mjs';
 import {dmy,todayInIndia,recheckDates} from './caliber-recheck-model.mjs';
-import {EVERY,punchDefaultRange,emptyPunchRecheck,addPunchAnswer,punchSiteRows,linesOfSite,punchSlotRows,linesOfSlot,firstCard,cardAction,cardOption} from './caliber-punch-recheck-model.mjs';
+import {EVERY,punchDefaultRange,emptyPunchRecheck,addPunchAnswer,punchSiteRows,linesOfSite,punchSlotRows,linesOfSlot,firstCard,cardAction,cardOption,PUNCH_VIEWS,STATUS_LABEL} from './caliber-punch-recheck-model.mjs';
+import CardRecheckView from './caliber-card-recheck.jsx';
 import './caliber-recheck.css';
 
 const count=value=>Number(value||0).toLocaleString('en-IN');
@@ -22,7 +23,19 @@ const SHIFT_OPTIONS=[['S1','Shift I'],['S2','Shift II'],['S3','Shift III'],['D',
 const SOURCE={machine:'Machine','imported':'Imported','machine+imported':'Machine + imported'};
 const isTotal=row=>Boolean(row.total);
 
+// The two views (owner, 24 Nov 2026: "dono rakho"): Trip cards first (src/caliber-card-recheck.jsx), Bio-punch beside it.
 export default function CaliberPunchRecheck({session,ReportSection}){
+ const [tab,setTab]=useState('cards');
+ return <section className="caliber-recheck">
+  <nav className="am-chips cr-views" aria-label="View">
+   <button type="button" aria-current={tab==='cards'?'page':undefined} onClick={()=>setTab('cards')}>Trip cards (VLB · ELB · LMV)</button>
+   <button type="button" aria-current={tab==='punch'?'page':undefined} onClick={()=>setTab('punch')}>Bio-punch</button>
+  </nav>
+  {tab==='cards'?<CardRecheckView session={session} ReportSection={ReportSection}/>:<PunchView session={session} ReportSection={ReportSection}/>}
+ </section>;
+}
+
+function PunchView({session,ReportSection}){
  const [range,setRange]=useState(()=>punchDefaultRange(todayInIndia()));
  const [held,setHeld]=useState(emptyPunchRecheck),[progress,setProgress]=useState(null),[error,setError]=useState('');
  const [open,setOpen]=useState({site:'',slot:null});
@@ -96,21 +109,30 @@ export default function CaliberPunchRecheck({session,ReportSection}){
 
  const period=dmy(range.from)+' to '+dmy(range.to),busy=Boolean(progress);
  const sites=punchSiteRows(held);
- const {site,slot}=open,manySites=site===EVERY;
- const siteLines=site?linesOfSite(held,site):[],siteLabel=manySites?'All sites':sites.rows.find(row=>row.key===site)?.site||'';
+ const {site,slot}=open,manySites=site===EVERY,view=open.view||'toFix',viewInfo=PUNCH_VIEWS.find(one=>one.key===view),fixing=view==='toFix';
+ const siteLines=site?linesOfSite(held,site,view):[],siteLabel=manySites?'All sites':sites.rows.find(row=>row.key===site)?.site||'';
+ const what=fixing?'people to fix':'people';
  const grid=dateShiftGrid(punchSlotRows(siteLines,{manySites}),{sumKeys:['count','own'],lineOf:row=>manySites?siteDateLine(row):dateLine(row)});
- const dayColumns=[{key:'count',label:'Day people to fix',value:sums=>sums.count},{key:'own',label:'With their own card',value:sums=>sums.own}];
- const gridExport=dateShiftExport(grid,{count:row=>row.count,countLabel:'people to fix',dayColumns,shiftLabel:shiftChoiceLabel});
+ const dayColumns=[{key:'count',label:'Day '+what,value:sums=>sums.count},...(fixing?[{key:'own',label:'With their own card',value:sums=>sums.own}]:[])];
+ const gridExport=dateShiftExport(grid,{count:row=>row.count,countLabel:what,dayColumns,shiftLabel:shiftChoiceLabel});
  const lines=slot?linesOfSlot(siteLines,slot):[];
  const sameSlot=row=>slot&&slot.key!==EVERY&&slot.date===row.date&&slot.shift===row.shift&&(!manySites||slot.siteKey===row.siteKey);
  const go=next=>{setKept(null);setSaid(null);setOpen(next);};
- const openSlot=row=>go({site,slot:row?{key:row.key,date:row.date,shift:row.shift,siteKey:manySites?row.siteKey:'',label:dmy(row.date)+' · '+shiftChoiceLabel(row.shift)+(manySites?' · '+row.site:'')}:{key:EVERY,label:'All dates and shifts'}});
- const crumbs=[['All sites',()=>go({site:'',slot:null})],...(site?[[siteLabel,()=>go({site,slot:null})]]:[]),...(slot?[[slot.label,null]]:[])];
+ const openSlot=row=>go({site,view,slot:row?{key:row.key,date:row.date,shift:row.shift,siteKey:manySites?row.siteKey:'',label:dmy(row.date)+' · '+shiftChoiceLabel(row.shift)+(manySites?' · '+row.site:'')}:{key:EVERY,label:'All dates and shifts'}});
+ const crumbs=[['All sites',()=>go({site:'',slot:null,view})],...(site?[[siteLabel+' · '+viewInfo.short,()=>go({site,slot:null,view})]]:[]),...(slot?[[slot.label,null]]:[])];
+ // Each figure of Step 1 opens its own list; pressing elsewhere on a line opens the list already chosen.
+ const openSite=(row,next=view)=>go({site:row.key,slot:null,view:next});
+ const figure=key=>row=>row[key]>0?<button type="button" className={'cr-figure'+(site===row.key&&view===key?' cr-figure-picked':'')} title={'Open: '+PUNCH_VIEWS.find(one=>one.key===key).label}
+  onClick={event=>{event.stopPropagation();openSite(row,key);}}>{count(row[key])}</button>:row[key];
  const back=crumbs.length>1?crumbs.at(-2)[1]:null;
  const level=!site?1:!slot?2:3;
 
- const siteColumns=[{key:'site',label:'Site',value:row=>row.site},{key:'punched',label:'Drivers / operators punched',value:row=>row.punched},{key:'counted',label:'Attendance from a card',value:row=>row.counted},
-  {key:'toFix',label:'To fix here (a card has an error)',value:row=>row.toFix},{key:'noCard',label:'Punched, no card at all',value:row=>row.noCard}];
+ // Punches received (owner, 24 Nov 2026): every punch day that reached Pulse-II for the site, before the driver filter,
+ // and those whose number is in no employee list: a site at 0 has no machine sending, a high "not recognised" an ID mismatch.
+ const siteColumns=[{key:'site',label:'Site',value:row=>row.site},{key:'received',label:'Punches received (all staff)',value:row=>row.received},{key:'unknown',label:'Not recognised (ID in no employee list)',value:row=>row.unknown},
+  ...PUNCH_VIEWS.map(one=>({key:one.key,label:one.label,value:row=>row[one.key],render:figure(one.key)}))];
+ // The card(s) of a line that is not one to fix: the counted cards, or none.
+ const cardsText=line=>line.status==='counted'?(line.countedCards||[]).map(card=>card.book+' · '+card.bookNo+(card.door?' · '+card.door:'')).join(', ')||'Card counts':'No VLB, ELB or LMV card of this person on this date';
  const action=line=>{
   const card=cardOf(line),kind=cardAction(line,card),busyLine=working===line.id;
   return <div className="cr-right">
@@ -126,14 +148,22 @@ export default function CaliberPunchRecheck({session,ReportSection}){
    {kind==='other'&&<small className="cr-sub">This card is saved under {card.savedId} {card.savedName}, who stands; only its shift is missing. Choose the card of {line.name}, or fix this one on Caliber ID Re-check.</small>}
   </div>;
  };
+ // A line to fix carries its card with an error and the fix; any other line says which card counts it, or that none does.
+ const fixable=line=>line.status==='toFix';
+ const cardCell=line=>{
+  if(!fixable(line))return <span className={line.status==='noCard'?'cr-sub':''}><strong>{STATUS_LABEL[line.status]}</strong><small className="cr-sub">{cardsText(line)}</small></span>;
+  const card=cardOf(line);
+  return <><strong>{card.book} · {card.bookNo}</strong><small className="cr-sub">{card.door}{card.own?' · own card':''} · {card.savedId?'saved under '+card.savedId+' '+card.savedName:'no driver saved'}{line.cards.length>1?' · '+line.cards.length+' cards with an error here':''}</small></>;
+ };
+ const whyCell=line=>{const card=fixable(line)?cardOf(line):null;return card?<><strong>{card.reasonLabel}</strong><small className="cr-sub">{card.line}</small></>:line.status==='counted'?'—':<small className="cr-sub">No card at the site on this date to put right here. Enter the card, or check the punch.</small>;};
  const lineColumns=[...(manySites||slot?.key===EVERY?[{key:'where',label:'Site · date · shift',value:line=>(manySites?line.site+' · ':'')+dmy(line.date)+' · '+shiftChoiceLabel(line.shift)}]:[]),
   {key:'person',label:'Punched by',value:line=>line.caliberId+' '+line.name,render:line=><><strong>{line.caliberId}</strong><small className="cr-sub">{line.name}{line.designation?' · '+line.designation:''}</small></>},
   {key:'punch',label:'Bio-punch In / Out',value:line=>(line.inTime||'—')+' / '+(line.outTime||'—'),render:line=><><strong>{(line.inTime||'—')+' / '+(line.outTime||'—')}</strong><small className="cr-sub">{SOURCE[line.source]||line.source}</small></>},
-  {key:'card',label:'Card with an error',value:line=>cardOption(cardOf(line)),render:line=>{const card=cardOf(line);return <><strong>{card.book} · {card.bookNo}</strong><small className="cr-sub">{card.door}{card.own?' · own card':''} · {card.savedId?'saved under '+card.savedId+' '+card.savedName:'no driver saved'}{line.cards.length>1?' · '+line.cards.length+' cards with an error here':''}</small></>;}},
-  {key:'why',label:'Why no attendance',value:line=>{const card=cardOf(line);return card.reasonLabel+'. '+card.line;},render:line=>{const card=cardOf(line);return <><strong>{card.reasonLabel}</strong><small className="cr-sub">{card.line}</small></>;}},
-  {key:'fix',label:'Put it right',value:()=> '',render:action}];
+  {key:'card',label:fixing?'Card with an error':'Card',value:line=>fixable(line)?cardOption(cardOf(line)):STATUS_LABEL[line.status]+': '+cardsText(line),render:cardCell},
+  ...(view==='counted'?[]:[{key:'why',label:'Why no attendance',value:line=>{const card=fixable(line)?cardOf(line):null;return card?card.reasonLabel+'. '+card.line:line.status==='counted'?'':'No card';},render:whyCell}]),
+  ...(view==='toFix'||view==='punched'?[{key:'fix',label:'Put it right',value:()=> '',render:line=>fixable(line)?action(line):''}]:[])];
 
- return <section className="caliber-recheck">
+ return <>
   <header className="cr-head">
    <div><h1>Caliber Punch Re-check</h1>
     <p>The drivers and operators who punched on the biometric machine but get no attendance from a VLB, ELB or LMV card, because a card of their site on that date has an error (a wrong or unknown ID, no driver, Employee ID and Caliber ID that differ, no shift or two). Each person is shown beside those cards, their own card first. Check the paper card and put it right on the same line: Submit puts the person on the card, Save shift writes the shift of their own card, Refresh asks HR Pulse about their ID. Undo takes a Submit back. The same changes show on Caliber ID Re-check.</p></div>
@@ -150,20 +180,21 @@ export default function CaliberPunchRecheck({session,ReportSection}){
    <span><strong>{count(held.punches)}</strong> punch days read</span><span><strong>{count(sites.total.punched)}</strong> drivers / operators punched</span><span><strong>{count(sites.total.counted)}</strong> attendance from a card</span>
    <span><strong>{count(sites.total.toFix)}</strong> to fix here</span><span><strong>{count(sites.total.noCard)}</strong> punched, no card at all</span>
   </div>
+  {!busy&&held.answers.size>0&&<p className="cr-notice" role="status">HR Pulse sent punches (site machines and Manual Biometric logs) for: {held.hrSites.length?held.hrSites.map(one=>one.site+' ('+count(one.days)+')').join(', '):'no site'}. Uploaded in Pulse-II: {count(held.imported)} punch days.{held.unplaced?' '+count(held.unplaced)+' punch days name no site and an unknown ID, so they are on no site.':''} A site with no punches received has no machine sending to HR Pulse and no Manual Biometric logs in HR.</p>}
   {level>1&&<nav className="tt-crumbs" aria-label="Steps">{back&&<StepBackButton onBack={back} label={'Back to '+crumbs.at(-2)[0]}/>}{crumbs.map(([label,move],i)=><React.Fragment key={i}>{i>0&&<span aria-hidden="true">›</span>}{move&&i<crumbs.length-1?<button type="button" onClick={move}>{label}</button>:<strong aria-current="step">{label}</strong>}</React.Fragment>)}</nav>}
   <ReportSection key="cpr-sites" reportKey="Caliber punch re-check sites" title={'Step 1 · Caliber punch re-check · All sites · '+period} category="caliber-punch-recheck-sites" dataReady={!busy} recordDateFilter={false}
-   description="One line per site: the drivers and operators who punched, those a card gives attendance, those whose card has an error (fixed here) and those with no card at all. Press a site to see it date by date and shift by shift; press All sites for every site together."
+   description="One line per site: the drivers and operators who punched, those a card gives attendance, those whose card has an error (fixed here) and those with no card at all. Press any figure to see those people date by date and shift by shift; the line of All sites opens every site together."
    rows={sites.rows.length?[...sites.rows,sites.total]:[]} columns={siteColumns} rowKey={row=>row.id} rowClassName={row=>(row.total?'tt-total':'')+(site&&row.key===site?' report-row-picked':'')} isTotalRow={isTotal}
-   onRowClick={row=>go({site:row.key,slot:null})} emptyMessage={busy?'Re-checking…':'No biometric punch of a driver or operator in these dates.'}/>
-  {level>=2&&<ReportSection key={'cpr-slots-'+site} reportKey="Caliber punch re-check date by shift" title={'Step 2 · Caliber punch re-check · '+siteLabel+' · date by shift · '+period} category="caliber-punch-recheck-shifts" dataReady={!busy}
-   description="The people to fix of each date and shift (the shift of their own card). Press a box for the people of that shift, or the All dates line for every date and shift together."
+   onRowClick={row=>openSite(row)} emptyMessage={busy?'Re-checking…':'No biometric punch of a driver or operator in these dates.'}/>
+  {level>=2&&<ReportSection key={'cpr-slots-'+site+view} reportKey="Caliber punch re-check date by shift" title={'Step 2 · Caliber punch re-check · '+siteLabel+' · '+viewInfo.short+' · date by shift · '+period} category="caliber-punch-recheck-shifts" dataReady={!busy}
+   description={'The '+what+' of each date and shift (the shift of their card; — when no card says it). Press a box for the people of that shift, or the All dates line for every date and shift together.'}
    rows={gridExport.rows} columns={gridExport.columns} rowKey={row=>row.id} showSearch={false} recordDateFilter={false}>
-   <DateShiftGrid grid={grid} count={row=>row.count} countLabel="people to fix" dayColumns={dayColumns} shiftLabel={shiftChoiceLabel} onOpen={row=>openSlot(row)} onOpenAll={()=>openSlot(null)}
-    isPicked={sameSlot} allPicked={slot?.key===EVERY} ariaLabel="People to fix by date and shift" emptyMessage="Nobody to fix at this site in these dates."/>
+   <DateShiftGrid grid={grid} count={row=>row.count} countLabel={what} dayColumns={dayColumns} shiftLabel={shiftChoiceLabel} onOpen={row=>openSlot(row)} onOpenAll={()=>openSlot(null)}
+    isPicked={sameSlot} allPicked={slot?.key===EVERY} ariaLabel={'People by date and shift: '+viewInfo.label} emptyMessage="Nobody in this list at this site in these dates."/>
   </ReportSection>}
   {level>=3&&kept&&<p className="cr-notice cr-kept" role="status"><span>{kept.text}</span>{kept.correctionId&&<button type="button" onClick={undo}>Undo</button>}</p>}
-  {level>=3&&<ReportSection key={'cpr-lines-'+site+'|'+slot.key} reportKey="Caliber punch re-check people" title={'Step 3 · Caliber punch re-check · '+siteLabel+' · '+slot.label} category="caliber-punch-recheck-people" dataReady={!busy} recordDateFilter={false}
-   description="One line per person who punched: the bio-punch, the card with an error at the site on that date (their own card first; pick another when there are several) and why it gives no attendance. Check the paper card and press Submit to put the person on the card, Save shift to write the shift of their own card, or Refresh when HR Pulse must add the ID. The line leaves the list once the card counts."
-   rows={lines} columns={lineColumns} rowKey={line=>line.id} emptyMessage="Nobody to fix in this date and shift."/>}
- </section>;
+  {level>=3&&<ReportSection key={'cpr-lines-'+site+view+'|'+slot.key} reportKey="Caliber punch re-check people" title={'Step 3 · Caliber punch re-check · '+siteLabel+' · '+viewInfo.short+' · '+slot.label} category="caliber-punch-recheck-people" dataReady={!busy} recordDateFilter={false}
+   description="One line per person who punched: the bio-punch, the card with an error at the site on that date (their own card first; pick another when there are several) and why it gives no attendance. Check the paper card and press Submit to put the person on the card, Save shift to write the shift of their own card, or Refresh when HR Pulse must add the ID. The line leaves the list once the card counts. Opened from another figure, the lines say which card gives attendance, or that the person has no card on that date."
+   rows={lines} columns={lineColumns} rowKey={line=>line.id} emptyMessage="Nobody in this list in this date and shift."/>}
+ </>;
 }

@@ -7,7 +7,7 @@
 // The rules are in shared/trip-biometric-check.mjs, the runs in src/trip-biometric-run.mjs, the server reads in
 // server/routes/attendance-sheet-check.mjs.
 import React,{useEffect,useMemo,useState} from 'react';
-import {Download,Upload} from 'lucide-react';
+import {Download,Upload,X} from 'lucide-react';
 import {dmy} from '../shared/attendance-sheet-check.mjs';
 import {FINDINGS,MAX_DAYS} from '../shared/trip-biometric-check.mjs';
 import {readBiometricFile,runHeldBiometricCheck,runTripBiometricCheck,sheetApi,todayIst,SOURCE_CHOICES} from './trip-biometric-run.mjs';
@@ -30,6 +30,7 @@ export default function AttendanceSheetCheck({session}){
  const [file,setFile]=useState({open:false,busy:false,name:'',bio:null,error:''});
  const [run,setRun]=useState({busy:false,error:'',done:null});
  const [view,setView]=useState({tab:'findings',type:'',q:''});
+ const [drill,setDrill]=useState(null);
  useEffect(()=>{
   let live=true;
   sheetApi('/api/reports/manpower/attendance-sheet/sites',session).then(p=>{if(!live)return;setSites({list:p.sites||[],error:''});if(p.sites?.length===1)setPick(v=>({...v,site:p.sites[0]}));},e=>live&&setSites({list:[],error:e.message}));
@@ -58,6 +59,18 @@ export default function AttendanceSheetCheck({session}){
  const q=view.q.trim().toLowerCase(),hit=r=>!q||[r.employeeId,r.employeeName||r.name,r.designation,r.doors,r.equipment].some(v=>String(v||'').toLowerCase().includes(q));
  const findings=useMemo(()=>result?result.findings.filter(f=>(!view.type||f.type===view.type)&&hit(f)):[],[result,view.type,q]);
  const people=useMemo(()=>result?result.perPerson.filter(hit):[],[result,q]);
+ const personByCode=useMemo(()=>new Map((result?.perPerson||[]).map(p=>[p.caliberCode,p])),[result]);
+ const openDrill=(person,scope='all')=>setDrill({person,scope});
+ const drillRows=useMemo(()=>{
+  if(!drill)return[];
+  const rows=drill.person.details||[];
+  if(drill.scope==='bioDays')return rows.filter(r=>r.biometric);
+  if(drill.scope==='tripDays')return rows.filter(r=>r.logBook);
+  if(drill.scope==='both')return rows.filter(r=>r.both);
+  if(FINDINGS.some(f=>f.key===drill.scope))return rows.filter(r=>r.findingType===drill.scope);
+  return rows;
+ },[drill]);
+ const drillTitle=drill?(FINDINGS.find(f=>f.key===drill.scope)?.label||({bioDays:'Biometric days',tripDays:'Log book days',both:'Days on both',all:'All attendance details'}[drill.scope])):'';
  return <div className="asc-page">
   <p className="asc-intro">Drivers and operators only: their biometric punches set beside their log book (saved VLB, ELB and LMV trip cards and zero-trip entries). Staff, supervisors, helpers, mechanics and other users keep no log book, so no mismatch is shown for them. The punches are those the site machines send to HR Pulse (machine direct) and the device files imported on Attendance Management. Nothing is changed in Pulse-II.</p>
   <div className="asc-filters">
@@ -106,11 +119,18 @@ export default function AttendanceSheetCheck({session}){
     <input aria-label="Search employee" placeholder="Search ID, name, designation, equipment…" value={view.q} onChange={e=>setView(v=>({...v,q:e.target.value}))}/>
    </div>
    <div className="asc-table">{view.tab==='findings'?<table><thead><tr><th>Date</th><th>Employee ID</th><th>Name</th><th>Designation</th><th>Mismatch</th><th>Bio source</th><th>Punch site</th><th>Bio IN</th><th>Bio OUT</th><th>Log book shift</th><th>Log book site</th><th>Equipment</th><th>Detail</th></tr></thead>
-    <tbody>{findings.slice(0,SHOW).map(f=><tr key={f.id}><td>{dmy(f.date)}</td><td>{f.employeeId}</td><td>{f.employeeName}</td><td>{f.designation}</td><td><span className={'asc-tag asc-kpi-'+f.type}>{f.label}</span></td><td>{f.sourceLabel?<span className={'asc-src asc-src-'+f.source}>{f.sourceLabel}</span>:'—'}</td><td>{f.punchSite||'—'}</td><td>{f.inTime||'—'}</td><td>{f.outTime||'—'}</td><td>{f.tripShift||'—'}</td><td>{f.tripSite||'—'}</td><td>{f.doors||f.equipment||''}</td><td className="asc-wrap">{f.detail}</td></tr>)}
+    <tbody>{findings.slice(0,SHOW).map(f=><tr key={f.id}><td>{dmy(f.date)}</td><td>{personByCode.has(f.caliberCode)?<button type="button" className="asc-drill-link" onClick={()=>openDrill(personByCode.get(f.caliberCode),f.type)}>{f.employeeId}</button>:f.employeeId}</td><td>{personByCode.has(f.caliberCode)?<button type="button" className="asc-drill-link" onClick={()=>openDrill(personByCode.get(f.caliberCode),f.type)}>{f.employeeName}</button>:f.employeeName}</td><td>{f.designation}</td><td><span className={'asc-tag asc-kpi-'+f.type}>{f.label}</span></td><td>{f.sourceLabel?<span className={'asc-src asc-src-'+f.source}>{f.sourceLabel}</span>:'—'}</td><td>{f.punchSite||'—'}</td><td>{f.inTime||'—'}</td><td>{f.outTime||'—'}</td><td>{f.tripShift||'—'}</td><td>{f.tripSite||'—'}</td><td>{f.doors||f.equipment||''}</td><td className="asc-wrap">{f.detail}</td></tr>)}
      {!findings.length&&<tr><td colSpan={13}>No mismatch here.</td></tr>}</tbody></table>
    :<table><thead><tr><th>Employee ID</th><th>Name</th><th>Designation</th><th>Biometric days</th><th>Log book days</th><th>Both</th>{FINDINGS.map(f=><th key={f.key}>{f.label}</th>)}</tr></thead>
-    <tbody>{people.slice(0,SHOW).map(p=><tr key={p.caliberCode}><td>{p.employeeId}</td><td>{p.name}</td><td>{p.designation}</td><td>{p.bioDays}</td><td>{p.tripDays}</td><td>{p.both}</td>{FINDINGS.map(f=><td key={f.key}>{p[f.key]||''}</td>)}</tr>)}</tbody></table>}</div>
+    <tbody>{people.slice(0,SHOW).map(p=><tr key={p.caliberCode}><td><button type="button" className="asc-drill-link" onClick={()=>openDrill(p)}>{p.employeeId}</button></td><td><button type="button" className="asc-drill-link" onClick={()=>openDrill(p)}>{p.name}</button></td><td>{p.designation}</td><td><button type="button" className="asc-drill-link asc-drill-number" onClick={()=>openDrill(p,'bioDays')}>{p.bioDays}</button></td><td><button type="button" className="asc-drill-link asc-drill-number" onClick={()=>openDrill(p,'tripDays')}>{p.tripDays}</button></td><td><button type="button" className="asc-drill-link asc-drill-number" onClick={()=>openDrill(p,'both')}>{p.both}</button></td>{FINDINGS.map(f=><td key={f.key}>{p[f.key]?<button type="button" className="asc-drill-link asc-drill-number" onClick={()=>openDrill(p,f.key)}>{p[f.key]}</button>:''}</td>)}</tr>)}</tbody></table>}</div>
    {(view.tab==='findings'?findings:people).length>SHOW&&<p className="asc-hint">First {SHOW} lines shown; the Excel holds all.</p>}
   </section>}
+  {drill&&<div className="asc-drill-backdrop" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)setDrill(null)}}><section className="asc-drill" role="dialog" aria-modal="true" aria-labelledby="asc-drill-title">
+   <header><div><h2 id="asc-drill-title">{drill.person.employeeId} · {drill.person.name}</h2><p>{drill.person.designation} · {drillTitle} · {many(drillRows.length,'day')}</p></div><button type="button" aria-label="Close details" onClick={()=>setDrill(null)}><X size={20}/></button></header>
+   <div className="asc-drill-table"><table><thead><tr><th>Date</th><th>Status</th><th>Bio source</th><th>Punch site</th><th>Bio IN</th><th>Bio OUT</th><th>Log book shift</th><th>Log book site</th><th>Equipment</th><th>Card / book</th><th>Detail</th></tr></thead><tbody>
+    {drillRows.map(r=><tr key={r.date}><td>{dmy(r.date)}</td><td>{r.findingLabel?<span className={'asc-tag asc-kpi-'+r.findingType}>{r.findingLabel}</span>:r.both?'Matched':r.biometric?'Biometric only':r.logBook?'Log book only':'—'}</td><td>{r.sourceLabel||'—'}</td><td>{r.punchSite||'—'}</td><td>{r.inTime||'—'}</td><td>{r.outTime||'—'}</td><td>{r.shift||'—'}</td><td>{r.tripSite||'—'}</td><td>{r.equipment||'—'}</td><td>{r.books||'—'}</td><td className="asc-wrap">{r.detail||'—'}</td></tr>)}
+    {!drillRows.length&&<tr><td colSpan={11}>No detail is available for this value.</td></tr>}
+   </tbody></table></div>
+  </section></div>}
  </div>;
 }

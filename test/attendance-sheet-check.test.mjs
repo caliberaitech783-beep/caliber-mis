@@ -160,7 +160,7 @@ test('each kind of mismatch is found, with the correction required',()=>{
  assert.deepEqual(result.notInSheet.map(p=>[p.id,p.name,p.dates]),[['CMLL908888','EXTRA DRIVER',[iso(2)]]],'4 Nov has no column, so its duty is not held against the sheet');
  assert.deepEqual(result.listedOnly.map(p=>[p.id,p.name]),[['907777','LISTED ONLY']]);
  assert.deepEqual(result.noColumn,[{date:iso(4),duties:1,locked:true}]);
- assert.deepEqual(result.counts,{'no-id':1,'id-unreadable':1,'id-not-found':1,'id-twice':2,'id-left':1,'name-other':1,'name-fuller':1,'name-spelling':1,site:1,'no-duty':3,duty:2,'other-site':1,mark:1,blank:1,'no-column':1,'not-in-sheet':1});
+ assert.deepEqual(result.counts,{'no-id':1,'id-unreadable':1,'id-not-found':1,'id-twice':2,'id-left':1,'name-other':1,'name-fuller':1,'name-spelling':1,site:1,'no-duty':3,'card-not-counted':0,duty:2,'other-site':1,mark:1,blank:1,'no-column':1,'not-in-sheet':1});
  // The person HR marks LEFT has P marks and no card: that is said as well, in one line.
  assert.deepEqual(result.corrections.filter(c=>c.id==='CMPL901006').map(c=>c.kind),['id-left','no-duty']);
  assert.equal(result.totals.corrections,result.corrections.length);
@@ -198,7 +198,7 @@ test('the Excel given back: the sheet again, each mismatch in its colour, the co
  // The colour key: ID mismatch first, then name mismatch, each line in its own colour.
  assert.deepEqual(grid.headerRows.slice(1),SHEET_LEGEND.map(([,textLine])=>textLine));
  assert.match(grid.headerRows[1],/^RED on EMP\. ID = ID mismatch/);assert.match(grid.headerRows[2],/^YELLOW on NAME = name mismatch/);
- assert.deepEqual(grid.headerFills,{1:'id',2:'name',3:'site',4:'noDuty',5:'duty',6:'skip'});
+ assert.deepEqual(grid.headerFills,{1:'id',2:'name',3:'site',4:'noDuty',5:'uncounted',6:'duty',7:'skip'});
  assert.deepEqual(grid.columns.map(c=>c.label).slice(0,11),['Row in sheet','SR NO','EMP. ID','NAME','Name in Pulse-II','Name mismatch','DESIGNATION','01-11','02-11','03-11','05-11']);
  assert.match(grid.headerRows[2],/the column "Name mismatch" says which kind: another name, fuller name, or spelling\.$/);
  const at=id=>grid.rows.findIndex(r=>r[2]===id);
@@ -224,10 +224,10 @@ test('the Excel given back: the sheet again, each mismatch in its colour, the co
  const style=key=>12+colours.indexOf(SHEET_FILLS[key])*2;
  assert.match(sheet1,new RegExp('<c r="A2" s="'+(style('id')+1)+'" t="inlineStr"><is><t xml:space="preserve">RED on EMP\\. ID'));
  assert.match(sheet1,new RegExp('<c r="A3" s="'+(style('name')+1)+'" t="inlineStr"><is><t xml:space="preserve">YELLOW on NAME'));
- const excelRow=at('CMPL901005')+9; // 7 lines above the headings, the headings, then the lines
+ const excelRow=at('CMPL901005')+10; // 8 lines above the headings (title and 7 key lines), the headings, then the lines
  assert.match(sheet1,new RegExp('<c r="E'+excelRow+'" s="'+style('name')+'" t="inlineStr"><is><t xml:space="preserve">OLD NAME<'),'the Sr. No. column the builder adds moves NAME to column E');
- assert.match(sheet1,new RegExp('<c r="D'+(at('CMPL909999')+9)+'" s="'+style('id')+'" '));
- assert.match(sheet1,/<pane xSplit="5" ySplit="8" topLeftCell="F9" activePane="bottomRight" state="frozen"\/>/);
+ assert.match(sheet1,new RegExp('<c r="D'+(at('CMPL909999')+10)+'" s="'+style('id')+'" '));
+ assert.match(sheet1,/<pane xSplit="5" ySplit="9" topLeftCell="F10" activePane="bottomRight" state="frozen"\/>/);
  assert.doesNotMatch(sheet1,/ s="(?:9|10|11)"/,'the Sr. No. is not coloured on this sheet');
 });
 
@@ -325,5 +325,8 @@ test('the tab sits after the sheet upload tab, which is beside Attendance Month-
  const page=read('../src/attendance-sheet-check.jsx');
  assert.match(page,/accept="\.dat,\.txt,\.csv,\.xlsx,\.xlsm"/,'the device attlog .dat or its export');
  assert.match(page,/Drivers and operators only/);assert.match(page,/Download Excel/);assert.match(page,/Nothing is changed in Pulse-II/);
+ assert.match(page,/className="asc-drill-link"/,'employee names and IDs open the detail');
+ assert.match(page,/openDrill\(p,'bioDays'\)/);assert.match(page,/openDrill\(p,f\.key\)/,'each numeric count opens its matching detail');
+ assert.match(page,/role="dialog" aria-modal="true"/);assert.match(page,/No detail is available for this value/);
  assert.match(read('../server/routes/log-book.mjs'),/registerAttendanceSheetCheck\(app,\{pool,protect\}\);/);
 });

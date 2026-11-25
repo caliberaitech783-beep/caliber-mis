@@ -116,5 +116,30 @@ Set by the owner on 24 November 2026: "caliber punch recheck mis me hi, caliber 
 
 - Masters › Caliber Punch Re-check sits under Caliber ID Re-check and is open to the same people (the card makers and whoever keeps Employee Master, i.e. HR), each for the sites of their login.
 - `GET /api/caliber-recheck/punches` (one day at a time) reads the punches (site machines from HR Pulse, and the imported ones), judges the cards of the day as Caliber ID Re-check does, and lists every driver or operator who punched, has no card that counts, and has a card with an error at the site of the punch on that date. Helpers and staff are left out. A failed HR Pulse read is said and the imported punches are still used.
+- Two views (owner, 24 Nov 2026: "make this for trip card punch (VLB, ELB & LMV)", "dono rakho"): **Trip cards** first, from every saved VLB, ELB and LMV card (`GET /api/caliber-recheck/cards`, rule `shared/caliber-card-recheck.mjs`, screen `src/caliber-card-recheck.jsx`): per site VLB, ELB, LMV, all cards, attendance marked, card error (fixed on the line as on Caliber ID Re-check), attendance with and without a bio-punch, and idle cards with nobody; every figure drills down. Every card line has the correction box (owner, 24 Nov 2026: "correction section not showing"): a card with an error as on Caliber ID Re-check, any other card takes another driver from the paper card (`/pick` with `anyCard`, recorded as "Changed on Trip cards (driver stood)", Undo puts the earlier person back); Caliber ID Re-check itself still changes only listed cards. **Bio-punch** beside it is the view below, from the punches.
+- Step 1 also shows the punches received per site before the driver filter and those whose ID is in no employee list, and the page names the sites HR Pulse sent machine punches for, so a site whose machine does not send is plain (owner, 24 Nov 2026).
+- Every Step 1 figure drills down (owner, 24 Nov 2026: "make it drill down for all"): punched, attendance from a card (with that card), to fix, and punched with no card. Every site of the login has a line, 0 when its machine sent no punch ("not able to see all sites").
 - Step 3 sets each person beside those cards, their own card first. Submit puts the person on the chosen card (`/pick`), Save shift writes the shift of their own card (`/shift`), Refresh asks HR Pulse about their ID; Undo takes a Submit back. Nothing new writes a card: it is the Caliber ID Re-check routes.
 - Rule: `shared/caliber-punch-recheck.mjs`; screen: `src/caliber-punch-recheck.jsx`; `test/caliber-punch-recheck.test.mjs` checks it.
+
+# A card's machine must fit its book's category in Equipment Master
+
+Set by the owner on 24 November 2026: if any vehicle or equipment on a VLB, ELB or LMV card, scanned or entered by hand, does not match its category in the master, show an error.
+
+- A VLB takes only a machine whose Equipment category in Equipment Master is Vehicle, an ELB only Equipment, an LMV only LMV. An LMV is no longer accepted on a VLB or ELB (it was from 9 Nov 2026). The save refuses any other machine, naming the machine, its category and the right book (`bookCategoryIssue` in `shared/equipment-kind.mjs`, called from `resolveLogBookData` for manual and scanned cards). The door lists offer only the machines that fit.
+- A trip's loading machine must be Equipment in the master, whatever its group says (`shared/trip-equipment-validation.mjs`).
+- A machine with no category in the master is still judged by its group, and the error says to set its category in Pulse.
+- Scan review shows the same error on the door field before saving (`src/scan-field-review.mjs`).
+- Masters › Machine Category Re-check, under Caliber Punch Re-check, for the same people: the saved cards whose machine or trip loading machine does not fit the master today, in Step 1 / 2 / 3. It is read only, so the card is corrected on its own page or the category in Pulse (`GET /api/caliber-recheck/machines`, rule `shared/machine-category-recheck.mjs`).
+- `test/machine-category-check.test.mjs` checks this.
+
+# VLB, LMV and ELB locking off for five days
+
+Set by the owner on 24 November 2026: "locking of VLB, LMB and ELB ka lock hata sakta hu kya 5 din ke liye".
+
+- Until the end of 29 Nov 2026 (India time) a batch's stages stop nobody: VLB, LMV and ELB cards are added and changed in every open stage (VLB open, LMV open, ELB open), by hand or by scan. A VLB card changed after Lock VLB updates the batch's machine trips at once; a machine no card loads any more drops to 0 trips.
+- No batch waits for an older batch of the site to lock LMV or close. Close batch is offered in every open stage and does Lock VLB and Lock LMV itself, with their checks; everything a close checks (an ELB for every loading machine, transfers, waiting scans, duplicate ELBs) is unchanged.
+- Not changed: a closed batch is reopened before its cards change, and another shift of the same date still needs Lock VLB first (a site and date hold one VLB-open batch). Deleting a card outside its open stage still goes through Deletion.
+- The batch page says so ("Locking is off until …"). From 30 Nov 2026 00:00 IST the locks return by themselves; nothing has to be switched back.
+- The Azure setting `VLB_BATCH_LOCK_PAUSE_UNTIL=YYYY-MM-DD` moves the last day, `VLB_BATCH_LOCK_PAUSE_UNTIL=off` ends the pause at once (a setting change restarts the app, no release).
+- `shared/batch-lock-pause.mjs` holds the rule; `test/batch-lock-pause.test.mjs` checks it.

@@ -10,7 +10,7 @@ export default function ScanCorrectionStatus({errors=[],warnings=[],status='',di
   <div><strong>System is working</strong><div>{working}</div></div>
  </div>;
  if(!status&&!required.length&&!advisory.length)return null;
- const message=status==='All scan corrections saved to MIS.'?'Corrections saved.':status;
+ const message=status==='All scan corrections saved to MIS.'?(dirty?'Unsaved corrections.':required.length?'Corrections saved; review still required.':'Corrections saved.'):status;
  const tone=failed?'scan-error':required.length||dirty?'scan-warning':advisory.length?'scan-review-advisory':'scan-success';
  return <div role="status" className={'scan-correction-status '+tone}>
   {required.length>0&&<div><strong>User input needed</strong> · {required.length} {required.length===1?'item needs':'items need'} checking.</div>}

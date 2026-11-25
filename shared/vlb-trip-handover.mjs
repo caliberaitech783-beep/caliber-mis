@@ -82,10 +82,13 @@ export async function withVlbTripHandovers(client,records,permittedSites=null){
  if(!keys.size)return linkVlbTripHandovers(records);
  // Match with the same JavaScript site/door rules as the linker. Fetch only
  // identity fields first so aliases and arbitrarily old open trips still work.
- const candidates=(await client.query(`SELECT id,data->>'location' AS location,data->>'door' AS door FROM mis_log_books
+ const candidates=(await client.query(`SELECT data->>'location' AS location,data->>'door' AS door,array_agg(id) AS ids FROM mis_log_books
  WHERE book_type='vehicle' AND deleted_at IS NULL AND book_date>=$$2026-11-01$$ AND ($1::text[] IS NULL OR site=ANY($1::text[]))
- AND mis_vlb_has_handover_trip(data)`,[permittedSites])).rows;
- const ids=candidates.filter(row=>keys.has(keyFor(row))).map(row=>row.id);
+ AND mis_vlb_has_handover_trip(data)
+ GROUP BY data->>'location',data->>'door'`,[permittedSites])).rows;
+ // Send each raw spelling once, while retaining the primary-key lookup for the
+ // selected cards. Grouping must not add a date limit or change FIFO ordering.
+ const ids=candidates.filter(row=>keys.has(keyFor(row))).flatMap(row=>row.ids);
  const partial=ids.length?(await client.query('SELECT id,book_no,book_type,data FROM mis_log_books WHERE id=ANY($1::bigint[]) AND book_type=\'vehicle\' AND deleted_at IS NULL AND book_date>=$$2026-11-01$$ AND ($2::text[] IS NULL OR site=ANY($2::text[]))',[ids,permittedSites])).rows:[];
  const all=new Map(partial.map(row=>[String(row.id),row]));for(const row of records)all.set(String(row.id),row);
  const linked=new Map(linkVlbTripHandovers([...all.values()]).map(row=>[String(row.id),row]));

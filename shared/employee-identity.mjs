@@ -24,6 +24,20 @@ export function employeeReferenceKeys(record){
  const fields=primary.length?primary:[record.employeeCode,record.erpEmployeeCode,record.empCode,record.code];
  return fields.map(field=>String(field||'').trim().toUpperCase().replace(/[\s/-]/g,'')).filter(Boolean);
 }
+// The same person written with the other prefix (owner, 24 Nov 2026): CMPL9040 and CMLL9040 are one Employee ID. HR
+// Pulse writes CMPL, an ERP or login line may hold CMLL or the bare number, and the attendance build reads them all, so
+// the attendance match (server/rules/manpower-report.mjs) and Caliber ID Re-check take both prefixes as one person.
+// Only the prefix is swapped: a bare number stays as employeeReferenceVariants gives it.
+export function samePersonVariants(value=''){
+ const variants=employeeReferenceVariants(value),match=variants[0]?.match(/^(?:CMPL|CMLL)(\d+)$/);
+ return match?[...new Set([...variants,'CMPL'+match[1],'CMLL'+match[1]])]:variants;
+}
+export function matchesSamePerson(record,value){
+ const variants=samePersonVariants(value);
+ return employeeReferenceKeys(record).some(field=>variants.includes(field));
+}
+// One key per person for CMPL / CMLL forms of the same number ('' when the value is not such an ID).
+export const personKey=value=>suggestedCaliberId(String(value??'').trim().toUpperCase().replace(/[\s/-]/g,''));
 export function matchesEmployeeReference(record,value){
  const variants=employeeReferenceVariants(value);
  return employeeReferenceKeys(record).some(field=>variants.includes(field));

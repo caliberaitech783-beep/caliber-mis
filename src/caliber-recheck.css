@@ -99,3 +99,13 @@
 .caliber-recheck .cr-compact .cr-open-page{border-color:#56309a;background:#56309a;color:#fff}
 .caliber-recheck .cr-compact button:focus-visible{outline:2px solid #56309a;outline-offset:2px}
 @media(max-width:700px){.caliber-recheck.cr-embedded{padding:0 4px}}
+
+/* Caliber Punch Re-check: each figure of Step 1 opens its own list (owner, 24 Nov 2026). */
+.caliber-recheck .cr-figure{border:0;background:none;padding:2px 6px;border-radius:6px;font:inherit;font-weight:700;color:#6d28d9;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.caliber-recheck .cr-figure:hover,.caliber-recheck .cr-figure:focus-visible{background:#ede9fe}
+.caliber-recheck .cr-figure-picked{background:#ede9fe;outline:2px solid #7c3aed}
+
+/* Caliber Punch Re-check: the Trip cards / Bio-punch switch (owner, 24 Nov 2026). */
+.caliber-recheck .cr-views{display:flex;gap:8px;margin:0 0 12px}
+.caliber-recheck .cr-views button{border:1px solid #c4b5fd;background:#fff;color:#5b21b6;border-radius:999px;padding:6px 14px;font:inherit;font-weight:600;cursor:pointer}
+.caliber-recheck .cr-views button[aria-current="page"]{background:#6d28d9;border-color:#6d28d9;color:#fff}

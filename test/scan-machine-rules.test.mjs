@@ -111,3 +111,13 @@ test('scan review blocks unmatched and ambiguous loading equipment while accepti
  const issues=manualScanIssues(draft,'vehicle',{},options);assert.equal(issues['trips.0.equipmentName'],undefined);assert.equal(issues.scanMachineSummary,undefined);
  const missing=manualScanIssues({...draft,trips:[{equipmentName:'V99',tripCount:1}]},'vehicle',{},options);assert.match(missing['trips.0.equipmentName'],/Check|match/);
 });
+
+test('prefix punctuation matches known aliases without guessing unfamiliar abbreviations',()=>{
+ for(const prefix of ['V:P:C','V/P/C','V.P.C']){
+  assert.equal(identifyCardMachine(prefix+'005','trip-body').canonical,'VPC005');
+  assert.equal(matchCardMachine([machine('1','VPC5')],prefix+'005',site).match?.id,'1');
+ }
+ assert.equal(identifyCardMachine('L:P07','trip-body'),null);
+ assert.equal(matchCardMachine([machine('2','LP07')],'L:P07',site).match?.id,'2');
+ assert.equal(matchCardMachine([machine('3','PL07')],'L:P07',site).match,null);
+});

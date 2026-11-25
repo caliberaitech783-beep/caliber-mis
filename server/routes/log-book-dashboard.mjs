@@ -29,16 +29,16 @@ const shiftSql=`CASE COALESCE(NULLIF(data->>'cardShift',''),data->>'batchShift',
 // Sites the owner removed from this dashboard (11 Nov 2026). They no longer show as empty rows;
 // if cards are saved for one in the selected dates it comes back, so no saved card is ever hidden.
 export const DASHBOARD_REMOVED_SITES=new Set(['Lalpeth OC'].map(site=>canonicalSiteName(site)));
-export function summarizeLogBooks({rows,sites,from,to,location='',draftCount=0,kinds=['vehicle','equipment']}){
+export function summarizeLogBooks({rows,sites,from,to,location='',draftCount=0,kinds=['vehicle','lmv','equipment']}){
  // A master record with no real site ("-" or blank) is not a site: it must not show as an empty row.
  const names=new Map(sites.filter(site=>canonicalSiteName(site)&&!DASHBOARD_REMOVED_SITES.has(canonicalSiteName(site))).map(site=>[canonicalSiteName(site),displaySiteName(site)]));
  for(const row of rows)names.set(canonicalSiteName(row.site),displaySiteName(row.site));
  const allSites=[...names.values()].sort((a,b)=>a.localeCompare(b));
- const selected=canonicalSiteName(location),siteRows=allSites.filter(site=>!selected||canonicalSiteName(site)===selected).map(site=>({site,vehicle:0,equipment:0}));
+ const selected=canonicalSiteName(location),siteRows=allSites.filter(site=>!selected||canonicalSiteName(site)===selected).map(site=>({site,vehicle:0,lmv:0,equipment:0}));
  const bySite=new Map(siteRows.map(row=>[canonicalSiteName(row.site),row])),days=new Map();
- for(let day=new Date(from+'T00:00:00Z');day<=new Date(to+'T00:00:00Z');day.setUTCDate(day.getUTCDate()+1)){const date=day.toISOString().slice(0,10);days.set(date,{date,vehicle:0,equipment:0});}
+ for(let day=new Date(from+'T00:00:00Z');day<=new Date(to+'T00:00:00Z');day.setUTCDate(day.getUTCDate()+1)){const date=day.toISOString().slice(0,10);days.set(date,{date,vehicle:0,lmv:0,equipment:0});}
  for(const row of rows){if(!kinds.includes(row.book_type)||!days.has(row.day))continue;const target=bySite.get(canonicalSiteName(row.site));if(!target)continue;target[row.book_type]+=Number(row.count);days.get(row.day)[row.book_type]+=Number(row.count);}
- return {from,to,sites:allSites,kinds,bySite:siteRows,trend:[...days.values()],totals:{vehicle:siteRows.reduce((sum,r)=>sum+r.vehicle,0),equipment:siteRows.reduce((sum,r)=>sum+r.equipment,0),activeSites:siteRows.filter(r=>r.vehicle+r.equipment>0).length,recoveryDrafts:draftCount}};
+ return {from,to,sites:allSites,kinds,bySite:siteRows,trend:[...days.values()],totals:{vehicle:siteRows.reduce((sum,r)=>sum+r.vehicle,0),lmv:siteRows.reduce((sum,r)=>sum+r.lmv,0),equipment:siteRows.reduce((sum,r)=>sum+r.equipment,0),activeSites:siteRows.filter(r=>r.vehicle+r.lmv+r.equipment>0).length,recoveryDrafts:draftCount}};
 }
 export function registerLogBookDashboard(app,{pool,protect,ensureBooks,now=()=>Date.now()}){
  // The server's one list of sites that hold cards (server/services/log-book-site-list.mjs).
@@ -50,7 +50,7 @@ export function registerLogBookDashboard(app,{pool,protect,ensureBooks,now=()=>D
   const filters=dashboardFilters(hours?{...req.query,from:OPERATIONAL_START,to:''}:req.query);if(filters.location)requireLogBookSite(req.logBookScope,filters.location);
   let permitted=await filterLogBookSites(pool,req.logBookScope);
   if(filters.location){const rows=(await pool.query('SELECT DISTINCT site FROM mis_log_books')).rows;permitted=rows.map(r=>r.site).filter(site=>siteAllowed(req.logBookScope,site)&&canonicalSiteName(site)===canonicalSiteName(filters.location));}
-  const kinds=['vehicle','equipment'].filter(kind=>!req.session.permissions?.separateMisCredentials||misPageAllowed(req.session,kind==='vehicle'?'Vehicle Log Book':'Equipment Log Book'));
+  const kinds=['vehicle','lmv','equipment'].filter(kind=>!req.session.permissions?.separateMisCredentials||misPageAllowed(req.session,kind==='equipment'?'Equipment Log Book':'Vehicle Log Book'));
   return {filters,kinds,hours,params:[filters.from,filters.to,permitted,kinds,filters.shift]};
  };
  const where=`deleted_at IS NULL AND book_date BETWEEN $1::date AND $2::date AND ($3::text[] IS NULL OR site=ANY($3::text[])) AND book_type=ANY($4::text[]) AND ($5='' OR ${shiftSql}=$5)`;

@@ -117,13 +117,19 @@ test('Trip Card vs Bio-punch is the last of the four attendance check tabs, with
 });
 
 test('the attendance read puts the batch names on its cards (the stored days keep none)',async()=>{
- const {withCardBatches}=await import('../server/routes/manpower-report-api.mjs');
+ // 24 Nov 2026: the batches are read for the week's locked site-days as one JSON text and put on the cards by the report worker.
+ const {dayCardBatchesText}=await import('../server/services/attendance-day-store.mjs');
+ const {buildAttendanceWeek}=await import('../server/rules/attendance-read.mjs');
  const asked=[];
- const client={query:async(sql,params)=>{asked.push(params[0]);return {rows:[{id:'11',batches:[{id:5,name:'GP2/VLB/01-11/A',closed_at:'x'}]}]};}};
- const rows=await withCardBatches(client,[{id:11,batches:[]},{id:12,batches:[]}]);
- assert.deepEqual(asked,[['11','12']]);
- assert.deepEqual(rows.map(r=>r.batches.map(b=>b.name)),[['GP2/VLB/01-11/A'],[]]);
- assert.deepEqual(await withCardBatches({query:()=>{throw Error('no read');}},[]),[]);
+ const client={query:async(sql,params)=>{asked.push(params);return {rows:[{links:JSON.stringify({11:[{id:5,name:'GP2/VLB/01-11/A',closed_at:'x'}]})}]};}};
+ const linksJson=await dayCardBatchesText(client,[{site:'Gauri Pauni OC',date:'2026-11-02'},{site:'Gauri Pauni OC',date:'2026-11-01'}]);
+ assert.deepEqual(asked,[[['Gauri Pauni OC','Gauri Pauni OC'],['2026-11-02','2026-11-01'],'2026-11-01','2026-11-02']]);
+ assert.equal(await dayCardBatchesText({query:()=>{throw Error('no read');}},[]),'{}');
+ const seen=[];
+ const week=buildAttendanceWeek({cardsJson:[JSON.stringify([{id:'11',site:'Gauri Pauni OC',book_type:'equipment',batches:[]}]),JSON.stringify([{id:'12',site:'Gauri Pauni OC',book_type:'equipment',batches:[]},{id:'13',site:'Majri OC',book_type:'equipment',batches:[]}])],
+  linksJson,mastersJson:'{"assets":[],"employees":[],"shifts":[]}',filters:{from:'2026-11-01',to:'2026-11-02'},scope:{sites:['gauri pauni ob']},build:({records})=>{seen.push(...records);return {};}});
+ assert.ok(week);
+ assert.deepEqual(seen.map(r=>[r.id,r.batches.map(b=>b.name)]),[['11',['GP2/VLB/01-11/A']],['12',[]]],'batches put on, and a card of a site outside the login left out');
 });
 
 test('a batch name keeps its "+" and its letters; log books split on "+"',()=>{

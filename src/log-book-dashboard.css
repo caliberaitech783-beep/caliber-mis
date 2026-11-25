@@ -191,6 +191,8 @@
 [data-theme=dark] .lb-sr-tabs button[aria-selected=true] b,.dark .lb-sr-tabs button[aria-selected=true] b{background:#fff;color:#56309a}
 /* A Sr No's wrapper lays its report out as the reports area does. A hidden one takes no room and is left off a print. */
 .lb-sr:not([hidden]){display:grid;gap:28px;grid-template-columns:minmax(0,1fr);min-width:0}
+.lb-kpis{grid-template-columns:repeat(5,minmax(0,1fr))}
+@media(max-width:1000px){.lb-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .lb-sr[hidden]{display:none}
 .lb-reports>.lb-sr>section{margin:0;min-width:0;max-width:100%;overflow-x:auto}
 /* On a phone every tab stays in view: the tabs show their Sr No alone, and only the one chosen spells out its name. */

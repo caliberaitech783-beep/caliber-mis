@@ -7,6 +7,7 @@ import {CARD_SHIFTS,machineDiscrepancies} from '../shared/trip-card-rules.mjs';
 import {tripTimesOutOfOrder} from '../shared/shift-clock.mjs';
 import {caliberCheckMessage,caliberNumber} from '../shared/caliber-id-check.mjs';
 import {canonicalSiteName} from '../shared/site-location.mjs';
+import {bookCategoryIssue} from '../shared/equipment-kind.mjs';
 // Owner, 21 Nov 2026: a trip whose unloading comes after the next trip's loading has a misread time (the scan read
 // "10:07" as 16:07 on Gauri Pauni card 157). The card is held for review, with both times named as written on the draft.
 export function tripOrderIssues(draft={}){
@@ -40,6 +41,8 @@ export function scanFieldIssues(draft={},kind='vehicle',raw={},options=null,lmv=
  if(kind==='vehicle')for(const [i,row] of (draft.trips||[]).entries()){if(tripEquipmentRequired(row,draft.timeMode)&&!String(row.equipmentName||'').trim())issues[`trips.${i}.equipmentName`]='Enter the loading equipment.';if(!Number.isSafeInteger(Number(row.tripCount))||Number(row.tripCount)<1)issues[`trips.${i}.tripCount`]='Enter a positive whole trip count.';if(draft.timeMode!=='without')for(const key of ['loadingTime','unloadingTime'])if(row[key]?!validTripTime(row[key]):!row.loadingTime&&!row.unloadingTime)issues[`trips.${i}.${key}`]='Check the time against the scan.';}
  if(kind==='vehicle'&&!lmv&&draft.timeMode!=='without')for(const [key,message] of Object.entries(tripOrderIssues(draft)))issues[key]||=message;
  if(options){for(const [field,collection,label,read]of [['assetId','assets','Equipment Master',raw.door],['employeeId','employees','Employee Master',raw.employeeCode],['shiftId','shifts','Shift Master',draft.cardShift]])if(!draft[field]){if(!options[collection]?.length)issues[field]=label+' is empty in this MIS database. Sync/import it before matching scans.';else if(read)issues[field]='Scan reads '+String(read).slice(0,80)+'; no unique '+label+' match was found. Check the reading or master record.';}}
+ // Owner, 24 Nov 2026: the card's machine must be of the book's category in the Equipment master.
+ if(options&&draft.assetId){const asset=(options.assets||[]).find(row=>String(row.id)===String(draft.assetId)),issue=asset&&bookCategoryIssue(asset,lmv?'lmv':kind);if(issue)issues.assetId=issue;}
  if(!String(draft.employeeId??'').trim()&&!(options&&!options.employees?.length))issues.employeeId=caliberHoldMessage(raw,kind,draft.location);
  if(kind==='vehicle'&&options){
   const validation=validateTripEquipment(draft,options.assets||[]);

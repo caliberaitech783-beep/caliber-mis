@@ -12,7 +12,7 @@ export function recoverCardResponse(parsed,kind,fieldNames){
   const m=typeof prefix==='string'?prefix.trim():prefix;
   const n=typeof number==='number'&&Number.isSafeInteger(number)&&number>=0?String(number):typeof number==='string'?number.trim():number;
   if(m===''&&n==='')return '';
-  const validPrefix=typeof m==='string'&&/^[A-Z][A-Z ._-]*$/i.test(m),validNumber=typeof n==='string'&&/^\d+$/.test(n);
+  const validPrefix=typeof m==='string'&&/^[A-Z][A-Z ._:/-]*$/i.test(m),validNumber=typeof n==='string'&&/^\d+$/.test(n);
   if(!validNumber)issues.push(label+': equipment number missing or unreadable; re-read the NO column.');
   if(!validPrefix)issues.push(label+': equipment fleet prefix missing or unreadable; re-read the M column.');
   if(prefix===null||number===null)return null;
@@ -20,7 +20,9 @@ export function recoverCardResponse(parsed,kind,fieldNames){
  };
  const missingNumber=(value,label)=>{const machine=identifyCardMachine(value,'trip-body',{allowSuffix:true});if(machine&&!machine.hasNumber)issues.push(label+': equipment number missing or unreadable; re-read the NO column.');};
  const fields=Object.fromEntries(fieldNames.map(name=>[name,field(parsed.fields?.[name],name)]));
- const summary=parsed.fields?.machineSummary??parsed.machineSummary;
+ const summaryInput=parsed.fields?.machineSummary??parsed.machineSummary;
+ // Recover a table wrapped like a scalar field without inventing printed rows.
+ const summary=Array.isArray(summaryInput?.value)?summaryInput.value:summaryInput;
  if(!Array.isArray(summary)||summary.length>40){issues.push('Machine summary: invalid response table; check and enter the summary from the scan.');fields.machineSummary=[];}
  else fields.machineSummary=summary.map((row,i)=>{
   const label='Summary row '+(i+1);
