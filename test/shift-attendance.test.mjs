@@ -11,7 +11,7 @@ test('VLB and ELB save attendance without an asset and update the same shift rec
    (1,'Employee master','{"name":"Driver","site":"Sasti OC"}'),
    (2,'Shift Master','{"shiftCode":"A","site":"Sasti OC"}');`+SHIFT_ATTENDANCE_SCHEMA);
  let handler;
- registerShiftAttendance({post(path,...steps){assert.equal(path,'/api/shift-attendance');handler=steps.at(-1);}},
+ registerShiftAttendance({post(path,...steps){if(path==='/api/shift-attendance')handler=steps.at(-1);}},
   {pool,protect:[],ensureBooks:async()=>{}});
  const save=async (overrides={})=>{
   let status=200,payload;

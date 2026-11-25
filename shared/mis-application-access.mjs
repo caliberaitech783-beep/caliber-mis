@@ -120,9 +120,10 @@ export function misRequestAllowed(session,req){
  if(route==='/api/log-books/employee-site-move'||/^\/api\/log-books\/employee-site-move\/[0-9a-f-]{36}\/verify$/i.test(route))return req.method==='POST'&&['Vehicle Log Book','Equipment Log Book','Trip Card Bulk Scan','Job Card Bulk Scan'].some(allowed);
  if(route.startsWith('/api/log-books/vehicle'))return allowed('Vehicle Log Book');
  if(/^\/api\/log-books\/lmv(?:\/|$)/.test(route))return allowed('Vehicle Log Book');
- if(route==='/api/shift-attendance'){
+ // VTC Training (shared/vtc-training.mjs) is saved beside Present — 0 trips, by the same people.
+ if(route==='/api/shift-attendance'||route==='/api/training-attendance'){
   const kind=read?req.query?.kind:req.body?.kind;
-  return (read||req.method==='POST')&&(kind==='vehicle'?allowed('Vehicle Log Book'):kind==='equipment'&&allowed('Equipment Log Book'));
+  return (route==='/api/shift-attendance'&&read||req.method==='POST')&&(kind==='vehicle'?allowed('Vehicle Log Book'):kind==='equipment'&&allowed('Equipment Log Book'));
  }
  if(/^\/api\/vlb-batch-deletions(?:\/|$)/.test(route))return allowed('Vehicle Log Book');
  if(/^\/api\/vlb-batches(?:\/|$)/.test(route)){

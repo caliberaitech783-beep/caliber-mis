@@ -18,9 +18,10 @@ export const elbEntryBlocker=(kind,batch)=>{
 };
 export default function VlbEntryWorkspace({kind,session,mode,ReportSection,ExportMenu,children,onExit,canDeleteElb}){
  const [selected,setSelected]=useState(null),[error,setError]=useState('');
- const [attendanceOpen,setAttendanceOpen]=useState(false);
+ const [attendanceOpen,setAttendanceOpen]=useState('');
  const blocker=elbEntryBlocker(kind,selected);
- const attendanceEntry=kind!=='lmv'&&mode==='manual'&&(attendanceOpen?<ShiftAttendance kind={kind} session={session} batch={selected} onClose={()=>setAttendanceOpen(false)}/>:<button type="button" onClick={()=>setAttendanceOpen(true)}>Present — 0 trips</button>);
+ // attendanceOpen: '' closed, 'zero' Present — 0 trips, 'training' VTC Training (its own entry, shared/vtc-training.mjs).
+ const attendanceEntry=kind!=='lmv'&&mode==='manual'&&(attendanceOpen?<ShiftAttendance key={attendanceOpen} kind={kind} session={session} batch={selected} training={attendanceOpen==='training'} onClose={()=>setAttendanceOpen('')}/>:<span className="attendance-entry-buttons"><button type="button" onClick={()=>setAttendanceOpen('zero')}>Present — 0 trips</button> <button type="button" className="vtc-training-button" onClick={()=>setAttendanceOpen('training')}>VTC Training</button></span>);
  const roster=selected&&!blocker?<FleetReconciliation key={selected.id+':fleet:'+kind} session={session} context={selected} kind={kind}/>:null;
  const siteFleet=roster&&<details open className="scan-fleet-reconciliation"><summary>Site fleet · VLB / LMV / ELB, breakdown and idle details</summary>{roster}</details>;
  const key='vlb-entry-batch:'+String(session.login||session.name||'');

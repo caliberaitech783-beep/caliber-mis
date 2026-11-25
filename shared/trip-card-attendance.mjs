@@ -21,6 +21,7 @@ export const SOURCES=[
  {key:'manual',label:'Trip card – manual'},
  {key:'scanned+manual',label:'Trip card – scanned + manual'},
  {key:'zero-trip',label:'Zero-trip entry (no card)'},
+ {key:'training',label:'VTC Training (present, no card)'},
 ];
 export const sourceLabel=key=>SOURCES.find(s=>s.key===key)?.label||'Trip card';
 // Every problem a trip card can have, in the order they are listed.
@@ -54,7 +55,7 @@ const shiftWord=code=>({S1:'Shift A',S2:'Shift B',S3:'Shift C',A:'Shift A',B:'Sh
 const mergeSource=list=>{
  const keys=new Set(list);
  if(keys.has('scanned+manual')||keys.has('scanned')&&keys.has('manual'))return 'scanned+manual';
- return keys.has('scanned')?'scanned':keys.has('manual')?'manual':keys.has('zero-trip')||!keys.size?'zero-trip':[...keys][0];
+ return keys.has('scanned')?'scanned':keys.has('manual')?'manual':keys.has('zero-trip')||!keys.size?'zero-trip':keys.has('training')?'training':[...keys][0];
 };
 
 // The trip card attendances of a site between from and to: one per person, date and shift.

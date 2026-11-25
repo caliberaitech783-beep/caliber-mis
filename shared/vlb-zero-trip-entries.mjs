@@ -4,6 +4,7 @@
 import {canonicalSiteName} from './site-location.mjs';
 import {bookShiftCode} from './trip-card-rules.mjs';
 import {equipmentDoorNumber} from './equipment-door.mjs';
+import {isTrainingEntry} from './vtc-training.mjs';
 
 const text=value=>String(value??'').trim();
 const employeeCodeOf=r=>text(r.employeeId||r.empId||r.employeeCode||r.empCode||r.caliberId||r.code||r.idNo);
@@ -13,13 +14,14 @@ export const ZERO_TRIP_ENTRY_SQL=`SELECT a.book_date::text AS date,a.site,a.shif
  FROM mis_shift_attendance a
  LEFT JOIN master_records e ON e.id=a.employee_id
  LEFT JOIN master_records v ON v.id=a.asset_id
- WHERE a.kind='vehicle' AND a.book_date=$1::date
+ WHERE a.kind='vehicle' AND a.book_date=$1::date AND a.reason<>'VTC Training'
  ORDER BY a.site,a.shift,a.employee_id`;
 
 // The rows of one batch: same site (by its canonical name), date and shift code.
+// A VTC Training entry (shared/vtc-training.mjs) is not a zero-trip entry and is never listed here.
 export function vlbZeroTripEntries(rows=[],batch={}){
  const site=canonicalSiteName(batch.site),shift=bookShiftCode(batch.shift);
- return rows.filter(r=>r.date===batch.report_date&&canonicalSiteName(r.site)===site&&bookShiftCode(r.shift)===shift).map(r=>{
+ return rows.filter(r=>!isTrainingEntry(r)&&r.date===batch.report_date&&canonicalSiteName(r.site)===site&&bookShiftCode(r.shift)===shift).map(r=>{
   const e=r.employee||{},a=r.asset||{};
   return {id:`zero-trip:${r.date}:${shift}:${r.employee_id}`,employeeName:text(e.employee||e.name||e.login),caliberId:employeeCodeOf(e),
    door:r.asset_id?text(a.door||a.doorNo||equipmentDoorNumber(a)):'',vehicle:r.asset_id?text(a.equipmentName||a.equipment||a.name||a.group):'',

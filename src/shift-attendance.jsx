@@ -6,7 +6,9 @@ import {bookShiftCode,selectedMasterShift,systemBookDate} from '../shared/trip-c
 import {ZERO_TRIP_REASONS} from '../shared/zero-trip-reasons.mjs';
 import SmartSelect from './smart-select.jsx';
 
-export default function ShiftAttendance({kind,session,batch,onClose}){
+// training: the VTC Training entry (shared/vtc-training.mjs), its own form beside "Present — 0 trips": no machine, no
+// zero-trip reason, where the training was held is required. It is saved as present in its own colour.
+export default function ShiftAttendance({kind,session,batch,onClose,training=false}){
  const [options,setOptions]=useState(null),[error,setError]=useState(''),[saved,setSaved]=useState(false),[busy,setBusy]=useState(false);
  const [site,setSite]=useState(batch?.site||''),[date,setDate]=useState(batch?.report_date||systemBookDate());
  const [shift,setShift]=useState(bookShiftCode(batch?.shift)||''),[employeeId,setEmployee]=useState(''),[assetId,setAsset]=useState('');
@@ -29,7 +31,10 @@ export default function ShiftAttendance({kind,session,batch,onClose}){
  const submit=async event=>{
   event.preventDefault();if(!selectedShift)return;setBusy(true);setError('');setSaved(false);
   try{
-   const response=await fetch('/api/shift-attendance',{method:'POST',headers,body:JSON.stringify({kind,location:site,bookDate:date,...(selectedShift.row?{shiftId:selectedShift.row.id}:{shiftCode:shift}),employeeId,assetId,reason,remarks})});
+   const shiftPart=selectedShift.row?{shiftId:selectedShift.row.id}:{shiftCode:shift};
+   const response=await fetch(training?'/api/training-attendance':'/api/shift-attendance',{method:'POST',headers,body:JSON.stringify(training
+    ?{kind,location:site,bookDate:date,...shiftPart,employeeId,remarks}
+    :{kind,location:site,bookDate:date,...shiftPart,employeeId,assetId,reason,remarks})});
    const data=await response.json();
    if(!response.ok)throw Error(data.error||'Could not save attendance.');
    setSaved(true);
@@ -37,9 +42,10 @@ export default function ShiftAttendance({kind,session,batch,onClose}){
  };
  const vehicle=kind==='vehicle';
  return <form className="logbook-section" onSubmit={submit} onChange={()=>setSaved(false)}>
-  <div className="logbook-section-title"><h2>Present — 0 trips</h2><button type="button" onClick={onClose} disabled={busy}>Close</button></div>
+  <div className="logbook-section-title"><h2>{training?'VTC Training':'Present — 0 trips'}</h2><button type="button" onClick={onClose} disabled={busy}>Close</button></div>
+  {training&&<p className="vtc-training-note">The {vehicle?'driver':'operator'} is marked present for this date and shift as VTC Training (purple in attendance). It is not a 0-trip entry.</p>}
   {error&&<p role="alert">{error}</p>}
-  {saved&&<p role="status">Attendance saved. Enter any later trips in the usual logbook.</p>}
+  {saved&&<p role="status">{training?'VTC Training saved: present for this date and shift.':'Attendance saved. Enter any later trips in the usual logbook.'}</p>}
   {!options&&!error&&<p role="status">Loading attendance options…</p>}
   {options&&<fieldset className="logbook-edit-fields" disabled={busy}>
    <div className="logbook-fields">
@@ -53,6 +59,7 @@ export default function ShiftAttendance({kind,session,batch,onClose}){
     <label className="logbook-field">{vehicle?'Driver':'Operator'}<SmartSelect searchable required aria-label={vehicle?'Driver':'Operator'} value={employeeId} onChange={e=>setEmployee(e.target.value)}>
      <option value="">Select employee</option>{options.employees.filter(row=>employeeAtLocation(row,site)).map(row=><option key={row.id} value={row.id}>{row.name} · {row.caliberId||row.employeeCode}</option>)}
     </SmartSelect></label>
+    {training?<label className="logbook-field">Training place / remarks (required)<input required maxLength={2000} placeholder="VTC, place and topic" value={remarks} onChange={e=>setRemarks(e.target.value)}/></label>:<>
     <label className="logbook-field">{vehicle?'Vehicle':'Equipment'} (optional)<select value={assetId} onChange={e=>setAsset(e.target.value)}>
      <option value="">Unassigned</option>{options.assets.filter(row=>row.kind===kind&&canonicalSiteName(row.site)===siteKey).map(row=><option key={row.id} value={row.id}>{row.door} · {row.name}</option>)}
     </select></label>
@@ -60,8 +67,9 @@ export default function ShiftAttendance({kind,session,batch,onClose}){
      <option value="">Select reason</option>{ZERO_TRIP_REASONS.map(value=><option key={value}>{value}</option>)}
     </select></label>
     <label className="logbook-field">Remarks {reason==='Other'?'(required)':'(optional)'}<input required={reason==='Other'} maxLength={2000} value={remarks} onChange={e=>setRemarks(e.target.value)}/></label>
+    </>}
    </div>
-   <button type="submit" disabled={!selectedShift||saved}>{busy?'Saving…':'Save attendance'}</button>
+   <button type="submit" disabled={!selectedShift||saved}>{busy?'Saving…':training?'Save VTC Training':'Save attendance'}</button>
   </fieldset>}
  </form>;
 }

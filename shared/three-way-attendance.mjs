@@ -25,7 +25,7 @@ export const DAY_DIFFERENCES=[
  {key:'bioNoCard',label:'Bio-punch, no trip card',short:'Punch, no card',tone:'orange',needsAll:true},
  {key:'sheetNoBio',label:'Your sheet P, no bio-punch',short:'Sheet P, no punch',tone:'red'},
 ];
-const SOURCE_SHORT={scanned:'Scanned','manual':'Manual','scanned+manual':'Scanned + manual','zero-trip':'Zero-trip'};
+const SOURCE_SHORT={scanned:'Scanned','manual':'Manual','scanned+manual':'Scanned + manual','zero-trip':'Zero-trip',training:'VTC Training'};
 
 // Your sheet, read for comparing: number|date -> mark, the people, and the dates it has a mark for.
 export function sheetFromFile(sheet){
