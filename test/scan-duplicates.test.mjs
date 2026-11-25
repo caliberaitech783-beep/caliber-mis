@@ -7,6 +7,7 @@ import {registerLogBooks,LOG_BOOK_SCHEMA} from '../server/routes/log-book.mjs';
 import {registerBulkCardScanning,SCAN_SCHEMA} from '../server/routes/bulk-card-scanning.mjs';
 import {drawCard} from './scan-card-fixture.mjs';
 import {fingerprintScanImage} from '../server/services/scan-fingerprint.mjs';
+import {transferScanGroups,summarizeUploadExtraction} from '../src/scan-upload-pipeline.mjs';
 import {applyContentDuplicate,findContentDuplicate,contentIdentityCertain,contentDuplicateMessage,backfillScanFingerprints,listDuplicateCards} from '../server/services/scan-duplicates.mjs';
 
 process.env.VLB_TWO_STAGE_BATCHES='0';
@@ -34,6 +35,42 @@ async function harness(t,env={}){
 }
 const shift1={bookDate:'2026-11-01',location:'Majri OB',cardShift:'I'},shift2={bookDate:'2026-11-01',location:'Majri OB',cardShift:'II'};
 
+test('PDF uploads skip duplicate first and later pages and continue with new cards across files',async t=>{
+ const {call,entry,upload,db}=await harness(t);
+ const earlier=await entry(shift1,'Earlier'),mixed=await entry(shift1,'Mixed PDFs'),repeat=await entry(shift1,'All duplicates');
+ for(const seed of [1,2,3])assert.equal((await upload(earlier.id,drawCard({seed,writing:'S'+seed}),seed)).status,201);
+ const pages=[
+  {name:'first.pdf · page 1',image:drawCard({seed:1,writing:'S1'})},
+  {name:'first.pdf · page 2',image:drawCard({seed:4,writing:'NEW4'})},
+  {name:'first.pdf · page 3',image:drawCard({seed:2,writing:'S2',shiftX:9,shiftY:-5,brightness:.05,noise:12})},
+  {name:'second.pdf · page 1',image:drawCard({seed:3,writing:'S3'})},
+  {name:'second.pdf · page 2',image:drawCard({seed:5,writing:'NEW5'})},
+ ];
+ async function transfer(target){
+  let ordinal=0;const receipts=[];
+  const groups=async function*(){for(const page of pages)yield [page];};
+  await transferScanGroups(groups(),{concurrency:3,prepare:async group=>group[0].image,send:async(group,image)=>{
+   const result=await call('/api/scan-batches/'+target.id+'/cards','POST',{uploadKey:randomUUID(),filename:group[0].name,entrySource:'upload',base64:image.toString('base64'),ordinal:++ordinal});
+   assert.ok([200,201].includes(result.status),JSON.stringify(result));
+   receipts.push({id:result.data.id,skipped:Boolean(result.data.duplicateSkipped),reason:result.data.reason});
+  }});
+  return receipts;
+ }
+ const receipts=await transfer(mixed);
+ assert.equal(receipts.length,5,'a duplicate first page must not cancel the remaining pages or files');
+ assert.equal(receipts.filter(r=>r.skipped).length,3);
+ assert.equal(receipts.filter(r=>!r.skipped).length,2);
+ assert.ok(receipts.some(r=>r.reason==='fingerprint'),'visual duplicates still use the same skip decision');
+ const stored=(await db.query('SELECT id,ordinal,status,duplicate_of FROM mis_scan_cards WHERE batch_id=$1 ORDER BY ordinal',[mixed.id])).rows;
+ assert.deepEqual(stored.filter(r=>!r.duplicate_of).map(r=>r.ordinal),[2,5]);
+ assert.deepEqual(stored.filter(r=>r.duplicate_of).map(r=>r.ordinal),[1,3,4]);
+ assert.ok(stored.filter(r=>r.duplicate_of).every(r=>r.status==='rejected'),'duplicates never enter the reader queue');
+ assert.equal(summarizeUploadExtraction(receipts,stored).skipped,3,'progress retains the skipped count');
+ const repeated=await transfer(repeat);
+ assert.equal(repeated.length,5);assert.ok(repeated.every(r=>r.skipped),'an all-duplicate PDF completes without an upload failure');
+ assert.equal((await db.query('SELECT count(*)::int n FROM mis_scan_cards WHERE batch_id=$1 AND duplicate_of IS NULL',[repeat.id])).rows[0].n,0);
+});
+
 test('rescanned cards are skipped at upload across entries for the same date, site and shift; new cards are read',async t=>{
  const {call,entry,upload,db}=await harness(t);
  const b01=await entry(shift1,'B01'),b02=await entry(shift1,'B02'),other=await entry(shift2,'shift II');
@@ -43,14 +80,14 @@ test('rescanned cards are skipped at upload across entries for the same date, si
  const exact=await upload(b02.id,drawCard({seed:1,writing:'S1'}),1);
  assert.equal(exact.status,200);assert.equal(exact.data.duplicateSkipped,true);assert.equal(exact.data.reason,'exact');assert.equal(exact.data.original.cardId,originals[0]);assert.equal(exact.data.original.entryName,b01.name);assert.equal(exact.data.original.ordinal,1);
  const beforePdf=Number((await db.query('SELECT count(*) n FROM mis_scan_cards WHERE batch_id=$1',[b02.id])).rows[0].n);
- const rejectedPdf=await call('/api/scan-batches/'+b02.id+'/cards','POST',{uploadKey:randomUUID(),filename:'cards.pdf · page 1',entrySource:'upload',base64:drawCard({seed:1,writing:'S1'}).toString('base64'),ordinal:9});
+ const rejectedPdf=await call('/api/scan-batches/'+b02.id+'/cards','POST',{uploadKey:randomUUID(),filename:'cards.pdf · page 1',entrySource:'upload',rejectDuplicatePdf:true,base64:drawCard({seed:1,writing:'S1'}).toString('base64'),ordinal:9});
  assert.equal(rejectedPdf.status,409);assert.match(rejectedPdf.data.error,/PDF was already uploaded.*first card matches.*upload was cancelled/i);
  assert.equal(Number((await db.query('SELECT count(*) n FROM mis_scan_cards WHERE batch_id=$1',[b02.id])).rows[0].n),beforePdf,'the rejected PDF preflight stores no card');
  const resume=await call('/api/scan-batches/'+b01.id+'/cards','POST',{uploadKey:randomUUID(),filename:'cards.pdf · page 1',entrySource:'upload',resumeInEntry:true,base64:drawCard({seed:1,writing:'S1'}).toString('base64'),ordinal:4});
  assert.equal(resume.status,200,JSON.stringify(resume));
  assert.equal(resume.data.existingCardId,originals[0]);
  assert.equal(Number((await db.query('SELECT count(*) n FROM mis_scan_cards WHERE batch_id=$1',[b01.id])).rows[0].n),3);
- const wrongEntry=await call('/api/scan-batches/'+b02.id+'/cards','POST',{uploadKey:randomUUID(),filename:'cards.pdf · page 1',entrySource:'upload',resumeInEntry:true,base64:drawCard({seed:1,writing:'S1'}).toString('base64'),ordinal:9});
+ const wrongEntry=await call('/api/scan-batches/'+b02.id+'/cards','POST',{uploadKey:randomUUID(),filename:'cards.pdf · page 1',entrySource:'upload',resumeInEntry:true,rejectDuplicatePdf:true,base64:drawCard({seed:1,writing:'S1'}).toString('base64'),ordinal:9});
  assert.equal(wrongEntry.status,409);
  // Same paper fed again: shifted, brighter, noisy.
  const rescan=await upload(b02.id,drawCard({seed:2,writing:'S2',shiftX:9,shiftY:-5,brightness:.05,noise:12}),2);
