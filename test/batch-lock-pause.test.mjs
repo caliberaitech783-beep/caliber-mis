@@ -8,21 +8,21 @@ import {LOG_BOOK_SCHEMA,registerLogBooks} from '../server/routes/log-book.mjs';
 import {PAUSE_UNTIL,batchLockPause,batchLockPauseUntil,batchLockPauseEndsAt,batchLocksPaused,batchLockPauseNote} from '../shared/batch-lock-pause.mjs';
 process.env.VLB_BATCH_ORDER_FROM='off'; // The shift-order gate is covered in vlb-batch-order.test.mjs.
 
-// Owner, 24 Nov 2026: VLB, LMV and ELB locking off for five days.
-test('the pause runs to the end of 29 Nov 2026 in India and can be moved or ended by the Azure setting',()=>{
- assert.equal(PAUSE_UNTIL,'2026-11-29');
- assert.equal(batchLockPauseUntil({}),'2026-11-29');
- assert.equal(batchLockPauseEndsAt('2026-11-29').toISOString(),'2026-11-29T18:30:00.000Z','midnight IST after the last day');
+// Owner, 24 Nov 2026: VLB, LMV and ELB locking off for five days; extended to the end of 1 Dec 2026 on 25 Nov.
+test('the pause runs to the end of 1 Dec 2026 in India and can be moved or ended by the Azure setting',()=>{
+ assert.equal(PAUSE_UNTIL,'2026-12-01');
+ assert.equal(batchLockPauseUntil({}),'2026-12-01');
+ assert.equal(batchLockPauseEndsAt('2026-12-01').toISOString(),'2026-12-01T18:30:00.000Z','midnight IST after the last day');
  assert.equal(batchLocksPaused({},new Date('2026-11-24T12:00:00Z')),true);
- assert.equal(batchLocksPaused({},new Date('2026-11-29T18:29:59Z')),true,'still on at 23:59 IST on 29 Nov');
- assert.equal(batchLocksPaused({},new Date('2026-11-29T18:30:00Z')),false,'locks return by themselves at 00:00 IST on 30 Nov');
+ assert.equal(batchLocksPaused({},new Date('2026-12-01T18:29:59Z')),true,'still on at 23:59 IST on 1 Dec');
+ assert.equal(batchLocksPaused({},new Date('2026-12-01T18:30:00Z')),false,'locks return by themselves at 00:00 IST on 2 Dec');
  for(const off of ['off','0','false','no','OFF'])assert.equal(batchLocksPaused({VLB_BATCH_LOCK_PAUSE_UNTIL:off},new Date('2026-11-25T00:00:00Z')),false);
  assert.equal(batchLocksPaused({VLB_BATCH_LOCK_PAUSE_UNTIL:'2026-12-02'},new Date('2026-12-02T10:00:00Z')),true,'the setting moves the last day');
  assert.equal(batchLocksPaused({VLB_BATCH_LOCK_PAUSE_UNTIL:'2026-11-25'},new Date('2026-11-26T00:00:00Z')),false,'or brings it forward');
  const pause=batchLockPause({},new Date('2026-11-25T00:00:00Z'));
- assert.deepEqual(pause,{active:true,until:'2026-11-29',endsAt:'2026-11-29T18:30:00.000Z'});
- assert.match(batchLockPauseNote(pause),/Locking is off until 29-11-2026/);
- assert.deepEqual(batchLockPause({},new Date('2026-12-01T00:00:00Z')),{active:false,until:null,endsAt:null});
+ assert.deepEqual(pause,{active:true,until:'2026-12-01',endsAt:'2026-12-01T18:30:00.000Z'});
+ assert.match(batchLockPauseNote(pause),/Locking is off until 01-12-2026/);
+ assert.deepEqual(batchLockPause({},new Date('2026-12-02T00:00:00Z')),{active:false,until:null,endsAt:null});
  assert.equal(batchLockPauseNote({active:false}),'');
 });
 
