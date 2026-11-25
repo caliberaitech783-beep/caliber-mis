@@ -40,8 +40,10 @@ export async function reportMasters(client){
 // 21,000 lines, and unpacking it on every attendance read held the main thread. Each line is its record with id = the row
 // id as text, as reportMasters gives it. The Shift Master is also read as rows: the main thread needs it for the locked days.
 const MASTER_LINES=`COALESCE(json_agg(record_data||jsonb_build_object('id',id::text) ORDER BY id) FILTER (WHERE master_name=ANY($1::text[])),'[]'::json)`;
+// Employee lines also name their list (sourceMaster), as in reportMasters: the report rules let Employee Master decide an ambiguous ID.
+const EMPLOYEE_LINES=`COALESCE(json_agg(record_data||jsonb_build_object('id',id::text,'sourceMaster',master_name) ORDER BY id) FILTER (WHERE master_name=ANY($1::text[])),'[]'::json)`;
 export async function reportMastersText(client){
- const {rows:[row]}=await client.query(`SELECT json_build_object('assets',${MASTER_LINES.replace('$1','$2')},'employees',${MASTER_LINES.replace('$1','$3')},'shifts',${MASTER_LINES.replace('$1','$4')})::text AS masters
+ const {rows:[row]}=await client.query(`SELECT json_build_object('assets',${MASTER_LINES.replace('$1','$2')},'employees',${EMPLOYEE_LINES.replace('$1','$3')},'shifts',${MASTER_LINES.replace('$1','$4')})::text AS masters
   FROM master_records WHERE master_name=ANY($1::text[])`,[MASTER_NAMES,['Equipment master'],MASTER_NAMES.slice(2),['Shift Master']]);
  const shifts=(await client.query("SELECT id,record_data FROM master_records WHERE master_name='Shift Master' ORDER BY id")).rows.map(r=>({...r.record_data,id:String(r.id)}));
  return {shifts,mastersJson:row?.masters||'{"assets":[],"employees":[],"shifts":[]}'};
