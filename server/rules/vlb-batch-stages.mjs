@@ -17,6 +17,10 @@ import {pendingTransferFor} from '../routes/vehicle-transfer-express.mjs';
 
 import {readBatchStageWait} from './vlb-batch-queue.mjs';
 import {batchLocksPaused} from '../../shared/batch-lock-pause.mjs';
+import {batchFleetCoverage} from '../../shared/batch-fleet-coverage.mjs';
+import {coverageStop,coverageBlockers} from '../../shared/batch-coverage-stop.mjs';
+import {readBatchMachineAnswers} from './batch-machine-answers.mjs';
+import {ACTIVE_VLB_ENTRY_FROM,ACTIVE_VLB_ENTRY_FILTER} from './vlb-card-counts.mjs';
 import {readWaitingScans,vlbLockScanBlocker,lmvLockScanBlocker,closeScanBlocker} from './vlb-waiting-scans.mjs';
 const batchWaitingScans=(client,batch)=>readWaitingScans(client,{site:batch.site,date:batch.report_date,shift:batch.shift});
 
@@ -50,13 +54,33 @@ export async function fleetRows(client,batch){
   l.book_no,l.data AS logbook,l.revision AS logbook_revision FROM mis_vlb_batch_fleet f LEFT JOIN mis_log_books l ON l.id=f.logbook_id AND l.deleted_at IS NULL WHERE f.batch_id=$1 ORDER BY f.trips DESC,f.door`,[batch.id]);
  return rows.map(row=>({...row,trips:elbTripCount(row),tripExempt:isLdmDrill(row),source_cards:row.sourceCards,saved_at:row.logbook_id&&!row.book_no?null:row.saved_at}));
 }
+// The batch's saved LMV cards: LMV cards of its site, date and shift.
+export async function batchLmvRecords(client,batch){
+ const {rows}=await client.query("SELECT id,book_no,book_type,data,revision FROM mis_log_books WHERE book_type='lmv' AND book_date=$1 AND deleted_at IS NULL ORDER BY id",[batch.report_date]);
+ return rows.filter(record=>canonicalSiteName(record.data?.location)===canonicalSiteName(batch.site)&&vlbRecordScope(record.data).shift===batch.shift);
+}
+async function activeVlbCards(client,batch){
+ return (await client.query(`SELECT l.id,l.book_no,l.asset_id,l.data FROM ${ACTIVE_VLB_ENTRY_FROM} WHERE e.batch_id=$1 AND ${ACTIVE_VLB_ENTRY_FILTER}`,[batch.id])).rows;
+}
+// Every machine of the site and its answer for the shift (owner, 25 Nov 2026: shared/batch-fleet-coverage.mjs), with
+// whether the batch is stopped until all are answered (shared/batch-coverage-stop.mjs).
+export async function machineCoverage(client,batch,{assets,vlbRecords,lmvRecords,fleet,elbRecords}={}){
+ assets??=await equipmentAssets(client);
+ vlbRecords??=await activeVlbCards(client,batch);
+ lmvRecords??=await batchLmvRecords(client,batch);
+ fleet??=batchStage(batch)==='vlb_open'?[]:await fleetRows(client,batch);
+ elbRecords??=await batchElbRecords(client,batch);
+ const coverage=batchFleetCoverage({assets,site:batch.site,vlbRecords,lmvRecords,elbFleet:fleet,elbRecords,answers:await readBatchMachineAnswers(client,batch)});
+ const stop=coverageStop(batch);
+ return {...coverage,mode:stop.active?'stop':'warning',stop};
+}
 async function machineRows(client,batch){
  return (await client.query('SELECT asset_id::text AS "assetId",machine_label AS label,door,trips,source_cards AS "sourceCards" FROM mis_vlb_batch_machines WHERE batch_id=$1 ORDER BY trips DESC,machine_label',[batch.id])).rows;
 }
 
 // Everything the batch page needs for the two-stage view. Holds are re-evaluated here against
 // the current Equipment master, so a completed transfer clears them on the next read.
-export async function stageDetails(client,batch,{assets,tripCardRecords}={}){
+export async function stageDetails(client,batch,{assets,tripCardRecords,vlbCards,lmvRecords}={}){
  if(!twoStageEnabled())return {twoStage:false,stage:batch.closed_at?'closed':'open'};
  assets??=await equipmentAssets(client);
  const stage=batchStage(batch),vlb=await batchVlbRecords(client,batch),elb=await batchElbRecords(client,batch);
@@ -95,7 +119,14 @@ export async function stageDetails(client,batch,{assets,tripCardRecords}={}){
  const lmvWaiting=stage==='lmv_open'?lmvLockScanBlocker(waitingScans):'';
  // The sentence this stage's next step is refused with; the page shows it once, as the waiting list.
  const waitingScanMessage=stage==='vlb_open'?vlbLockScanBlocker(waitingScans):stage==='lmv_open'?lmvWaiting:stage==='elb_open'?closeScanBlocker(waitingScans):'';
- return {twoStage:true,stage,stageWait:await readBatchStageWait(client,batch),holds,machines,fleet,fleetProgress:progress,elbRecords:elb,elbTripCardRows,waitingScans,waitingScanMessage,lockBlockers:stage==='vlb_open'?lockBlockers({stage,records:vlb,holds,unresolved:buildMachineSnapshot(vlb,assets,batch.site).unresolved,waitingScans}):[],lmvLockBlockers:lmvWaiting?[lmvWaiting]:[],closeBlockers:stage==='elb_open'?closureBlockers({stage,fleet,holds,duplicates,waitingScans}):[],machineReport:report,statuses:FLEET_STATUSES};
+ // Every machine of the site needs an answer; from the stop date (shared/batch-coverage-stop.mjs) it stops Lock VLB,
+ // Lock LMV and Close batch, before that it only warns.
+ const fleetCoverage=await machineCoverage(client,batch,{assets,vlbRecords:vlbCards,lmvRecords,fleet,elbRecords:elb});
+ const stop=fleetCoverage?.stop;
+ return {twoStage:true,stage,stageWait:await readBatchStageWait(client,batch),holds,machines,fleet,fleetProgress:progress,elbRecords:elb,elbTripCardRows,waitingScans,waitingScanMessage,fleetCoverage,
+  lockBlockers:stage==='vlb_open'?[...lockBlockers({stage,records:vlb,holds,unresolved:buildMachineSnapshot(vlb,assets,batch.site).unresolved,waitingScans}),...coverageBlockers(fleetCoverage,['vlb'],stop)]:[],
+  lmvLockBlockers:stage==='lmv_open'?[...(lmvWaiting?[lmvWaiting]:[]),...coverageBlockers(fleetCoverage,['lmv'],stop)]:[],
+  closeBlockers:stage==='elb_open'?[...closureBlockers({stage,fleet,holds,duplicates,waitingScans}),...coverageBlockers(fleetCoverage,['vlb','elb','lmv'],stop)]:[],machineReport:report,statuses:FLEET_STATUSES};
 }
 function duplicateElb(records){
  const byAsset=new Map(),duplicates=new Set();
@@ -135,6 +166,8 @@ export async function lockVlb(client,batch,actor,{assets}={}){
  const stage=batchStage(batch),records=await batchVlbRecords(client,batch),holds=holdSummary(records,assets);
  const snapshot=buildMachineSnapshot(records,assets,batch.site);
  const blockers=lockBlockers({stage,records,holds,unresolved:snapshot.unresolved,waitingScans:stage==='vlb_open'?await batchWaitingScans(client,batch):[]});
+ // From the stop date every VLB machine of the site needs an answer first (shared/batch-coverage-stop.mjs).
+ if(!blockers.length&&coverageStop(batch).active){const coverage=await machineCoverage(client,batch,{assets,fleet:[]});blockers.push(...coverageBlockers(coverage,['vlb'],coverage.stop));}
  if(blockers.length)fail(blockers.join(' '),409);
  await client.query('DELETE FROM mis_vlb_batch_machines WHERE batch_id=$1',[batch.id]);
  // The machine list and the site's fleet list are each written in one statement. Until 23 Nov 2026
@@ -195,6 +228,12 @@ export async function readFleetBreakdowns(client,batch,assetId,readHours,actor,i
  if(typeof readHours!=='function')fail('Pulse breakdown lookup is unavailable.',503);
  const row=(await client.query('SELECT asset_id FROM mis_vlb_batch_fleet WHERE batch_id=$1 AND asset_id=$2',[batch.id,assetId])).rows[0];
  if(!row)fail('This machine is not in the batch fleet list.',404);
+ return readBatchShiftBreakdowns(client,batch,assetId,readHours,actor,input);
+}
+// Pulse-1 breakdown hours of one machine for the batch's date, site and shift (ELB fleet lines, and VLB / LMV machines
+// with no card, answered on the batch page).
+export async function readBatchShiftBreakdowns(client,batch,assetId,readHours,actor,input={}){
+ if(typeof readHours!=='function')fail('Pulse breakdown lookup is unavailable.',503);
  const shift=await shiftMasterFor(client,batch.site,batch.shift);
  if(!shift)fail('No active Shift Master entry matches this batch.',409);
  const shiftHours=input.shiftHours!==undefined&&input.shiftHours!==''?manualShiftHours({...input,location:batch.site,bookShiftCode:batch.shift}):fleetShiftHours(shift);
@@ -294,6 +333,8 @@ export async function lockLmv(client,batch,actor){
  await requireStageTurn(client,batch);
  const waiting=lmvLockScanBlocker(await batchWaitingScans(client,batch));
  if(waiting)fail(waiting,409);
+ // From the stop date every LMV machine of the site needs an answer first (shared/batch-coverage-stop.mjs).
+ if(coverageStop(batch).active){const coverage=await machineCoverage(client,batch);const blockers=coverageBlockers(coverage,['lmv'],coverage.stop);if(blockers.length)fail(blockers.join(' '),409);}
  const locked=(await client.query("UPDATE mis_vlb_batches SET stage='elb_open',lmv_locked_at=NOW() WHERE id=$1 RETURNING *,book_date::text AS report_date",[batch.id])).rows[0];
  await auditVlbBatch(client,batch,actor,'lmv_locked');
  return locked;

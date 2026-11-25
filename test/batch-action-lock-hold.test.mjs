@@ -4,6 +4,7 @@ import express from 'express';
 import {randomUUID} from 'node:crypto';
 import {PGlite} from '@electric-sql/pglite';
 import {LOG_BOOK_SCHEMA,registerLogBooks} from '../server/routes/log-book.mjs';
+process.env.BATCH_COVERAGE_STOP_FROM='off'; // Every machine needs an answer before lock / close: covered in batch-fleet-coverage.test.mjs.
 
 // 23 Nov 2026, after the manual save itself was made quick: a card save still waited 10 to 20 s
 // whenever somebody pressed Lock VLB, Lock LMV, Close, Unlock VLB, reopen or saved a machine entry
