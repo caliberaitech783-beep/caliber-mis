@@ -14,9 +14,9 @@ import {createBreakdownRowsPrefetchCache,lockedReadHours} from '../../shared/bre
 import {jsonEntityTag,requestEtagMatches} from '../services/response-etag.mjs';
 import {withoutRowSecurityRequest} from '../services/row-security.mjs';
 import {vlbBatchActor,batchPmAtSite} from '../rules/vlb-batch-access.mjs';
-import {readFleetBreakdowns,readBatchShiftBreakdowns,batchLmvRecords,stageDetails,lockVlb,lockLmv,unlockVlb,assertCloseAllowed,saveFleetDraft,saveFleetEntry,equipmentAssets} from '../rules/vlb-batch-stages.mjs';
+import {readFleetBreakdowns,batchLmvRecords,stageDetails,lockVlb,lockLmv,unlockVlb,assertCloseAllowed,saveFleetDraft,saveFleetEntry,equipmentAssets} from '../rules/vlb-batch-stages.mjs';
 import {twoStageEnabled,batchStage,FLEET_STATUSES} from '../rules/vlb-two-stage.mjs';
-import {BATCH_MACHINE_ANSWER_SCHEMA,saveIdleAnswer,savePulseAnswer,clearMachineAnswer} from '../rules/batch-machine-answers.mjs';
+import {BATCH_MACHINE_ANSWER_SCHEMA,saveIdleAnswer,clearMachineAnswer} from '../rules/batch-machine-answers.mjs';
 import {consumeApprovalOtp,liveApprovalOtps,publicApprovalOtp} from '../services/vlb-approval-otp.mjs';
 import {batchStageWaits} from '../rules/vlb-batch-queue.mjs';
 import {previousBatchScope,batchOrderBlock} from '../../shared/vlb-batch-order.mjs';
@@ -93,7 +93,8 @@ async function details(client,batch,req){
  const trialExpired=false;
  const assets=twoStageEnabled()?await equipmentAssets(client):undefined;
  const lmvRecords=await batchLmvRecords(client,batch);
- const stageInfo=await stageDetails(client,batch,{assets,vlbCards:records,lmvRecords,tripCardRecords:records.filter(record=>siteAllowed(req.logBookScope,record.site||record.data?.location))});
+ const pulseRows=await req.readCoveragePulse?.();
+ const stageInfo=await stageDetails(client,batch,{assets,vlbCards:records,lmvRecords,pulseRows,tripCardRecords:records.filter(record=>siteAllowed(req.logBookScope,record.site||record.data?.location))});
  const owner=isOwner(batch,req.batchActor);
  // "Present — 0 trips" entries of this site, date and shift (shared/vlb-zero-trip-entries.mjs).
  const zeroTripEntries=await readVlbZeroTripEntries(client,batch);
@@ -158,9 +159,19 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
   req.batchActor.admin=admin;req.batchActor.canCreate=req.batchActor.mis||admin;
   req.batchActor.siteEditor=allowSiteEditor&&Boolean(req.logBookScope?.sites?.length);
   if(!req.batchActor.login||!req.batchActor.siteEditor&&!req.batchActor.mis&&!req.batchActor.pm&&!admin)fail('Only authorized MIS users and site Project Managers can use VLB batches.',403);
-  res.set('Cache-Control','no-store');await fn(req,res);
+  req.readCoveragePulse=()=>coveragePulseRows(req);res.set('Cache-Control','no-store');await fn(req,res);
  }catch(e){if(e.status)return res.status(e.status).json({error:e.message});next(e)}};
  const editRoute=fn=>handle(fn,true);
+ // Pulse-II's copy of Pulse's breakdown list for Machine coverage (owner, 25 Nov 2026), read before any batch lock.
+ // The copy is refreshed every minute and kept in memory; a Pulse that cannot answer within 5 s leaves the page as it
+ // is, with a note, rather than holding it.
+ const coveragePulseRows=async req=>{
+  if(typeof logBookOps?.readBreakdownRows!=='function')return {error:'Pulse-1 is not connected on this server.'};
+  let timer;
+  try{return await Promise.race([prefetchFleetBreakdownRows(req.batchActor?.login),new Promise(resolve=>{timer=setTimeout(()=>resolve({error:'Pulse-1 did not answer in time.'}),5000);timer.unref?.();})]);}
+  catch(error){return {error:error?.message||'Pulse-1 could not be read.'};}
+  finally{clearTimeout(timer);}
+ };
  // With a scope, the transaction locks only that site, date and shift; without one it
  // takes the whole-table lock, so unscoped actions still wait for every batch writer.
  const transaction=async(fn,scope)=>{const client=await pool.connect();try{await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock_shared(709224102)');if(scope)await lockVlbBatchScope(client,scope);else await lockVlbBatchWrites(client);const result=await fn(client);await client.query('COMMIT');return result}catch(e){await client.query('ROLLBACK').catch(()=>{});throw e}finally{client.release()}};
@@ -287,25 +298,25 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
    return details(client,batch,req);
   },{site:selection.site,bookDate:selection.date,shift:selection.shift});res.status(repeated?200:201).json(result);
  }));
- app.post('/api/vlb-batches/:id/close',...protect,handle(async(req,res)=>{await batchTransaction(req,async(client,batch)=>{
+ app.post('/api/vlb-batches/:id/close',...protect,handle(async(req,res)=>{const pulseRows=await coveragePulseRows(req);await batchTransaction(req,async(client,batch)=>{
   if(!mayClose(batch,req.batchActor))fail(twoStageEnabled()?'Only the active batch owner or an MIS administrator can close this batch.':'Only the active batch owner can close this batch.',403);
   if(batch.closed_at)return;
   // While locking is paused Close batch does Lock VLB and Lock LMV first, with their own checks.
   if(twoStageEnabled()&&batchLocksPaused()){
-   if(batchStage(batch)==='vlb_open')batch=await lockVlb(client,batch,req.batchActor.login);
-   if(batchStage(batch)==='lmv_open')batch=await lockLmv(client,batch,req.batchActor.login);
+   if(batchStage(batch)==='vlb_open')batch=await lockVlb(client,batch,req.batchActor.login,{pulseRows});
+   if(batchStage(batch)==='lmv_open')batch=await lockLmv(client,batch,req.batchActor.login,{pulseRows});
   }
-  await assertCloseAllowed(client,batch);
+  await assertCloseAllowed(client,batch,{pulseRows});
   const closed=(await client.query("UPDATE mis_vlb_batches SET closed_at=NOW(),amendment_by=NULL,closure_revision=closure_revision+1,stage='closed' WHERE id=$1 RETURNING *,book_date::text AS report_date",[batch.id])).rows[0];
   await auditVlbBatch(client,batch,req.batchActor.login,'saved_and_locked',{closureRevision:closed.closure_revision,savedWithoutChanges:true,twoStage:twoStageEnabled()});
  });res.json(await actionAnswer(req));}));
- app.post('/api/vlb-batches/:id/lock-vlb',...protect,handle(async(req,res)=>{await batchTransaction(req,async(client,batch)=>{
+ app.post('/api/vlb-batches/:id/lock-vlb',...protect,handle(async(req,res)=>{const pulseRows=await coveragePulseRows(req);await batchTransaction(req,async(client,batch)=>{
   if(!isOwner(batch,req.batchActor)&&!req.batchActor.admin)fail('Only the active batch owner can lock VLB for this batch.',403);
-  await lockVlb(client,batch,req.batchActor.login);
+  await lockVlb(client,batch,req.batchActor.login,{pulseRows});
  });res.json(await actionAnswer(req));}));
- app.post('/api/vlb-batches/:id/lock-lmv',...protect,handle(async(req,res)=>{await batchTransaction(req,async(client,batch)=>{
+ app.post('/api/vlb-batches/:id/lock-lmv',...protect,handle(async(req,res)=>{const pulseRows=await coveragePulseRows(req);await batchTransaction(req,async(client,batch)=>{
   if(!isOwner(batch,req.batchActor)&&!req.batchActor.admin)fail('Only the active batch owner or an MIS administrator can lock LMV.',403);
-  await lockLmv(client,batch,req.batchActor.login);
+  await lockLmv(client,batch,req.batchActor.login,{pulseRows});
  });res.json(await actionAnswer(req));}));
  app.post('/api/vlb-batches/:id/unlock-vlb',...protect,handle(async(req,res)=>{await batchTransaction(req,async(client,batch)=>{
   if(!mayUnlockVlb(batch,req.batchActor))fail('Only the batch owner, an MIS user, an MIS administrator or the site Project Manager can unlock VLB.',403);
@@ -314,7 +325,8 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
  },{exclusive:true});res.json(await actionAnswer(req));}));
  app.get('/api/vlb-batches/:id/fleet',...protect,editRoute(async(req,res)=>{
   const db=await pool.connect();let info;
-  try{info=await stageDetails(db,await visible(db,req.params.id,req));}finally{db.release();}
+  const pulseRows=await coveragePulseRows(req);
+  try{info=await stageDetails(db,await visible(db,req.params.id,req),{pulseRows});}finally{db.release();}
   void prefetchFleetBreakdownRows(req.batchActor.login);
   res.json({stage:info.stage,fleet:info.fleet||[],fleetProgress:info.fleetProgress||null,machines:info.machines||[],holds:info.holds||[],closeBlockers:info.closeBlockers||[],statuses:FLEET_STATUSES,machineReport:info.machineReport||null});
  }));
@@ -325,22 +337,8 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
   const readHours=lockedReadHours(logBookOps?.readHours,prefetched);
   res.set('Cache-Control','no-store').json(await readFleetBreakdowns(pool,batch,req.params.assetId,readHours,req.batchActor.login,req.query));
  }));
- // A VLB or LMV machine with no card: its breakdown from Pulse-1, or an idle reason (owner, 25 Nov 2026;
- // server/rules/batch-machine-answers.mjs). Pulse-1 is read before the batch lock, as for the ELB fleet list.
- app.post('/api/vlb-batches/:id/machines/:assetId/pulse',...protect,editRoute(async(req,res)=>{
-  if(!/^\d+$/.test(req.params.assetId))fail('Invalid machine.',400);
-  const book=String(req.body?.book||'');
-  const batch=await visible(pool,req.params.id,req);
-  if(!mayEnterFleet(batch,req.batchActor))fail('Only the batch owner, an MIS user or an MIS administrator can answer machines for this batch.',403);
-  const prefetched=await prefetchFleetBreakdownRows(req.batchActor.login);
-  const pulse=await readBatchShiftBreakdowns(pool,batch,req.params.assetId,lockedReadHours(logBookOps?.readHours,prefetched),req.batchActor.login);
-  const answer=await batchTransaction(req,async(client,locked)=>{
-   const saved=await savePulseAnswer(client,locked,req.params.assetId,book,pulse,req.batchActor.login);
-   if(saved.saved)await auditVlbBatch(client,locked,req.batchActor.login,'machine_answer_pulse',{assetId:req.params.assetId,book,status:saved.status,breakdownHours:saved.breakdownHours});
-   return saved;
-  });
-  res.json(answer);
- }));
+ // A VLB or LMV machine with no card and nothing in Pulse-1: an idle reason by hand (owner, 25 Nov 2026;
+ // server/rules/batch-machine-answers.mjs). What Pulse-1 holds is read by itself for Machine coverage.
  app.put('/api/vlb-batches/:id/machines/:assetId/answer',...protect,editRoute(async(req,res)=>{
   if(!/^\d+$/.test(req.params.assetId))fail('Invalid machine.',400);
   res.json(await batchTransaction(req,async(client,batch)=>{
@@ -374,7 +372,7 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
    return saveFleetEntry(client,batch,req.params.assetId,req.body||{},req.batchActor.login,{allowEditSaved:Boolean(req.batchActor.mis||req.batchActor.admin||req.batchActor.siteEditor&&!batch.closed_at),resolve:logBookOps.resolve,insert:logBookOps.insert,applyHours:data=>logBookOps.applyHours(data,req.batchActor.login,readHours),readHours});
   });
   // The machine list for the page is read after the commit (see actionAnswer).
-  const info=await actionAnswer(req,(db,batch)=>stageDetails(db,batch));
+  const pulseRows=await coveragePulseRows(req);const info=await actionAnswer(req,(db,batch)=>stageDetails(db,batch,{pulseRows}));
   res.json({record,fleet:info.fleet,fleetProgress:info.fleetProgress,closeBlockers:info.closeBlockers,machineReport:info.machineReport});
  }));
  const ensureReopenRequest=async(client,batch,req,reason)=>{

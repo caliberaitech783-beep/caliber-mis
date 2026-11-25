@@ -5,6 +5,7 @@
 import {canonicalSiteName,equipmentSiteName} from './site-location.mjs';
 import {masterCategory,assetBookKind} from './equipment-kind.mjs';
 import {equipmentDoorNumber} from './equipment-door.mjs';
+import {sitePulseRequests,pulseShiftStatus} from './pulse-shift-status.mjs';
 
 export const COVERAGE_BOOKS=Object.freeze([
  {key:'vlb',kind:'vehicle',label:'VLB'},
@@ -24,10 +25,10 @@ export const IDLE_REASONS=Object.freeze({
  standby:'Standby',
  transferred_out:'Transferred out / at another site',
 });
-export const ANSWER_LABELS=Object.freeze({card:'Card saved',pulse:'Breakdown / maintenance (Pulse-1)',pulse_partial:'Part-shift breakdown in Pulse-1: card needed',...IDLE_REASONS});
+export const ANSWER_LABELS=Object.freeze({card:'Card saved',pulse:'Breakdown / maintenance (Pulse-1)',pulse_idle:'Idle in Pulse-1',pulse_partial:'Part-shift breakdown in Pulse-1: card needed',...IDLE_REASONS});
 export const ANSWER_BOOKS=Object.freeze(['vlb','lmv']);
 export const MIN_REASON_LENGTH=3;
-const ANSWERED=new Set(['card','pulse',...Object.keys(IDLE_REASONS)]);
+const ANSWERED=new Set(['card','pulse','pulse_idle',...Object.keys(IDLE_REASONS)]);
 
 // The error for an idle answer, '' when it can be saved.
 export function idleAnswerIssue({book,status,reason}={}){
@@ -38,14 +39,6 @@ export function idleAnswerIssue({book,status,reason}={}){
  if(written.length>500)return 'Keep the reason under 500 letters.';
  return '';
 }
-// A Pulse-1 answer: a whole-shift breakdown answers the machine; a part-shift one means it also worked, so a card is
-// still needed. No breakdown in Pulse-1 answers nothing.
-export function pulseAnswerStatus(breakdownHours,shiftHours){
- const bd=Number(breakdownHours),hours=Number(shiftHours);
- if(!Number.isFinite(bd)||bd<=0)return '';
- return Number.isFinite(hours)&&bd>=hours?'pulse':'pulse_partial';
-}
-
 const RETIRED=/inactive|scrap|sold|dispos|written.?off|retired/i;
 const assetSite=asset=>text(equipmentSiteName(asset)||asset?.currentLocation||asset?.site||asset?.location);
 const assetDoor=asset=>text(asset?.door||asset?.doorNo||asset?.lmvDoor||equipmentDoorNumber(asset||{}))||text(asset?.registration||asset?.equipmentName||asset?.equipment||asset?.name);
@@ -82,7 +75,7 @@ export function siteRoster(assets=[],site){
 const recordAsset=record=>text(record?.asset_id??record?.assetId??record?.data?.assetId);
 const recordBook=record=>text(record?.book_no||record?.bookNo||record?.data?.bookNo);
 
-function bookCoverage(book,roster,answers,assets,saved=new Map()){
+function bookCoverage(book,roster,answers,assets,saved=new Map(),pulse=null){
  const rows=new Map(roster.map(machine=>[machine.assetId,{...machine,atSite:true,answer:'',cards:[]}]));
  for(const [assetId,answer] of answers){
   if(!assetId)continue;
@@ -103,12 +96,22 @@ function bookCoverage(book,roster,answers,assets,saved=new Map()){
   if(!row.answer&&ANSWERED.has(entry.status))row.answer=entry.status;
   if(!row.answer&&entry.status==='pulse_partial')row.note=ANSWER_LABELS.pulse_partial;
  }
+ // What Pulse-1 holds for the shift answers a machine nobody answered by hand (owner, 25 Nov 2026): a whole-shift
+ // breakdown / maintenance, or an idle request. A part-shift breakdown means the machine also worked, so a card is needed.
+ if(pulse)for(const row of rows.values()){
+  const status=pulse.get(row.assetId);if(!status)continue;
+  row.pulse=status;
+  if(row.answer)continue;
+  if(status.wholeShift)row.answer='pulse';
+  else if(status.idle)row.answer='pulse_idle';
+  else if(status.breakdownHours>0)row.note=ANSWER_LABELS.pulse_partial;
+ }
  const all=[...rows.values()].sort(byDoor);
  const missing=all.filter(row=>!row.answer);
  const atSite=all.filter(row=>row.atSite);
  const count=test=>atSite.filter(row=>test(row.answer)).length;
  return {book:book.key,label:book.label,total:atSite.length,answered:count(answer=>Boolean(answer)),
-  cards:count(answer=>answer==='card'),pulse:count(answer=>answer==='pulse'),idle:count(answer=>Boolean(IDLE_REASONS[answer])),
+  cards:count(answer=>answer==='card'),pulse:count(answer=>answer==='pulse'),idle:count(answer=>answer==='pulse_idle'||Boolean(IDLE_REASONS[answer])),
   otherSite:all.filter(row=>!row.atSite).length,remaining:missing.length,missing,complete:missing.length===0,rows:all,takesAnswers:ANSWER_BOOKS.includes(book.key)};
 }
 
@@ -126,10 +129,19 @@ function cardAnswers(records){
 // vlbRecords and lmvRecords: the batch's saved cards. elbFleet: the batch's ELB fleet list (a line counts once its
 // ELB is saved with a shift status, as Close batch reads it). answers: the batch's saved Pulse-1 / idle answers of
 // VLB and LMV machines, [{book,assetId,status,reason,breakdownHours,...}].
-export function batchFleetCoverage({assets=[],site,vlbRecords=[],lmvRecords=[],elbFleet=[],elbRecords=[],answers=[]}={}){
+// pulse: Pulse-II's copy of Pulse's breakdown list and the batch's shift, {rows,window,now,readAt,error}; without it the
+// page says Pulse-1 could not be read and VLB / LMV machines are answered by card or by hand only.
+export function batchFleetCoverage({assets=[],site,vlbRecords=[],lmvRecords=[],elbFleet=[],elbRecords=[],answers=[],pulse=null}={}){
  const index=new Map(assets.map(asset=>[String(asset.id),asset]));
  const roster=siteRoster(assets,site);
  const savedFor=book=>new Map(answers.filter(one=>one.book===book).map(one=>[String(one.assetId),one]));
+ const pulseRead=pulse?.rows&&pulse?.window?{ok:true,readAt:pulse.readAt||null}:{ok:false,error:pulse?.error||(pulse?.window===null?'The batch shift has no Shift Master start time.':'Pulse-1 could not be read.')};
+ const pulseFor=list=>{
+  if(!pulseRead.ok)return null;
+  const requests=sitePulseRequests(pulse.rows,site),out=new Map();
+  for(const machine of list){const asset=index.get(machine.assetId);const status=pulseShiftStatus(asset,requests,pulse.window,pulse.now??Date.now());if(status&&(status.breakdownHours>0||status.idle))out.set(machine.assetId,status);}
+  return out;
+ };
  // The ELB fleet list already holds the site's Equipment and the machines the VLB cards loaded.
  const elbRoster=elbFleet.length?elbFleet.filter(row=>row.atSite!==false).map(row=>({assetId:String(row.assetId??row.asset_id),door:text(row.door),name:text(row.equipmentName||row.equipment_name)})):roster.equipment;
  const elbAnswers=cardAnswers(elbRecords.filter(record=>!record.deleted_at));
@@ -140,12 +152,12 @@ export function batchFleetCoverage({assets=[],site,vlbRecords=[],lmvRecords=[],e
   elbAnswers.set(id,entry);
  }
  const books={
-  vlb:bookCoverage(COVERAGE_BOOKS[0],roster.vehicle,cardAnswers(vlbRecords),index,savedFor('vlb')),
+  vlb:bookCoverage(COVERAGE_BOOKS[0],roster.vehicle,cardAnswers(vlbRecords),index,savedFor('vlb'),pulseFor(roster.vehicle)),
   elb:bookCoverage(COVERAGE_BOOKS[1],elbRoster,elbAnswers,index),
-  lmv:bookCoverage(COVERAGE_BOOKS[2],roster.lmv,cardAnswers(lmvRecords),index,savedFor('lmv')),
+  lmv:bookCoverage(COVERAGE_BOOKS[2],roster.lmv,cardAnswers(lmvRecords),index,savedFor('lmv'),pulseFor(roster.lmv)),
  };
  const warnings=Object.values(books).filter(book=>!book.complete).map(coverageWarning);
- return {mode:'warning',books,complete:!warnings.length,warnings,idleReasons:IDLE_REASONS,answerLabels:ANSWER_LABELS};
+ return {mode:'warning',books,complete:!warnings.length,warnings,idleReasons:IDLE_REASONS,answerLabels:ANSWER_LABELS,pulseRead};
 }
 
 export function coverageWarning(book){
