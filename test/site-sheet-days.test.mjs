@@ -97,7 +97,7 @@ test('the tab sits just beside Attendance Month-wise; Attendance Sheet Mismatch 
  assert.equal(ids.indexOf('attendance-sheet'),ids.indexOf('attendance-site-sheet')+1);
  const read=name=>fs.readFileSync(new URL(name,import.meta.url),'utf8');
  const screen=read('../src/manpower-reports.jsx');
- assert.match(screen,/:siteSheet\?<SiteSheetTripCard session=\{session\} ReportSection=\{ReportSection\}\/>:<AttendanceSheetCheck session=\{session\}\/>/);
+ assert.match(screen,/:siteSheet\?<SiteSheetTripCard session=\{session\} ReportSection=\{ReportSection\}\/>:<AttendanceSheetMismatch session=\{session\} ReportSection=\{ReportSection\}\/>/);
  assert.match(screen,/sheetCheck=reportId==='attendance-sheet'\|\|siteSheet\|\|tripBio/,'neither upload tab starts the Manpower read');
  const page=read('../src/site-sheet-trip-card.jsx');
  assert.match(page,/accept="\.xlsx,\.xlsm,\.xlk"/);assert.match(page,/Nothing is changed in Pulse-II/);
