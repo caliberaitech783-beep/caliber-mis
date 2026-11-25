@@ -14,6 +14,7 @@ import {preferredPeople} from '../../shared/a-form-people.mjs';
 import {SHEET_MAX_PEOPLE} from '../../shared/attendance-sheet-check.mjs';
 import {readAFormPeople} from '../services/a-form-people-index.mjs';
 import {createHrEmployeeSync} from '../services/hr-employee-sync.mjs';
+import {readHrPunchesWithDayBefore} from '../services/hr-machine-punches.mjs';
 import {hrSiteName} from '../../shared/hr-employee-master.mjs';
 import {machineDays,importedDays,mergeBiometricDays,MAX_DAYS} from '../../shared/trip-biometric-check.mjs';
 
@@ -52,7 +53,7 @@ export async function readBiometricDays({pool,hrPunches,site,from,to,source='bot
  let machineList=[],importedList=[];
  if(machine.asked){
   try{
-   const answer=await hrPunches({from,to});
+   const answer=await readHrPunchesWithDayBefore(hrPunches,{from,to});
    const read=machineDays(answer,{siteName:name=>hrSiteName(name)||name});
    machineList=read.days;Object.assign(machine,{connected:true,punches:answer?.punches?.length||0,unread:read.unread});
   }catch(error){machine.error=error.status===503?'Pulse-II is not connected to HR Pulse, so the machine punches could not be read.':'HR Pulse did not give the machine punches ('+(error.message||'no answer')+').';}
