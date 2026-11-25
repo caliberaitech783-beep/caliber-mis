@@ -143,3 +143,12 @@ Set by the owner on 24 November 2026: "locking of VLB, LMB and ELB ka lock hata 
 - The batch page says so ("Locking is off until …"). From 30 Nov 2026 00:00 IST the locks return by themselves; nothing has to be switched back.
 - The Azure setting `VLB_BATCH_LOCK_PAUSE_UNTIL=YYYY-MM-DD` moves the last day, `VLB_BATCH_LOCK_PAUSE_UNTIL=off` ends the pause at once (a setting change restarts the app, no release).
 - `shared/batch-lock-pause.mjs` holds the rule; `test/batch-lock-pause.test.mjs` checks it.
+
+# VTC Training is present, in its own colour
+
+Set by the owner on 25 November 2026: "TRAINING VTC ka option alag colour me do aur use present dikhao", and "ise 0 trip ke sath mat jodo".
+
+- VLB and ELB Manual have a **VTC Training** button beside **Present — 0 trips**. It saves the driver or operator as present for that date, site and shift, with no machine; where the training was held is required (`POST /api/training-attendance`, the same people and site checks as Present — 0 trips).
+- It is kept in `mis_shift_attendance` with the reason `VTC Training`, so Attendance Batch-wise / Month-wise, the HR feed and the sheet checks count it as present (P). It is drawn purple ("VTC Training (present)"), has no trips, its source is `training`, and it is never listed or counted as a zero-trip entry (not in a batch's Present — 0 trips list, not in the zero-trip reasons).
+- One person has one entry per date, site and shift: saving Present — 0 trips or VTC Training for the same shift replaces the other. A saved card of that shift goes first.
+- `shared/vtc-training.mjs` holds the rule; `test/vtc-training.test.mjs` checks it.
