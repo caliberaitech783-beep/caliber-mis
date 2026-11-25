@@ -310,13 +310,18 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
    }
   }
   const {fields,trips,issues:responseRecoveryIssues}=parseCardResponse(record.raw,kind);
-  if(hmrNeedsReview(fields)){
+  const hmrUnclear=hmrNeedsReview(fields);
+  if(hmrUnclear){
    for(const key of ['openingHmr','closingHmr'])fields[key]={value:null,status:'unclear'};
    responseRecoveryIssues.push('HMR could not be confirmed after re-reading the original scan. Enter both opening and closing HMR from the scan before saving.');
   }
   // Reuse the existing field-to-form adapter and consistency checks; no A/B API calls occur.
   const hints=hybridHints(fields,trips,kind,{}),{hybrid,...rest}=hints;
   if(responseRecoveryIssues.length){hybrid.rows=hybrid.rows.map((row,index)=>({...row,equipmentName:trips.r[index][1]??''}));hybrid.issues.push(...responseRecoveryIssues);}
+  if(hmrUnclear){
+   const issue='HMR could not be confirmed after re-reading the original scan. Enter both opening and closing HMR from the scan before saving.';
+   responseRecoveryIssues.push(issue);hybrid.issues.push(issue);
+  }
   const originalDoor=rest.handwrittenFields.door,door=formatScannedDoor(originalDoor,kind);
   rest.handwrittenFields={...rest.handwrittenFields,door};
   if(rest.handwritingCandidates.door)rest.handwritingCandidates.door={...rest.handwritingCandidates.door,value:door,text:door};
