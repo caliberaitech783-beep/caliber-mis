@@ -325,5 +325,8 @@ test('the tab sits after the sheet upload tab, which is beside Attendance Month-
  const page=read('../src/attendance-sheet-check.jsx');
  assert.match(page,/accept="\.dat,\.txt,\.csv,\.xlsx,\.xlsm"/,'the device attlog .dat or its export');
  assert.match(page,/Drivers and operators only/);assert.match(page,/Download Excel/);assert.match(page,/Nothing is changed in Pulse-II/);
+ assert.match(page,/className="asc-drill-link"/,'employee names and IDs open the detail');
+ assert.match(page,/openDrill\(p,'bioDays'\)/);assert.match(page,/openDrill\(p,f\.key\)/,'each numeric count opens its matching detail');
+ assert.match(page,/role="dialog" aria-modal="true"/);assert.match(page,/No detail is available for this value/);
  assert.match(read('../server/routes/log-book.mjs'),/registerAttendanceSheetCheck\(app,\{pool,protect\}\);/);
 });
