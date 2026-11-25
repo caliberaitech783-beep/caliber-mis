@@ -384,3 +384,17 @@ test('an answer cut at the length limit is asked again with room to finish and t
  await safety.recognize(Buffer.from('safety-once'));
  assert.deepEqual(configsAfterSafety[1],geminiGenerationConfig(),'only a length stop changes the request');
 });
+
+test('unclear summary cells trigger a targeted re-read and incomplete cached summaries are retried',async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-summary-cells-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ let calls=0;const opts={cacheDir:dir,getKey:async()=>'test',prepareViews:async()=>[],minIntervalMs:0,sleep:async()=>{},fetchImpl:async(_url,options)=>{
+  calls++;if(calls%2===0)assert.match(JSON.parse(options.body).contents[0].parts.at(-1).text,/both halves.*MACHINE-WISE SUMMARY/);
+  const card=response();card.fields.machineSummary[0].tripCount=field(null);return ok(JSON.stringify(card));
+ }};
+ const first=await createGeminiCardReader(opts).recognize(Buffer.from('unclear-summary'));
+ assert.equal(calls,2);assert.equal(first.extraction.fields.machineSummary[0].tripCount.value,null);
+ await createGeminiCardReader(opts).recognize(Buffer.from('unclear-summary'));assert.equal(calls,4);
+ opts.fetchImpl=async(_url,options)=>{calls++;const card=response();if(calls===5)card.fields.machineSummary=null;else assert.match(JSON.parse(options.body).contents[0].parts.at(-1).text,/fields.machineSummary as an array/);return ok(JSON.stringify(card));};
+ const fixed=await createGeminiCardReader(opts).recognize(Buffer.from('malformed-summary'));
+ assert.equal(calls,6);assert.equal(fixed.extraction.summary[0].tripCount,2);assert.deepEqual(fixed.responseRecoveryIssues,[]);
+});

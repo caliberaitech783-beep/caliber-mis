@@ -11,7 +11,7 @@ const Status=new Function('React','scanReviewHelp',code+';return ScanCorrectionS
 test('saved corrections and remaining checks produce one truthful combined status',()=>{
  const html=renderToStaticMarkup(React.createElement(Status,{status:'All scan corrections saved to MIS.',errors:['Select a shift.']}));
  assert.equal((html.match(/role="status"/g)||[]).length,1);
- assert.match(html,/User input needed/);assert.match(html,/1 item needs checking\./);assert.match(html,/Corrections saved\./);assert.match(html,/<details open="">/);assert.match(html,/Select a shift/);assert.match(html,/scan-warning/);
+ assert.match(html,/User input needed/);assert.match(html,/1 item needs checking\./);assert.match(html,/Corrections saved; review still required\./);assert.match(html,/<details open="">/);assert.match(html,/Select a shift/);assert.match(html,/scan-warning/);
  const saved=renderToStaticMarkup(React.createElement(Status,{status:'All scan corrections saved to MIS.'}));assert.match(saved,/scan-success/);assert.match(saved,/Corrections saved/);
  const failed=renderToStaticMarkup(React.createElement(Status,{status:'Not saved to MIS: offline',working:'Verifying equipment assignment in Pulse…'}));assert.match(failed,/Not saved to MIS: offline/);assert.doesNotMatch(failed,/System is working/);assert.match(failed,/scan-error/);assert.doesNotMatch(failed,/Corrections saved/);
 });
@@ -38,4 +38,9 @@ test('buttons sit inside the yellow box only while input is needed',()=>{
  assert.match(html,/scan-correction-actions/);assert.match(html,/Retry Pulse lookup/);
  const saved=renderToStaticMarkup(React.createElement(Status,{status:'All scan corrections saved to MIS.',actions:button}));
  assert.doesNotMatch(saved,/Retry Pulse lookup/);
+});
+
+ test('edited corrections do not claim to be saved; advisory notes retain their meaning',()=>{
+ const dirty=renderToStaticMarkup(React.createElement(Status,{status:'All scan corrections saved to MIS.',dirty:true}));assert.match(dirty,/Unsaved corrections/);assert.doesNotMatch(dirty,/Corrections saved/);
+ const advisory=renderToStaticMarkup(React.createElement(Status,{status:'All scan corrections saved to MIS.',warnings:['Batch values applied.']}));assert.match(advisory,/Corrections saved\./);assert.doesNotMatch(advisory,/review still required|User input needed/);
 });
