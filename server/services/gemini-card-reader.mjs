@@ -46,6 +46,11 @@ ${DEMO_PREFIX_RULES} ${METER_DIGIT_RULE} ${DOOR_RULES} ${NAME_AND_FORM_RULES} ${
 ${kind==='vehicle'?'trips.p is true. trips.r contains EVERY populated individual trip row across both columns of the whole card in printed order: [tripNo,equipmentType,equipmentNumber,loadingTime,unloadingTime]. The five cells are the printed trip number, literal M fleet text, literal NO digits, loading time and unloading time. For M=V and NO=5 return [1,"V","5","05:51","06:04"], not a row with equipment V alone. Preserve printed positive integer trip numbers, leading zeros in equipmentNumber and literal times. Use "" for blank cells and null for unreadable cells. Ignore unused blank rows. Never copy summary counts into individual rows, infer repeated equipment, invent times, or omit rows to match totals.':'trips must be {"p":false,"r":[]}. Never extract or invent vehicle trips or KMR fields for ELB.'}`;
 }
 const summaryMissing=(parsed,kind)=>kind==='vehicle'&&parsed.trips.r.length>0&&!parsed.fields.machineSummary.length;
+const hmrNeedsReview=fields=>{
+ const readings=['openingHmr','closingHmr'].map(key=>fields[key]);
+ if(readings.some(field=>field?.status!=='clear'||field.value===null||String(field.value).trim()===''||!Number.isFinite(Number(field.value))||Number(field.value)<0))return true;
+ return Number(readings[1].value)<Number(readings[0].value);
+};
 const summaryNeedsReview=(parsed,kind)=>kind==='vehicle'&&(summaryMissing(parsed,kind)||parsed.issues.some(issue=>/^(Machine summary|Summary row )/.test(issue))||parsed.fields.machineSummary.some(row=>row.equipmentName.status!=='clear'||row.tripCount.status!=='clear'||!/^\d+$/.test(row.tripCount.value)||Number(row.tripCount.value)<1));
 export function parseCardResponse(raw,kind){
  let parsed;try{parsed=JSON.parse(raw);}catch{throw Error('Gemini returned invalid JSON. The scan is retained; retry extraction.');}
@@ -190,7 +195,7 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
  async function run(image,kind,onProgress,forceRead=false,model=MODEL){
   if(!['vehicle','equipment'].includes(kind))throw Error('Invalid card type.');
   const imageHash=createHash('sha256').update(image).digest('hex'),file=path.join(cacheDir,`${imageHash}-${kind}-single-${kind==='vehicle'?'v17':'v16'}.json`);
-  let record;try{if(forceRead)throw Error('Fresh image read requested');const saved=JSON.parse(await fs.readFile(file,'utf8'));if(saved.imageHash===imageHash&&saved.model===model&&saved.kind===kind&&saved.finishReason==='STOP'&&saved.raw) {const parsed=parseCardResponse(saved.raw,kind);if(!parsed.issues.some(issue=>/equipment (?:number|fleet prefix) missing or unreadable/.test(issue))&&!summaryNeedsReview(parsed,kind))record=saved;}}catch{}
+  let record;try{if(forceRead)throw Error('Fresh image read requested');const saved=JSON.parse(await fs.readFile(file,'utf8'));if(saved.imageHash===imageHash&&saved.model===model&&saved.kind===kind&&saved.finishReason==='STOP'&&saved.raw) {const parsed=parseCardResponse(saved.raw,kind);if(!hmrNeedsReview(parsed.fields)&&!parsed.issues.some(issue=>/equipment (?:number|fleet prefix) missing or unreadable/.test(issue))&&!summaryNeedsReview(parsed,kind))record=saved;}}catch{}
   if(!record){
    const key=await getKey(),gate=gateFor(key);await onProgress?.('extracting');
    const timing={prepMs:0,prepWaitMs:0,prepReused:true};
@@ -203,7 +208,8 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
    const totalStarted=Date.now();
    let retryInstruction='',attempt=0,connectionRetries=0,serverRetries=0,rateLimitRetries=0,requests=0;
    let serializedInstruction,requestBody,lengthLimited=false,serializedLengthLimited=false;
-   while(attempt<2){
+   let hmrOriginal=null;
+   while(attempt<(hmrOriginal?3:2)){
     if(serializedInstruction!==retryInstruction||serializedLengthLimited!==lengthLimited){
      const requestParts=retryInstruction?[...(fullParts??=await buildParts(true)),{text:retryInstruction}]:parts;
      requestBody=JSON.stringify({contents:[{role:'user',parts:requestParts}],generationConfig:lengthLimited?geminiLengthRetryConfig(model):geminiGenerationConfig(model)});
@@ -272,6 +278,11 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
      if(attempt<2){lengthLimited||=record.finishReason==='MAX_TOKENS';await onProgress?.('retrying',{attempt:2,maxAttempts:2,reason:'incomplete answer: '+why,delayMs:0});continue;}
      throw Error(`Gemini response was incomplete (${why}). The scan is retained; retry extraction.`);
     }
+    if(hmrOriginal){
+     const reread=JSON.parse(record.raw),original=JSON.parse(hmrOriginal);
+     for(const key of ['openingHmr','closingHmr'])original.fields[key]=reread.fields[key]??{value:null,status:'unclear'};
+     record.raw=JSON.stringify(original);
+    }
     const parsed=parseCardResponse(record.raw,kind);
     // Count only requests started after the latest 429. Older in-flight
     // successes do not show that the key can handle a faster request rate.
@@ -288,11 +299,21 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
      if(incompleteSummary)retryInstruction+=' Re-inspect both halves of the printed MACHINE-WISE SUMMARY in the upright summary detail views. Return fields.machineSummary as an array of {equipmentType:{value,status},equipmentNumber:{value,status},tripCount:{value,status}} for every populated row. Read each count from the printed Trips cell. Keep leading zeros and literal prefix punctuation, including colons and slashes. Use null and status unclear for unreadable cells; never calculate or invent summary rows from the trip table.';
      await onProgress?.('retrying',{attempt:2,maxAttempts:2,reason:reason||'machine-wise summary incomplete',delayMs:0});continue;
     }
+    if(!hmrOriginal&&hmrNeedsReview(parsed.fields)){
+     hmrOriginal=record.raw;
+     retryInstruction='Re-read only the OPENING and CLOSING HMR cells from the original scan and its header detail views. Inspect every digit, including leading digits, and the decimal separator against the printed HMR row labels. Return the complete JSON, retaining all other fields and trips. Use only digits visibly written in each HMR cell. Never prepend a digit based on the opening value, infer a reading from shift hours, take an absolute value, or substitute zero. If either reading is unclear, return null with status unclear. If the paper itself shows closing below opening, retain the literal readings; do not repair them by guessing.';
+     await onProgress?.('retrying',{attempt:attempt+1,maxAttempts:attempt+1,reason:'HMR missing, unclear, negative or closing below opening; re-reading original scan',delayMs:0});
+     continue;
+    }
     await fs.mkdir(cacheDir,{recursive:true});const temp=file+'.'+randomUUID()+'.tmp';await fs.writeFile(temp,JSON.stringify(record),{mode:0o600});await fs.rename(temp,file);
     break;
    }
   }
   const {fields,trips,issues:responseRecoveryIssues}=parseCardResponse(record.raw,kind);
+  if(hmrNeedsReview(fields)){
+   for(const key of ['openingHmr','closingHmr'])fields[key]={value:null,status:'unclear'};
+   responseRecoveryIssues.push('HMR could not be confirmed after re-reading the original scan. Enter both opening and closing HMR from the scan before saving.');
+  }
   // Reuse the existing field-to-form adapter and consistency checks; no A/B API calls occur.
   const hints=hybridHints(fields,trips,kind,{}),{hybrid,...rest}=hints;
   if(responseRecoveryIssues.length){hybrid.rows=hybrid.rows.map((row,index)=>({...row,equipmentName:trips.r[index][1]??''}));hybrid.issues.push(...responseRecoveryIssues);}

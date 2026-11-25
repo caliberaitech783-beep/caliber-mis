@@ -9,6 +9,30 @@ import {extractCard} from '../server/rules/scan-extraction.mjs';
 const field=value=>({value,status:value===null?'missing':'clear'});
 const response=(kind='vehicle')=>({documentType:kind==='vehicle'?'VLB':'ELB',fields:{...Object.fromEntries(aFields(kind).map(k=>[k,field(null)])),bookDate:field('2026-10-11'),site:field('Jayant'),door:field('V309'),cardNumber:field('75'),employeeCode:field('3943'),openingHmr:field('18749'),closingHmr:field('18756'),...(kind==='vehicle'?{openingKmr:field('222772.9'),closingKmr:field('222836.3'),printedTotalTrips:field('2')}:{}),machineSummary:kind==='vehicle'?[{equipmentName:field('T50'),tripCount:field('2')}]:[]},trips:kind==='vehicle'?{p:true,r:[[1,'T50','12:38','12:49'],[2,'T50','1:03','1:12']]}:{p:false,r:[]}});
 const ok=raw=>({ok:true,json:async()=>({candidates:[{finishReason:'STOP',content:{parts:[{text:raw}]}}],usageMetadata:{promptTokenCount:100,candidatesTokenCount:50,totalTokenCount:150}})});
+test('invalid HMR is re-read from the same scan without replacing other extracted values',async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-hmr-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ for(const corrected of [true,false]){
+  let calls=0;const requests=[];
+  const reader=createGeminiCardReader({cacheDir:dir,getKey:async()=>'test',prepareViews:async()=>[{label:'Header',image:Buffer.from('header')}],minIntervalMs:0,sleep:async()=>{},fetchImpl:async(_url,options)=>{
+   const body=JSON.parse(options.body);requests.push(body);calls++;
+   const data=response();data.fields.openingHmr=field('3419.3');data.fields.closingHmr=field(calls>1&&corrected?'3426.1':'426.1');
+   if(calls>1)data.fields.employeeCode=field('CHANGED');
+   return ok(JSON.stringify(data));
+  }});
+  const result=await reader.recognize(Buffer.from('hmr-'+corrected));
+  assert.equal(calls,2);
+  assert.deepEqual(requests[0].contents[0].parts.filter(p=>p.inlineData),requests[1].contents[0].parts.filter(p=>p.inlineData));
+  assert.match(requests[1].contents[0].parts.at(-1).text,/Re-read only.*HMR/);
+  assert.equal(result.extraction.fields.employeeCode.value,'3943');
+  if(corrected){assert.equal(result.extraction.fields.openingHmr.value,'3419.3');assert.equal(result.extraction.fields.closingHmr.value,'3426.1');}
+  else{
+   for(const key of ['openingHmr','closingHmr'])assert.deepEqual(result.extraction.fields[key],{value:null,status:'unclear'});
+   assert.ok(result.responseRecoveryIssues.some(issue=>/Enter both opening and closing HMR/.test(issue)));
+   const draft=extractCard(result.text,'vehicle',[],result).draft;
+   assert.ok(!draft.openingHmr&&!draft.closingHmr);
+  }
+ }
+});
 test('door recovery bypasses same-image OCR cache and stores a fresh reading',async t=>{
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-fresh-door-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));let calls=0;
  const reader=createGeminiCardReader({cacheDir:dir,getKey:async()=>'test',prepareViews:async()=>[],minIntervalMs:0,sleep:async()=>{},fetchImpl:async(_url,init)=>{calls++;const data=response();data.fields.door=field(calls===1?'V1833':'V/833');if(calls===2)assert.match(JSON.parse(init.body).contents[0].parts[0].text,/Re-inspect the Door No cell/);return ok(JSON.stringify(data));}});
