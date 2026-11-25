@@ -269,6 +269,11 @@ export function buildManpowerReport({records=[],attendance=[],assets=[],employee
   const site=sitesByKey.get(entry.site)||entry.site;
   attendanceSources.push({...entry,site,door,assetKey:door?entry.site+'|'+key(door):'',batchIds:[],employeeKey:person.identityKey,employeeId:person.employeeId,employeeName:person.name,caliberCode:person.caliberCode,trips:0,...assetClass(asset),noMachine:!asset,machineBook:asset?logBookCode(fleetAssetKind(asset)):''});
  }
+ // VTC Training (owner, 25 Nov 2026): "if that driver or operator has done any shift on that particular day ... it should
+ // consider as single present". A training day is dropped when the person has any other duty that day (a card or a
+ // zero-trip entry, any shift, any site), so the day counts once, as that duty.
+ const workedDays=new Set(attendanceSources.filter(r=>r.card||!isTrainingEntry(r)).map(r=>r.employeeKey+'|'+r.date));
+ for(let i=attendanceSources.length-1;i>=0;i--){const r=attendanceSources[i];if(!r.card&&isTrainingEntry(r)&&workedDays.has(r.employeeKey+'|'+r.date))attendanceSources.splice(i,1);}
  const attendanceDuties=group(attendanceSources.filter(r=>!hr||![r.employeeId,r.caliberCode].some(isDummyEmployeeId)),r=>JSON.stringify([r.employeeKey,r.date,r.shift])).filter(sources=>sources.some(r=>rowMatches(r,f)));
  const shiftAttendance=!full?[]:attendanceDuties
   .map(sources=>{

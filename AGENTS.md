@@ -148,9 +148,10 @@ Set by the owner on 24 November 2026: "locking of VLB, LMB and ELB ka lock hata 
 
 Set by the owner on 25 November 2026: "TRAINING VTC ka option alag colour me do aur use present dikhao", and "ise 0 trip ke sath mat jodo".
 
-- VLB and ELB Manual have a **VTC Training** button beside **Present — 0 trips**. It saves the driver or operator as present for that date, site and shift, with no machine; where the training was held is required (`POST /api/training-attendance`, the same people and site checks as Present — 0 trips).
+- VLB and ELB Manual have a **VTC Training** button beside **Present — 0 trips**. Its form takes the site, **From date and To date** (no shift, owner 25 Nov 2026: "from date to date ... and remove shift"), the driver or operator, and where the training was held (required). One save marks every day of the range present: at most 31 days, from 1 Nov 2026 up to today (India), all saved or none (`POST /api/training-attendance`, the same people and site checks as Present — 0 trips). A training day has no shift of its own; each day is kept once in Shift A (`TRAINING_SHIFT`), so attendance shows it P1, purple, and counts the person present once that day.
 - It is kept in `mis_shift_attendance` with the reason `VTC Training`, so Attendance Batch-wise / Month-wise, the HR feed and the sheet checks count it as present (P). It is drawn purple ("VTC Training (present)"), has no trips, its source is `training`, and it is never listed or counted as a zero-trip entry (not in a batch's Present — 0 trips list, not in the zero-trip reasons).
-- One person has one entry per date, site and shift: saving Present — 0 trips or VTC Training for the same shift replaces the other. A saved card of that shift goes first.
+- One person has one entry per date, site and shift: saving a training day again replaces it (never doubles it), and VTC Training replaces a Present — 0 trips of Shift A that day. A saved card of that shift goes first. Like every duty, it shows in Attendance once the site's day is locked.
+- A training day on which the person also has any duty (a VLB, ELB or LMV card or a Present — 0 trips, any shift, any site) counts as one present, that duty; the training entry of that day is left out (owner, 25 Nov 2026: "if that driver or operator has done any shift on that particular day ... it should consider as single present"). Only a training day with no other duty shows purple.
 - `shared/vtc-training.mjs` holds the rule; `test/vtc-training.test.mjs` checks it.
 
 # Batches for several days open together for seven days
