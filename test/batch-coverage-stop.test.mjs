@@ -9,17 +9,17 @@ import {LOG_BOOK_SCHEMA,registerLogBooks} from '../server/routes/log-book.mjs';
 import {STOP_FROM,coverageStop,coverageStopFrom,coverageStopNote,coverageBlockers} from '../shared/batch-coverage-stop.mjs';
 process.env.VLB_BATCH_ORDER_FROM='off'; // The shift-order gate is covered in vlb-batch-order.test.mjs.
 
-test('the stop starts on 2 Dec 2026 in India, for batches of that date or later, and the Azure setting moves or ends it',()=>{
- assert.equal(STOP_FROM,'2026-12-02');
- assert.equal(coverageStopFrom({}),'2026-12-02');
+test('the stop starts on 27 Nov 2026 in India, for batches of that date or later, and the Azure setting moves or ends it',()=>{
+ assert.equal(STOP_FROM,'2026-11-27');
+ assert.equal(coverageStopFrom({}),'2026-11-27');
  const at=iso=>new Date(iso);
- assert.equal(coverageStop({report_date:'2026-12-02'},{},at('2026-12-01T18:29:59Z')).active,false,'23:59 IST on 1 Dec: not yet');
- assert.equal(coverageStop({report_date:'2026-12-02'},{},at('2026-12-01T18:30:00Z')).active,true,'00:00 IST on 2 Dec');
- assert.equal(coverageStop({report_date:'2026-12-01'},{},at('2026-12-05T00:00:00Z')).active,false,'an older batch closes as before');
+ assert.equal(coverageStop({report_date:'2026-11-27'},{},at('2026-11-26T18:29:59Z')).active,false,'23:59 IST on 26 Nov: not yet');
+ assert.equal(coverageStop({report_date:'2026-11-27'},{},at('2026-11-26T18:30:00Z')).active,true,'00:00 IST on 27 Nov');
+ assert.equal(coverageStop({report_date:'2026-11-26'},{},at('2026-12-05T00:00:00Z')).active,false,'an older batch closes as before');
  assert.equal(coverageStop({report_date:'2026-12-20'},{BATCH_COVERAGE_STOP_FROM:'2026-12-10'},at('2026-12-05T00:00:00Z')).active,false,'the setting moves the first day');
  assert.equal(coverageStop({report_date:'2026-11-26'},{BATCH_COVERAGE_STOP_FROM:'2026-11-26'},at('2026-11-26T00:00:00Z')).active,true,'or brings it forward');
  for(const off of ['off','0','false','no','OFF'])assert.equal(coverageStop({report_date:'2026-12-20'},{BATCH_COVERAGE_STOP_FROM:off},at('2026-12-20T00:00:00Z')).active,false);
- assert.match(coverageStopNote({active:false,from:'2026-12-02'}),/^Warning only, nothing is stopped yet\. From 02-12-2026/);
+ assert.match(coverageStopNote({active:false,from:'2026-11-27'}),/^Warning only, nothing is stopped yet\. From 27-11-2026/);
  assert.match(coverageStopNote({active:true}),/are stopped until each machine/);
 });
 
