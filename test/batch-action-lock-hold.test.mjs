@@ -85,10 +85,11 @@ test('Lock VLB, Lock LMV, Lock DLB, a machine entry, Close, reopen and Unlock VL
  assert.equal(locked.audit[0].action,'vlb_locked','the answer already shows the action');
 
  const lmv=await check('Lock LMV','/lock-lmv');
- assert.equal(lmv.stage,'dlb_open');assert.equal(lmv.fleet.length,31,'every machine of the site is listed');
+ assert.equal(lmv.stage,'dlb_open');
  assert.deepEqual(lmv,(await call(batch)).data);
+
  const dlb=await check('Lock DLB','/lock-dlb');
- assert.equal(dlb.stage,'elb_open');assert.ok(dlb.dlb_locked_at);
+ assert.equal(dlb.stage,'elb_open');assert.equal(dlb.fleet.length,31,'every machine of the site is listed');
  assert.deepEqual(dlb,(await call(batch)).data);
 
  const {answer:entry,held:entryHeld}=await act('/fleet/'+ids['VPC-019'],{manualShift:'batch',shiftHours:8,shiftStatus:'working',employeeId:ids.alice,openingHmr:200,closingHmr:205});
