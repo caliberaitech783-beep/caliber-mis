@@ -1,9 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {saveManualLogBook} from '../src/manual-log-book-save.mjs';
+import {saveManualLogBook,confirmedManualLogBook} from '../src/manual-log-book-save.mjs';
 
 const saved={id:'42',book_no:'VLB_M/TEST/001',data:{totalTrips:1}};
 const quick={timeoutMs:100,recoverAfterMs:5,recoverEveryMs:5};
+
+test('confirmation refuses an older server register or a response for a different save',()=>{
+ const reference='current-reference';
+ assert.equal(confirmedManualLogBook({records:[saved]},reference),undefined);
+ assert.equal(confirmedManualLogBook({saveReference:'another-reference',records:[saved]},reference),undefined);
+ assert.equal(confirmedManualLogBook({saveReference:reference,records:[]},reference),undefined);
+ assert.equal(confirmedManualLogBook({records:[saved]},undefined),undefined);
+ assert.equal(confirmedManualLogBook({saveReference:reference,records:[saved,saved]},reference),undefined);
+ assert.equal(confirmedManualLogBook({saveReference:reference,records:[saved]},reference),saved);
+});
 
 test('a responsive save returns directly without a confirmation lookup',async()=>{
  let lookups=0;

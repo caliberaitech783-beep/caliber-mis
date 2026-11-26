@@ -475,7 +475,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
       const record=(await pool.query('SELECT id,book_no,book_type,data,revision,created_at,updated_at FROM mis_log_books WHERE request_key=$1 AND created_by=$2 AND book_type=$3 AND deleted_at IS NULL AND book_date>=$$2026-11-01$$',[reference,req.session.login||req.session.name,req.params.kind])).rows[0];
       const visible=record&&siteAllowed(req.logBookScope,record.data?.location);
       if(visible&&Array.isArray(record.data?.manualAttachments))record.data={...record.data,manualAttachments:record.data.manualAttachments.map(({data,...file})=>file)};
-      return res.set('Cache-Control','no-store').json({records:visible?[req.params.kind==='vehicle'?linkVlbTripHandovers([record])[0]:record]:[],nextCursor:null});
+      return res.set('Cache-Control','no-store').json({saveReference:reference,records:visible?[req.params.kind==='vehicle'?linkVlbTripHandovers([record])[0]:record]:[],nextCursor:null});
      }
      const before=String(req.query.before||'');if(before&&!/^\d+$/.test(before))return res.status(400).json({error:'Invalid page cursor.'});
      const first=req.query.first==='1',last=req.query.last==='1';

@@ -15,7 +15,7 @@ import SmartSelect from './smart-select.jsx';
 import DoorCombobox from './door-combobox.jsx';
 import ManualAliasDialog from './manual-alias-dialog.jsx';
 import {missingAssetMessage} from './log-book-asset-options.mjs';
-import {saveManualLogBook} from './manual-log-book-save.mjs';
+import {saveManualLogBook,confirmedManualLogBook} from './manual-log-book-save.mjs';
 import {vlbCountedTrips} from '../shared/vlb-trip-handover.mjs';
 import {activeWorkOrders,matchingWorkOrders,machineSummary,machineTripTotal,CARD_SHIFTS,machineLabel,latestWorkOrder,interTripGap,tripEquipmentRequired,kmrMeterReplaced,shiftMeterIssues,normalizeCardShift} from '../shared/trip-card-rules.mjs';
 import {fixedMinuteInput,manualTimeValue,resolveShiftTime,shiftTimeInputValue,timeWithinShift} from '../shared/manual-trip-time.mjs';
@@ -219,7 +219,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
  // A second manual card for the same tipper in the same shift is refused by the server
  // (409, code duplicate_card) until a reason is given. The reason travels with the card.
  const submit=async(duplicateReason='',retry=false)=>{setWorking(true);setError('');setSuccess('');try{
-  const recover=saved?undefined:async signal=>(await api(`/api/log-books/${kind}?saveReference=${encodeURIComponent(form.requestKey)}`,{signal,cache:'no-store',priority:'high'})).records?.[0];
+  const recover=saved?undefined:async signal=>confirmedManualLogBook(await api(`/api/log-books/${kind}?saveReference=${encodeURIComponent(form.requestKey)}`,{signal,cache:'no-store',priority:'high'}),form.requestKey);
   const result=await saveManualLogBook(async signal=>{
    // A deliberate retry keeps the frozen entry and its original UUID. Check
    // first; if absent, the server's request-key lock deduplicates concurrent saves.
