@@ -19,6 +19,7 @@ import * as rules from '../shared/trip-card-rules.mjs';
 import {vlbCountedTrips} from '../shared/vlb-trip-handover.mjs';
 import {canonicalSiteName} from '../shared/site-location.mjs';
 import {missingAssetMessage} from '../src/log-book-asset-options.mjs';
+import {saveManualLogBook} from '../src/manual-log-book-save.mjs';
 import {manualTimeValue,resolveShiftTime,shiftTimeInputValue,timeWithinShift} from '../shared/manual-trip-time.mjs';
 
 function control(name, overrides={}) {
@@ -100,11 +101,11 @@ test('final Enter requests VLB save confirmation instead of only focusing Save',
 const source=readFileSync(new URL('../src/log-book-form.jsx',import.meta.url),'utf8');
 const {code}=await transformWithOxc(source.replace(/^import .*;\r?\n/gm,'').replace('export default function','function'),'log-book-form.jsx',{jsx:{runtime:'classic'}});
 const all=(tree,predicate)=>{const found=[];const visit=node=>{if(Array.isArray(node))return node.forEach(visit);if(!React.isValidElement(node))return;if(predicate(node))found.push(node);visit(node.props.children)};visit(tree);return found};
-function harness(){
+function harness({saveOptions={}}={}){
   const slots=[],effects=[];let cursor=0;
   const state=initial=>{const index=cursor++;if(!(index in slots))slots[index]=typeof initial==='function'?initial():initial;return[slots[index],value=>{slots[index]=typeof value==='function'?value(slots[index]):value}]};
   const Null=()=>null;
- const scope={transferPeriodLabel,assetForSiteOnDate,TableSmartPrint,SortableHeader,sortRowsBlanksLast,idleShiftHours,MANUAL_SHIFTS,manualShiftWindow,compactLogBookLabel,tripSerialNumber,validateTripEquipment,resolveTripEquipment,blankJob,blankBreakdown,padManualRows,continueManualRemark,employeeAtLocation,manualTimeValue,resolveShiftTime,shiftTimeInputValue,timeWithinShift,React,useEffect:(run,deps)=>effects.push({run,deps}),useRef:value=>state(()=>({current:value}))[0],useState:state,blankTrip,nextTripEntry,TRIP_CARD_ROWS,tripCardForRow,vlbCountedTrips,...rules,canonicalSiteName,missingAssetMessage,advanceLogBookField,focusNextLogBookField,isEmptyTripPlaceholder,advanceEquipmentLogBookField};
+ const scope={saveManualLogBook:(save,options)=>saveManualLogBook(save,{...options,...saveOptions}),transferPeriodLabel,assetForSiteOnDate,TableSmartPrint,SortableHeader,sortRowsBlanksLast,idleShiftHours,MANUAL_SHIFTS,manualShiftWindow,compactLogBookLabel,tripSerialNumber,validateTripEquipment,resolveTripEquipment,blankJob,blankBreakdown,padManualRows,continueManualRemark,employeeAtLocation,manualTimeValue,resolveShiftTime,shiftTimeInputValue,timeWithinShift,React,useEffect:(run,deps)=>effects.push({run,deps}),useRef:value=>state(()=>({current:value}))[0],useState:state,blankTrip,nextTripEntry,TRIP_CARD_ROWS,tripCardForRow,vlbCountedTrips,...rules,canonicalSiteName,missingAssetMessage,advanceLogBookField,focusNextLogBookField,isEmptyTripPlaceholder,advanceEquipmentLogBookField};
   for(const name of ['WorkOrderJobSelect','ManualLogBookDetails','BreakdownHoursField','SmartSelect','DoorCombobox','EmployeeIdLookup','ManualBookDate','Plus','Save','Trash2','RotateCcw','BookOpen','Search','ChevronsLeft','ChevronsRight','Pencil','Printer','X','LogOut','Info','ListFilter'])scope[name]=Null;
   const Component=new Function(...Object.keys(scope),code+';return LogBookForm')(...Object.values(scope));
   const render=(kind='vehicle',props={})=>{cursor=0;effects.length=0;return Component({kind,session:{token:'test'},...props})};
@@ -208,7 +209,7 @@ test('VLB JSX adds one trip, continues rows, and saves entered data while exclud
   const focused=[],requests=[];
   globalThis.requestAnimationFrame=fn=>frames.push(fn);
   globalThis.document={getElementById:()=>({querySelector:selector=>({focus:()=>focused.push(selector)})})};
-  globalThis.fetch=async(url,config)=>{requests.push({url,body:config?.body&&JSON.parse(config.body)});return{ok:true,json:async()=>url.includes('?')||!config?{records:[],nextCursor:null}:{book_no:'TEST',revision:1}}};
+  globalThis.fetch=async(url,config)=>{requests.push({url,body:config?.body&&JSON.parse(config.body)});return{ok:true,json:async()=>url.includes('?')||!config?{records:[],nextCursor:null}:{id:'1',book_no:'TEST',revision:1,data:{}}}};
   try {
     const app=harness();let tree=app.render();
     all(tree,node=>node.type==='form')[0].props.ref.current=document.getElementById('logbook-entry-form');
@@ -241,7 +242,7 @@ test('VLB opens a continuation after 24 rows and saves 35 trips as one shift car
   globalThis.requestAnimationFrame=fn=>frames.push(fn);
   globalThis.fetch=async(url,config)=>{
     if(config?.body)requests.push({url,body:JSON.parse(config.body)});
-    return {ok:true,json:async()=>config?.body?{book_no:'SHIFT',revision:1,data:{}}:{records:[]}};
+    return {ok:true,json:async()=>config?.body?{id:'1',book_no:'SHIFT',revision:1,data:{}}:{records:[]}};
   };
   try {
     const app=harness(),row={equipmentName:'V12',tripCount:1};
@@ -300,6 +301,48 @@ test('VLB location comes from account, Shift precedes Shift Hours, and trip sear
  assert.equal(choices[0].props['data-display-label'],'EX1');
  assert.deepEqual(React.Children.toArray(choices[0].props.children),['Excavator',' · EX1']);
  all(tree,node=>node.type==='button'&&React.Children.toArray(node.props.children).includes('New entry'))[0].props.onClick();assert.equal(app.slots[0].location,'Sasti OC');
+});
+
+test('a stalled manual save keeps its draft, blocks New entry, and confirms by reference without another POST',async()=>{
+ const priorFetch=globalThis.fetch,writes=[];let confirmed=false,record;
+ globalThis.fetch=async(url,config)=>{
+  if(config?.method==='POST'){writes.push(JSON.parse(config.body));return new Promise(()=>{});}
+  return {ok:true,json:async()=>({records:confirmed?[record]:[]})};
+ };
+ try{
+  const app=harness({saveOptions:{timeoutMs:40,recoverAfterMs:5,recoverEveryMs:5}});
+  const button=(tree,label)=>all(tree,node=>node.type==='button'&&React.Children.toArray(node.props.children).includes(label))[0];
+  const reference=app.slots[0].requestKey;
+  await all(app.render(),node=>node.type==='form')[0].props.onSubmit({preventDefault(){}});
+  await button(app.render(),'Save entry').props.onClick();
+  let tree=app.render();
+  assert.ok(button(tree,'Check save status'));assert.ok(button(tree,'Retry same entry'));
+  assert.equal(all(tree,node=>node.type==='fieldset'&&node.props.className==='logbook-edit-fields')[0].props.disabled,true);
+  button(tree,'New entry').props.onClick();assert.equal(app.slots[0].requestKey,reference);
+  record={id:'41',book_no:'RECOVERED',revision:1,data:{...app.slots[0]}};confirmed=true;
+  await all(app.render(),node=>node.type==='form')[0].props.onSubmit({preventDefault(){}});
+  tree=app.render();assert.equal(app.slots[1].book_no,'RECOVERED');assert.equal(writes.length,1);
+  assert.equal(button(tree,'Check save status'),undefined);
+ }finally{globalThis.fetch=priorFetch;}
+});
+
+test('a deliberate retry of an unconfirmed entry retains the same original save reference and payload',async()=>{
+ const priorFetch=globalThis.fetch,writes=[];
+ globalThis.fetch=async(url,config)=>{
+  if(config?.method==='POST'){
+   writes.push(JSON.parse(config.body));if(writes.length===1)return new Promise(()=>{});
+   return {ok:true,json:async()=>({id:'42',book_no:'RETRIED',revision:1,data:{}})};
+  }
+  return {ok:true,json:async()=>({records:[]})};
+ };
+ try{
+  const app=harness({saveOptions:{timeoutMs:40,recoverAfterMs:5,recoverEveryMs:5}});
+  const button=(tree,label)=>all(tree,node=>node.type==='button'&&React.Children.toArray(node.props.children).includes(label))[0];
+  await all(app.render(),node=>node.type==='form')[0].props.onSubmit({preventDefault(){}});
+  await button(app.render(),'Save entry').props.onClick();
+  await button(app.render(),'Retry same entry').props.onClick();
+  assert.equal(writes.length,2);assert.deepEqual(writes[1],writes[0]);assert.equal(app.slots[1].book_no,'RETRIED');
+ }finally{globalThis.fetch=priorFetch;}
 });
 
 test('ELB account location persists on New entry and equipment search is scoped to that site',()=>{

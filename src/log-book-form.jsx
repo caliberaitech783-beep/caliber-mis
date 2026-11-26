@@ -15,6 +15,7 @@ import SmartSelect from './smart-select.jsx';
 import DoorCombobox from './door-combobox.jsx';
 import ManualAliasDialog from './manual-alias-dialog.jsx';
 import {missingAssetMessage} from './log-book-asset-options.mjs';
+import {saveManualLogBook} from './manual-log-book-save.mjs';
 import {vlbCountedTrips} from '../shared/vlb-trip-handover.mjs';
 import {activeWorkOrders,matchingWorkOrders,machineSummary,machineTripTotal,CARD_SHIFTS,machineLabel,latestWorkOrder,interTripGap,tripEquipmentRequired,kmrMeterReplaced,shiftMeterIssues,normalizeCardShift} from '../shared/trip-card-rules.mjs';
 import {fixedMinuteInput,manualTimeValue,resolveShiftTime,shiftTimeInputValue,timeWithinShift} from '../shared/manual-trip-time.mjs';
@@ -82,6 +83,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
  // Manual entry: a machine written on the card that no Pulse door matches is paired to a Pulse record here (same alias rules and OTP as scanning).
  const [aliasWritten,setAliasWritten]=useState('');
  const [showSaveConfirm,setShowSaveConfirm]=useState(false);
+ const [unconfirmedSave,setUnconfirmedSave]=useState(false);
  const [tripCard,setTripCard]=useState(0);
  const [registerSort,setRegisterSort]=useState({key:'',direction:'asc'});
  const changeRegisterSort=key=>setRegisterSort(current=>({key,direction:current.key===key&&current.direction==='asc'?'desc':'asc'}));
@@ -195,7 +197,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
  const setTrip=(index,key,value)=>setForm(current=>({...current,trips:current.trips.map((row,i)=>i===index?{...row,[key]:value}:row)}));
 
  const viewSource=async()=>{try{const r=await fetch('/api/scan-cards/'+saved.data.scanCardId+'/image',{headers:{Authorization:`Bearer ${session.token}`}});if(!r.ok)throw new Error('Source scan unavailable.');const url=URL.createObjectURL(await r.blob());window.open(url,'_blank','noopener,noreferrer');setTimeout(()=>URL.revokeObjectURL(url),60000);}catch(e){setError(e.message)}};
- const newEntry=()=>{setTripCard(0);setForm({...fresh(),location:entryLocation,...(vlbBatch?vlbEntryFields(vlbBatch,options):{})});setSaved(null);setEditing(true);setShowSaveConfirm(false);setSuccess('');setError('');};
+ const newEntry=()=>{if(unconfirmedSave){setError('Use Check save status before starting another entry. Your current entry has been kept.');return;}setTripCard(0);setForm({...fresh(),location:entryLocation,...(vlbBatch?vlbEntryFields(vlbBatch,options):{})});setSaved(null);setEditing(true);setShowSaveConfirm(false);setSuccess('');setError('');};
 
  const startHandover=keepDriver=>{
   const {bookDate,bookDateSource,location,shiftId,shiftHours,manualShift,cardShift,bookShiftCode,assetId,employeeId}=saved.data;
@@ -211,15 +213,23 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
  const pulseBreakdowns=hours?.breakdowns||[];
  const vehicleInMaintenance=pulseBreakdowns.some(request=>request.ongoing);
 
- const openEntry=async (row,edit=false)=>{if(row.data.manualAttachments?.some(file=>!file.data)){setWorking(true);try{const result=await api(`/api/log-books/${kind}/${row.id}/manual-attachments`);row={...row,data:{...row.data,manualAttachments:result.attachments}};}catch(error){setError(error.message);return;}finally{setWorking(false)}}setTripCard(0);setEditing(edit);setSaved(row);setForm({...fresh(),...row.data,assetId:String(row.data.assetId),employeeId:String(row.data.employeeId),shiftId:String(row.data.shiftId??''),openingKmr:row.data.openingKmr??'',closingKmr:row.data.closingKmr??'',trips:padManualRows(row.data.trips,5,blankTrip),jobDetails:padManualRows(row.data.jobDetails,2,blankJob),breakdownDetails:padManualRows(row.data.breakdownDetails,2,blankBreakdown)});setSuccess('');setError('');if(!inlineEdit)document.querySelector('.logbook-form')?.scrollIntoView({behavior:'smooth',block:'start'});};
+ const openEntry=async (row,edit=false)=>{if(unconfirmedSave){setError('Use Check save status before opening another entry. Your current entry has been kept.');return;}if(row.data.manualAttachments?.some(file=>!file.data)){setWorking(true);try{const result=await api(`/api/log-books/${kind}/${row.id}/manual-attachments`);row={...row,data:{...row.data,manualAttachments:result.attachments}};}catch(error){setError(error.message);return;}finally{setWorking(false)}}setTripCard(0);setEditing(edit);setSaved(row);setForm({...fresh(),...row.data,assetId:String(row.data.assetId),employeeId:String(row.data.employeeId),shiftId:String(row.data.shiftId??''),openingKmr:row.data.openingKmr??'',closingKmr:row.data.closingKmr??'',trips:padManualRows(row.data.trips,5,blankTrip),jobDetails:padManualRows(row.data.jobDetails,2,blankJob),breakdownDetails:padManualRows(row.data.breakdownDetails,2,blankBreakdown)});setSuccess('');setError('');if(!inlineEdit)document.querySelector('.logbook-form')?.scrollIntoView({behavior:'smooth',block:'start'});};
 
  useEffect(()=>{if(initialRecord)void openEntry(initialRecord,true)},[initialRecord?.id]);
  // A second manual card for the same tipper in the same shift is refused by the server
  // (409, code duplicate_card) until a reason is given. The reason travels with the card.
- const submit=async(duplicateReason='')=>{setWorking(true);setError('');setSuccess('');try{const result=await api(`/api/log-books/${kind}${saved?'/'+saved.id:''}`,{method:saved?'PUT':'POST',body:JSON.stringify({...equipmentValidation.draft,revision:saved?.revision,...(duplicateReason?{duplicateReason}:{})})});setSaved(result);setForm(current=>({...current,manualBreakdownHours:result.data?.manualBreakdownHours??''}));setEditing(false);setSuccess(`${result.book_no} saved successfully.`);if(!initialRecord)void loadRegister().catch(()=>setError('Saved successfully, but the register could not refresh. Reload the register to see the updated record.'));onSaved?.(result);}catch(e){
-  if(e.details?.code==='duplicate_card'&&!duplicateReason){setWorking(false);const reason=window.prompt(e.message+'\n\nTo save an additional card for this tipper, enter the reason (at least 10 characters). Leave empty to cancel.','');if(reason&&reason.trim().length>=10)return submit(reason.trim());setError(e.message);return;}
-  setError(e.message)}finally{setWorking(false)}};
- const save=async event=>{event.preventDefault();if(initialRecord&&(!saved||!editing||working||loading||!options))return;if(manualShiftError){setError(manualShiftError);return;}if(vlbBatch&&!sameVlbEntryContext(vlbBatch,form)){setError('This entry must use the selected batch site, date and shift.');return;}if(Object.keys(equipmentValidation.issues).length){setError(Object.values(equipmentValidation.issues).join(' '));return;}if(vehicle){const limits=Object.values(meterIssues);if(limits.length){setError(limits.join(' '));return;}setShowSaveConfirm(true);return;}await submit();};
+ const submit=async(duplicateReason='',retry=false)=>{setWorking(true);setError('');setSuccess('');try{
+  const recover=saved?undefined:async signal=>(await api(`/api/log-books/${kind}?saveReference=${encodeURIComponent(form.requestKey)}`,{signal,cache:'no-store',priority:'high'})).records?.[0];
+  const result=await saveManualLogBook(async signal=>{
+   // A deliberate retry keeps the frozen entry and its original UUID. Check
+   // first; if absent, the server's request-key lock deduplicates concurrent saves.
+   if(unconfirmedSave&&retry){const prior=await recover(signal);if(prior)return prior;}
+   return api(`/api/log-books/${kind}${saved?'/'+saved.id:''}`,{method:saved?'PUT':'POST',signal,priority:'high',body:JSON.stringify({...equipmentValidation.draft,revision:saved?.revision,...(duplicateReason?{duplicateReason}:{})})});
+  },{confirmOnly:unconfirmedSave&&!retry,recover});
+  setUnconfirmedSave(false);setSaved(result);setForm(current=>({...current,manualBreakdownHours:result.data?.manualBreakdownHours??''}));setEditing(false);setSuccess(`${result.book_no} saved successfully.`);if(!initialRecord)void loadRegister().catch(()=>setError('Saved successfully, but the register could not refresh. Reload the register to see the updated record.'));onSaved?.(result);}catch(e){
+  if(e.details?.code==='duplicate_card'&&!duplicateReason){setWorking(false);const reason=window.prompt(e.message+'\n\nTo save an additional card for this tipper, enter the reason (at least 10 characters). Leave empty to cancel.','');if(reason&&reason.trim().length>=10)return submit(reason.trim(),retry);setError(e.message);return;}
+  if(e.code==='SAVE_UNCONFIRMED'&&!saved)setUnconfirmedSave(true);setError(e.message)}finally{setWorking(false)}};
+ const save=async event=>{event.preventDefault();if(initialRecord&&(!saved||!editing||working||loading||!options))return;if(unconfirmedSave){await submit();return;}if(manualShiftError){setError(manualShiftError);return;}if(vlbBatch&&!sameVlbEntryContext(vlbBatch,form)){setError('This entry must use the selected batch site, date and shift.');return;}if(Object.keys(equipmentValidation.issues).length){setError(Object.values(equipmentValidation.issues).join(' '));return;}if(vehicle){const limits=Object.values(meterIssues);if(limits.length){setError(limits.join(' '));return;}setShowSaveConfirm(true);return;}await submit();};
  const confirmSave=async()=>{setShowSaveConfirm(false);await submit();};
 
  const filtered=records.filter(row=>`${row.book_no} ${row.data.door} ${row.data.employeeName} ${row.data.location} ${row.data.bookDate}`.toLowerCase().includes(query.toLowerCase()));
@@ -254,7 +264,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
 
    <form ref={formRef} tabIndex={inlineEdit?-1:undefined} id="logbook-entry-form" className="logbook-form" data-enter-confirm-save={vehicle||undefined} onSubmit={save} onInvalid={vehicle?revealInvalidTrip:undefined} onKeyDown={advanceLogBookField}>
 
-    <fieldset className="logbook-edit-fields" disabled={!editing||working}>
+    <fieldset className="logbook-edit-fields" disabled={!editing||working||unconfirmedSave}>
 
      <section className="logbook-section"><div className="logbook-section-title"><h2>Book details</h2><span>{saved?.book_no||'New log book'}</span></div><div className="logbook-fields">
 
@@ -307,7 +317,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
      </section>}
 
 
-     <fieldset className="logbook-edit-fields logbook-after-trips" disabled={!editing||working}>
+     <fieldset className="logbook-edit-fields logbook-after-trips" disabled={!editing||working||unconfirmedSave}>
      {vehicle&&!editing&&saved&&<div className="logbook-trip-totals"><span>Opening trips (loaded): <strong>{saved.data.openingTrips??0}</strong></span><span>Ending trips (unloaded): <strong>{saved.data.endingTrips??0}</strong></span><span>Counted trips: <strong>{saved.data.completedTrips??saved.data.totalTrips}</strong></span></div>}
      {vehicle&&<details className="logbook-section logbook-machine-details"><summary>Machine-wise summary · {machineTripTotal(form.trips)} trips</summary><div className="logbook-section-title"><h2>Machine-wise summary</h2><span>Calculated from trip details</span></div>{machineSummary(equipmentValidation.draft.trips).length>0&&<TableSmartPrint row title={['Machine-wise summary',asset?.door,form.location,form.bookDate].filter(Boolean).join(' · ')}/>}<table className="logbook-table"><thead><tr><th>Equipment name</th><th>Total trips</th></tr></thead><tbody>{machineSummary(equipmentValidation.draft.trips).map(row=><tr key={row.equipmentName}><td>{row.equipmentName}</td><td>{row.tripCount}</td></tr>)}</tbody><tfoot><tr><th scope="row">Total trips</th><td>{machineTripTotal(form.trips)}</td></tr></tfoot></table></details>}
      <ManualLogBookDetails contracts={tripContracts} form={form} update={update} vehicle={vehicle} editing={editing&&!working} setWorking={setWorking} onError={setError}/>
@@ -324,7 +334,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
      {vehicle&&fleetReconciliation&&<details className="scan-fleet-reconciliation"><summary>Site fleet · VLB, breakdown and idle details</summary>{fleetReconciliation}</details>}
 
 
-     </fieldset><footer className="logbook-save-bar"><span>{saved?`${saved.book_no} · Revision ${saved.revision}`:'Book number will be generated on save.'}</span>{inlineEdit&&<button type="button" disabled={working} onClick={onExit}>Cancel</button>}<button className="primary" data-enter-action="save" type="submit" disabled={!editing||working||loading||!options}><Save size={16}/>{working?'Saving…':saved?'Save changes':'Save log book'}</button></footer>
+     </fieldset><footer className="logbook-save-bar"><span>{saved?`${saved.book_no} · Revision ${saved.revision}`:unconfirmedSave?'Save not confirmed. Check its status or retry this same entry.':'Book number will be generated on save.'}</span>{inlineEdit&&<button type="button" disabled={working} onClick={onExit}>Cancel</button>}{unconfirmedSave&&<button type="button" disabled={working} onClick={()=>submit('',true)}>Retry same entry</button>}<button className="primary" data-enter-action="save" type="submit" disabled={!editing||working||loading||!options}><Save size={16}/>{working?unconfirmedSave?'Checking save…':'Saving…':unconfirmedSave?'Check save status':saved?'Save changes':'Save log book'}</button></footer>
 
    </form>
 
