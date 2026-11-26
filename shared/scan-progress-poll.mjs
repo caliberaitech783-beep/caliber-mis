@@ -41,6 +41,25 @@ export function shouldReadScanProgress({active, lastReadAt = 0, now = Date.now()
 export const SCAN_ENTRY_OPEN_TIMEOUT_MS = 90000;
 export const SCAN_PROGRESS_READ_TIMEOUT_MS = 20000;
 
+// Validation reads have the same cost whether started by a click or a poll.
+// Each HTTP request gets its own budget; a slow progress read must not consume
+// the time available to fill and validate the changed cards.
+export function scanRefreshRequestOptions(details = false) {
+  return {signal: AbortSignal.timeout(details ? SCAN_ENTRY_OPEN_TIMEOUT_MS : SCAN_PROGRESS_READ_TIMEOUT_MS)};
+}
+
+export function scanProgressRetryDelay(failures = 0) {
+  return Math.min(60000, SCAN_PROGRESS_ACTIVE_MS * 2 ** Math.min(4, Math.max(0, failures)));
+}
+
+// A background read failure does not invalidate cards already checked. Their
+// save endpoint still enforces revision, context, fleet and duplicate checks.
+// Access and context errors must continue to block automatic saving.
+export function isTransientScanRefreshError(error) {
+  return isReadTimeout(error) || [408, 429, 500, 502, 503, 504].includes(Number(error?.status)) ||
+    /^(failed to fetch|fetch failed|networkerror.*|network request failed|load failed)$/i.test(String(error?.message || '').trim());
+}
+
 export function scanEntryOpenError(error) {
   const name = error?.name;
   if (name === 'TimeoutError' || name === 'AbortError' || /signal timed out|aborted/i.test(String(error?.message || '')))
