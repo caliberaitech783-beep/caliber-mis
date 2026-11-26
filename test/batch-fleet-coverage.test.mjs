@@ -5,8 +5,8 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {pulseShiftStatus,sitePulseRequests,shiftWindow,pulseTime} from '../shared/pulse-shift-status.mjs';
 import {PGlite} from '@electric-sql/pglite';
-import {batchFleetCoverage,siteRoster,assetCoverageKind,idleAnswerIssue,answerMachineIssue,IDLE_REASONS} from '../shared/batch-fleet-coverage.mjs';
-import {BATCH_MACHINE_ANSWER_SCHEMA,readBatchMachineAnswers,saveIdleAnswer,clearMachineAnswer} from '../server/rules/batch-machine-answers.mjs';
+import {batchFleetCoverage,siteRoster,assetCoverageKind,idleAnswerIssue,answerMachineIssue,IDLE_REASONS,HAND_ANSWERS,rosterCode} from '../shared/batch-fleet-coverage.mjs';
+import {BATCH_MACHINE_ANSWER_SCHEMA,readBatchMachineAnswers,saveIdleAnswer,clearMachineAnswer,saveBulkAnswers,clearBulkAnswers} from '../server/rules/batch-machine-answers.mjs';
 
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 const asset=(id,door,category,site='Sasti OC',extra={})=>({id,door,category,currentLocation:site,equipmentName:door+' machine',...extra});
@@ -41,6 +41,8 @@ test('a machine with a saved card of the batch is answered; the rest are listed 
  assert.deepEqual(vlb.rows.find(r=>r.door==='DT-01').cards,['V-11','V-12']);
  assert.equal(vlb.rows.find(r=>r.door==='DT-09').atSite,false,'a card for a machine of another site counts, shown apart');
  assert.deepEqual([elb.total,elb.answered,elb.remaining],[2,1,1],'an ELB saved with a status (breakdown too) is an answer');
+ assert.deepEqual(elb.rows.map(r=>r.code),['BD','NA'],'an ELB saved as breakdown on the fleet list is BD');
+ assert.deepEqual(vlb.codes,{T:1,BD:0,ID:0,NA:2},'the codes count the machines of the site only');
  assert.deepEqual([lmv.total,lmv.answered,lmv.remaining],[2,1,1]);
  assert.equal(coverage.complete,false);
  assert.equal(coverage.warnings[0],'VLB 1/3 machines answered; no answer yet: DT-02, DT-03.');
@@ -67,8 +69,8 @@ test('the batch page gets the coverage from the stage details and shows it',()=>
  const page=read('src/vlb-create-batch.jsx');
  assert.match(page,/<BatchFleetCoverage key=\{viewed\.id\} coverage=\{viewed\.fleetCoverage\}/);
  const panel=read('src/batch-fleet-coverage.jsx');
- assert.ok(panel.includes("'Step 1 · Machine coverage · '"));
- assert.match(panel,/book&&<ReportSection[^>]*'Step 2 · '/,'Step 2 opens under Step 1');
+ assert.ok(panel.includes("'Step 1 · Machine roster · '"));
+ assert.match(panel,/books\.filter\(book=>opened\[book\.book\]\)\.map\([\s\S]*?<ReportSection[^>]*'Step 2 · '\+book\.label\+' roster · '/,'each book opens its own Step 2 under Step 1');
 });
 
 
@@ -136,7 +138,10 @@ test('coverage: Pulse-1 answers a whole-shift breakdown and an idle request; a p
 });
 
 test('an idle reason needs a VLB / LMV book, a listed reason and written details; the machine must be of the site and book',()=>{
- assert.match(idleAnswerIssue({book:'elb',status:'no_work',reason:'abc'}),/ELB fleet list/);
+ assert.equal(idleAnswerIssue({book:'elb',status:'no_work',reason:'abc'}),'','an ELB machine takes an answer by hand too (26 Nov 2026)');
+ assert.match(idleAnswerIssue({book:'dumper',status:'no_work',reason:'abc'}),/VLB, ELB or LMV/);
+ assert.equal(idleAnswerIssue({book:'vlb',status:'breakdown_not_in_pulse',reason:'Tyre burst'}),'');
+ assert.deepEqual(Object.values(HAND_ANSWERS),['No operator','Not in use','No work','Standby','Transferred out / at another site','Breakdown not in Pulse-1']);
  assert.match(idleAnswerIssue({book:'vlb',status:'holiday',reason:'abc'}),/Choose why/);
  assert.match(idleAnswerIssue({book:'vlb',status:'no_work',reason:'  '}),/Write the reason/);
  assert.equal(idleAnswerIssue({book:'vlb',status:'no_work',reason:'No face'}),'');
@@ -179,5 +184,75 @@ test('the batch routes read the Pulse-1 copy before the batch lock, with a time 
  assert.match(stages,/answers:await readBatchMachineAnswers\(client,batch\),pulse\}/);
  const panel=read('src/batch-fleet-coverage.jsx');
  assert.doesNotMatch(panel,/Fetch Pulse-1/);
- for(const label of ["label:'Pulse-1 (this shift)'",'Idle reason…','>Clear<','are read from Pulse-1 (pulse.cmll.in)'])assert.ok(panel.includes(label),label);
+ for(const label of ["label:'Pulse-1 (this shift)'",'Answer for ticked…','Save for ticked','Tick all NA','Clear answer','are read from Pulse-1 (pulse.cmll.in)'])assert.ok(panel.includes(label),label);
+});
+
+// Machine roster (owner, 26 Nov 2026): every machine shows T / BD / ID / NA; the MIS user ticks machines of a book and
+// gives one answer to all of them; ELB machines take an answer here too and are read from Pulse-1 like VLB and LMV.
+test('roster codes: T card, BD breakdown (Pulse-1, ELB list or by hand), ID idle, NA nothing',()=>{
+ assert.equal(rosterCode({answer:''}),'NA');
+ assert.equal(rosterCode({answer:'card'}),'T');
+ assert.equal(rosterCode({answer:'card',fleetStatus:'working_partial_breakdown'}),'T');
+ assert.equal(rosterCode({answer:'card',fleetStatus:'maintenance'}),'BD');
+ assert.equal(rosterCode({answer:'card',fleetStatus:'no_operator'}),'ID');
+ assert.equal(rosterCode({answer:'pulse'}),'BD');
+ assert.equal(rosterCode({answer:'breakdown_not_in_pulse'}),'BD');
+ assert.equal(rosterCode({answer:'pulse_idle'}),'ID');
+ assert.equal(rosterCode({answer:'standby'}),'ID');
+});
+
+test('an ELB machine is answered by Pulse-1 or by hand; a breakdown by hand is BD and not idle',()=>{
+ const rows=[request('EX-01','2026-11-19 22:00','2026-11-20 14:00')];
+ const coverage=batchFleetCoverage({assets,site:'Sasti OC',pulse:{rows,window,now:NOW},
+  answers:[{book:'elb',assetId:'5',status:'no_operator',reason:'Operator on leave'},{book:'vlb',assetId:'2',status:'breakdown_not_in_pulse',reason:'Tyre burst'}]});
+ const {elb,vlb}=coverage.books;
+ assert.deepEqual(elb.rows.map(r=>[r.door,r.answer,r.code]),[['EX-01','pulse','BD'],['EX-02','no_operator','ID']]);
+ assert.equal(elb.complete,true);
+ assert.deepEqual(vlb.codes,{T:0,BD:1,ID:0,NA:2});
+ assert.equal(vlb.idle,0,'a breakdown by hand is not counted as idle');
+ assert.equal(coverage.idleReasons.breakdown_not_in_pulse,'Breakdown not in Pulse-1');
+});
+
+test('one answer for several ticked machines: all saved or none; an ELB machine too; cleared together',async()=>{
+ const db=new PGlite();
+ await db.exec('CREATE TABLE mis_vlb_batches(id UUID PRIMARY KEY);CREATE TABLE master_records(id BIGINT PRIMARY KEY,master_name TEXT,record_data JSONB);');
+ await db.exec(BATCH_MACHINE_ANSWER_SCHEMA);
+ const id='6f1c1d1e-0000-4000-8000-000000000002';
+ await db.query('INSERT INTO mis_vlb_batches VALUES($1)',[id]);
+ for(const one of assets)await db.query("INSERT INTO master_records VALUES($1,'Equipment master',$2::jsonb)",[one.id,JSON.stringify(one)]);
+ const batch={id,name:'B2',site:'Sasti OC',closed_at:null};
+ const saved=await saveBulkAnswers(db,batch,{book:'vlb',status:'no_work',reason:'Face closed',assetIds:['2','3','3']},'mis1');
+ assert.deepEqual([saved.saved,saved.assetIds],[2,['2','3']],'each machine once');
+ await assert.rejects(saveBulkAnswers(db,batch,{book:'vlb',status:'standby',reason:'GM visit',assetIds:['1','6','8']},'mis1'),
+  /Nothing saved\. 2 ticked machines cannot take this answer\. LMV-01: [^.]*VLB book[\s\S]*DT-09: [^.]*at this site/);
+ assert.deepEqual((await readBatchMachineAnswers(db,batch)).map(r=>[r.assetId,r.status]).sort(),[['2','no_work'],['3','no_work']],'the refused save changed nothing');
+ await saveBulkAnswers(db,batch,{book:'elb',status:'breakdown_not_in_pulse',reason:'Hydraulic leak',assetIds:['4']},'mis1');
+ assert.equal((await readBatchMachineAnswers(db,batch)).find(r=>r.assetId==='4').book,'elb');
+ await assert.rejects(saveBulkAnswers(db,batch,{book:'vlb',status:'no_work',reason:'xyz',assetIds:[]},'mis1'),/Tick at least one/);
+ await assert.rejects(saveBulkAnswers(db,batch,{book:'vlb',status:'no_work',reason:'xyz',assetIds:['1;DROP']},'mis1'),/Invalid machine/);
+ await assert.rejects(saveBulkAnswers(db,batch,{book:'vlb',status:'no_work',reason:'',assetIds:['1']},'mis1'),/Write the reason/);
+ await assert.rejects(saveBulkAnswers(db,{...batch,closed_at:new Date()},{book:'vlb',status:'no_work',reason:'xyz',assetIds:['1']},'mis1'),/closed/);
+ assert.deepEqual((await clearBulkAnswers(db,batch,{assetIds:['2','4','7']})).assetIds.sort(),['2','4']);
+ assert.deepEqual((await readBatchMachineAnswers(db,batch)).map(r=>r.assetId),['3']);
+ await db.close();
+});
+
+test('a machine answer table made for VLB and LMV only lets ELB in at the next start',async()=>{
+ const db=new PGlite();
+ await db.exec('CREATE TABLE mis_vlb_batches(id UUID PRIMARY KEY);');
+ await db.exec(BATCH_MACHINE_ANSWER_SCHEMA.replace("CHECK(book IN ('vlb','elb','lmv'))","CHECK(book IN ('vlb','lmv'))").replace(/-- A table[\s\S]*END\$\$;/,''));
+ const id='6f1c1d1e-0000-4000-8000-000000000003';
+ await db.query('INSERT INTO mis_vlb_batches VALUES($1)',[id]);
+ await assert.rejects(db.query("INSERT INTO mis_batch_machine_answers(batch_id,asset_id,book,status,saved_by) VALUES($1,4,'elb','no_work','x')",[id]));
+ await db.exec(BATCH_MACHINE_ANSWER_SCHEMA);
+ await db.exec(BATCH_MACHINE_ANSWER_SCHEMA);
+ await db.query("INSERT INTO mis_batch_machine_answers(batch_id,asset_id,book,status,saved_by) VALUES($1,4,'elb','no_work','x')",[id]);
+ await assert.rejects(db.query("INSERT INTO mis_batch_machine_answers(batch_id,asset_id,book,status,saved_by) VALUES($1,5,'dumper','no_work','x')",[id]));
+ await db.close();
+});
+
+test('the routes save and clear several machines at once, each with a batch audit line',()=>{
+ const route=read('server/routes/vlb-batches.mjs');
+ assert.match(route,/app\.put\('\/api\/vlb-batches\/:id\/machines\/answers'[\s\S]*?mayEnterFleet[\s\S]*?saveBulkAnswers[\s\S]*?machine_answer_bulk/);
+ assert.match(route,/app\.post\('\/api\/vlb-batches\/:id\/machines\/answers\/clear'[\s\S]*?mayEnterFleet[\s\S]*?clearBulkAnswers[\s\S]*?machine_answer_cleared/);
 });

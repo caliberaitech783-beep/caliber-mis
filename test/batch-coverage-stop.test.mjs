@@ -28,7 +28,7 @@ test('the blockers name each book still missing answers, with how to answer it',
  const coverage={books:{vlb:book('vlb','VLB',['DT-02']),elb:book('elb','ELB',['EX-01']),lmv:book('lmv','LMV',[])}};
  assert.deepEqual(coverageBlockers(coverage,['vlb','elb','lmv'],{active:false}),[],'nothing stops before the stop date');
  const [vlb,elb,...rest]=coverageBlockers(coverage,['vlb','elb','lmv'],{active:true});
- assert.equal(vlb,'Every VLB machine needs an answer: 2/3 answered; no answer yet: DT-02. Add the card, fetch Pulse-1 or give an idle reason under Machine coverage.');
+ assert.equal(vlb,'Every VLB machine needs an answer: 2/3 answered; no answer yet: DT-02. Add the card, or tick it under Machine roster and give the answer.');
  assert.match(elb,/no answer yet: EX-01\. Save its ELB on the Equipment ELB list/);
  assert.deepEqual(rest,[],'a complete book does not stop');
 });

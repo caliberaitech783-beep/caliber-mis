@@ -139,3 +139,13 @@
 .batch-fleet-coverage .batch-coverage-warning{color:#9a6300;border-left:3px solid #d99a00;padding-left:8px}
 .batch-answer-box{display:flex;flex-wrap:wrap;gap:4px;align-items:center}.batch-answer-box input{min-width:120px;flex:1}
 .batch-fleet-coverage .batch-coverage-stop{color:#b42318;border-left:3px solid #d92d20;padding-left:8px;font-weight:600}
+/* Machine roster of the batch (owner, 26 Nov 2026): T / BD / ID / NA per machine, a tick on every machine. */
+.batch-fleet-coverage .roster-code{display:inline-block;min-width:28px;text-align:center;font-size:11px;font-weight:700;padding:2px 6px;border-radius:4px}
+.batch-fleet-coverage .roster-code-T{background:#eaf3de;color:#27500a}
+.batch-fleet-coverage .roster-code-BD{background:#fcebeb;color:#791f1f}
+.batch-fleet-coverage .roster-code-ID{background:#faeeda;color:#633806}
+.batch-fleet-coverage .roster-code-NA{background:#f1efe8;color:#a32d2d;outline:1px solid #a32d2d}
+.batch-fleet-coverage .roster-bulk-bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:4px 0 8px}
+.batch-fleet-coverage .roster-bulk-bar input[type=text]{min-width:160px;flex:1;max-width:320px}
+.batch-fleet-coverage .roster-ticked{font-size:12px;color:#555}
+.batch-fleet-coverage tr.roster-row-ticked td{background:#eef4ff}

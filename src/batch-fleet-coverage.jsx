@@ -1,26 +1,15 @@
 import React,{useState} from 'react';
 import {coverageStopNote} from '../shared/batch-coverage-stop.mjs';
 
-// Every machine of the site needs an answer for the shift (owner, 25 Nov 2026). The batch page shows how many VLB,
-// ELB and LMV machines have one. What Pulse-1 holds for the shift is read by itself for every VLB and LMV machine:
-// a whole-shift breakdown / maintenance or an idle request answers it, and the Pulse-1 column shows it. Only the
-// machines with nothing in Pulse-1 and no card take an idle reason by hand in Step 2. From the stop date Lock VLB,
-// Lock LMV and Close batch wait for every answer (shared/batch-coverage-stop.mjs); before it the page only warns.
-const FIGURES=[
- {key:'total',label:'Machines at site'},
- {key:'cards',label:'Card saved'},
- {key:'pulse',label:'Breakdown / maintenance (Pulse-1)'},
- {key:'idle',label:'Idle (Pulse-1 or reason)'},
- {key:'remaining',label:'No answer yet'},
- {key:'otherSite',label:'From another site'},
-];
-const BY_HAND=new Set(['card','pulse','pulse_idle']);
-const inView=(row,view)=>view==='cards'?row.atSite&&row.answer==='card'
- :view==='pulse'?row.atSite&&row.answer==='pulse'
- :view==='idle'?row.atSite&&(row.answer==='pulse_idle'||Boolean(row.answer)&&!BY_HAND.has(row.answer))
- :view==='remaining'?!row.answer
- :view==='otherSite'?!row.atSite
- :row.atSite;
+// Machine roster of the batch (owner, 25-26 Nov 2026). Every VLB, ELB and LMV machine of the site needs an answer for the
+// shift. Each machine shows its code: T trip card, BD breakdown / maintenance (Pulse-1, the ELB list, or by hand), ID idle
+// (Pulse-1 or by hand), NA no answer yet. What Pulse-1 holds is read by itself. Step 1 has one line per book; pressing a
+// line or a figure opens that book's roster under it (the three books apart, each with its own tick boxes). The MIS user
+// ticks machines and gives one answer to every ticked NA machine. From the stop date Lock VLB, Lock LMV and Close batch
+// wait for every answer (shared/batch-coverage-stop.mjs); before it the page only warns.
+const CODES=['T','BD','ID','NA'];
+const CODE_LABELS={T:'T · Trip card',BD:'BD · Breakdown / maintenance',ID:'ID · Idle',NA:'NA · No answer'};
+const BY_CARD_OR_PULSE=new Set(['card','pulse','pulse_idle']);
 const time=value=>{const d=value?new Date(value):null;return d&&!Number.isNaN(d.getTime())?d.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Kolkata'}):'';};
 
 // What Pulse-1 holds for the machine in this shift.
@@ -33,84 +22,112 @@ export function pulseText(row){
  return parts.join(' | ');
 }
 
-function AnswerBox({row,book,reasons,onSave,onClear,busy}){
- const [status,setStatus]=useState(row.saved&&reasons[row.saved.status]?row.saved.status:'');
- const [reason,setReason]=useState(row.saved&&reasons[row.saved.status]?row.saved.reason:'');
- return <div className="batch-answer-box">
-  <select aria-label={'Idle reason for '+row.door} value={status} disabled={busy} onChange={e=>setStatus(e.target.value)}>
-   <option value="">Idle reason…</option>
-   {Object.entries(reasons).map(([key,label])=><option key={key} value={key}>{label}</option>)}
-  </select>
-  <input type="text" aria-label={'Reason details for '+row.door} placeholder="Reason" maxLength={500} value={reason} disabled={busy} onChange={e=>setReason(e.target.value)}/>
-  <button type="button" disabled={busy||!status||reason.trim().length<3} onClick={()=>onSave(row,{book,status,reason})}>Save</button>
-  {row.saved&&<button type="button" disabled={busy} onClick={()=>onClear(row)}>Clear</button>}
+// A machine whose answer the MIS user may give or change: no answer yet, or an answer saved by hand.
+export const takesHandAnswer=row=>Boolean(row.atSite)&&(!row.answer||Boolean(row.saved)&&!BY_CARD_OR_PULSE.has(row.answer));
+const codeChip=code=><span className={'roster-code roster-code-'+code} title={CODE_LABELS[code]}>{code}</span>;
+
+function BulkBar({book,rows,ticked,setTicked,reasons,busy,onSave,onClear,said,editable}){
+ const [status,setStatus]=useState(''),[reason,setReason]=useState(''),[issue,setIssue]=useState('');
+ const tickedRows=rows.filter(row=>ticked.has(row.assetId));
+ const open=tickedRows.filter(takesHandAnswer),byHand=tickedRows.filter(row=>row.saved&&takesHandAnswer(row)&&row.answer);
+ const tickAll=()=>setTicked(new Set(rows.map(row=>row.assetId)));
+ const tickNa=()=>setTicked(new Set(rows.filter(row=>row.code==='NA').map(row=>row.assetId)));
+ const save=()=>{
+  if(!tickedRows.length)return setIssue('Tick at least one machine.');
+  if(!open.length)return setIssue('The ticked machines have T, BD or ID from a card or Pulse-1; nothing to fill.');
+  if(!status)return setIssue('Choose the answer.');
+  if(reason.trim().length<3)return setIssue('Write the reason (at least 3 letters).');
+  setIssue('');onSave(book,open,{status,reason:reason.trim()},()=>{setStatus('');setReason('');});
+ };
+ const left=tickedRows.length-open.length;
+ return <div className="roster-bulk-bar">
+  <button type="button" disabled={busy} onClick={tickAll}>Tick all ({rows.length})</button>
+  <button type="button" disabled={busy} onClick={tickNa}>Tick all NA ({rows.filter(row=>row.code==='NA').length})</button>
+  {ticked.size>0&&<button type="button" disabled={busy} onClick={()=>setTicked(new Set())}>Untick all</button>}
+  <span className="roster-ticked">{tickedRows.length} ticked{left>0?' · '+left+' already answered by card or Pulse-1, left as they are':''}</span>
+  {editable&&<>
+   <select aria-label={'Answer for ticked '+book.label+' machines'} value={status} disabled={busy} onChange={event=>{setStatus(event.target.value);setIssue('');}}>
+    <option value="">Answer for ticked…</option>
+    {Object.entries(reasons).map(([key,label])=><option key={key} value={key}>{label}</option>)}
+   </select>
+   <input type="text" aria-label={'Reason for ticked '+book.label+' machines'} placeholder="Reason" maxLength={500} value={reason} disabled={busy} onChange={event=>{setReason(event.target.value);setIssue('');}}/>
+   <button type="button" className="primary" disabled={busy} onClick={save}>Save for ticked ({open.length})</button>
+   {byHand.length>0&&<button type="button" disabled={busy} onClick={()=>onClear(book,byHand)}>Clear answer ({byHand.length})</button>}
+  </>}
+  {issue&&<small className="cr-said cr-said-bad" role="alert">{issue}</small>}
+  {said?.book===book.book&&<small className={'cr-said'+(said.bad?' cr-said-bad':'')} role={said.bad?'alert':'status'}>{said.text}</small>}
  </div>;
 }
 
 export default function BatchFleetCoverage({coverage,ReportSection,batch,session,onChanged}){
- const [picked,setPicked]=useState(null);// {book,view}
- const [working,setWorking]=useState(''),[said,setSaid]=useState(null);
+ const [opened,setOpened]=useState({});// book -> 'all' | T | BD | ID | NA
+ const [ticks,setTicks]=useState({});// book -> Set of assetIds
+ const [working,setWorking]=useState(false),[said,setSaid]=useState(null);
  if(!coverage||!ReportSection)return null;
  const reasons=coverage.idleReasons||{},labels=coverage.answerLabels||{};
  const books=['vlb','elb','lmv'].map(key=>coverage.books?.[key]).filter(Boolean);
- const open=(book,view)=>{setSaid(null);setPicked(now=>now?.book===book&&now?.view===view?null:{book,view});};
- const figure=key=>row=>row[key]>0
-  ?<button type="button" className="cr-figure" title={'Open: '+row.label+' · '+FIGURES.find(one=>one.key===key).label} onClick={event=>{event.stopPropagation();open(row.book,key);}}>{row[key]}</button>
-  :(row[key]??0);
+ const editable=Boolean(session&&batch&&!batch.closed_at);
+ const openBook=(book,view)=>setOpened(now=>{const next={...now};if(next[book]===view)delete next[book];else next[book]=view;return next;});
+ const figure=view=>row=>{
+  const value=view==='all'?row.total:row.codes?.[view]??0;
+  return value>0?<button type="button" className="cr-figure" title={'Open: '+row.label+' · '+(CODE_LABELS[view]||'All machines')} onClick={event=>{event.stopPropagation();openBook(row.book,view);}}>{value}</button>:value;
+ };
  const columns=[
   {key:'label',label:'Book',value:row=>row.label},
-  ...FIGURES.map(one=>({key:one.key,label:one.label,value:row=>row[one.key]??0,render:figure(one.key)})),
-  {key:'state',label:'Status',value:row=>row.complete?'All answered':'Warning'},
+  {key:'total',label:'Machines at site',value:row=>row.total,render:figure('all')},
+  ...CODES.map(code=>({key:'code'+code,label:CODE_LABELS[code],value:row=>row.codes?.[code]??0,render:figure(code)})),
+  {key:'otherSite',label:'Card of a machine from another site',value:row=>row.otherSite??0},
+  {key:'state',label:'Status',value:row=>row.complete?'Complete':'Not complete: '+row.remaining+' NA'},
  ];
- const editable=Boolean(session&&batch&&!batch.closed_at);
  const call=async(method,path,body)=>{
   const response=await fetch('/api/vlb-batches/'+encodeURIComponent(batch.id)+'/machines/'+path,{method,cache:'no-store',headers:{Authorization:'Bearer '+session.token,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
   const answer=await response.json().catch(()=>({}));
   if(!response.ok)throw new Error(answer.error||'The machine answer could not be saved.');
   return answer;
  };
- const run=async(row,job,message)=>{
-  setWorking(row.assetId);setSaid(null);
-  try{await job();setSaid({id:row.assetId,text:row.door+': '+message});onChanged?.();}
-  catch(error){setSaid({id:row.assetId,text:row.door+': '+error.message,bad:true});}
-  finally{setWorking('');}
+ const run=async(book,job,message,done)=>{
+  setWorking(true);setSaid(null);
+  try{const answer=await job();setSaid({book:book.book,text:message(answer)});setTicks(now=>({...now,[book.book]:new Set()}));done?.();onChanged?.();}
+  catch(error){setSaid({book:book.book,text:error.message,bad:true});}
+  finally{setWorking(false);}
  };
- const book=picked&&coverage.books?.[picked.book];
- const onSave=(row,body)=>run(row,()=>call('PUT',encodeURIComponent(row.assetId)+'/answer',body),'Idle reason saved.');
- const onClear=row=>run(row,()=>call('DELETE',encodeURIComponent(row.assetId)+'/answer'),'Answer cleared.');
- const lines=!book?[]:book.rows.filter(row=>inView(row,picked.view));
+ const onSave=(book,rows,{status,reason},done)=>run(book,()=>call('PUT','answers',{book:book.book,status,reason,assetIds:rows.map(row=>row.assetId)}),
+  answer=>(answer.saved||rows.length)+' '+book.label+' machine'+((answer.saved||rows.length)===1?'':'s')+': '+(reasons[status]||status)+' saved.',done);
+ const onClear=(book,rows)=>run(book,()=>call('POST','answers/clear',{assetIds:rows.map(row=>row.assetId)}),answer=>(answer.cleared??rows.length)+' answer(s) cleared.');
  const answerText=row=>{
-  const label=labels[row.answer]||(row.note?row.note:'No answer yet');
-  const saved=row.saved&&!BY_HAND.has(row.answer)?row.saved:null;
-  return saved?label+(saved.reason?' · '+saved.reason:''):label;
+  if(row.answer==='card')return (row.cards.length?'Card '+row.cards.join(', '):'Card saved')+(row.fleetStatus&&row.code!=='T'?' · '+(labels[row.fleetStatus]||row.fleetStatus.replace(/_/g,' ')):'');
+  const label=labels[row.answer]||(row.note?row.note:'No answer: fill the detail');
+  const saved=row.saved&&!BY_CARD_OR_PULSE.has(row.answer)?row.saved:null;
+  return saved?label+(saved.reason?' · '+saved.reason:'')+(saved.savedBy?' · by '+saved.savedBy:''):label;
  };
- // A machine answered by its card or by Pulse-1 needs nothing by hand; a reason saved by hand can be changed or cleared.
- const needsHand=row=>row.atSite&&(!row.answer||Boolean(row.saved)&&!BY_HAND.has(row.answer));
- const lineColumns=[
-  {key:'door',label:'Door',value:row=>row.door},
-  {key:'name',label:'Machine',value:row=>row.name},
-  {key:'answer',label:'Answer',value:answerText},
-  ...(book?.takesAnswers?[{key:'pulse',label:'Pulse-1 (this shift)',value:row=>coverage.pulseRead?.ok?pulseText(row):'Not read'}]:[]),
-  {key:'cards',label:'Card no.',value:row=>row.cards.join(', ')},
-  {key:'site',label:'Master site',value:row=>row.atSite?'This site':'Another site'},
-  ...(editable&&book?.takesAnswers?[{key:'action',label:'Answer this machine',value:()=>'',render:row=>needsHand(row)&&<>
-   <AnswerBox key={row.assetId+':'+(row.saved?.status||'')} row={row} book={picked.book} reasons={reasons} busy={Boolean(working)} onSave={onSave} onClear={onClear}/>
-   {said?.id===row.assetId&&<small className={'cr-said'+(said.bad?' cr-said-bad':'')} role={said.bad?'alert':'status'}>{said.text}</small>}
-  </>}]:[]),
- ];
- const viewLabel=picked&&FIGURES.find(one=>one.key===picked.view)?.label;
  const pulseRead=coverage.pulseRead;
- return <section className="batch-fleet-coverage" aria-label="Machine coverage">
+ const lineColumns=(book,ticked,setTicked)=>[
+  {key:'tick',label:'Tick',value:()=>'',render:row=><input type="checkbox" aria-label={'Tick '+row.door} checked={ticked.has(row.assetId)} disabled={working}
+   onChange={event=>setTicked(now=>{const next=new Set(now);if(event.target.checked)next.add(row.assetId);else next.delete(row.assetId);return next;})}/>},
+  {key:'door',label:'Door',value:row=>row.door},
+  {key:'code',label:'Status',value:row=>row.code,render:row=>codeChip(row.code)},
+  {key:'name',label:'Machine',value:row=>row.name},
+  {key:'answer',label:'Detail',value:answerText},
+  {key:'pulse',label:'Pulse-1 (this shift)',value:row=>pulseRead?.ok?pulseText(row):'Not read'},
+  {key:'site',label:'Master site',value:row=>row.atSite?'This site':'Another site'},
+ ];
+ return <section className="batch-fleet-coverage" aria-label="Machine roster">
   <p className={'logbook-message'+(coverage.complete?'':coverage.mode==='stop'?' batch-coverage-stop':' batch-coverage-warning')} role={coverage.complete?'status':coverage.mode==='stop'?'alert':'status'}>
-   {coverage.complete?'Every VLB, ELB and LMV machine of this site has an answer for this shift.':coverageStopNote(coverage.stop)+' '+coverage.warnings.join(' ')}
+   {coverage.complete?'Every VLB, ELB and LMV machine of this site has an answer for this shift (T, BD or ID).':coverageStopNote(coverage.stop)+' '+coverage.warnings.join(' ')}
   </p>
   {pulseRead&&<p className={'logbook-message'+(pulseRead.ok?'':' batch-coverage-warning')} role="status">
-   {pulseRead.ok?'Breakdown, maintenance and idle are read from Pulse-1 (pulse.cmll.in) for every VLB and LMV machine'+(time(pulseRead.readAt)?', copy of '+time(pulseRead.readAt):'')+'.':'Pulse-1 could not be read just now ('+pulseRead.error+'): machines in breakdown or idle there are not counted until it is read again.'}
+   {pulseRead.ok?'Breakdown, maintenance and idle are read from Pulse-1 (pulse.cmll.in) for every VLB, ELB and LMV machine'+(time(pulseRead.readAt)?', copy of '+time(pulseRead.readAt):'')+'.':'Pulse-1 could not be read just now ('+pulseRead.error+'): machines in breakdown or idle there are not counted until it is read again.'}
   </p>}
-  <ReportSection key="coverage-books" title={'Step 1 · Machine coverage · '+(batch?.name||'')} category="batch-fleet-coverage" rows={books} columns={columns} rowKey={row=>row.book}
-   rowClassName={row=>picked?.book===row.book?'report-row-picked':''} showSearch={false} recordDateFilter={false} emptyMessage="No machines in the Equipment Master for this site."/>
-  {book&&<ReportSection key={'coverage-'+picked.book+picked.view} title={'Step 2 · '+book.label+' · '+viewLabel+' · '+(batch?.name||'')} category="batch-fleet-coverage-machines" rows={lines} columns={lineColumns}
-   rowKey={row=>row.assetId} showSearch={false} recordDateFilter={false} emptyMessage="No machine in this list."/>}
-  {book&&!book.takesAnswers&&<p className="logbook-message">An ELB machine is answered on the Equipment ELB fleet list (working, breakdown, maintenance, no operator or not in use); its breakdown hours come from Pulse-1 there.</p>}
+  <ReportSection key="coverage-books" title={'Step 1 · Machine roster · '+(batch?.name||'')} category="batch-fleet-coverage" rows={books} columns={columns} rowKey={row=>row.book}
+   rowClassName={row=>opened[row.book]?'report-row-picked':''} onRowClick={row=>openBook(row.book,opened[row.book]?opened[row.book]:'all')} showSearch={false} recordDateFilter={false} emptyMessage="No machines in the Equipment Master for this site."/>
+  {books.filter(book=>opened[book.book]).map(book=>{
+   const view=opened[book.book],ticked=ticks[book.book]||new Set();
+   const setTicked=update=>setTicks(now=>({...now,[book.book]:typeof update==='function'?update(now[book.book]||new Set()):update}));
+   const rows=book.rows.filter(row=>view==='all'?true:row.atSite&&row.code===view);
+   return <ReportSection key={'roster-'+book.book+view} title={'Step 2 · '+book.label+' roster · '+(CODE_LABELS[view]||'All machines')+' · '+(batch?.name||'')} category="batch-fleet-coverage-machines"
+    rows={rows} columns={lineColumns(book,ticked,setTicked)} rowKey={row=>row.assetId} rowClassName={row=>ticked.has(row.assetId)?'roster-row-ticked':''}
+    controls={<BulkBar book={book} rows={rows} ticked={ticked} setTicked={setTicked} reasons={reasons} busy={working} onSave={onSave} onClear={onClear} said={said} editable={editable}/>}
+    showSearch={false} recordDateFilter={false} emptyMessage="No machine in this list."/>;
+  })}
  </section>;
 }
