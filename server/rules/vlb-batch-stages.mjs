@@ -2,7 +2,7 @@ import {assignmentWindows,logBookAssignment} from '../../shared/log-book-transfe
 import {transferForAsset} from '../../shared/equipment-transfer-history.mjs';
 import {idleShiftHours} from '../../shared/breakdown-hours-source.mjs';
 import {validShiftHours,isJayantSite} from '../../shared/site-shift-hours.mjs';
-import {cardWorkingHmr,shareCardOperator} from '../../shared/log-book-shared-shift.mjs';
+import {cardWorkingHmr,shareCardOperator,elbCardsNeedDuplicateReview} from '../../shared/log-book-shared-shift.mjs';
 import {assertCombinedShiftMeters} from './log-book-shift-hmr.mjs';
 import {manualShiftHours,manualShiftWindow} from '../../shared/manual-shift.mjs';
 import {manualEntryShiftIssue} from '../../shared/duty-shift.mjs';
@@ -154,7 +154,7 @@ function duplicateElb(records){
  for(const record of records){
   const data=record.data||{},key=String(record.asset_id||data.assetId);
   const peers=byAsset.get(key)||[];
-  if(peers.some(peer=>shareCardOperator(data,peer)))duplicates.add(data.door||key);
+  if(peers.some(peer=>elbCardsNeedDuplicateReview(data,peer)))duplicates.add(data.door||key);
   peers.push(data);
   byAsset.set(key,peers);
  }

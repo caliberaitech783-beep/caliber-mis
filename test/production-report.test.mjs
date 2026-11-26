@@ -65,3 +65,15 @@ test('production combines relief cards into one row per vehicle or machine and e
  assert.equal(blocked.ready,false);
  assert.match(blocked.issues.find(issue=>issue.code==='hmr').message,/8\.001 hours.*limit is 8/);
 });
+
+test('distinct ELB meter segments count once each while the combined shift-hour limit stays enforced',()=>{
+ for(const hours of [2,3.7]){
+  const f=fixture(),original=f.records.find(r=>r.book_type==='equipment'&&r.data.cardShift==='S1');
+  original.data={...original.data,jobCardNo:'2527',openingHmr:100,closingHmr:104.5,totalWorkingHmr:4.5};
+  f.records.push({...original,id:'segment',book_no:'ELB segment',data:{...original.data,openingHmr:104.5,closingHmr:104.5+hours,totalWorkingHmr:hours}});
+  const result=buildProductionReport(f);
+  assert.equal(result.issues.some(i=>i.code==='duplicate'||i.type==='duplicate'),false);
+  if(hours===2){assert.equal(result.ready,true,JSON.stringify(result.issues));assert.equal(result.machineRows[0].S1Hours,6.5);}
+  else {assert.equal(result.ready,false);assert.match(JSON.stringify(result.issues),/Combined working HMR.*8.2/);}
+ }
+});
