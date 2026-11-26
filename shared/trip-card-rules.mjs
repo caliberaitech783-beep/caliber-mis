@@ -154,6 +154,17 @@ export function ignoreScanLoadingWithoutEquipment(draft,{openingOnly=false}={}){
 // Untimed aggregate rows and rows that record loading still require equipment.
 export const tripEquipmentRequired=(row={},timeMode='with')=>timeMode==='without'||!isUnloadingOnlyTrip(row);
 export function machineSummary(trips=[]){const map=new Map();for(const row of trips){if(isUnloadingOnlyTrip(row))continue;const equipmentName=machineLabel(row.equipmentName);if(!equipmentName)continue;map.set(equipmentName,(map.get(equipmentName)||0)+(Number(row.tripCount)||0))}return [...map].map(([equipmentName,tripCount])=>({equipmentName,tripCount}));}
+// Consolidate resolved equipment without changing the literal OCR evidence.
+export function combineMachineSummary(rows=[]){
+ const result=[],groups=new Map();
+ const valid=value=>String(value??'').trim()!==''&&Number.isSafeInteger(Number(value))&&Number(value)>0;
+ for(const row of rows){
+  const key=machineLabel(row.equipmentName),previous=key&&groups.get(key);
+  if(previous){previous.tripCount=valid(previous.tripCount)&&valid(row.tripCount)?Number(previous.tripCount)+Number(row.tripCount):'';}
+  else {const next={...row};result.push(next);if(key)groups.set(key,next);}
+ }
+ return result;
+}
 export function machineTripTotal(trips=[]){return trips.reduce((total,row)=>total+(isUnloadingOnlyTrip(row)?0:Number(row.tripCount)||0),0);}
 export function machineDiscrepancies(trips=[],printed=[]){
  if(!printed.length)return [];

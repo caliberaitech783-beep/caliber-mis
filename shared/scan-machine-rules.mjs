@@ -2,7 +2,7 @@ import {assetBookKind} from './equipment-kind.mjs';
 import {resolveTripEquipment} from './trip-equipment-validation.mjs';
 import {canonicalSiteName} from './site-location.mjs';
 import {equipmentDoorNumber} from './equipment-door.mjs';
-import {tripEquipmentRequired} from './trip-card-rules.mjs';
+import {tripEquipmentRequired,combineMachineSummary} from './trip-card-rules.mjs';
 import {normalizeScannedTime} from './scan-clock.mjs';
 
 export const VEHICLE_MACHINE_RULES=[
@@ -162,9 +162,9 @@ export function scannedEquipmentName(value,assets=[],site=''){
  return result.match?resolvedMachineName(result.match):text(value);
 }
 export function normalizeScanEquipmentRows(input={},assets=[]){
- if(input.machineNotationRuleVersion!==1)return input;
+ if(input.machineNotationRuleVersion!==1){const summary=combineMachineSummary(input.scanMachineSummary);return summary.length===(input.scanMachineSummary||[]).length?input:{...input,scanMachineSummary:summary};}
  const normalize=rows=>(rows||[]).map(row=>scannedTripEquipmentRow(row,assets,input.location,input.tripBodyRuleVersion||1));
- return {...input,trips:normalize(input.trips),scanMachineSummary:normalize(input.scanMachineSummary)};
+ return {...input,trips:normalize(input.trips),scanMachineSummary:combineMachineSummary(normalize(input.scanMachineSummary))};
 }
 // The loading hour read twice (rule of 23 Nov 2026). On the trip card the hour is written
 // right against the machine number in the narrow NO column, and the reader sometimes counts
