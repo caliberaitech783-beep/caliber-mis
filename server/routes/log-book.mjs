@@ -56,6 +56,7 @@ import {equipmentDoorNumber} from '../../shared/equipment-door.mjs';
 import {assignmentWindows,logBookAssignment,applyTransferPortion} from '../../shared/log-book-transfers.mjs';
 import {summarizePulseHours} from '../rules/log-book-hours.mjs';
 import {randomUUID} from 'node:crypto';
+import {readSaveHandoverAnswer} from '../../shared/log-book-save-deadline.mjs';
 import {canonicalSiteName} from '../../shared/site-location.mjs';
 import {displaySiteName,displaySiteSelection} from '../../shared/region-scope.mjs';
 
@@ -316,7 +317,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
  // never turns the save into an error: the card is answered with its own trip counts and the
  // links appear on the next reload.
  const savedCardAnswer=async(req,record)=>{
-  try{return (await withVlbTripHandovers(pool,[record],await filterLogBookSites(pool,req.logBookScope)))[0];}
+  try{return await readSaveHandoverAnswer(async()=>(await withVlbTripHandovers(pool,[record],await filterLogBookSites(pool,req.logBookScope)))[0]);}
   catch(error){console.warn('[log-book] '+record.book_no+' is saved; answered without handover links:',error?.message||error);return linkVlbTripHandovers([record])[0]||record;}
  };
  const ensure=()=>ready??=(pool.query(LOG_BOOK_SCHEMA+SHIFT_ATTENDANCE_SCHEMA+ATTENDANCE_DAY_STORE_SCHEMA+OPERATIONS_DAY_STORE_SCHEMA).catch(error=>{ready=null;throw error}));
@@ -466,6 +467,16 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
   app.post('/api/log-books/hours',requireSession,batchEditAccess,batchScope,async(req,res)=>{try{requireLogBookSite(req.logBookScope,req.body.location);res.set('Cache-Control','no-store').json(await readHours({...req.body,client:undefined,breakdownRows:undefined,actor:req.session.login||req.session.name}));}catch(e){res.status(e.status||400).json({error:e.message});}});
  app.get('/api/log-books/:kind',...protect,async(req,res,next)=>{
    try{await ensure();if(!['vehicle','equipment','lmv'].includes(req.params.kind))return res.status(400).json({error:'Invalid log book type.'});
+     // Exact, indexed confirmation of the caller's own new card. No historical
+     // register/site scan or optional handover lookup can delay this answer.
+     if(req.query.saveReference!==undefined){
+      const reference=String(req.query.saveReference);
+      if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(reference))return res.status(400).json({error:'Invalid save reference.'});
+      const record=(await pool.query('SELECT id,book_no,book_type,data,revision,created_at,updated_at FROM mis_log_books WHERE request_key=$1 AND created_by=$2 AND book_type=$3 AND deleted_at IS NULL AND book_date>=$$2026-11-01$$',[reference,req.session.login||req.session.name,req.params.kind])).rows[0];
+      const visible=record&&siteAllowed(req.logBookScope,record.data?.location);
+      if(visible&&Array.isArray(record.data?.manualAttachments))record.data={...record.data,manualAttachments:record.data.manualAttachments.map(({data,...file})=>file)};
+      return res.set('Cache-Control','no-store').json({records:visible?[req.params.kind==='vehicle'?linkVlbTripHandovers([record])[0]:record]:[],nextCursor:null});
+     }
      const before=String(req.query.before||'');if(before&&!/^\d+$/.test(before))return res.status(400).json({error:'Invalid page cursor.'});
      const first=req.query.first==='1',last=req.query.last==='1';
      const assetId=String(req.query.assetId??'');

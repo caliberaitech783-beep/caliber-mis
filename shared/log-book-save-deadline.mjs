@@ -9,3 +9,13 @@ export async function readSaveBreakdownRequests(read,{timeoutMs=5000}={}){
   ]);
  }finally{clearTimeout(timer);}
 }
+
+// Handover links are optional display data, read only after COMMIT. They must
+// never keep the operator waiting for acknowledgement of an already-saved card.
+export async function readSaveHandoverAnswer(read,{timeoutMs=1500}={}){
+ let timer;
+ try{return await Promise.race([
+  Promise.resolve().then(read),
+  new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('Handover links are taking too long; reload the saved card to read them.')),timeoutMs);}),
+ ]);}finally{clearTimeout(timer);}
+}
