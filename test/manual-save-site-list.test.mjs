@@ -149,6 +149,7 @@ test('save-reference confirmation is exact, scoped to its creator and site, and 
  const route='/api/log-books/vehicle?saveReference='+body.requestKey;
  log.length=0;
  const found=await call(route);
+ assert.equal(found.data.saveReference,body.requestKey);
  assert.equal(found.status,200);assert.equal(found.data.records[0].id,made.data.id);
  assert.equal(log.some(entry=>SITE_LIST.test(entry.sql)||HANDOVER_LOOKUP.test(entry.sql)),false);
  assert.deepEqual((await call('/api/log-books/vehicle?saveReference='+randomUUID())).data.records,[]);

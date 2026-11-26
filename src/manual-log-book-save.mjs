@@ -1,5 +1,11 @@
 // A committed card can outlive its HTTP response (proxy, upload or connection stall).
 // Recover only by its existing save reference; never replay a write here.
+export function confirmedManualLogBook(body,reference){
+ // An older server ignores unknown query parameters and returns the normal
+ // register. Only an explicit echo of this UUID can confirm this exact save.
+ return typeof reference==='string'&&reference&&body?.saveReference===reference&&Array.isArray(body.records)&&body.records.length===1?body.records[0]:undefined;
+}
+
 export async function saveManualLogBook(save,{recover,confirmOnly=false,timeoutMs=30_000,recoverAfterMs=8_000,recoverEveryMs=3_000}={}){
  if(confirmOnly&&!recover)throw new Error('A save reference is required to check save status.');
  const controller=new AbortController(),timers=new Set();

@@ -19,7 +19,7 @@ import * as rules from '../shared/trip-card-rules.mjs';
 import {vlbCountedTrips} from '../shared/vlb-trip-handover.mjs';
 import {canonicalSiteName} from '../shared/site-location.mjs';
 import {missingAssetMessage} from '../src/log-book-asset-options.mjs';
-import {saveManualLogBook} from '../src/manual-log-book-save.mjs';
+import {saveManualLogBook,confirmedManualLogBook} from '../src/manual-log-book-save.mjs';
 import {manualTimeValue,resolveShiftTime,shiftTimeInputValue,timeWithinShift} from '../shared/manual-trip-time.mjs';
 
 function control(name, overrides={}) {
@@ -105,7 +105,7 @@ function harness({saveOptions={}}={}){
   const slots=[],effects=[];let cursor=0;
   const state=initial=>{const index=cursor++;if(!(index in slots))slots[index]=typeof initial==='function'?initial():initial;return[slots[index],value=>{slots[index]=typeof value==='function'?value(slots[index]):value}]};
   const Null=()=>null;
- const scope={saveManualLogBook:(save,options)=>saveManualLogBook(save,{...options,...saveOptions}),transferPeriodLabel,assetForSiteOnDate,TableSmartPrint,SortableHeader,sortRowsBlanksLast,idleShiftHours,MANUAL_SHIFTS,manualShiftWindow,compactLogBookLabel,tripSerialNumber,validateTripEquipment,resolveTripEquipment,blankJob,blankBreakdown,padManualRows,continueManualRemark,employeeAtLocation,manualTimeValue,resolveShiftTime,shiftTimeInputValue,timeWithinShift,React,useEffect:(run,deps)=>effects.push({run,deps}),useRef:value=>state(()=>({current:value}))[0],useState:state,blankTrip,nextTripEntry,TRIP_CARD_ROWS,tripCardForRow,vlbCountedTrips,...rules,canonicalSiteName,missingAssetMessage,advanceLogBookField,focusNextLogBookField,isEmptyTripPlaceholder,advanceEquipmentLogBookField};
+ const scope={confirmedManualLogBook,saveManualLogBook:(save,options)=>saveManualLogBook(save,{...options,...saveOptions}),transferPeriodLabel,assetForSiteOnDate,TableSmartPrint,SortableHeader,sortRowsBlanksLast,idleShiftHours,MANUAL_SHIFTS,manualShiftWindow,compactLogBookLabel,tripSerialNumber,validateTripEquipment,resolveTripEquipment,blankJob,blankBreakdown,padManualRows,continueManualRemark,employeeAtLocation,manualTimeValue,resolveShiftTime,shiftTimeInputValue,timeWithinShift,React,useEffect:(run,deps)=>effects.push({run,deps}),useRef:value=>state(()=>({current:value}))[0],useState:state,blankTrip,nextTripEntry,TRIP_CARD_ROWS,tripCardForRow,vlbCountedTrips,...rules,canonicalSiteName,missingAssetMessage,advanceLogBookField,focusNextLogBookField,isEmptyTripPlaceholder,advanceEquipmentLogBookField};
   for(const name of ['WorkOrderJobSelect','ManualLogBookDetails','BreakdownHoursField','SmartSelect','DoorCombobox','EmployeeIdLookup','ManualBookDate','Plus','Save','Trash2','RotateCcw','BookOpen','Search','ChevronsLeft','ChevronsRight','Pencil','Printer','X','LogOut','Info','ListFilter'])scope[name]=Null;
   const Component=new Function(...Object.keys(scope),code+';return LogBookForm')(...Object.values(scope));
   const render=(kind='vehicle',props={})=>{cursor=0;effects.length=0;return Component({kind,session:{token:'test'},...props})};
@@ -307,7 +307,7 @@ test('a stalled manual save keeps its draft, blocks New entry, and confirms by r
  const priorFetch=globalThis.fetch,writes=[];let confirmed=false,record;
  globalThis.fetch=async(url,config)=>{
   if(config?.method==='POST'){writes.push(JSON.parse(config.body));return new Promise(()=>{});}
-  return {ok:true,json:async()=>({records:confirmed?[record]:[]})};
+  return {ok:true,json:async()=>confirmed?{saveReference:new URL(url,'http://test').searchParams.get('saveReference'),records:[record]}:{records:[{id:'old',book_no:'ANOTHER-CARD',data:{}}]}};
  };
  try{
   const app=harness({saveOptions:{timeoutMs:40,recoverAfterMs:5,recoverEveryMs:5}});
