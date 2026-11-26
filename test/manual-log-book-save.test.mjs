@@ -49,3 +49,10 @@ test('a late save failure after successful recovery is observed safely',async()=
  reject(new Error('late failure'));
  await new Promise(resolve=>setImmediate(resolve));
 });
+
+test('checking an uncertain save only reads its reference and never submits a second card',async()=>{
+ let writes=0;
+ assert.equal(await saveManualLogBook(async()=>{writes++;return saved;},{...quick,confirmOnly:true,recover:async()=>saved}),saved);
+ await assert.rejects(saveManualLogBook(async()=>{writes++;return saved;},{...quick,timeoutMs:15,confirmOnly:true,recover:async()=>null}),{code:'SAVE_UNCONFIRMED'});
+ assert.equal(writes,0);
+});
