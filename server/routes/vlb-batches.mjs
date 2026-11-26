@@ -16,7 +16,7 @@ import {withoutRowSecurityRequest} from '../services/row-security.mjs';
 import {vlbBatchActor,batchPmAtSite} from '../rules/vlb-batch-access.mjs';
 import {readFleetBreakdowns,batchLmvRecords,stageDetails,lockVlb,lockLmv,unlockVlb,assertCloseAllowed,saveFleetDraft,saveFleetEntry,equipmentAssets} from '../rules/vlb-batch-stages.mjs';
 import {twoStageEnabled,batchStage,FLEET_STATUSES} from '../rules/vlb-two-stage.mjs';
-import {BATCH_MACHINE_ANSWER_SCHEMA,saveIdleAnswer,clearMachineAnswer} from '../rules/batch-machine-answers.mjs';
+import {BATCH_MACHINE_ANSWER_SCHEMA,saveIdleAnswer,clearMachineAnswer,saveBulkAnswers,clearBulkAnswers} from '../rules/batch-machine-answers.mjs';
 import {consumeApprovalOtp,liveApprovalOtps,publicApprovalOtp} from '../services/vlb-approval-otp.mjs';
 import {batchStageWaits} from '../rules/vlb-batch-queue.mjs';
 import {previousBatchScope,batchOrderBlock} from '../../shared/vlb-batch-order.mjs';
@@ -346,6 +346,23 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
    const saved=await saveIdleAnswer(client,batch,req.params.assetId,req.body||{},req.batchActor.login);
    await auditVlbBatch(client,batch,req.batchActor.login,'machine_answer_idle',{assetId:req.params.assetId,book:saved.book,status:saved.status,reason:saved.reason});
    return saved;
+  }));
+ }));
+ // Machine roster (owner, 26 Nov 2026): one answer for every ticked machine of a book, all saved or none; and clear them.
+ app.put('/api/vlb-batches/:id/machines/answers',...protect,editRoute(async(req,res)=>{
+  res.json(await batchTransaction(req,async(client,batch)=>{
+   if(!mayEnterFleet(batch,req.batchActor))fail('Only the batch owner, an MIS user or an MIS administrator can answer machines for this batch.',403);
+   const saved=await saveBulkAnswers(client,batch,req.body||{},req.batchActor.login);
+   await auditVlbBatch(client,batch,req.batchActor.login,'machine_answer_bulk',{book:saved.book,status:saved.status,reason:saved.reason,assetIds:saved.assetIds});
+   return saved;
+  }));
+ }));
+ app.post('/api/vlb-batches/:id/machines/answers/clear',...protect,editRoute(async(req,res)=>{
+  res.json(await batchTransaction(req,async(client,batch)=>{
+   if(!mayEnterFleet(batch,req.batchActor))fail('Only the batch owner, an MIS user or an MIS administrator can answer machines for this batch.',403);
+   const done=await clearBulkAnswers(client,batch,req.body||{});
+   if(done.cleared)await auditVlbBatch(client,batch,req.batchActor.login,'machine_answer_cleared',{assetIds:done.assetIds});
+   return done;
   }));
  }));
  app.delete('/api/vlb-batches/:id/machines/:assetId/answer',...protect,editRoute(async(req,res)=>{

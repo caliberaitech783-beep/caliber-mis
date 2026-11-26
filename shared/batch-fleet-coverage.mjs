@@ -15,9 +15,9 @@ export const COVERAGE_BOOKS=Object.freeze([
 
 const text=value=>String(value??'').trim();
 
-// What a VLB or LMV machine with no card can be answered with (owner, 25 Nov 2026, part 2). Pulse is read from
-// Pulse-1; an idle reason is chosen by the MIS user, with a written reason. An ELB machine is answered on the ELB
-// fleet list, as before.
+// What a VLB, ELB or LMV machine with no card can be answered with (owner, 25 Nov 2026, part 2; ELB too and
+// "Breakdown not in Pulse-1" added 26 Nov 2026). Pulse is read from Pulse-1; an answer by hand is chosen by the MIS user,
+// with a written reason. An ELB machine is also answered by its ELB saved on the ELB fleet list.
 export const IDLE_REASONS=Object.freeze({
  no_operator:'No operator',
  not_in_use:'Not in use',
@@ -25,15 +25,28 @@ export const IDLE_REASONS=Object.freeze({
  standby:'Standby',
  transferred_out:'Transferred out / at another site',
 });
-export const ANSWER_LABELS=Object.freeze({card:'Card saved',pulse:'Breakdown / maintenance (Pulse-1)',pulse_idle:'Idle in Pulse-1',pulse_partial:'Part-shift breakdown in Pulse-1: card needed',...IDLE_REASONS});
-export const ANSWER_BOOKS=Object.freeze(['vlb','lmv']);
+// The answers by hand: the idle reasons, and a breakdown Pulse-1 has no entry for (counted as BD).
+export const HAND_ANSWERS=Object.freeze({...IDLE_REASONS,breakdown_not_in_pulse:'Breakdown not in Pulse-1'});
+export const ANSWER_LABELS=Object.freeze({card:'Card saved',pulse:'Breakdown / maintenance (Pulse-1)',pulse_idle:'Idle in Pulse-1',pulse_partial:'Part-shift breakdown in Pulse-1: card needed',...HAND_ANSWERS});
+export const ANSWER_BOOKS=Object.freeze(['vlb','elb','lmv']);
 export const MIN_REASON_LENGTH=3;
-const ANSWERED=new Set(['card','pulse','pulse_idle',...Object.keys(IDLE_REASONS)]);
+const ANSWERED=new Set(['card','pulse','pulse_idle',...Object.keys(HAND_ANSWERS)]);
 
-// The error for an idle answer, '' when it can be saved.
+// The roster code of a machine (owner, 26 Nov 2026): T trip card, BD breakdown / maintenance, ID idle, NA no answer yet.
+// An ELB saved on the ELB fleet list with a breakdown or maintenance status is BD, with no operator / not in use ID.
+const FLEET_BD=new Set(['breakdown','maintenance']),FLEET_ID=new Set(['no_operator','not_in_use']);
+export const ROSTER_CODES=Object.freeze({T:'Trip card',BD:'Breakdown / maintenance',ID:'Idle',NA:'No answer: fill the detail'});
+export function rosterCode(row={}){
+ if(!row.answer)return 'NA';
+ if(row.answer==='card')return FLEET_BD.has(row.fleetStatus)?'BD':FLEET_ID.has(row.fleetStatus)?'ID':'T';
+ if(row.answer==='pulse'||row.answer==='breakdown_not_in_pulse')return 'BD';
+ return 'ID';
+}
+
+// The error for an answer by hand, '' when it can be saved.
 export function idleAnswerIssue({book,status,reason}={}){
- if(!ANSWER_BOOKS.includes(book))return 'Only a VLB or LMV machine takes an idle reason here; an ELB machine is entered on the ELB fleet list.';
- if(!IDLE_REASONS[status])return 'Choose why the machine has no card: '+Object.values(IDLE_REASONS).join(', ')+'.';
+ if(!ANSWER_BOOKS.includes(book))return 'Only a VLB, ELB or LMV machine takes an answer here.';
+ if(!HAND_ANSWERS[status])return 'Choose why the machine has no card: '+Object.values(HAND_ANSWERS).join(', ')+'.';
  const written=text(reason);
  if(written.length<MIN_REASON_LENGTH)return 'Write the reason (at least '+MIN_REASON_LENGTH+' letters).';
  if(written.length>500)return 'Keep the reason under 500 letters.';
@@ -87,6 +100,7 @@ function bookCoverage(book,roster,answers,assets,saved=new Map(),pulse=null){
    rows.set(assetId,row);
   }
   row.answer=row.answer||answer.answer;
+  if(answer.fleetStatus)row.fleetStatus=answer.fleetStatus;
   row.cards.push(...answer.cards);
  }
  // A saved Pulse-1 or idle answer of a machine at the site. A card always wins over it.
@@ -107,11 +121,13 @@ function bookCoverage(book,roster,answers,assets,saved=new Map(),pulse=null){
   else if(status.breakdownHours>0)row.note=ANSWER_LABELS.pulse_partial;
  }
  const all=[...rows.values()].sort(byDoor);
+ for(const row of all)row.code=rosterCode(row);
  const missing=all.filter(row=>!row.answer);
  const atSite=all.filter(row=>row.atSite);
  const count=test=>atSite.filter(row=>test(row.answer)).length;
  return {book:book.key,label:book.label,total:atSite.length,answered:count(answer=>Boolean(answer)),
   cards:count(answer=>answer==='card'),pulse:count(answer=>answer==='pulse'),idle:count(answer=>answer==='pulse_idle'||Boolean(IDLE_REASONS[answer])),
+  codes:Object.fromEntries(Object.keys(ROSTER_CODES).map(code=>[code,atSite.filter(row=>row.code===code).length])),
   otherSite:all.filter(row=>!row.atSite).length,remaining:missing.length,missing,complete:missing.length===0,rows:all,takesAnswers:ANSWER_BOOKS.includes(book.key)};
 }
 
@@ -127,10 +143,10 @@ function cardAnswers(records){
 }
 
 // vlbRecords and lmvRecords: the batch's saved cards. elbFleet: the batch's ELB fleet list (a line counts once its
-// ELB is saved with a shift status, as Close batch reads it). answers: the batch's saved Pulse-1 / idle answers of
-// VLB and LMV machines, [{book,assetId,status,reason,breakdownHours,...}].
+// ELB is saved with a shift status, as Close batch reads it). answers: the batch's saved answers by hand of
+// VLB, ELB and LMV machines, [{book,assetId,status,reason,breakdownHours,...}].
 // pulse: Pulse-II's copy of Pulse's breakdown list and the batch's shift, {rows,window,now,readAt,error}; without it the
-// page says Pulse-1 could not be read and VLB / LMV machines are answered by card or by hand only.
+// page says Pulse-1 could not be read and machines are answered by card or by hand only.
 export function batchFleetCoverage({assets=[],site,vlbRecords=[],lmvRecords=[],elbFleet=[],elbRecords=[],answers=[],pulse=null}={}){
  const index=new Map(assets.map(asset=>[String(asset.id),asset]));
  const roster=siteRoster(assets,site);
@@ -149,15 +165,16 @@ export function batchFleetCoverage({assets=[],site,vlbRecords=[],lmvRecords=[],e
   if(!(row.saved_at&&(row.shift_status||row.shiftStatus)))continue;
   const id=String(row.assetId??row.asset_id),entry=elbAnswers.get(id)||{answer:'card',cards:[]};
   if(row.book_no&&!entry.cards.includes(row.book_no))entry.cards.push(row.book_no);
+  entry.fleetStatus=row.shift_status||row.shiftStatus;
   elbAnswers.set(id,entry);
  }
  const books={
   vlb:bookCoverage(COVERAGE_BOOKS[0],roster.vehicle,cardAnswers(vlbRecords),index,savedFor('vlb'),pulseFor(roster.vehicle)),
-  elb:bookCoverage(COVERAGE_BOOKS[1],elbRoster,elbAnswers,index),
+  elb:bookCoverage(COVERAGE_BOOKS[1],elbRoster,elbAnswers,index,savedFor('elb'),pulseFor(elbRoster)),
   lmv:bookCoverage(COVERAGE_BOOKS[2],roster.lmv,cardAnswers(lmvRecords),index,savedFor('lmv'),pulseFor(roster.lmv)),
  };
  const warnings=Object.values(books).filter(book=>!book.complete).map(coverageWarning);
- return {mode:'warning',books,complete:!warnings.length,warnings,idleReasons:IDLE_REASONS,answerLabels:ANSWER_LABELS,pulseRead};
+ return {mode:'warning',books,complete:!warnings.length,warnings,idleReasons:HAND_ANSWERS,rosterCodes:ROSTER_CODES,answerLabels:ANSWER_LABELS,pulseRead};
 }
 
 export function coverageWarning(book){
