@@ -10,9 +10,9 @@ import {vlbLockScanBlocker,closeScanBlocker} from './vlb-waiting-scans.mjs';
 // Live for all users. Set VLB_TWO_STAGE_BATCHES=0 (or off/false/no) to fall back to single-step batches.
 export const twoStageEnabled=(env=process.env)=>!['0','false','off','no'].includes(String(env.VLB_TWO_STAGE_BATCHES||'').trim().toLowerCase());
 
-export const BATCH_STAGES=Object.freeze(['vlb_open','elb_open','closed']);
-export const batchStage=batch=>batch?.closed_at?'closed':['lmv_open','elb_open'].includes(batch?.stage)?batch.stage:'vlb_open';
-export const stageLabel=stage=>({vlb_open:'VLB open',lmv_open:'LMV open',elb_open:'ELB open',closed:'Closed'})[stage]||stage;
+export const BATCH_STAGES=Object.freeze(['vlb_open','lmv_open','dlb_open','elb_open','closed']);
+export const batchStage=batch=>batch?.closed_at?'closed':['lmv_open','dlb_open','elb_open'].includes(batch?.stage)?batch.stage:'vlb_open';
+export const stageLabel=stage=>({vlb_open:'VLB open',lmv_open:'LMV open',dlb_open:'DLB open',elb_open:'ELB open',closed:'Closed'})[stage]||stage;
 
 export const FLEET_STATUSES=Object.freeze({
  working:{label:'Working',allowsTrips:true,needsOperator:true,needsHours:true},
@@ -26,6 +26,7 @@ export const NON_WORKING_STATUSES=Object.freeze(Object.keys(FLEET_STATUSES).filt
 
 export const VLB_TWO_STAGE_SCHEMA=`
  ALTER TABLE mis_vlb_batches ADD COLUMN IF NOT EXISTS lmv_locked_at TIMESTAMPTZ;
+ ALTER TABLE mis_vlb_batches ADD COLUMN IF NOT EXISTS dlb_locked_at TIMESTAMPTZ;
  ALTER TABLE mis_vlb_batches ADD COLUMN IF NOT EXISTS stage TEXT NOT NULL DEFAULT 'vlb_open';
  ALTER TABLE mis_vlb_batches ADD COLUMN IF NOT EXISTS vlb_locked_at TIMESTAMPTZ;
  ALTER TABLE mis_vlb_batches ADD COLUMN IF NOT EXISTS vlb_locked_by TEXT;
@@ -40,6 +41,9 @@ export const VLB_TWO_STAGE_SCHEMA=`
  CREATE TABLE IF NOT EXISTS mis_elb_batch_entries(
   batch_id UUID NOT NULL REFERENCES mis_vlb_batches(id),logbook_id BIGINT PRIMARY KEY REFERENCES mis_log_books(id),snapshot JSONB NOT NULL);
  CREATE INDEX IF NOT EXISTS mis_elb_batch_entries_batch ON mis_elb_batch_entries(batch_id);
+ CREATE TABLE IF NOT EXISTS mis_dlb_batch_entries(
+  batch_id UUID NOT NULL REFERENCES mis_vlb_batches(id),logbook_id BIGINT PRIMARY KEY REFERENCES mis_log_books(id),snapshot JSONB NOT NULL);
+ CREATE INDEX IF NOT EXISTS mis_dlb_batch_entries_batch ON mis_dlb_batch_entries(batch_id);
  CREATE TABLE IF NOT EXISTS mis_vehicle_transfer_otps(
   id UUID PRIMARY KEY,transfer_id BIGINT NOT NULL,batch_id UUID REFERENCES mis_vlb_batches(id),asset_id BIGINT NOT NULL,
   requested_by TEXT NOT NULL,requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),sent_to TEXT[] NOT NULL,channels TEXT[] NOT NULL DEFAULT '{}',
@@ -162,7 +166,7 @@ const needsElb=row=>elbTripCount(row)>0&&!hasSavedElb(row);
 // Closure requires saved ELBs for machines that loaded trips.
 export function closureBlockers({stage,fleet=[],holds=[],duplicates=[],waitingScans=[]}){
  const blockers=[];
- if(stage!=='elb_open')blockers.push(stage==='closed'?'This batch is already closed.':'Lock VLB and LMV before closing the batch.');
+ if(stage!=='elb_open')blockers.push(stage==='closed'?'This batch is already closed.':'Lock VLB, LMV and DLB before closing the batch.');
  const waiting=closeScanBlocker(waitingScans);if(waiting)blockers.push(waiting);
  if(holds.length)blockers.push('Awaiting transfer: '+describeHolds(holds)+'.');
  const missing=fleet.filter(needsElb).sort((a,b)=>b.trips-a.trips||String(a.door).localeCompare(String(b.door),undefined,{numeric:true}));

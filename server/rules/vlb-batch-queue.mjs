@@ -3,8 +3,8 @@ import {batchStage} from './vlb-two-stage.mjs';
 import {batchLocksPaused} from '../../shared/batch-lock-pause.mjs';
 import {multiDayBatches} from '../../shared/multi-day-batches.mjs';
 
-const stageOrder=['vlb_open','lmv_open','elb_open'];
-const stageNames=['VLB','LMV','ELB'];
+const stageOrder=['vlb_open','lmv_open','dlb_open','elb_open'];
+const stageNames=['VLB','LMV','DLB','ELB'];
 const active=batch=>!batch.closed_at&&!batch.archived_at&&!batch.deleted_at;
 
 // Rows arrive in creation order. The oldest unfinished batch at each stage

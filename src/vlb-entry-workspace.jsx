@@ -14,7 +14,7 @@ export const elbEntryBlocker=(kind,batch)=>{
  if(kind==='vehicle')return batch.closed_at||(batch.twoStage===true&&batch.stage!=='vlb_open')?'VLB batch '+batch.name+' is locked. Unlock or reopen the batch before adding Manual, Scan or Upload entries.':'';
  if(kind==='equipment'&&batch.closed_at&&batch.lmv_locked_at)return 'Reopen this batch before entering ELB cards.';
  if(kind==='lmv')return batch.closed_at||(batch.twoStage===true&&batch.stage!=='lmv_open')?'Select a batch with LMV open.':'';
- return batch.twoStage!==true||['elb_open','closed'].includes(batch.stage)?'':'Lock VLB and LMV in batch '+batch.name+' before entering ELB cards.';
+ return batch.twoStage!==true||['elb_open','closed'].includes(batch.stage)?'':'Lock VLB, LMV and DLB in batch '+batch.name+' before entering ELB cards.';
 };
 export default function VlbEntryWorkspace({kind,session,mode,ReportSection,ExportMenu,children,onExit,canDeleteElb}){
  const [selected,setSelected]=useState(null),[error,setError]=useState('');

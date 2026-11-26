@@ -29,13 +29,13 @@ export const TONE_LABELS={green:'Green',orange:'Orange',red:'Red'};
 export const WAIT_LIMIT=DELAY_LIMIT;
 // running: loaded a trip or showed hours. breakdown (red): did not run and was down. nohours (brown): did not run, not in BD.
 export const STATES={running:'Running',breakdown:'In BD',nohours:'No hours, not in BD'};
-export const STAGE_LABELS={vlb_open:'VLB still open',lmv_open:'VLB locked',elb_open:'VLB locked',closed:'Batch closed','':'No batch'};
+export const STAGE_LABELS={vlb_open:'VLB still open',lmv_open:'VLB locked',dlb_open:'VLB locked',elb_open:'VLB locked',closed:'Batch closed','':'No batch'};
 // A loading written up to 90 minutes before the shift starts or 2 hours after it ends still belongs to the shift.
 // Anything further out is a wrongly written time and is not judged.
 const EARLY=90,LATE=120;
 // Machines that load tippers. A machine named on any tipper card in the dates is a loading machine whatever its group.
 const LOADER_WORDS=/excavator|loader|shovel|backhoe|poclain/i;
-const STAGE_RANK={vlb_open:0,lmv_open:1,elb_open:2,closed:3};
+const STAGE_RANK={vlb_open:0,lmv_open:1,dlb_open:2,elb_open:3,closed:4};
 
 const text=v=>String(v??'').trim();
 const num=v=>v===null||v===undefined||text(v)===''||!Number.isFinite(Number(v))?null:Number(v);

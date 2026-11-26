@@ -14,8 +14,8 @@ export const ratingOf=percent=>percent===null||percent===undefined?'':percent>=G
 const indiaDate=time=>new Date(time+19800000).toISOString().slice(0,10);
 export const SHIFT_CODES=['S1','S2','S3','D','N'];
 export const SHIFT_LABELS={S1:'Shift A',S2:'Shift B',S3:'Shift C',D:'Shift Day',N:'Shift Night'};
-export const STAGE_LABELS={none:'Batch not created',vlb_open:'VLB open',lmv_open:'LMV open',elb_open:'ELB open',locked:'Locked'};
-export const PENDING_STAGES=['none','vlb_open','lmv_open','elb_open'];
+export const STAGE_LABELS={none:'Batch not created',vlb_open:'VLB open',lmv_open:'LMV open',dlb_open:'DLB open',elb_open:'ELB open',locked:'Locked'};
+export const PENDING_STAGES=['none','vlb_open','lmv_open','dlb_open','elb_open'];
 
 const fail=message=>{throw Object.assign(new Error(message),{status:400});};
 const ms=value=>value===null||value===undefined||value===''?null:new Date(value).getTime();
@@ -60,7 +60,7 @@ export function workingMinutes(times,limit=IDLE_LIMIT_MINUTES){
  return Math.round(total);
 }
 
-export const batchStageKey=batch=>!batch?'none':batch.closed_at?'locked':['lmv_open','elb_open'].includes(batch.stage)?batch.stage:'vlb_open';
+export const batchStageKey=batch=>!batch?'none':batch.closed_at?'locked':['lmv_open','dlb_open','elb_open'].includes(batch.stage)?batch.stage:'vlb_open';
 const lastEvent=(events,action)=>events.filter(e=>e.action===action).map(e=>ms(e.at)).sort((a,b)=>b-a)[0]??null;
 // Final lock times. An unlock clears the column, so a batch that moved on without it falls back to its history log.
 function milestones(batch,events){
@@ -115,7 +115,7 @@ function siteSummary(entry,rows){
  const pending=rows.filter(r=>r.stage!=='locked').sort((a,b)=>(a.shiftEnd||a.date).localeCompare(b.shiftEnd||b.date));
  const stageAverages=STAGE_HOUR_KEYS.map(([stage,key])=>({stage,hours:average(locked.map(r=>r[key]))})).filter(s=>s.hours!==null).sort((a,b)=>b.hours-a.hours);
  const percentDone=rows.length?Math.round(locked.length/rows.length*100):null;
- return {id:entry.key,siteKey:entry.key,site:entry.site,rank:null,percentDone,rating:ratingOf(percentDone),ratingLabel:RATING_LABELS[ratingOf(percentDone)]||'',todayShifts:entry.todayShifts??null,todayCounted:entry.todayCounted??null,due:rows.length,locked:locked.length,balance:rows.length-locked.length,notCreated:count('none'),vlbOpen:count('vlb_open'),lmvOpen:count('lmv_open'),elbOpen:count('elb_open'),
+ return {id:entry.key,siteKey:entry.key,site:entry.site,rank:null,percentDone,rating:ratingOf(percentDone),ratingLabel:RATING_LABELS[ratingOf(percentDone)]||'',todayShifts:entry.todayShifts??null,todayCounted:entry.todayCounted??null,due:rows.length,locked:locked.length,balance:rows.length-locked.length,notCreated:count('none'),vlbOpen:count('vlb_open'),lmvOpen:count('lmv_open'),dlbOpen:count('dlb_open'),elbOpen:count('elb_open'),
   oldestPending:pending[0]?displayDate(pending[0].date)+' '+pending[0].shiftLabel:'',oldestPendingHours:pending[0]?.pendingHours??null,
   timedLocked:timed.length,withinTarget:timed.filter(r=>r.lockHours<=TARGET_HOURS).length,withinTargetPercent:timed.length?Math.round(timed.filter(r=>r.lockHours<=TARGET_HOURS).length/timed.length*100):null,
   averageLockHours:average(timed.map(r=>r.lockHours)),slowestStage:stageAverages[0]?.stage||'',slowestStageHours:stageAverages[0]?.hours??null,rework:rows.reduce((n,r)=>n+(r.rework||0),0)};
@@ -128,7 +128,7 @@ export function rankSites(sites){
 }
 export function allSitesRow(sites){
  const sum=key=>sites.reduce((n,s)=>n+(s[key]||0),0),timed=sum('timedLocked'),percentDone=sum('due')?Math.round(sum('locked')/sum('due')*100):null,today=sites.some(s=>s.todayShifts!==null&&s.todayShifts!==undefined);
- return {id:'all-sites',siteKey:'',site:'ALL SITES',rank:null,percentDone,rating:ratingOf(percentDone),ratingLabel:RATING_LABELS[ratingOf(percentDone)]||'',todayShifts:today?sum('todayShifts'):null,todayCounted:today?sum('todayCounted'):null,due:sum('due'),locked:sum('locked'),balance:sum('balance'),notCreated:sum('notCreated'),vlbOpen:sum('vlbOpen'),lmvOpen:sum('lmvOpen'),elbOpen:sum('elbOpen'),oldestPending:'',oldestPendingHours:null,
+ return {id:'all-sites',siteKey:'',site:'ALL SITES',rank:null,percentDone,rating:ratingOf(percentDone),ratingLabel:RATING_LABELS[ratingOf(percentDone)]||'',todayShifts:today?sum('todayShifts'):null,todayCounted:today?sum('todayCounted'):null,due:sum('due'),locked:sum('locked'),balance:sum('balance'),notCreated:sum('notCreated'),vlbOpen:sum('vlbOpen'),lmvOpen:sum('lmvOpen'),dlbOpen:sum('dlbOpen'),elbOpen:sum('elbOpen'),oldestPending:'',oldestPendingHours:null,
   timedLocked:timed,withinTarget:sum('withinTarget'),withinTargetPercent:timed?Math.round(sum('withinTarget')/timed*100):null,
   averageLockHours:timed?round1(sites.reduce((n,s)=>n+(s.averageLockHours||0)*s.timedLocked,0)/timed):null,slowestStage:'',slowestStageHours:null,rework:sum('rework')};
 }
@@ -136,7 +136,7 @@ export function allSitesRow(sites){
 // The lines in plain words shown above each step. Worked out from the same rows as the table.
 export function sitesInsights(sites,total){
  if(!sites.length||!total.due)return [];
- const lines=[],parts=[['Batch not created',total.notCreated],['VLB open',total.vlbOpen],['LMV open',total.lmvOpen],['ELB open',total.elbOpen]].sort((a,b)=>b[1]-a[1]);
+ const lines=[],parts=[['Batch not created',total.notCreated],['VLB open',total.vlbOpen],['LMV open',total.lmvOpen],['DLB open',total.dlbOpen],['ELB open',total.elbOpen]].sort((a,b)=>b[1]-a[1]);
  lines.push(total.balance?`${total.balance} of ${total.due} shifts are not yet locked. Most of them: ${parts[0][0]} (${parts[0][1]}).`:`All ${total.due} shifts are locked.`);
  const names=list=>list.map(s=>s.site).join(', '),ranked=sites.filter(s=>s.rank),first=ranked.filter(s=>s.rank===1),lastRank=Math.max(0,...ranked.map(s=>s.rank)),last=ranked.filter(s=>s.rank===lastRank);
  if(lastRank>1)lines.push(`Rank 1: ${names(first)}, ${first[0].percentDone}% of due shifts locked. Last (rank ${lastRank}): ${names(last)}, ${last[0].percentDone}%.`);

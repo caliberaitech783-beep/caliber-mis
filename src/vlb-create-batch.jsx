@@ -22,7 +22,7 @@ import {SortableHeader,sortRowsBlanksLast} from './sortable-table.jsx';
 import './log-book-form.css';
 import './vlb-create-batch.css';
 
-export default function VlbCreateBatch({session,onExit,ReportSection,onManual,onScan,onLmvManual,onLmvScan,onApprovals,onSelected,entryMode,entryKind='vehicle',onElbEntry,onEquipmentElb,canDeleteManualElb}){
+export default function VlbCreateBatch({session,onExit,ReportSection,onManual,onScan,onLmvManual,onLmvScan,onDlbEntry,onApprovals,onSelected,entryMode,entryKind='vehicle',onElbEntry,onEquipmentElb,canDeleteManualElb}){
  const [options,setOptions]=useState(null),[selection,setSelection]=useState({site:'',date:systemBookDate(),shift:''});
  const [preview,setPreview]=useState(null),[batches,setBatches]=useState([]),[openBatch,setOpenBatch]=useState(null),[viewed,setViewed]=useState(null);
  const [error,setError]=useState(''),[busy,setBusy]=useState(false),[loading,setLoading]=useState(true),[refresh,setRefresh]=useState(0);
@@ -240,7 +240,7 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
    {twoStageList&&!viewed&&preview?.existingBatch&&<p role="status">A batch already exists for this site, date and shift.</p>}
   </section>
   {error&&<p className="logbook-message error" role="alert">{error}</p>}
- {openBatch&&<div className="vlb-batch-notice vlb-open-batch-notice" role="status"><strong>Open batch: {openBatch.restricted?'Site access changed':openBatch.name}</strong><p>{openBatch.stageWait||(twoStageList?(openBatch.stage==='elb_open'?'VLB is locked. Save ELBs for equipment with trips, then close and lock ELB. Equipment with zero trips is optional.':openBatch.stage==='lmv_open'?'Enter LMV cards, then lock LMV to open ELB.':'Enter VLB cards, then lock VLB to open LMV.'):'Continue Manual, Scan or Upload in this batch. Use Save & lock batch when finished.')}</p>{openBatch.restricted?<p>Your site assignment has changed. Contact an administrator to restore access before saving this batch.</p>:<div className="vlb-batch-actions"><button type="button" disabled={busy||detailLoading} onClick={()=>view(openBatch,true)}>Continue open batch</button>{twoStageList?(openBatch.stage==='elb_open'&&<button type="button" disabled={busy||openBatch.canClose===false} onClick={close}>Close &amp; lock ELB</button>):openBatch.canClose!==false&&<button type="button" disabled={busy} onClick={close}>Save &amp; lock batch</button>}</div>}</div>}
+ {openBatch&&<div className="vlb-batch-notice vlb-open-batch-notice" role="status"><strong>Open batch: {openBatch.restricted?'Site access changed':openBatch.name}</strong><p>{openBatch.stageWait||(twoStageList?(openBatch.stage==='elb_open'?'Save ELBs, then close and lock ELB.':openBatch.stage==='dlb_open'?'Enter DLB cards, then lock DLB to open ELB.':openBatch.stage==='lmv_open'?'Enter LMV cards, then lock LMV to open DLB.':'Enter VLB cards, then lock VLB to open LMV.'):'Continue Manual, Scan or Upload in this batch. Use Save & lock batch when finished.')}</p>{openBatch.restricted?<p>Your site assignment has changed. Contact an administrator to restore access before saving this batch.</p>:<div className="vlb-batch-actions"><button type="button" disabled={busy||detailLoading} onClick={()=>view(openBatch,true)}>Continue open batch</button>{twoStageList?(openBatch.stage==='elb_open'&&<button type="button" disabled={busy||openBatch.canClose===false} onClick={close}>Close &amp; lock ELB</button>):openBatch.canClose!==false&&<button type="button" disabled={busy} onClick={close}>Save &amp; lock batch</button>}</div>}</div>}
 
   <button type="button" onClick={()=>setShowDeleted(v=>!v)}>{showDeleted?'Hide deleted batches':'Deleted batches'}</button>
   {showDeleted&&<DeletedVlbBatches read={read} refresh={refresh} canManage={actor?.canCreate} onRestore={batch=>setRecovery({batch,operation:'restore'})} onPurge={batch=>setRecovery({batch,operation:'purge'})} onPurgeAll={()=>setRecovery({batch:{id:'all',name:'All deleted batches'},operation:'purge-all'})}/>}
@@ -284,14 +284,20 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
     {lockPaused&&['vlb_open','lmv_open'].includes(stage)&&<div className="vlb-batch-actions" role="group" aria-label="Entry while locking is off">
      {stage==='vlb_open'&&onLmvManual&&<button type="button" onClick={()=>onLmvManual(viewed)}>Add LMV manually</button>}
      {stage==='vlb_open'&&onLmvScan&&<button type="button" onClick={()=>onLmvScan(viewed)}>Scan or upload LMV PDF</button>}
-     <button type="button" className="vlb-approval-primary" disabled={busy||detailLoading||!viewed.canClose} onClick={()=>close(viewed)}>Close batch (locks VLB and LMV)</button>
+     <button type="button" className="vlb-approval-primary" disabled={busy||detailLoading||!viewed.canClose} onClick={()=>close(viewed)}>Close batch (locks VLB, LMV and DLB)</button>
     </div>}
     {stage==='vlb_open'&&<><div className="vlb-batch-actions"><button type="button" className="vlb-approval-primary" disabled={busy||detailLoading||!viewed.canLockVlb} onClick={()=>lockStage('vlb')}>Lock VLB</button><button type="button" disabled={busy} onClick={()=>setNewEquipment(v=>!v)}>{newEquipment?'Hide new equipment form':'Create new equipment'}</button></div>{(()=>{const shown=(viewed.lockBlockers||[]).filter(text=>text!==viewed.waitingScanMessage);return shown.length>0&&<p className="logbook-message" role="status">Lock VLB is blocked: {shown.join(' ')}</p>})()}</>}
     {lmvOpen&&<div className="vlb-batch-actions">
      {onLmvManual&&<button type="button" onClick={()=>onLmvManual(viewed)}>Add LMV manually</button>}
      {onLmvScan&&<button type="button" onClick={()=>onLmvScan(viewed)}>Scan or upload LMV PDF</button>}
      <button type="button" className="vlb-approval-primary" disabled={busy||detailLoading||!viewed.canLockLmv} onClick={()=>lockStage('lmv')}>Lock LMV</button>
-     {!lockPaused&&<button type="button" disabled>ELB entry · Lock LMV first</button>}
+     {!lockPaused&&<button type="button" disabled>DLB entry · Lock LMV first</button>}
+     {viewed.canUnlockVlb&&<button type="button" disabled={busy} onClick={unlockVlb}>Unlock VLB</button>}
+    </div>}
+    {stage==='dlb_open'&&<div className="vlb-batch-actions">
+     {onDlbEntry&&<button type="button" onClick={()=>onDlbEntry(viewed)}>Add Drill Log Book entry</button>}
+     <button type="button" className="vlb-approval-primary" disabled={busy||detailLoading||!viewed.canLockDlb} onClick={()=>lockStage('dlb')}>Lock DLB</button>
+     <button type="button" disabled>ELB entry · Lock DLB first</button>
      {viewed.canUnlockVlb&&<button type="button" disabled={busy} onClick={unlockVlb}>Unlock VLB</button>}
     </div>}
     {stage==='elb_open'&&<><div className="vlb-batch-actions">{onEquipmentElb&&!equipmentElbHidden&&<button type="button" className="vlb-approval-primary vlb-open-elb-button" disabled={busy||viewed.canEnterFleet===false} onClick={()=>onEquipmentElb(viewed)}>Process Equipment ELB</button>}<button type="button" aria-expanded={!equipmentElbHidden} aria-controls="vlb-equipment-elb-details" onClick={()=>setEquipmentElbHidden(v=>!v)}>{equipmentElbHidden?'Show Equipment ELB':'Hide Equipment ELB'}</button>{viewed.canUnlockVlb&&<button type="button" disabled={busy} onClick={unlockVlb}>Unlock VLB</button>}<button type="button" disabled={busy||detailLoading||!viewed.canClose} onClick={()=>close(viewed)}>Close &amp; lock ELB</button>{canDeleteManualElb&&<button type="button" disabled={busy||detailLoading} aria-expanded={deleteBatchId===viewed.id} onClick={()=>setDeleteBatchId(id=>id===viewed.id?null:viewed.id)}>Delete manual ELBs</button>}</div>
@@ -330,25 +336,26 @@ export function availableShifts(options,selection){
  return [...found.values()];
 }
 function batchStageCells(batch){
- const current=['vlb_open','lmv_open','elb_open','closed'].indexOf(batch.stage);
- return ['VLB','LMV','ELB'].map((name,index)=>index<current?'Locked':index>current?'Waiting':batch.stageWait||name+' open');
+ const current=['vlb_open','lmv_open','dlb_open','elb_open','closed'].indexOf(batch.stage);
+ return ['VLB','LMV','DLB','ELB'].map((name,index)=>index<current?'Locked':index>current?'Waiting':batch.stageWait||name+' open');
 }
 export function stageLabel(stage,batch){
- if(batch?.stageWait)return stage==='lmv_open'?'LMV waiting':'ELB waiting';
+ if(batch?.stageWait)return `${String(stage||'').replace('_open','').toUpperCase()} waiting`;
  if(stage==='lmv_open')return 'LMV open';
+ if(stage==='dlb_open')return 'DLB open';
  if(stage==='elb_open')return 'ELB open';
  if(stage==='closed'||batch?.closed_at)return 'ELB locked · Batch closed';
  if(stage==='vlb_open')return 'VLB open';
  return batch?.amendment_by?'Reopened':'Open';
 }
 export function StageSteps({stage,waiting}){
- return <ol className="vlb-stage-steps" aria-label="Batch stage">{[['vlb_open','1 VLB open'],['lmv_open','2 LMV open'],['elb_open','3 ELB open'],['closed','4 ELB locked · Batch closed']].map(([key,label])=><li key={key} aria-current={stage===key?'step':undefined} className={stage===key?'current':undefined}>{waiting&&stage===key?label.replace('open','waiting'):label}</li>)}</ol>;
+ return <ol className="vlb-stage-steps" aria-label="Batch stage">{[['vlb_open','1 VLB open'],['lmv_open','2 LMV open'],['dlb_open','3 DLB open'],['elb_open','4 ELB open'],['closed','5 ELB locked · Batch closed']].map(([key,label])=><li key={key} aria-current={stage===key?'step':undefined} className={stage===key?'current':undefined}>{waiting&&stage===key?label.replace('open','waiting'):label}</li>)}</ol>;
 }
 const shown=value=>value===0||String(value??'').trim()?String(value):'—';
 const meterNumber=value=>{const text=String(value??'').trim();const number=Number(text);return text&&Number.isFinite(number)?number:'';};
 // Site batches: Batch ID, Cards, the three stage columns (two-stage lists only) and Status sort; the action column does not.
-const siteBatchColumns=[['name','Batch ID'],['cards','Cards'],['vlb','VLB'],['lmv','LMV'],['elb','ELB'],['status','Status']];
-const batchStageKeys=['vlb','lmv','elb'];
+const siteBatchColumns=[['name','Batch ID'],['cards','Cards'],['vlb','VLB'],['lmv','LMV'],['dlb','DLB'],['elb','ELB'],['status','Status']];
+const batchStageKeys=['vlb','lmv','dlb','elb'];
 function batchListStatus(batch,twoStageList){return twoStageList?stageLabel(batch.stage,batch):batch.closed_at?'SAVED · LOCKED':batch.amendment_by?'REOPENED':'OPEN'}
 export function siteBatchValue(batch={},key,twoStageList){
  if(key==='name')return batch.name||'';

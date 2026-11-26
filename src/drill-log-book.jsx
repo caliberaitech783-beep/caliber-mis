@@ -4,22 +4,23 @@ import SmartSelect from './smart-select.jsx';
 import {canonicalSiteName} from '../shared/site-location.mjs';
 import {employeeAtLocation} from '../shared/log-book-access.mjs';
 import {matchingWorkOrders} from '../shared/trip-card-rules.mjs';
+import {bookShiftCode} from '../shared/trip-card-rules.mjs';
 import {DRILL_SHIFT_PERIODS,blankDrillBreakdown,drillJobMetrics,fixedDrillJobs,isDrillMachine} from '../shared/drill-log-book.mjs';
 import './drill-log-book.css';
 
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
-const fresh=()=>({location:'',bookDate:today(),assetId:'',workOrderId:'',employeeId:'',shiftId:'',shiftPeriod:'day',drillCardNo:'',compressorOpening:'',compressorClosing:'',machineOpening:'',machineClosing:'',jobRows:fixedDrillJobs(),breakdowns:[blankDrillBreakdown(),blankDrillBreakdown()],requestKey:crypto.randomUUID()});
+const fresh=(batch=null,shiftId='')=>({batchId:batch?.id||'',location:batch?.site||'',bookDate:batch?.report_date||today(),assetId:'',workOrderId:batch?.work_order_id?String(batch.work_order_id):'',employeeId:'',shiftId,shiftPeriod:'day',drillCardNo:'',compressorOpening:'',compressorClosing:'',machineOpening:'',machineClosing:'',jobRows:fixedDrillJobs(),breakdowns:[blankDrillBreakdown(),blankDrillBreakdown()],requestKey:crypto.randomUUID()});
 const delta=(a,b)=>a!==''&&b!==''&&Number.isFinite(Number(a))&&Number.isFinite(Number(b))&&Number(b)>=Number(a)?Math.round((Number(b)-Number(a))*1000)/1000:null;
 const show=value=>value===null||value===undefined?'—':Number(value).toLocaleString('en-IN',{maximumFractionDigits:3});
 
 function Field({label,children,wide=false}){return <label className={'dlb-field'+(wide?' wide':'')}><span>{label}</span>{children}</label>}
 
-export default function DrillLogBook({session}){
- const [form,setForm]=useState(fresh),[options,setOptions]=useState(null),[records,setRecords]=useState([]),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
+export default function DrillLogBook({session,onExit}){
+ const [form,setForm]=useState(fresh),[batch,setBatch]=useState(null),[options,setOptions]=useState(null),[records,setRecords]=useState([]),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
  const api=async(url,config={})=>{const response=await fetch(url,{...config,headers:{Authorization:`Bearer ${session.token}`,'Content-Type':'application/json',...config.headers}});const body=await response.json().catch(()=>({}));if(!response.ok)throw new Error(body.error||'Could not reach the Drill Log Book service.');return body};
- const load=async()=>{setLoading(true);setError('');try{const [masters,saved]=await Promise.all([api('/api/log-books/options'),api('/api/drill-log-books')]);setOptions(masters);setRecords(saved.records||[]);setForm(current=>current.location?current:{...current,location:masters.accountLocation||''});}catch(e){setError(e.message)}finally{setLoading(false)}};
+ const load=async()=>{setLoading(true);setError('');try{let batchId='';try{batchId=sessionStorage.getItem('vlb-entry-batch:'+String(session.login||session.name||''))||''}catch{}if(!batchId)throw new Error('Open the DLB stage from Create Batch before entering a Drill Log Book.');const [masters,saved,selected]=await Promise.all([api('/api/log-books/options'),api('/api/drill-log-books'),api('/api/vlb-batches/'+encodeURIComponent(batchId))]);if(selected.stage!=='dlb_open')throw new Error('This batch is not at the DLB stage. Lock LMV first, or return to Create Batch.');const shift=(masters.shifts||[]).find(row=>canonicalSiteName(row.site)===canonicalSiteName(selected.site)&&[row.shiftCode,row.shiftName,row.name].some(value=>bookShiftCode(value)===selected.shift));setBatch(selected);setOptions(masters);setRecords((saved.records||[]).filter(row=>row.data?.batchId===selected.id));setForm(fresh(selected,shift?String(shift.id):''));}catch(e){setError(e.message)}finally{setLoading(false)}};
  useEffect(()=>{void load()},[session.token]);
- const update=(key,value)=>{setNotice('');setForm(current=>({...current,[key]:value,...(key==='location'?{assetId:'',employeeId:'',shiftId:'',workOrderId:''}:{}),...(key==='bookDate'?{workOrderId:''}:{})}))};
+ const update=(key,value)=>{setNotice('');setForm(current=>({...current,[key]:value}))};
  const sameSite=row=>!form.location||canonicalSiteName(row.site)===canonicalSiteName(form.location);
  const rigs=useMemo(()=>(options?.assets||[]).filter(row=>isDrillMachine(row)&&sameSite(row)),[options,form.location]);
  const employees=useMemo(()=>(options?.employees||[]).filter(row=>!form.location||employeeAtLocation(row,form.location,form.bookDate)),[options,form.location,form.bookDate]);
@@ -30,20 +31,20 @@ export default function DrillLogBook({session}){
  useEffect(()=>{setForm(current=>{const valid=rigs.some(row=>String(row.id)===String(current.assetId)),assetId=valid?current.assetId:rigs.length===1?rigs[0].id:'';return assetId===current.assetId?current:{...current,assetId};});},[form.location,rigs]);
  const changeRow=(list,index,key,value)=>setForm(current=>({...current,[list]:current[list].map((row,i)=>i===index?{...row,[key]:value}:row)}));
  const removeRow=(list,index)=>setForm(current=>({...current,[list]:current[list].filter((_,i)=>i!==index)}));
- const submit=async event=>{event.preventDefault();setSaving(true);setError('');setNotice('');try{const saved=await api('/api/drill-log-books',{method:'POST',body:JSON.stringify(form)});setRecords(current=>[saved,...current.filter(row=>row.id!==saved.id)]);setNotice(`Saved ${saved.book_no}.`);setForm({...fresh(),location:form.location});}catch(e){setError(e.message)}finally{setSaving(false)}};
+ const submit=async event=>{event.preventDefault();setSaving(true);setError('');setNotice('');try{const saved=await api('/api/drill-log-books',{method:'POST',body:JSON.stringify(form)});setRecords(current=>[saved,...current.filter(row=>row.id!==saved.id)]);setNotice(`Saved ${saved.book_no}.`);setForm(fresh(batch,form.shiftId));}catch(e){setError(e.message)}finally{setSaving(false)}};
  if(loading)return <section className="dlb-page"><p role="status">Loading Drill Log Book…</p></section>;
  return <section className="dlb-page">
-  <header className="dlb-title"><div><h1>Drill Log Book</h1><p>DLB manual entry · only drill machines assigned to the selected site are available.</p></div><strong>Caliber Pulse-II · MIS Workspace</strong></header>
+  <header className="dlb-title"><div><h1>Drill Log Book</h1><p>{batch?`${batch.name} · DLB open`:'DLB manual entry'} · only drill machines assigned to the selected site are available.</p></div><div>{onExit&&<button type="button" onClick={onExit}>Back to batch</button>}<strong>Caliber Pulse-II · MIS Workspace</strong></div></header>
   {error&&<p className="dlb-message error" role="alert">{error}</p>}{notice&&<p className="dlb-message success" role="status">{notice}</p>}
   <form onSubmit={submit}>
    <div className="dlb-fields">
-    <Field label="Location"><SmartSelect searchable required value={form.location} disabled={!options?.canSelectSite} onChange={e=>update('location',e.target.value)}><option value="">Select location</option>{(options?.sites||[]).map(site=><option key={site} value={site}>{site}</option>)}</SmartSelect></Field>
+    <Field label="Location"><input readOnly value={form.location}/></Field>
     <Field label="Doc type"><input readOnly value="DLB"/></Field><Field label="Book date"><input required type="date" value={form.bookDate} onChange={e=>update('bookDate',e.target.value)}/></Field>
     <Field label="Book NO"><input readOnly value="AUTO"/></Field><Field label="Project name"><input readOnly value={form.location}/></Field>
     <Field label="Door NO"><SmartSelect searchable required value={form.assetId} onChange={e=>update('assetId',e.target.value)}><option value="">Select site drill machine</option>{rigs.map(row=><option key={row.id} value={row.id}>{row.door||row.name} · {row.name}</option>)}</SmartSelect><small>{form.location?rigs.length===1?'Fetched automatically from Equipment Master':`${rigs.length} drill machines fetched from Equipment Master for this site`:'Select location first'}</small></Field>
     <Field label="WO / Contract"><SmartSelect searchable value={form.workOrderId} onChange={e=>update('workOrderId',e.target.value)}><option value="">Select Work Order</option>{workOrders.map(row=><option key={row.id} value={row.id}>{row.number}</option>)}</SmartSelect></Field>
     <Field label="Employee ID"><SmartSelect searchable required value={form.employeeId} onChange={e=>update('employeeId',e.target.value)}><option value="">Select operator</option>{employees.map(row=><option key={row.id} value={row.id}>{row.caliberId} · {row.name}</option>)}</SmartSelect></Field>
-    <Field label="Shift"><SmartSelect searchable required value={form.shiftId} onChange={e=>update('shiftId',e.target.value)}><option value="">Select shift</option>{shifts.map(row=><option key={row.id} value={row.id}>{row.name}</option>)}</SmartSelect></Field>
+    <Field label="Shift"><SmartSelect searchable required value={form.shiftId} onChange={e=>update('shiftId',e.target.value)}><option value="">Select batch shift</option>{shifts.filter(row=>[row.shiftCode,row.shiftName,row.name].some(value=>bookShiftCode(value)===batch?.shift)).map(row=><option key={row.id} value={row.id}>{row.name}</option>)}</SmartSelect></Field>
     <Field label="Shift Hrs"><select required value={form.shiftPeriod} onChange={e=>update('shiftPeriod',e.target.value)}>{DRILL_SHIFT_PERIODS.map(row=><option key={row.id} value={row.id}>{row.label}</option>)}</select></Field>
     <Field label="Drill card NO"><input value={form.drillCardNo} onChange={e=>update('drillCardNo',e.target.value)}/></Field>
    </div>

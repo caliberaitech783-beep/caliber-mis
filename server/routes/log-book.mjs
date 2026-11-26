@@ -104,7 +104,7 @@ export function normalizeDrillLogBook(input={}){
   const startTime=text(row.startTime,8),endTime=text(row.endTime,8);if((startTime||endTime)&&(!/^\d{2}:\d{2}$/.test(startTime)||!/^\d{2}:\d{2}$/.test(endTime)))fail(`Enter both valid start and end times in breakdown row ${index+1}.`);
   return {detail:text(row.detail,500),startTime,endTime,actionTaken:text(row.actionTaken,1000),mechanic:text(row.mechanic,200),tmExecution:text(row.tmExecution,500),remark:text(row.remark,1000)};
  });
- return {docType:'DLB',bookDate,location,projectName:text(input.projectName||location,200),assetId,employeeId,shiftId,workOrderId,shiftPeriod,shiftHours,drillCardNo:text(input.drillCardNo,100),compressorOpening,compressorClosing,compressorRunning,machineOpening,machineClosing,machineRunning,jobs,breakdowns,requestKey:text(input.requestKey||randomUUID())};
+ return {docType:'DLB',batchId:text(input.batchId),bookDate,location,projectName:text(input.projectName||location,200),assetId,employeeId,shiftId,workOrderId,shiftPeriod,shiftHours,drillCardNo:text(input.drillCardNo,100),compressorOpening,compressorClosing,compressorRunning,machineOpening,machineClosing,machineRunning,jobs,breakdowns,requestKey:text(input.requestKey||randomUUID())};
 }
 
 export function employeeCode(record={}){return text(record.employeeId||record.empId||record.employeeCode||record.empCode||record.caliberId||record.code||record.idNo);}
@@ -503,6 +503,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
   try{
    await ensure();
    const data=normalizeDrillLogBook(req.body||{});requireLogBookSite(req.logBookScope,data.location);
+   if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(data.batchId))fail('Open the DLB stage from Create Batch before saving.',409);
    if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(data.requestKey))fail('Invalid save reference.');
    const ids=[data.assetId,data.employeeId,data.shiftId,...(data.workOrderId?[data.workOrderId]:[])];
    const masters=(await pool.query('SELECT id,master_name,record_data FROM master_records WHERE id=ANY($1::bigint[])',[ids])).rows;
@@ -518,6 +519,11 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
    if(data.workOrderId){const row=masters.find(item=>String(item.id)===String(data.workOrderId)&&woNames.includes(item.master_name));workOrder=row?.record_data;if(!workOrder||!matchingWorkOrders([{...workOrder,id:String(row.id)}],data.location,data.bookDate).length)fail('Select an active Work Order for this location and date.');}
    Object.assign(data,{rigNo:text(asset.door||asset.doorNo||equipmentDoorNumber(asset)),rigName:text(asset.equipmentName||asset.equipment||asset.name||asset.group),operatorName:text(employee.employee||employee.name||employee.login),caliberId:employeeCode(employee),shiftName:text(shift.shiftName||shift.name||shift.shift),workOrderContract:workOrder?woNumber(workOrder):''});
    client=await pool.connect();await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[data.requestKey]);
+   const batch=(await client.query('SELECT *,book_date::text AS report_date FROM mis_vlb_batches WHERE id=$1 AND archived_at IS NULL AND deleted_at IS NULL FOR UPDATE',[data.batchId])).rows[0];
+   if(!batch||batch.closed_at)fail('This batch is unavailable. Open an active batch at the DLB stage.',409);
+   if(batch.stage!=='dlb_open')fail('DLB entry is available only after LMV is locked and before DLB is locked.',409);
+   if(canonicalSiteName(batch.site)!==canonicalSiteName(data.location)||batch.report_date!==data.bookDate)fail('The DLB must retain its batch site and date.',409);
+   if(bookShiftCode(shift.shiftCode||shift.shiftName||shift.name)!==batch.shift)fail('Select the shift belonging to this batch.',409);
    const prior=(await client.query("SELECT id,book_no,book_type,data,revision,created_at,updated_at,created_by FROM mis_log_books WHERE request_key=$1",[data.requestKey])).rows[0];
    if(prior){if(prior.created_by!==(req.session.login||req.session.name)||prior.book_type!=='dlb')fail('Save reference already used.',409);await client.query('COMMIT');client.release();client=null;return res.json(prior);}
    const duplicate=(await client.query("SELECT book_no FROM mis_log_books WHERE book_type='dlb' AND deleted_at IS NULL AND book_date=$1 AND site=$2 AND asset_id=$3 AND data->>'shiftId'=$4 LIMIT 1",[data.bookDate,data.location,data.assetId,String(data.shiftId)])).rows[0];
@@ -525,6 +531,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
    const counter=(await client.query("INSERT INTO mis_log_book_counters(book_type,book_date,last_number) VALUES('dlb',$1,1) ON CONFLICT(book_type,book_date) DO UPDATE SET last_number=mis_log_book_counters.last_number+1 RETURNING last_number",[data.bookDate])).rows[0].last_number;
    const [year,month,day]=data.bookDate.split('-'),bookNo=`CAL/DLB/${day}-${month}-${year.slice(-2)}/${String(counter).padStart(3,'0')}`;
    const result=(await client.query("INSERT INTO mis_log_books(book_no,book_type,book_date,site,asset_id,data,request_key,created_by) VALUES($1,'dlb',$2,$3,$4,$5::jsonb,$6,$7) RETURNING id,book_no,book_type,data,revision,created_at,updated_at",[bookNo,data.bookDate,data.location,data.assetId,JSON.stringify(data),data.requestKey,req.session.login||req.session.name])).rows[0];
+   await client.query('INSERT INTO mis_dlb_batch_entries(batch_id,logbook_id,snapshot) VALUES($1,$2,$3::jsonb)',[batch.id,result.id,JSON.stringify(result)]);
    await client.query('COMMIT');client.release();client=null;filterLogBookSites.remember(data.location);res.status(201).json(result);
   }catch(error){if(client)await client.query('ROLLBACK').catch(()=>{});if(error.status)return res.status(error.status).json({error:error.message});next(error)}finally{client?.release()}
  });

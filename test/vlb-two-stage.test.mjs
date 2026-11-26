@@ -186,16 +186,22 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
  assert.equal(acceptedLmv.status,201,JSON.stringify(acceptedLmv.data));
  const nextElb=await call(nextPath+'/lock-lmv','POST',{},'bob');
  assert.equal(nextElb.status,200,JSON.stringify(nextElb.data));
- assert.match(nextElb.data.stageWait,/Close ELB/);
+ assert.match(nextElb.data.stageWait,/Close DLB/);
  assert.equal((await call('/api/vlb-batches')).data.batches.find(row=>row.id===next.data.id).stageWait,nextElb.data.stageWait);
+ const lockedDlb=await call(batch+'/lock-dlb','POST',{});
+ assert.equal(lockedDlb.status,200,JSON.stringify(lockedDlb.data));
+ assert.equal(lockedDlb.data.stage,'elb_open');
+ const nextDlb=await call(nextPath+'/lock-dlb','POST',{},'bob');
+ assert.equal(nextDlb.status,200,JSON.stringify(nextDlb.data));
+ assert.match(nextDlb.data.stageWait,/Lock ELB/);
  assert.equal((await call(nextPath+'/fleet/'+ids['VPC-019']+'/draft','PUT',{draft:{skipped:true}},'bob')).status,409);
  assert.equal((await call(nextPath+'/close','POST',{},'bob')).status,409);
  assert.equal((await call('/api/log-books/lmv','POST',lmv())).status,409);
  assert.equal((await call('/api/log-books/lmv/'+savedLmv.data.id,'DELETE',{revision:savedLmv.data.revision})).status,409);
- assert.equal(locked.data.stage,'elb_open');assert.ok(locked.data.vlb_locked_at);assert.equal(locked.data.canClose,true);assert.equal(locked.data.canContinue,false);
- assert.deepEqual(locked.data.machines.map(m=>[m.label,m.trips,m.sourceCards]),[['VPC-019',8,1],['VPC-077',4,1]]);
- assert.deepEqual(locked.data.fleet.map(r=>[r.door,r.trips]),[['VPC-019',8],['VPC-077',4],['D1',0]],'manual ELB contains loaders and unused site equipment');
- assert.equal(locked.data.fleetProgress.total,3);
+ assert.ok(lockedDlb.data.vlb_locked_at);assert.ok(lockedDlb.data.dlb_locked_at);assert.equal(lockedDlb.data.canClose,true);assert.equal(lockedDlb.data.canContinue,false);
+ assert.deepEqual(lockedDlb.data.machines.map(m=>[m.label,m.trips,m.sourceCards]),[['VPC-019',8,1],['VPC-077',4,1]]);
+ assert.deepEqual(lockedDlb.data.fleet.map(r=>[r.door,r.trips]),[['VPC-019',8],['VPC-077',4],['D1',0]],'manual ELB contains loaders and unused site equipment');
+ assert.equal(lockedDlb.data.fleetProgress.total,3);
  // The batch page reads the batch every 10 s. A read writes the machine list only when a machine is
  // missing from it, in one statement, and uses one connection that it always returns.
  const fleetWrites=()=>statements.filter(sql=>sql.includes('INSERT INTO mis_vlb_batch_fleet')).length;

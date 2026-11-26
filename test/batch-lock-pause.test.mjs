@@ -128,7 +128,7 @@ test('while the pause runs, VLB, LMV and ELB cards save in every open stage and 
 test('the batch page shows the pause and opens entry in every stage while it runs',()=>{
  const page=readFileSync(new URL('../src/vlb-create-batch.jsx',import.meta.url),'utf8');
  assert.match(page,/lockPaused&&!viewed\.closed_at&&viewed\.lockPause\?\.note/);
- assert.match(page,/Close batch \(locks VLB and LMV\)/);
+ assert.match(page,/Close batch \(locks VLB, LMV and DLB\)/);
  assert.match(page,/const lmvList=lmvOpen&&!lockPaused;/);
  const route=readFileSync(new URL('../server/routes/vlb-batches.mjs',import.meta.url),'utf8');
  assert.match(route,/if\(twoStageEnabled\(\)&&batchLocksPaused\(\)\)\{\r?\n   if\(batchStage\(batch\)==='vlb_open'\)batch=await lockVlb/);

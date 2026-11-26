@@ -2,8 +2,8 @@ import React from 'react';
 
 // Scanned cards of this site/date/shift that are not saved yet (server rules/vlb-waiting-scans.mjs).
 // The batch counts saved cards only, so without this list nobody saw them before locking.
-const STAGE_BOOKS={vlb_open:['vlb'],lmv_open:['vlb','lmv'],elb_open:['vlb','lmv','elb']};
-const STAGE_ACTION={vlb_open:'Lock VLB',lmv_open:'Lock LMV',elb_open:'Close & lock ELB'};
+const STAGE_BOOKS={vlb_open:['vlb'],lmv_open:['vlb','lmv'],dlb_open:['vlb','lmv'],elb_open:['vlb','lmv','elb']};
+const STAGE_ACTION={vlb_open:'Lock VLB',lmv_open:'Lock LMV',dlb_open:'Lock DLB',elb_open:'Close & lock ELB'};
 
 export function stageWaitingScans(entries=[],stage){
  const books=STAGE_BOOKS[stage]||[];

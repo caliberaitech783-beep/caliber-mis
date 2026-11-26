@@ -52,8 +52,10 @@ test('DLB API saves a site drill, numbers it, blocks duplicates and returns the 
  const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.on('listening',resolve));t.after(()=>{server.closeAllConnections();server.close()});const url=`http://127.0.0.1:${server.address().port}`;
  const call=async(path,method='GET',body)=>{const response=await fetch(url+path,{method,headers:{Authorization:'admin','Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return {status:response.status,data:await response.json()}};
  const options=await call('/api/log-books/options');assert.equal(options.status,200);assert.equal(options.data.assets[0].group,'DRILL');assert.equal(isDrillMachine(options.data.assets[0]),true);
- const body={...base(),bookDate:'2026-11-26',requestKey:randomUUID()};const saved=await call('/api/drill-log-books','POST',body);
+ const batchId=randomUUID();await db.query("INSERT INTO mis_vlb_batches(id,name,site,book_date,shift,sequence,created_by,request_key,stage,vlb_locked_at,lmv_locked_at) VALUES($1,'DLB test batch','Jayant OB','2026-11-26','S2',1,'dlb-test',$2,'dlb_open',NOW(),NOW())",[batchId,randomUUID()]);
+ const body={...base(),batchId,bookDate:'2026-11-26',requestKey:randomUUID()};const saved=await call('/api/drill-log-books','POST',body);
  assert.equal(saved.status,201,JSON.stringify(saved.data));assert.equal(saved.data.book_no,'CAL/DLB/26-11-26/001');assert.equal(saved.data.data.rigNo,'DR-01');assert.equal(saved.data.data.operatorName,'Drill Operator');
+ assert.equal((await db.query('SELECT count(*)::int AS n FROM mis_dlb_batch_entries WHERE batch_id=$1',[batchId])).rows[0].n,1);
  const duplicate=await call('/api/drill-log-books','POST',{...body,requestKey:randomUUID()});assert.equal(duplicate.status,409);assert.match(duplicate.data.error,/already exists/);
  const register=await call('/api/drill-log-books');assert.equal(register.status,200);assert.deepEqual(register.data.records.map(row=>row.book_no),['CAL/DLB/26-11-26/001']);
 });

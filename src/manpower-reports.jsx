@@ -22,7 +22,7 @@ const person=[['employeeId','Employee ID'],['caliberCode','Caliber ID'],['employ
 const EVERY='*';
 // Shift A, B and C everywhere (S1, S2, S3 on the cards), as the Shift Master names them; Day and Night at Dudhichua East.
 const shiftName=code=>shiftChoiceLabel(code)||code;
-const stageName=state=>({vlb_open:'VLB open',lmv_open:'LMV open',elb_open:'ELB open'})[state]||'Open';
+const stageName=state=>({vlb_open:'VLB open',lmv_open:'LMV open',dlb_open:'DLB open',elb_open:'ELB open'})[state]||'Open';
 const batchOpen=b=>/_open$/.test(b.state);
 const shortDate=date=>date.slice(8,10)+'-'+date.slice(5,7)+'-'+date.slice(2,4);
 const weekday=date=>new Date(date+'T00:00:00Z').toLocaleString('en-IN',{weekday:'short',timeZone:'UTC'});

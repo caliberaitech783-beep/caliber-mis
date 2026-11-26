@@ -26,6 +26,7 @@ import {shiftWindow} from '../../shared/pulse-shift-status.mjs';
 import {mirrorReadAt} from '../services/pulse-breakdown-mirror.mjs';
 import {ACTIVE_VLB_ENTRY_FROM,ACTIVE_VLB_ENTRY_FILTER} from './vlb-card-counts.mjs';
 import {readWaitingScans,vlbLockScanBlocker,lmvLockScanBlocker,closeScanBlocker} from './vlb-waiting-scans.mjs';
+import {isDrillMachine} from '../../shared/drill-log-book.mjs';
 const batchWaitingScans=(client,batch)=>readWaitingScans(client,{site:batch.site,date:batch.report_date,shift:batch.shift});
 
 const fail=batchFail;
@@ -63,6 +64,12 @@ export async function batchLmvRecords(client,batch){
  const {rows}=await client.query("SELECT id,book_no,book_type,data,revision FROM mis_log_books WHERE book_type='lmv' AND book_date=$1 AND deleted_at IS NULL ORDER BY id",[batch.report_date]);
  return rows.filter(record=>canonicalSiteName(record.data?.location)===canonicalSiteName(batch.site)&&vlbRecordScope(record.data).shift===batch.shift);
 }
+export async function batchDlbRecords(client,batch){
+ const {rows}=await client.query(`SELECT l.id,l.book_no,l.book_type,l.data,l.revision,l.created_at,l.updated_at
+  FROM mis_dlb_batch_entries e JOIN mis_log_books l ON l.id=e.logbook_id
+  WHERE e.batch_id=$1 AND l.deleted_at IS NULL ORDER BY l.id`,[batch.id]);
+ return rows;
+}
 async function activeVlbCards(client,batch){
  return (await client.query(`SELECT l.id,l.book_no,l.asset_id,l.data FROM ${ACTIVE_VLB_ENTRY_FROM} WHERE e.batch_id=$1 AND ${ACTIVE_VLB_ENTRY_FILTER}`,[batch.id])).rows;
 }
@@ -95,7 +102,7 @@ async function machineRows(client,batch){
 export async function stageDetails(client,batch,{assets,tripCardRecords,vlbCards,lmvRecords,pulseRows}={}){
  if(!twoStageEnabled())return {twoStage:false,stage:batch.closed_at?'closed':'open'};
  assets??=await equipmentAssets(client);
- const stage=batchStage(batch),vlb=await batchVlbRecords(client,batch),elb=await batchElbRecords(client,batch);
+ const stage=batchStage(batch),vlb=await batchVlbRecords(client,batch),elb=await batchElbRecords(client,batch),dlb=await batchDlbRecords(client,batch);
  const holds=[];for(const hold of holdSummary([...vlb,...elb],assets))holds.push({...hold,pendingTransfer:await pendingTransferFor(client,hold.assetId).catch(()=>null)});
  const machines=stage==='vlb_open'?buildMachineSnapshot(vlb,assets,batch.site).machines:await machineRows(client,batch);
  let fleet=stage==='vlb_open'?[]:await fleetRows(client,batch);
@@ -137,7 +144,7 @@ export async function stageDetails(client,batch,{assets,tripCardRecords,vlbCards
  const rosterShown=machineRosterShown();
  const coverage=rosterShown||coverageStop(batch).active?await machineCoverage(client,batch,{assets,vlbRecords:vlbCards,lmvRecords,fleet,elbRecords:elb,pulseRows}):null;
  const fleetCoverage=rosterShown?coverage:null,stop=coverage?.stop;
- return {twoStage:true,stage,stageWait:await readBatchStageWait(client,batch),holds,machines,fleet,fleetProgress:progress,elbRecords:elb,elbTripCardRows,waitingScans,waitingScanMessage,fleetCoverage,
+ return {twoStage:true,stage,stageWait:await readBatchStageWait(client,batch),holds,machines,fleet,fleetProgress:progress,elbRecords:elb,dlbRecords:dlb,elbTripCardRows,waitingScans,waitingScanMessage,fleetCoverage,
   lockBlockers:stage==='vlb_open'?[...lockBlockers({stage,records:vlb,holds,unresolved:buildMachineSnapshot(vlb,assets,batch.site).unresolved,waitingScans}),...coverageBlockers(coverage,['vlb'],stop)]:[],
   lmvLockBlockers:stage==='lmv_open'?[...(lmvWaiting?[lmvWaiting]:[]),...coverageBlockers(coverage,['lmv'],stop)]:[],
   closeBlockers:stage==='elb_open'?[...closureBlockers({stage,fleet,holds,duplicates,waitingScans}),...coverageBlockers(coverage,['vlb','elb','lmv'],stop)]:[],machineReport:report,statuses:FLEET_STATUSES};
@@ -199,27 +206,27 @@ export async function lockVlb(client,batch,actor,{assets,pulseRows}={}){
   FROM jsonb_array_elements($2::jsonb) r
   ON CONFLICT(batch_id,asset_id) DO UPDATE SET door=EXCLUDED.door,equipment_name=EXCLUDED.equipment_name,equipment_group=EXCLUDED.equipment_group,trips=EXCLUDED.trips,source_cards=EXCLUDED.source_cards,draft=NULL`,[batch.id,JSON.stringify(fleetLines)]);
  await client.query('DELETE FROM mis_vlb_batch_fleet WHERE batch_id=$1 AND logbook_id IS NULL AND NOT (asset_id=ANY($2::bigint[]))',[batch.id,fleet.map(r=>Number(r.assetId))]);
- const locked=(await client.query("UPDATE mis_vlb_batches SET stage='lmv_open',lmv_locked_at=NULL,vlb_locked_at=NOW(),vlb_locked_by=$2 WHERE id=$1 RETURNING *,book_date::text AS report_date",[batch.id,batchLogin(actor)])).rows[0];
+ const locked=(await client.query("UPDATE mis_vlb_batches SET stage='lmv_open',lmv_locked_at=NULL,dlb_locked_at=NULL,vlb_locked_at=NOW(),vlb_locked_by=$2 WHERE id=$1 RETURNING *,book_date::text AS report_date",[batch.id,batchLogin(actor)])).rows[0];
  await auditVlbBatch(client,batch,actor,'vlb_locked',{machines:snapshot.machines,fleetCount:fleet.length,linkedElbEntries:fleet.filter(row=>Number(row.trips)>0).length,cards:records.length});
  return locked;
 }
 
 export async function unlockVlb(client,batch,actor,{reason='',approvedBy=null,via='screen'}={}){
- if(!['lmv_open','elb_open'].includes(batchStage(batch)))fail(batch.closed_at?'Reopen the batch before unlocking VLB.':'VLB is not locked for this batch.',409);
+ if(!['lmv_open','dlb_open','elb_open'].includes(batchStage(batch)))fail(batch.closed_at?'Reopen the batch before unlocking VLB.':'VLB is not locked for this batch.',409);
  // Unlock routes hold the exclusive batch write lock because this can make a later stage wait again.
  const {rows}=await client.query("SELECT site,name FROM mis_vlb_batches WHERE id<>$1 AND book_date=$2 AND stage='vlb_open' AND closed_at IS NULL AND archived_at IS NULL AND deleted_at IS NULL AND book_date>=$$2026-11-01$$",[batch.id,batch.report_date||batch.book_date]);
  // While several shifts of a date may be open together (shared/multi-day-batches.mjs) another VLB-open batch does not stop it.
  const active=!multiDayBatches()&&rows.find(row=>canonicalSiteName(row.site)===canonicalSiteName(batch.site));
  if(active)fail('Lock VLB in '+active.name+' before unlocking VLB for this batch.',409);
  await client.query('DELETE FROM mis_vlb_batch_machines WHERE batch_id=$1',[batch.id]);
- const opened=(await client.query("UPDATE mis_vlb_batches SET stage='vlb_open',lmv_locked_at=NULL,vlb_locked_at=NULL,vlb_locked_by=NULL WHERE id=$1 RETURNING *,book_date::text AS report_date",[batch.id])).rows[0];
+ const opened=(await client.query("UPDATE mis_vlb_batches SET stage='vlb_open',lmv_locked_at=NULL,dlb_locked_at=NULL,vlb_locked_at=NULL,vlb_locked_by=NULL WHERE id=$1 RETURNING *,book_date::text AS report_date",[batch.id])).rows[0];
  await auditVlbBatch(client,batch,actor,'vlb_unlocked',{reason,via,...(approvedBy?{approvedBy}:{})});
  return opened;
 }
 
 export async function assertCloseAllowed(client,batch,{assets,pulseRows}={}){
  if(!twoStageEnabled())return;
- if(batchStage(batch)!=='elb_open')fail('Lock VLB and LMV before closing the batch.',409);
+ if(batchStage(batch)!=='elb_open')fail('Lock VLB, LMV and DLB before closing the batch.',409);
  const details=await stageDetails(client,batch,{assets,pulseRows});
  if(details.stageWait)fail(details.stageWait,409);
  if(details.closeBlockers.length)fail(details.closeBlockers.join(' '),409);
@@ -349,8 +356,20 @@ export async function lockLmv(client,batch,actor,{pulseRows}={}){
  if(waiting)fail(waiting,409);
  // From the stop date every LMV machine of the site needs an answer first (shared/batch-coverage-stop.mjs).
  if(coverageStop(batch).active){const coverage=await machineCoverage(client,batch,{pulseRows});const blockers=coverageBlockers(coverage,['lmv'],coverage.stop);if(blockers.length)fail(blockers.join(' '),409);}
- const locked=(await client.query("UPDATE mis_vlb_batches SET stage='elb_open',lmv_locked_at=NOW() WHERE id=$1 RETURNING *,book_date::text AS report_date",[batch.id])).rows[0];
+ const locked=(await client.query("UPDATE mis_vlb_batches SET stage='dlb_open',lmv_locked_at=NOW(),dlb_locked_at=NULL WHERE id=$1 RETURNING *,book_date::text AS report_date",[batch.id])).rows[0];
  await auditVlbBatch(client,batch,actor,'lmv_locked');
+ return locked;
+}
+
+export async function lockDlb(client,batch,actor){
+ if(!twoStageEnabled()||batchStage(batch)!=='dlb_open')fail('DLB must be open before it can be locked.',409);
+ await requireStageTurn(client,batch);
+ const assets=await equipmentAssets(client);
+ const drills=assets.filter(asset=>isDrillMachine(asset)&&canonicalSiteName(asset.currentLocation||asset.site||asset.location)===canonicalSiteName(batch.site));
+ const saved=await batchDlbRecords(client,batch);
+ if(drills.length&&!saved.length)fail('Add at least one Drill Log Book entry before locking DLB.',409);
+ const locked=(await client.query("UPDATE mis_vlb_batches SET stage='elb_open',dlb_locked_at=NOW() WHERE id=$1 RETURNING *,book_date::text AS report_date",[batch.id])).rows[0];
+ await auditVlbBatch(client,batch,actor,'dlb_locked',{cards:saved.length,siteDrills:drills.length});
  return locked;
 }
 
@@ -375,7 +394,7 @@ export async function assertElbBatchWrite(client,data,{adding=false}={}){
  if(batch.archived_at||batch.deleted_at)fail('This batch is unavailable. Open an active site/date/shift batch before saving.',409);
  const stage=batchStage(batch);
  // While locking is paused ELB cards are saved before VLB and LMV are locked too; Lock VLB keeps them.
- if((stage==='vlb_open'||stage==='lmv_open')&&!batchLocksPaused())fail('Lock VLB and LMV for batch '+batch.name+' before saving ELB cards.',409);
+ if((stage==='vlb_open'||stage==='lmv_open'||stage==='dlb_open')&&!batchLocksPaused())fail('Lock VLB, LMV and DLB for batch '+batch.name+' before saving ELB cards.',409);
  if(stage==='closed'&&batch.lmv_locked_at)fail('This batch is locked. Reopen it before saving ELB cards.',409);
  if(stage==='closed'&&!adding)fail('Batch '+batch.name+' is closed. Reopen it before changing existing ELB cards.',409);
  await requireStageTurn(client,batch);
