@@ -9,7 +9,7 @@ import {normalizeDrillLogBook,registerLogBooks} from '../server/routes/log-book.
 import {misPageAllowed,misRequestAllowed} from '../shared/mis-application-access.mjs';
 import {requestedMisPage} from '../src/mis-navigation.mjs';
 
-const base=()=>({bookDate:'2026-11-24',location:'Jayant OB',assetId:'1',employeeId:'2',shiftId:'3',shiftPeriod:'day',compressorOpening:1000,compressorClosing:1010,machineOpening:1200,machineClosing:1208,jobRows:fixedDrillJobs().map((row,index)=>index?row:{...row,holes:70,holeLength:6}),breakdowns:[],requestKey:'123e4567-e89b-42d3-a456-426614174000'});
+const base=()=>({bookDate:'2026-11-24',location:'Jayant OB',assetId:'1',employeeId:'2',shiftId:'3',shiftPeriod:'day',compressorOpening:1000,compressorClosing:1010,machineOpening:1200,machineClosing:1212,jobRows:fixedDrillJobs().map((row,index)=>index?row:{...row,holes:70,holeLength:6}),breakdowns:[],requestKey:'123e4567-e89b-42d3-a456-426614174000'});
 
 test('DLB identifies only drill machines and calculates the supplied form metrics',()=>{
  assert.equal(isDrillMachine({category:'DRILL'}),true);
@@ -20,9 +20,9 @@ test('DLB identifies only drill machines and calculates the supplied form metric
 
 test('DLB normalization preserves readings and calculated drill rows',()=>{
  const row=normalizeDrillLogBook(base());
- assert.equal(row.docType,'DLB');assert.equal(row.shiftPeriod,'day');assert.equal(row.shiftHours,12);assert.equal(row.compressorRunning,10);assert.equal(row.machineRunning,8);
+ assert.equal(row.docType,'DLB');assert.equal(row.shiftPeriod,'day');assert.equal(row.shiftHours,12);assert.equal(row.compressorRunning,10);assert.equal(row.machineRunning,12);
  assert.deepEqual(row.jobs.map(job=>job.jobType),DRILL_JOB_TYPES);assert.deepEqual(row.jobs[0],{jobType:'Clay Area',holes:70,holeLength:6,totalMetrage:420,holesPerHour:7,metersPerHour:42});assert.equal(row.jobs[2].holes,0);
- assert.throws(()=>normalizeDrillLogBook({...base(),machineClosing:1211}),/must not exceed compressor/);
+ assert.throws(()=>normalizeDrillLogBook({...base(),machineClosing:1201}),/greater than or equal to compressor/);
  assert.throws(()=>normalizeDrillLogBook({...base(),shiftPeriod:''}),/Day or Night/);
 });
 

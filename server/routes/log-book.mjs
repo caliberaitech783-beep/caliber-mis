@@ -96,7 +96,7 @@ export function normalizeDrillLogBook(input={}){
  if(compressorClosing<compressorOpening)fail('Compressor closing HMR cannot be less than opening HMR.');
  if(machineClosing<machineOpening)fail('Machine closing HMR cannot be less than opening HMR.');
  const compressorRunning=rounded(compressorClosing-compressorOpening),machineRunning=rounded(machineClosing-machineOpening);
- if(machineRunning>compressorRunning)fail('Machine running HMR must not exceed compressor running HMR.');
+ if(machineRunning<compressorRunning)fail('Machine running HMR must be greater than or equal to compressor running HMR.');
  const supplied=Array.isArray(input.jobRows)?input.jobRows:[];
  const jobs=DRILL_JOB_TYPES.map((jobType,index)=>{const row=supplied.find(item=>text(item?.jobType).toLowerCase()===jobType.toLowerCase());if(!row)fail(`The fixed drill job row ${index+1} must be ${jobType}.`);const hasHoles=text(row.holes)!=='',hasLength=text(row.holeLength)!=='';if(hasHoles!==hasLength)fail(`Enter both No. of holes and Length of hole for ${jobType}.`);const holes=hasHoles?number(row.holes,`No. of holes for ${jobType}`,{integer:true}):0,holeLength=hasLength?number(row.holeLength,`Length of hole for ${jobType}`):0;return {jobType,holes,holeLength,...drillJobMetrics({holes,holeLength},compressorRunning)};});
  if(!jobs.some(row=>row.holes>0&&row.holeLength>0))fail('Enter drill details for at least one of Clay Area, Hard Bench or Coal.');
