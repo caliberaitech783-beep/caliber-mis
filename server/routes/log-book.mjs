@@ -59,17 +59,18 @@ import {randomUUID} from 'node:crypto';
 import {readSaveHandoverAnswer} from '../../shared/log-book-save-deadline.mjs';
 import {canonicalSiteName} from '../../shared/site-location.mjs';
 import {displaySiteName,displaySiteSelection} from '../../shared/region-scope.mjs';
+import {drillJobMetrics,isDrillMachine} from '../../shared/drill-log-book.mjs';
 
 export const LOG_BOOK_SCHEMA=`CREATE TABLE IF NOT EXISTS mis_log_books(
- id BIGSERIAL PRIMARY KEY,book_no TEXT UNIQUE,book_type TEXT NOT NULL CONSTRAINT mis_log_books_book_type_check CHECK(book_type IN ('vehicle','equipment','lmv')),
+ id BIGSERIAL PRIMARY KEY,book_no TEXT UNIQUE,book_type TEXT NOT NULL CONSTRAINT mis_log_books_book_type_check CHECK(book_type IN ('vehicle','equipment','lmv','dlb')),
  book_date DATE NOT NULL,site TEXT NOT NULL,asset_id BIGINT NOT NULL,data JSONB NOT NULL,
  request_key UUID UNIQUE NOT NULL,created_by TEXT NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),revision INTEGER NOT NULL DEFAULT 1);
  DO $lmv_book_type$ BEGIN
   IF EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='mis_log_books'::regclass
-    AND conname='mis_log_books_book_type_check' AND pg_get_constraintdef(oid) NOT LIKE '%''lmv''%') THEN
+    AND conname='mis_log_books_book_type_check' AND pg_get_constraintdef(oid) NOT LIKE '%''dlb''%') THEN
     ALTER TABLE mis_log_books DROP CONSTRAINT mis_log_books_book_type_check,
-      ADD CONSTRAINT mis_log_books_book_type_check CHECK(book_type IN ('vehicle','equipment','lmv'));
+      ADD CONSTRAINT mis_log_books_book_type_check CHECK(book_type IN ('vehicle','equipment','lmv','dlb'));
   END IF;
  END $lmv_book_type$;
  ALTER TABLE mis_log_books ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ; CREATE TABLE IF NOT EXISTS mis_log_book_counters(book_type TEXT NOT NULL,book_date DATE NOT NULL,last_number INTEGER NOT NULL,PRIMARY KEY(book_type,book_date)); CREATE TABLE IF NOT EXISTS mis_vlb_series_counters(book_date DATE PRIMARY KEY,last_number INTEGER NOT NULL); CREATE INDEX IF NOT EXISTS mis_log_books_type_date ON mis_log_books(book_type,book_date DESC,id DESC);`+TRIP_VERIFICATION_SCHEMA+VLB_CARD_COUNTER_SCHEMA+VLB_BATCH_SCHEMA+VLB_TRIP_HANDOVER_SCHEMA;
@@ -81,6 +82,29 @@ const number=(value,label,{optional=false,integer=false,signed=false}={})=>{
  const n=Number(value);if(!['string','number'].includes(typeof value)||(typeof value==='string'&&!value.trim())||!Number.isFinite(n)||(!signed&&n<0)||(integer&&!Number.isSafeInteger(n)))fail(`${label} must be a valid ${integer?'whole ':''}${signed?'':'non-negative '}number.`);return n;
 };
 const rounded=value=>Math.round((value+Number.EPSILON)*1000)/1000;
+
+export function normalizeDrillLogBook(input={}){
+ const bookDate=text(input.bookDate);requireOperationalDate(bookDate);
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(bookDate)||!Number.isFinite(Date.parse(bookDate+'T00:00:00Z')))fail('Enter a valid book date.');
+ const location=text(input.location);if(!location)fail('Select a location.');
+ const assetId=number(input.assetId,'Rig number',{integer:true}),employeeId=number(input.employeeId,'Operator',{integer:true}),shiftId=number(input.shiftId,'Shift',{integer:true});
+ const workOrderId=input.workOrderId?number(input.workOrderId,'Work Order',{integer:true}):null;
+ const shiftHours=number(input.shiftHours,'Shift hours');if(shiftHours<=0||shiftHours>24)fail('Shift hours must be between 0 and 24.');
+ const compressorOpening=number(input.compressorOpening,'Compressor opening HMR',{signed:true}),compressorClosing=number(input.compressorClosing,'Compressor closing HMR',{signed:true});
+ const machineOpening=number(input.machineOpening,'Machine opening HMR',{signed:true}),machineClosing=number(input.machineClosing,'Machine closing HMR',{signed:true});
+ if(compressorClosing<compressorOpening)fail('Compressor closing HMR cannot be less than opening HMR.');
+ if(machineClosing<machineOpening)fail('Machine closing HMR cannot be less than opening HMR.');
+ const compressorRunning=rounded(compressorClosing-compressorOpening),machineRunning=rounded(machineClosing-machineOpening);
+ if(machineRunning>compressorRunning)fail('Machine running HMR must not exceed compressor running HMR.');
+ const jobRows=(Array.isArray(input.jobRows)?input.jobRows:[]).filter(row=>row&&Object.values(row).some(value=>text(value)));
+ if(!jobRows.length)fail('Enter at least one drill job row.');if(jobRows.length>20)fail('A Drill Log Book can contain up to 20 drill job rows.');
+ const jobs=jobRows.map((row,index)=>{const jobType=text(row.jobType,200);if(!jobType)fail(`Enter Job Type for drill row ${index+1}.`);const holes=number(row.holes,`No. of holes in drill row ${index+1}`,{integer:true}),holeLength=number(row.holeLength,`Length of hole in drill row ${index+1}`);return {jobType,holes,holeLength,...drillJobMetrics({holes,holeLength},compressorRunning)};});
+ const breakdowns=(Array.isArray(input.breakdowns)?input.breakdowns:[]).filter(row=>row&&Object.values(row).some(value=>text(value))).slice(0,20).map((row,index)=>{
+  const startTime=text(row.startTime,8),endTime=text(row.endTime,8);if((startTime||endTime)&&(!/^\d{2}:\d{2}$/.test(startTime)||!/^\d{2}:\d{2}$/.test(endTime)))fail(`Enter both valid start and end times in breakdown row ${index+1}.`);
+  return {detail:text(row.detail,500),startTime,endTime,actionTaken:text(row.actionTaken,1000),mechanic:text(row.mechanic,200),tmExecution:text(row.tmExecution,500),remark:text(row.remark,1000)};
+ });
+ return {docType:'DLB',bookDate,location,projectName:text(input.projectName||location,200),assetId,employeeId,shiftId,workOrderId,shiftHours,drillCardNo:text(input.drillCardNo,100),compressorOpening,compressorClosing,compressorRunning,machineOpening,machineClosing,machineRunning,jobs,breakdowns,requestKey:text(input.requestKey||randomUUID())};
+}
 
 export function employeeCode(record={}){return text(record.employeeId||record.empId||record.employeeCode||record.empCode||record.caliberId||record.code||record.idNo);}
 export function timeGapMinutes(start,end){
@@ -465,6 +489,44 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
    res.set('Cache-Control','no-store').json(zeroTripAttendance({days:read.days,code,bookDate,cardShift,machine:read.machine}));
   }catch(e){res.status(e.status||400).json({error:e.message});}});
   app.post('/api/log-books/hours',requireSession,batchEditAccess,batchScope,async(req,res)=>{try{requireLogBookSite(req.logBookScope,req.body.location);res.set('Cache-Control','no-store').json(await readHours({...req.body,client:undefined,breakdownRows:undefined,actor:req.session.login||req.session.name}));}catch(e){res.status(e.status||400).json({error:e.message});}});
+ app.get('/api/drill-log-books',...protect,async(req,res,next)=>{
+  try{
+   await ensure();
+   const permittedSites=await filterLogBookSites(pool,req.logBookScope);
+   const {rows}=await pool.query(`SELECT id,book_no,book_type,data,revision,created_at,updated_at FROM mis_log_books WHERE deleted_at IS NULL AND book_type='dlb' AND ($1::text[] IS NULL OR site=ANY($1::text[])) ORDER BY id DESC LIMIT 100`,[permittedSites]);
+   res.set('Cache-Control','no-store').json({records:rows});
+  }catch(error){next(error)}
+ });
+ app.post('/api/drill-log-books',...protect,async(req,res,next)=>{
+  let client;
+  try{
+   await ensure();
+   const data=normalizeDrillLogBook(req.body||{});requireLogBookSite(req.logBookScope,data.location);
+   if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(data.requestKey))fail('Invalid save reference.');
+   const ids=[data.assetId,data.employeeId,data.shiftId,...(data.workOrderId?[data.workOrderId]:[])];
+   const masters=(await pool.query('SELECT id,master_name,record_data FROM master_records WHERE id=ANY($1::bigint[])',[ids])).rows;
+   const assetRow=masters.find(row=>String(row.id)===String(data.assetId)&&row.master_name==='Equipment master');
+   const employeeRow=masters.find(row=>String(row.id)===String(data.employeeId)&&['Users & employees','C-Dir Employee master','ERP Employee master','Employee master'].includes(row.master_name));
+   const shiftRow=masters.find(row=>String(row.id)===String(data.shiftId)&&row.master_name==='Shift Master');
+   const asset=assetRow?.record_data,employee=employeeRow?.record_data,shift=shiftRow?.record_data;
+   if(!asset||!isDrillMachine(asset))fail('Select a drill machine from the Equipment Master.');
+   if(canonicalSiteName(asset.currentLocation||asset.site||asset.location)!==canonicalSiteName(data.location))fail('The selected drill machine is not assigned to this location.');
+   if(!employee||!employeeAtLocation(employee,data.location,data.bookDate))fail('Select an operator assigned to this location.');
+   if(!shift||canonicalSiteName(shift.site||shift.siteName)!==canonicalSiteName(data.location))fail('Select a shift assigned to this location.');
+   let workOrder=null;
+   if(data.workOrderId){const row=masters.find(item=>String(item.id)===String(data.workOrderId)&&woNames.includes(item.master_name));workOrder=row?.record_data;if(!workOrder||!matchingWorkOrders([{...workOrder,id:String(row.id)}],data.location,data.bookDate).length)fail('Select an active Work Order for this location and date.');}
+   Object.assign(data,{rigNo:text(asset.door||asset.doorNo||equipmentDoorNumber(asset)),rigName:text(asset.equipmentName||asset.equipment||asset.name||asset.group),operatorName:text(employee.employee||employee.name||employee.login),caliberId:employeeCode(employee),shiftName:text(shift.shiftName||shift.name||shift.shift),workOrderContract:workOrder?woNumber(workOrder):''});
+   client=await pool.connect();await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[data.requestKey]);
+   const prior=(await client.query("SELECT id,book_no,book_type,data,revision,created_at,updated_at,created_by FROM mis_log_books WHERE request_key=$1",[data.requestKey])).rows[0];
+   if(prior){if(prior.created_by!==(req.session.login||req.session.name)||prior.book_type!=='dlb')fail('Save reference already used.',409);await client.query('COMMIT');client.release();client=null;return res.json(prior);}
+   const duplicate=(await client.query("SELECT book_no FROM mis_log_books WHERE book_type='dlb' AND deleted_at IS NULL AND book_date=$1 AND site=$2 AND asset_id=$3 AND data->>'shiftId'=$4 LIMIT 1",[data.bookDate,data.location,data.assetId,String(data.shiftId)])).rows[0];
+   if(duplicate)fail(`A Drill Log Book already exists for this rig, date and shift: ${duplicate.book_no}.`,409);
+   const counter=(await client.query("INSERT INTO mis_log_book_counters(book_type,book_date,last_number) VALUES('dlb',$1,1) ON CONFLICT(book_type,book_date) DO UPDATE SET last_number=mis_log_book_counters.last_number+1 RETURNING last_number",[data.bookDate])).rows[0].last_number;
+   const [year,month,day]=data.bookDate.split('-'),bookNo=`CAL/DLB/${day}-${month}-${year.slice(-2)}/${String(counter).padStart(3,'0')}`;
+   const result=(await client.query("INSERT INTO mis_log_books(book_no,book_type,book_date,site,asset_id,data,request_key,created_by) VALUES($1,'dlb',$2,$3,$4,$5::jsonb,$6,$7) RETURNING id,book_no,book_type,data,revision,created_at,updated_at",[bookNo,data.bookDate,data.location,data.assetId,JSON.stringify(data),data.requestKey,req.session.login||req.session.name])).rows[0];
+   await client.query('COMMIT');client.release();client=null;filterLogBookSites.remember(data.location);res.status(201).json(result);
+  }catch(error){if(client)await client.query('ROLLBACK').catch(()=>{});if(error.status)return res.status(error.status).json({error:error.message});next(error)}finally{client?.release()}
+ });
  app.get('/api/log-books/:kind',...protect,async(req,res,next)=>{
    try{await ensure();if(!['vehicle','equipment','lmv'].includes(req.params.kind))return res.status(400).json({error:'Invalid log book type.'});
      // Exact, indexed confirmation of the caller's own new card. No historical

@@ -232,6 +232,7 @@ const MachineRoster=createLazyFeature(()=>import("./machine-roster.jsx"),undefin
 const BulkCardScanning=createLazyFeature(()=>import("./bulk-card-scanning.jsx"),undefined,{loadingLabel:"Loading card scanning…"});
 const FleetReconciliation=createLazyFeature(()=>import("./fleet-reconciliation.jsx"),undefined,{loadingLabel:"Loading fleet reconciliation…"});
 const LogBookForm=createLazyFeature(()=>import("./log-book-form.jsx"),undefined,{loadingLabel:"Loading log book form…"});
+const DrillLogBook=createLazyFeature(()=>import("./drill-log-book.jsx"),undefined,{loadingLabel:"Loading Drill Log Book…"});
 const MisDashboard=createLazyFeature(()=>import("./mis-dashboard.jsx"),undefined,{loadingLabel:"Loading dashboard…"});
 const BackupAdministration=createLazyFeature(()=>import("./backup-administration.jsx"),undefined,{loadingLabel:"Loading backup administration…"});
 const VehicleTransferWorkflow=createLazyFeature(()=>import("./vehicle-transfer-workflow.jsx"),undefined,{loadingLabel:"Loading vehicle transfers…"});
@@ -445,7 +446,7 @@ const LOGIN_LANDING_PAGE = "Dashboard";
 // Entry and scan pages: opening them again from the header page name could
 // clear cards or form values that are not saved yet, so the click asks first.
 const PAGES_ASKING_BEFORE_REOPEN = new Set([
-  "Vehicle Log Book", "Equipment Log Book", "LMV Manual", "LMV Scan",
+  "Vehicle Log Book", "Equipment Log Book", "LMV Manual", "LMV Scan", "Drill Log Book",
   "Trip Card Bulk Scan", "Job Card Bulk Scan", "Create VLB Batch",
   "Purchase Order", "Accounts Transactions", "Employee Transfer",
 ]);
@@ -12031,6 +12032,7 @@ function App() {
   : renderedActive==='LMV Log Book' ? (<LogBookModeChoice kind="lmv" canScan={canOpenAdminPage('LMV Scan')} onManual={()=>selectMenu('LMV Manual')} onScan={()=>selectMenu('LMV Scan')}/>)
   : renderedActive==='LMV Manual' ? (<VlbEntryWorkspace key="lmv-manual" kind="lmv" mode="manual" session={session} ReportSection={ReportSection} onExit={()=>selectMenu('LMV Log Book')}><LogBookForm kind="lmv" session={session} ReportSection={ReportSection} onExit={()=>selectMenu('LMV Log Book')} onBulkScan={canOpenAdminPage('LMV Scan')?()=>selectMenu('LMV Scan'):undefined}/></VlbEntryWorkspace>)
   : renderedActive==='LMV Scan' ? (<VlbEntryWorkspace key="lmv-scan" kind="lmv" mode="scan" session={session} ReportSection={ReportSection} onExit={()=>selectMenu('LMV Log Book')}><BulkCardScanning kind="vehicle" logBookKind="lmv" session={session} ReportSection={ReportSection}/></VlbEntryWorkspace>)
+  : renderedActive==='Drill Log Book' ? (<DrillLogBook session={session}/>)
   : ['Vehicle Log Book Options','Equipment Log Book Options'].includes(renderedActive) ? (<LogBookModeChoice onBatches={()=>selectMenu('Create VLB Batch')} kind={renderedActive==='Vehicle Log Book Options'?'vehicle':'equipment'} canSaved={renderedActive==='Vehicle Log Book Options'&&canOpenAdminPage('Saved VLB')} onSaved={()=>selectMenu('Saved VLB')} canScan={canOpenAdminPage(renderedActive==='Vehicle Log Book Options'?'Trip Card Bulk Scan':'Job Card Bulk Scan')} onManual={()=>selectMenu(renderedActive==='Vehicle Log Book Options'?'Vehicle Log Book':'Equipment Log Book')} onScan={()=>selectMenu(renderedActive==='Vehicle Log Book Options'?'Trip Card Bulk Scan':'Job Card Bulk Scan')}/>) : ['Trip Card Bulk Scan','Job Card Bulk Scan'].includes(renderedActive) ? (
     <VlbEntryWorkspace key={renderedActive} mode="scan" kind={renderedActive==='Trip Card Bulk Scan'?'vehicle':'equipment'} session={session} ReportSection={ReportSection} onExit={()=>selectMenu(renderedActive==='Trip Card Bulk Scan'?'Vehicle Log Book Options':'Equipment Log Book Options')}><BulkCardScanning ReportSection={ReportSection} key={renderedActive} kind={renderedActive==='Trip Card Bulk Scan'?'vehicle':'equipment'} session={session}/></VlbEntryWorkspace>
   ) : renderedActive==='Biometric integration' ? (<BiometricIntegration session={session} ReportSection={ReportSection}/>
@@ -12177,7 +12179,7 @@ function App() {
         groups={[
           {name:'Masters',pages:[...['Users & employees','Employee master','A Form Master','Employee Current Location','Caliber ID Re-check','Caliber Punch Re-check','Machine Category Re-check','Equipment master','Machine Roster','Capacity master','Region master','Shift Master'].filter(canOpenAdminPage).map(page=>page==='Users & employees'?{label:'Login Details',page}:page==='Region master'?{label:regionMasterTitle,page}:page),...['Work Order master','Financial Year master','Company master'].filter(canOpenAdminPage).map(page=>({label:page==='Work Order master'?'Work Contract master':page,page})),...(canOpenAdminPage('Pulse Master Sync')?[{label:'Sync all masters',page:'Pulse Master Sync'}]:[])]},
           {name:'WhatsApp Integration',pages:whatsappNav.map(([name])=>name).filter(canOpenAdminPage)},
-          {name:'MIS',pages:[...(canOpenAdminPage('Batch reopening approvals')?[{label:'Batch reopening approvals',page:'Batch reopening approvals'}]:[]),{label:'Create Batch',page:'Create VLB Batch'},{label:'Vehicle Log Book (VLB)',page:'Vehicle Log Book Options',activePages:['Vehicle Log Book','Trip Card Bulk Scan','Saved VLB']},{label:'LMV Log Book (LMV)',page:'LMV Log Book',activePages:['LMV Manual','LMV Scan']},{label:'Equipment Log Book (ELB)',page:'Equipment Log Book Options',activePages:['Equipment Log Book','Job Card Bulk Scan','Create VLB Batch']}].filter(item=>canOpenAdminPage(item.page))},
+          {name:'MIS',pages:[...(canOpenAdminPage('Batch reopening approvals')?[{label:'Batch reopening approvals',page:'Batch reopening approvals'}]:[]),{label:'Create Batch',page:'Create VLB Batch'},{label:'Vehicle Log Book (VLB)',page:'Vehicle Log Book Options',activePages:['Vehicle Log Book','Trip Card Bulk Scan','Saved VLB']},{label:'LMV Log Book (LMV)',page:'LMV Log Book',activePages:['LMV Manual','LMV Scan']},{label:'Drill Log Book (DLB)',page:'Drill Log Book'},{label:'Equipment Log Book (ELB)',page:'Equipment Log Book Options',activePages:['Equipment Log Book','Job Card Bulk Scan','Create VLB Batch']}].filter(item=>canOpenAdminPage(item.page))},
           {name:'Reports',pages:[...['VLB Reports','ELB Reports','Fleet Capacity','Equipment Deployment'].filter(canOpenAdminPage),...(canOpenAdminPage('Reports')?[...new Set(operationReports.map(r=>r.group))].map(group=>({label:group,children:operationReports.filter(r=>r.group===group).map(r=>({label:r.title,page:'Reports',reportCategory:'operations-'+r.id}))})):[])],keepEmpty:canOpenAdminPage('Reports')},
           {name:'Attendance Management',pages:['Biometric integration','Mismatch attendance'].filter(canOpenAdminPage)},
           {name:'Attendance Regularization',pages:['Late come / early going','Miss punch'].filter(canOpenAdminPage)},
