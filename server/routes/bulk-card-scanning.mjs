@@ -618,7 +618,7 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
       return matchScanDraft(applyScanContext(batch.expected_context,row.draft),row.raw_fields,batch.kind,matchingMasters);
      });
      const linked={...row.draft};for(const key of ['assetId','employeeId'])if(matched[key]&&!linked[key])linked[key]=matched[key];
-     let draft=await fillScanTripEstimates({query:(sql,args)=>ask.records({sql,args})},linked,row.raw_fields);
+     let draft=completeScanTripDetails(await fillScanTripEstimates({query:(sql,args)=>ask.records({sql,args})},linked,row.raw_fields),row.raw_fields);
      if(fillMeters&&(draft.assetId||draft.openingMeterCarryover))draft=await fillVlbScanOpeningMeters(db,draft,{sites:meterSites,extraction:row.raw_fields?.extractionDraft,context:applyScanContext(batch.expected_context,draft),readRows:(client,assetId,date)=>ask.meters({assetId:String(assetId),date})});
      return stableJson(draft)===stableJson(row.draft)?{changed:false}:{changed:true,draft:completeScanTripDetails(draft,row.raw_fields)};
     };
