@@ -20,6 +20,7 @@ import {multiDayBatches} from '../../shared/multi-day-batches.mjs';
 import {batchLocksPaused} from '../../shared/batch-lock-pause.mjs';
 import {batchFleetCoverage} from '../../shared/batch-fleet-coverage.mjs';
 import {coverageStop,coverageBlockers} from '../../shared/batch-coverage-stop.mjs';
+import {machineRosterShown} from '../../shared/batch-roster-show.mjs';
 import {readBatchMachineAnswers} from './batch-machine-answers.mjs';
 import {shiftWindow} from '../../shared/pulse-shift-status.mjs';
 import {mirrorReadAt} from '../services/pulse-breakdown-mirror.mjs';
@@ -132,12 +133,14 @@ export async function stageDetails(client,batch,{assets,tripCardRecords,vlbCards
  const waitingScanMessage=stage==='vlb_open'?vlbLockScanBlocker(waitingScans):stage==='lmv_open'?lmvWaiting:stage==='elb_open'?closeScanBlocker(waitingScans):'';
  // Every machine of the site needs an answer; from the stop date (shared/batch-coverage-stop.mjs) it stops Lock VLB,
  // Lock LMV and Close batch, before that it only warns.
- const fleetCoverage=await machineCoverage(client,batch,{assets,vlbRecords:vlbCards,lmvRecords,fleet,elbRecords:elb,pulseRows});
- const stop=fleetCoverage?.stop;
+ // The panel is shown from 27 Nov 2026 (shared/batch-roster-show.mjs); before that it is read only when the stop applies.
+ const rosterShown=machineRosterShown();
+ const coverage=rosterShown||coverageStop(batch).active?await machineCoverage(client,batch,{assets,vlbRecords:vlbCards,lmvRecords,fleet,elbRecords:elb,pulseRows}):null;
+ const fleetCoverage=rosterShown?coverage:null,stop=coverage?.stop;
  return {twoStage:true,stage,stageWait:await readBatchStageWait(client,batch),holds,machines,fleet,fleetProgress:progress,elbRecords:elb,elbTripCardRows,waitingScans,waitingScanMessage,fleetCoverage,
-  lockBlockers:stage==='vlb_open'?[...lockBlockers({stage,records:vlb,holds,unresolved:buildMachineSnapshot(vlb,assets,batch.site).unresolved,waitingScans}),...coverageBlockers(fleetCoverage,['vlb'],stop)]:[],
-  lmvLockBlockers:stage==='lmv_open'?[...(lmvWaiting?[lmvWaiting]:[]),...coverageBlockers(fleetCoverage,['lmv'],stop)]:[],
-  closeBlockers:stage==='elb_open'?[...closureBlockers({stage,fleet,holds,duplicates,waitingScans}),...coverageBlockers(fleetCoverage,['vlb','elb','lmv'],stop)]:[],machineReport:report,statuses:FLEET_STATUSES};
+  lockBlockers:stage==='vlb_open'?[...lockBlockers({stage,records:vlb,holds,unresolved:buildMachineSnapshot(vlb,assets,batch.site).unresolved,waitingScans}),...coverageBlockers(coverage,['vlb'],stop)]:[],
+  lmvLockBlockers:stage==='lmv_open'?[...(lmvWaiting?[lmvWaiting]:[]),...coverageBlockers(coverage,['lmv'],stop)]:[],
+  closeBlockers:stage==='elb_open'?[...closureBlockers({stage,fleet,holds,duplicates,waitingScans}),...coverageBlockers(coverage,['vlb','elb','lmv'],stop)]:[],machineReport:report,statuses:FLEET_STATUSES};
 }
 function duplicateElb(records){
  const byAsset=new Map(),duplicates=new Set();

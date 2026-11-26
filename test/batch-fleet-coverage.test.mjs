@@ -65,7 +65,8 @@ test('the batch page gets the coverage from the stage details and shows it',()=>
  const route=read('server/routes/vlb-batches.mjs');
  assert.match(route,/stageDetails\(client,batch,\{assets,vlbCards:records,lmvRecords,/);
  const stages=read('server/rules/vlb-batch-stages.mjs');
- assert.match(stages,/fleetCoverage=await machineCoverage\(/);
+ assert.match(stages,/coverage=rosterShown\|\|coverageStop\(batch\)\.active\?await machineCoverage\(/);
+ assert.match(stages,/fleetCoverage=rosterShown\?coverage:null/,'the panel waits for its first day (shared/batch-roster-show.mjs)');
  const page=read('src/vlb-create-batch.jsx');
  assert.match(page,/<BatchFleetCoverage key=\{viewed\.id\} coverage=\{viewed\.fleetCoverage\}/);
  const panel=read('src/batch-fleet-coverage.jsx');

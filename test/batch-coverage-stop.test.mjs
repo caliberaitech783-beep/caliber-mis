@@ -34,9 +34,9 @@ test('the blockers name each book still missing answers, with how to answer it',
 });
 
 test('Lock VLB and Lock LMV wait for every machine of their book; Close waits for ELB too',async t=>{
- const saved={two:process.env.VLB_TWO_STAGE_BATCHES,pause:process.env.VLB_BATCH_LOCK_PAUSE_UNTIL,stop:process.env.BATCH_COVERAGE_STOP_FROM};
- delete process.env.VLB_TWO_STAGE_BATCHES;process.env.VLB_BATCH_LOCK_PAUSE_UNTIL='off';process.env.BATCH_COVERAGE_STOP_FROM='2026-11-01';
- t.after(()=>{for(const [key,value] of [['VLB_TWO_STAGE_BATCHES',saved.two],['VLB_BATCH_LOCK_PAUSE_UNTIL',saved.pause],['BATCH_COVERAGE_STOP_FROM',saved.stop]])value===undefined?delete process.env[key]:process.env[key]=value;});
+ const saved={two:process.env.VLB_TWO_STAGE_BATCHES,pause:process.env.VLB_BATCH_LOCK_PAUSE_UNTIL,stop:process.env.BATCH_COVERAGE_STOP_FROM,show:process.env.BATCH_ROSTER_SHOW_FROM};
+ delete process.env.VLB_TWO_STAGE_BATCHES;process.env.VLB_BATCH_LOCK_PAUSE_UNTIL='off';process.env.BATCH_COVERAGE_STOP_FROM='2026-11-01';process.env.BATCH_ROSTER_SHOW_FROM='now';
+ t.after(()=>{for(const [key,value] of [['VLB_TWO_STAGE_BATCHES',saved.two],['VLB_BATCH_LOCK_PAUSE_UNTIL',saved.pause],['BATCH_COVERAGE_STOP_FROM',saved.stop],['BATCH_ROSTER_SHOW_FROM',saved.show]])value===undefined?delete process.env[key]:process.env[key]=value;});
  const db=new PGlite();t.after(()=>db.close());
  await db.exec('CREATE TABLE master_records(id BIGSERIAL PRIMARY KEY,master_name TEXT,record_data JSONB);'+LOG_BOOK_SCHEMA);
  const masters=[
