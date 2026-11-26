@@ -33,7 +33,7 @@ test('the blockers name each book still missing answers, with how to answer it',
  assert.deepEqual(rest,[],'a complete book does not stop');
 });
 
-test('Lock VLB and Lock LMV wait for every machine of their book; Close waits for ELB too',async t=>{
+test('Lock VLB and Lock LMV wait for every machine of their book; DLB precedes ELB and Close waits for ELB too',async t=>{
  const saved={two:process.env.VLB_TWO_STAGE_BATCHES,pause:process.env.VLB_BATCH_LOCK_PAUSE_UNTIL,stop:process.env.BATCH_COVERAGE_STOP_FROM,show:process.env.BATCH_ROSTER_SHOW_FROM};
  delete process.env.VLB_TWO_STAGE_BATCHES;process.env.VLB_BATCH_LOCK_PAUSE_UNTIL='off';process.env.BATCH_COVERAGE_STOP_FROM='2026-11-01';process.env.BATCH_ROSTER_SHOW_FROM='now';
  t.after(()=>{for(const [key,value] of [['VLB_TWO_STAGE_BATCHES',saved.two],['VLB_BATCH_LOCK_PAUSE_UNTIL',saved.pause],['BATCH_COVERAGE_STOP_FROM',saved.stop],['BATCH_ROSTER_SHOW_FROM',saved.show]])value===undefined?delete process.env[key]:process.env[key]=value;});
@@ -97,6 +97,10 @@ test('Lock VLB and Lock LMV wait for every machine of their book; Close waits fo
  assert.equal(lock.status,409);assert.match(lock.data.error,/Every LMV machine needs an answer: 1\/2 answered; no answer yet: L2\./);
  assert.equal((await call(batch+'/machines/'+ids.L2+'/answer','PUT',{book:'lmv',status:'standby',reason:'Kept at the office'})).status,200);
  lock=await call(batch+'/lock-lmv','POST',{});
+ assert.equal(lock.status,200,JSON.stringify(lock.data));assert.equal(lock.data.stage,'dlb_open');
+
+ // This site has no drill-machine master rows, so DLB can be locked without inventing a card.
+ lock=await call(batch+'/lock-dlb','POST',{});
  assert.equal(lock.status,200,JSON.stringify(lock.data));assert.equal(lock.data.stage,'elb_open');
 
  // Close waits for the loading machine's ELB as before, and now says so for the ELB book too.
