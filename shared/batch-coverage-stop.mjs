@@ -4,9 +4,10 @@
 // - Lock LMV: every LMV machine, the same way;
 // - Close batch: every VLB, ELB and LMV machine (an ELB machine is also answered on the ELB fleet list).
 // Batches of earlier dates close as before, so nobody has to fill in old shifts. Before that day the batch page only warns.
-// It starts after the lock pause (29 Nov) and multi-day batches (1 Dec) end. The Azure setting
+// Owner, 26 Nov 2026: compulsory from 27 Nov 2026 00:00 IST (it was 2 Dec), also while the lock pause and multi-day
+// batches run: Close batch then does Lock VLB and Lock LMV itself, with this check. The Azure setting
 // BATCH_COVERAGE_STOP_FROM=YYYY-MM-DD moves the first day; BATCH_COVERAGE_STOP_FROM=off keeps it a warning.
-export const STOP_FROM='2026-12-02';
+export const STOP_FROM='2026-11-27';
 const IST_OFFSET_MS=330*60*1000;
 const OFF=['0','off','false','no'];
 
