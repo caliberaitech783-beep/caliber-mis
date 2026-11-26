@@ -69,11 +69,16 @@ test('Lock VLB and Lock LMV wait for every machine of their book; Close waits fo
  const batch='/api/vlb-batches/'+created.data.id;
  const card=await call('/api/log-books/vehicle','POST',{bookDate:'2026-11-20',location:'Sasti OC',assetId:ids.V1,employeeId:ids.alice,shiftId:ids['Shift A'],shiftHours:8,cardShift:'I',openingKmr:1000,closingKmr:1050,openingHmr:100,closingHmr:106,timeMode:'without',trips:[{equipmentName:'VPC 019',tripCount:3}],requestKey:randomUUID()});
  assert.equal(card.status,201,JSON.stringify(card.data));
+ // The muster was kept when the batch was made: V3 leaving the site and V4 arriving in the master change nothing.
+ assert.equal(created.data.fleetCoverage.rosterFrozen,true);
+ await db.query("UPDATE master_records SET record_data=record_data||'{\"currentLocation\":\"Durgapur\"}' WHERE id=$1",[ids.V3]);
+ await db.query("INSERT INTO master_records(master_name,record_data) VALUES('Equipment master',$1)",[JSON.stringify({category:'Vehicle',door:'V4',currentLocation:'Sasti OC',equipmentName:'Tipper'})]);
 
  // Pulse-1 answers V2 (breakdown) and L1 (idle) by itself; V3 has nothing, so Lock VLB is refused, naming only V3.
  let view=await call(batch);
  const coverage=view.data.fleetCoverage;
  assert.equal(coverage.mode,'stop');
+ assert.deepEqual(coverage.books.vlb.rows.map(row=>row.door),['V1','V2','V3'],'V4 came after the batch was made');
  assert.equal(coverage.pulseRead.ok,true,JSON.stringify(coverage.pulseRead));
  const v2=coverage.books.vlb.rows.find(row=>row.door==='V2');
  assert.equal(v2.answer,'pulse');assert.deepEqual([v2.pulse.breakdownHours,v2.pulse.references],[8,['BD-501']]);
@@ -84,9 +89,10 @@ test('Lock VLB and Lock LMV wait for every machine of their book; Close waits fo
  let lock=await call(batch+'/lock-vlb','POST',{});
  assert.equal(lock.status,409);assert.match(lock.data.error,/no answer yet: V3\./);
 
- // An idle reason by hand answers V3; Lock VLB goes through.
- const idle=await call(batch+'/machines/'+ids.V3+'/answer','PUT',{book:'vlb',status:'no_operator',reason:'Driver on leave'});
- assert.equal(idle.status,200,JSON.stringify(idle.data));
+ // An idle reason for the selected machines answers V3 (on the muster although it left the site); Lock VLB goes through.
+ assert.equal((await call(batch+'/machines/answers','PUT',{book:'vlb',status:'transferred_out',reason:'Sent to Durgapur',assetIds:[ids.V3,ids.L1]})).status,409,'L1 is not on the VLB muster: nothing is saved');
+ const idle=await call(batch+'/machines/answers','PUT',{book:'vlb',status:'transferred_out',reason:'Sent to Durgapur',assetIds:[ids.V3]});
+ assert.equal(idle.status,200,JSON.stringify(idle.data));assert.equal(idle.data.saved,1);
  lock=await call(batch+'/lock-vlb','POST',{});
  assert.equal(lock.status,200,JSON.stringify(lock.data));assert.equal(lock.data.stage,'lmv_open');
 

@@ -139,3 +139,4 @@
 .batch-fleet-coverage .batch-coverage-warning{color:#9a6300;border-left:3px solid #d99a00;padding-left:8px}
 .batch-answer-box{display:flex;flex-wrap:wrap;gap:4px;align-items:center}.batch-answer-box input{min-width:120px;flex:1}
 .batch-fleet-coverage .batch-coverage-stop{color:#b42318;border-left:3px solid #d92d20;padding-left:8px;font-weight:600}
+.batch-muster-title{margin:12px 0 4px;font-size:18px}.batch-answer-many{flex-wrap:wrap;align-items:center}.batch-answer-many input[type=text]{min-width:180px}

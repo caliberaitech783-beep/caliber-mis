@@ -18,9 +18,9 @@ import {pendingTransferFor} from '../routes/vehicle-transfer-express.mjs';
 import {readBatchStageWait} from './vlb-batch-queue.mjs';
 import {multiDayBatches} from '../../shared/multi-day-batches.mjs';
 import {batchLocksPaused} from '../../shared/batch-lock-pause.mjs';
-import {batchFleetCoverage} from '../../shared/batch-fleet-coverage.mjs';
+import {batchFleetCoverage,siteRoster} from '../../shared/batch-fleet-coverage.mjs';
 import {coverageStop,coverageBlockers} from '../../shared/batch-coverage-stop.mjs';
-import {readBatchMachineAnswers} from './batch-machine-answers.mjs';
+import {readBatchMachineAnswers,readBatchRoster,freezeBatchRoster} from './batch-machine-answers.mjs';
 import {shiftWindow} from '../../shared/pulse-shift-status.mjs';
 import {mirrorReadAt} from '../services/pulse-breakdown-mirror.mjs';
 import {ACTIVE_VLB_ENTRY_FROM,ACTIVE_VLB_ENTRY_FILTER} from './vlb-card-counts.mjs';
@@ -81,7 +81,11 @@ export async function machineCoverage(client,batch,{assets,vlbRecords,lmvRecords
   let hours=null;try{hours=shift?fleetShiftHours(shift):null;}catch{hours=null;}
   pulse={rows:pulseRows.rows,window:shift&&hours?shiftWindow(batch.report_date,shift.startTime||shift.start,hours):null,readAt:mirrorReadAt(pulseRows.rows)};
  }
- const coverage=batchFleetCoverage({assets,site:batch.site,vlbRecords,lmvRecords,elbFleet:fleet,elbRecords,answers:await readBatchMachineAnswers(client,batch),pulse});
+ // The muster kept with the batch when it was made; a batch made before the muster was kept is frozen at its first read
+ // while open. A closed batch with none is read from the master as it is now.
+ let roster=await readBatchRoster(client,batch);
+ if(!roster&&!batch.closed_at&&await freezeBatchRoster(client,batch,siteRoster(assets,batch.site)))roster=await readBatchRoster(client,batch);
+ const coverage=batchFleetCoverage({assets,site:batch.site,vlbRecords,lmvRecords,elbFleet:fleet,elbRecords,answers:await readBatchMachineAnswers(client,batch),pulse,roster});
  const stop=coverageStop(batch);
  return {...coverage,mode:stop.active?'stop':'warning',stop};
 }

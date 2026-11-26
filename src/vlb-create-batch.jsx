@@ -271,6 +271,8 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
    </table></div>
   </section>}
   {viewed&&<section className="logbook-section vlb-active-batch-panel">{!entryMode&&<StepBackButton onBack={clearView} label="Back to batch list"/>}<h2>{viewed.name}</h2><div className="vlb-batch-stage-toolbar">{twoStage&&<StageSteps stage={stage} waiting={Boolean(viewed.stageWait)}/>}<button type="button" disabled={busy||detailLoading} onClick={clearView}>Show unbatched entries</button></div>
+    {/* The machine muster sits at the top of the batch (owner, 25 Nov 2026): every machine of the site, open on what is still to answer. */}
+    {twoStage&&viewed.fleetCoverage&&<BatchFleetCoverage key={viewed.id} coverage={viewed.fleetCoverage} ReportSection={ReportSection} batch={viewed} session={session} onChanged={()=>setRefresh(n=>n+1)}/>}
     {viewed.stageWait&&<p className="logbook-message" role="status">{viewed.stageWait}</p>}
     {lockPaused&&!viewed.closed_at&&viewed.lockPause?.note&&<p className="logbook-message vlb-lock-pause-note" role="status">{viewed.lockPause.note}</p>}
     {twoStage&&<WaitingScans entries={viewed.waitingScans} stage={stage}/>}
@@ -280,7 +282,6 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
      <button type="button" aria-pressed={entryFilter==='upload'} disabled={busy||detailLoading} onClick={()=>setEntryFilter(value=>value==='upload'?'':'upload')}>PDF ({entryCounts.upload})</button>
    </div>}
    {viewed&&twoStage&&<div className="vlb-two-stage">
-    {viewed.fleetCoverage&&<BatchFleetCoverage key={viewed.id} coverage={viewed.fleetCoverage} ReportSection={ReportSection} batch={viewed} session={session} onChanged={()=>setRefresh(n=>n+1)}/>}
     {lockPaused&&['vlb_open','lmv_open'].includes(stage)&&<div className="vlb-batch-actions" role="group" aria-label="Entry while locking is off">
      {stage==='vlb_open'&&onLmvManual&&<button type="button" onClick={()=>onLmvManual(viewed)}>Add LMV manually</button>}
      {stage==='vlb_open'&&onLmvScan&&<button type="button" onClick={()=>onLmvScan(viewed)}>Scan or upload LMV PDF</button>}
