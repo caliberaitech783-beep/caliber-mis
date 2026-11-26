@@ -68,7 +68,7 @@ export const LOG_BOOK_SCHEMA=`CREATE TABLE IF NOT EXISTS mis_log_books(
  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),revision INTEGER NOT NULL DEFAULT 1);
  DO $lmv_book_type$ BEGIN
   IF EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='mis_log_books'::regclass
-    AND conname='mis_log_books_book_type_check' AND pg_get_constraintdef(oid) NOT LIKE '%''dlb''%') THEN
+    AND conname='mis_log_books_book_type_check' AND (pg_get_constraintdef(oid) NOT LIKE '%''dlb''%' OR pg_get_constraintdef(oid) NOT LIKE '%''lmv''%')) THEN
     ALTER TABLE mis_log_books DROP CONSTRAINT mis_log_books_book_type_check,
       ADD CONSTRAINT mis_log_books_book_type_check CHECK(book_type IN ('vehicle','equipment','lmv','dlb'));
   END IF;

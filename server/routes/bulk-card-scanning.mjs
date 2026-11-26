@@ -56,7 +56,7 @@ import {encodeScanJson as encodeLocalScanJson,encodeScanText as encodeLocalScanT
 import {createPaddleEvidence,validatePaddleEvidence,paddleEvidenceResult} from '../services/paddle-evidence.mjs';
 import {mergeReextractedDraft} from '../rules/scan-reextract.mjs';
 import {createReportLane} from '../services/report-lane.mjs';
-import {ignoreScanLoadingWithoutEquipment,CARD_SHIFTS,machineDiscrepancies,bookShiftCode,machineTripTotal} from '../../shared/trip-card-rules.mjs';
+import {ignoreScanLoadingWithoutEquipment,CARD_SHIFTS,machineDiscrepancies,bookShiftCode,machineTripTotal,combineMachineSummary} from '../../shared/trip-card-rules.mjs';
 import {randomUUID,randomInt,createHash,timingSafeEqual} from 'node:crypto';
 import {sendDeletionOtp} from '../services/deletion-whatsapp.mjs';
 import {deletionPhone} from '../rules/deletion-otp-routing.mjs';
@@ -618,7 +618,9 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
       return matchScanDraft(applyScanContext(batch.expected_context,row.draft),row.raw_fields,batch.kind,matchingMasters);
      });
      const linked={...row.draft};for(const key of ['assetId','employeeId'])if(matched[key]&&!linked[key])linked[key]=matched[key];
-     let draft=completeScanTripDetails(await fillScanTripEstimates({query:(sql,args)=>ask.records({sql,args})},linked,row.raw_fields),row.raw_fields);
+     let draft=await fillScanTripEstimates({query:(sql,args)=>ask.records({sql,args})},linked,row.raw_fields);
+     const summary=combineMachineSummary(draft.scanMachineSummary);
+     if(summary.length<(draft.scanMachineSummary||[]).length)draft={...draft,scanMachineSummary:summary};
      if(fillMeters&&(draft.assetId||draft.openingMeterCarryover))draft=await fillVlbScanOpeningMeters(db,draft,{sites:meterSites,extraction:row.raw_fields?.extractionDraft,context:applyScanContext(batch.expected_context,draft),readRows:(client,assetId,date)=>ask.meters({assetId:String(assetId),date})});
      return stableJson(draft)===stableJson(row.draft)?{changed:false}:{changed:true,draft:completeScanTripDetails(draft,row.raw_fields)};
     };
