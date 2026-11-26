@@ -16,7 +16,7 @@ import {withoutRowSecurityRequest} from '../services/row-security.mjs';
 import {vlbBatchActor,batchPmAtSite} from '../rules/vlb-batch-access.mjs';
 import {readFleetBreakdowns,batchLmvRecords,stageDetails,lockVlb,lockLmv,unlockVlb,assertCloseAllowed,saveFleetDraft,saveFleetEntry,equipmentAssets} from '../rules/vlb-batch-stages.mjs';
 import {twoStageEnabled,batchStage,FLEET_STATUSES} from '../rules/vlb-two-stage.mjs';
-import {BATCH_MACHINE_ANSWER_SCHEMA,saveIdleAnswer,clearMachineAnswer} from '../rules/batch-machine-answers.mjs';
+import {BATCH_MACHINE_ANSWER_SCHEMA,saveIdleAnswer,saveIdleAnswers,clearMachineAnswer} from '../rules/batch-machine-answers.mjs';
 import {consumeApprovalOtp,liveApprovalOtps,publicApprovalOtp} from '../services/vlb-approval-otp.mjs';
 import {batchStageWaits} from '../rules/vlb-batch-queue.mjs';
 import {previousBatchScope,batchOrderBlock} from '../../shared/vlb-batch-order.mjs';
@@ -339,6 +339,15 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
  }));
  // A VLB or LMV machine with no card and nothing in Pulse-1: an idle reason by hand (owner, 25 Nov 2026;
  // server/rules/batch-machine-answers.mjs). What Pulse-1 holds is read by itself for Machine coverage.
+ // One idle reason for many machines of one book at once (owner, 25 Nov 2026): all are saved or none.
+ app.put('/api/vlb-batches/:id/machines/answers',...protect,editRoute(async(req,res)=>{
+  res.json(await batchTransaction(req,async(client,batch)=>{
+   if(!mayEnterFleet(batch,req.batchActor))fail('Only the batch owner, an MIS user or an MIS administrator can answer machines for this batch.',403);
+   const saved=await saveIdleAnswers(client,batch,req.body||{},req.batchActor.login);
+   await auditVlbBatch(client,batch,req.batchActor.login,'machine_answer_idle',{assetIds:saved.assetIds,book:saved.book,status:saved.status,reason:saved.reason,bulk:true});
+   return saved;
+  }));
+ }));
  app.put('/api/vlb-batches/:id/machines/:assetId/answer',...protect,editRoute(async(req,res)=>{
   if(!/^\d+$/.test(req.params.assetId))fail('Invalid machine.',400);
   res.json(await batchTransaction(req,async(client,batch)=>{

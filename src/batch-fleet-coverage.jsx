@@ -48,12 +48,14 @@ function AnswerBox({row,book,reasons,onSave,onClear,busy}){
 }
 
 export default function BatchFleetCoverage({coverage,ReportSection,batch,session,onChanged}){
- const [picked,setPicked]=useState(null);// {book,view}
+ // The muster opens on the first book with machines still to answer (owner, 25 Nov 2026), VLB first.
+ const [picked,setPicked]=useState(()=>{const key=['vlb','lmv','elb'].find(one=>coverage?.books?.[one]?.remaining>0);return key?{book:key,view:'remaining'}:null;});// {book,view}
  const [working,setWorking]=useState(''),[said,setSaid]=useState(null);
+ const [chosen,setChosen]=useState(()=>new Set()),[bulkStatus,setBulkStatus]=useState(''),[bulkReason,setBulkReason]=useState('');
  if(!coverage||!ReportSection)return null;
  const reasons=coverage.idleReasons||{},labels=coverage.answerLabels||{};
  const books=['vlb','elb','lmv'].map(key=>coverage.books?.[key]).filter(Boolean);
- const open=(book,view)=>{setSaid(null);setPicked(now=>now?.book===book&&now?.view===view?null:{book,view});};
+ const open=(book,view)=>{setSaid(null);setChosen(new Set());setPicked(now=>now?.book===book&&now?.view===view?null:{book,view});};
  const figure=key=>row=>row[key]>0
   ?<button type="button" className="cr-figure" title={'Open: '+row.label+' · '+FIGURES.find(one=>one.key===key).label} onClick={event=>{event.stopPropagation();open(row.book,key);}}>{row[key]}</button>
   :(row[key]??0);
@@ -86,7 +88,17 @@ export default function BatchFleetCoverage({coverage,ReportSection,batch,session
  };
  // A machine answered by its card or by Pulse-1 needs nothing by hand; a reason saved by hand can be changed or cleared.
  const needsHand=row=>row.atSite&&(!row.answer||Boolean(row.saved)&&!BY_HAND.has(row.answer));
+ // Many machines take one idle reason at once: tick them, choose the reason, Save.
+ const pickable=row=>row.atSite&&!row.answer;
+ const toggle=row=>setChosen(now=>{const next=new Set(now);next.has(row.assetId)?next.delete(row.assetId):next.add(row.assetId);return next;});
+ const saveMany=async()=>{
+  const assetIds=[...chosen];setWorking('bulk');setSaid(null);
+  try{const answer=await call('PUT','answers',{book:picked.book,status:bulkStatus,reason:bulkReason,assetIds});setSaid({id:'bulk',text:'Idle reason saved for '+answer.saved+' machine'+(answer.saved===1?'':'s')+'.'});setChosen(new Set());setBulkStatus('');setBulkReason('');onChanged?.();}
+  catch(error){setSaid({id:'bulk',text:error.message,bad:true});}
+  finally{setWorking('');}
+ };
  const lineColumns=[
+  ...(editable&&book?.takesAnswers?[{key:'pick',label:'Select',value:row=>chosen.has(row.assetId)?'Yes':'',render:row=>pickable(row)&&<input type="checkbox" aria-label={'Select '+row.door} checked={chosen.has(row.assetId)} disabled={Boolean(working)} onChange={()=>toggle(row)}/>}]:[]),
   {key:'door',label:'Door',value:row=>row.door},
   {key:'name',label:'Machine',value:row=>row.name},
   {key:'answer',label:'Answer',value:answerText},
@@ -100,7 +112,11 @@ export default function BatchFleetCoverage({coverage,ReportSection,batch,session
  ];
  const viewLabel=picked&&FIGURES.find(one=>one.key===picked.view)?.label;
  const pulseRead=coverage.pulseRead;
- return <section className="batch-fleet-coverage" aria-label="Machine coverage">
+ const unanswered=lines.filter(pickable);
+ const tally=one=>one.label+' '+one.answered+'/'+one.total+(one.complete?' clear':'');
+ return <section className="batch-fleet-coverage" aria-label="Machine muster">
+  <h3 className="batch-muster-title">Machine muster · {books.map(tally).join(' · ')}</h3>
+  <p className="logbook-message">{coverage.rosterFrozen?'The VLB, LMV and Equipment machines the Equipment Master put at this site when the batch was made.':'The machines the Equipment Master puts at this site now.'} A card, or a whole-shift breakdown or idle in Pulse-1, clears a machine by itself; the rest take an idle reason.</p>
   <p className={'logbook-message'+(coverage.complete?'':coverage.mode==='stop'?' batch-coverage-stop':' batch-coverage-warning')} role={coverage.complete?'status':coverage.mode==='stop'?'alert':'status'}>
    {coverage.complete?'Every VLB, ELB and LMV machine of this site has an answer for this shift.':coverageStopNote(coverage.stop)+' '+coverage.warnings.join(' ')}
   </p>
@@ -111,6 +127,17 @@ export default function BatchFleetCoverage({coverage,ReportSection,batch,session
    rowClassName={row=>picked?.book===row.book?'report-row-picked':''} showSearch={false} recordDateFilter={false} emptyMessage="No machines in the Equipment Master for this site."/>
   {book&&<ReportSection key={'coverage-'+picked.book+picked.view} title={'Step 2 · '+book.label+' · '+viewLabel+' · '+(batch?.name||'')} category="batch-fleet-coverage-machines" rows={lines} columns={lineColumns}
    rowKey={row=>row.assetId} showSearch={false} recordDateFilter={false} emptyMessage="No machine in this list."/>}
+  {editable&&book?.takesAnswers&&unanswered.length>0&&<div className="vlb-batch-actions batch-answer-many" role="group" aria-label="Idle reason for the selected machines">
+   <button type="button" disabled={Boolean(working)} onClick={()=>setChosen(new Set(unanswered.map(row=>row.assetId)))}>Select all {unanswered.length} with no answer</button>
+   {chosen.size>0&&<button type="button" disabled={Boolean(working)} onClick={()=>setChosen(new Set())}>Clear selection</button>}
+   <select aria-label="Idle reason for the selected machines" value={bulkStatus} disabled={Boolean(working)} onChange={e=>setBulkStatus(e.target.value)}>
+    <option value="">Idle reason…</option>
+    {Object.entries(reasons).map(([key,label])=><option key={key} value={key}>{label}</option>)}
+   </select>
+   <input type="text" aria-label="Reason details for the selected machines" placeholder="Reason" maxLength={500} value={bulkReason} disabled={Boolean(working)} onChange={e=>setBulkReason(e.target.value)}/>
+   <button type="button" className="vlb-approval-primary" disabled={Boolean(working)||!chosen.size||!bulkStatus||bulkReason.trim().length<3} onClick={saveMany}>Save for {chosen.size} selected</button>
+  </div>}
+  {said?.id==='bulk'&&<p className={'logbook-message'+(said.bad?' batch-coverage-warning':'')} role={said.bad?'alert':'status'}>{said.text}</p>}
   {book&&!book.takesAnswers&&<p className="logbook-message">An ELB machine is answered on the Equipment ELB fleet list (working, breakdown, maintenance, no operator or not in use); its breakdown hours come from Pulse-1 there.</p>}
  </section>;
 }

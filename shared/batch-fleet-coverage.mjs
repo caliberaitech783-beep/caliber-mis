@@ -131,9 +131,11 @@ function cardAnswers(records){
 // VLB and LMV machines, [{book,assetId,status,reason,breakdownHours,...}].
 // pulse: Pulse-II's copy of Pulse's breakdown list and the batch's shift, {rows,window,now,readAt,error}; without it the
 // page says Pulse-1 could not be read and VLB / LMV machines are answered by card or by hand only.
-export function batchFleetCoverage({assets=[],site,vlbRecords=[],lmvRecords=[],elbFleet=[],elbRecords=[],answers=[],pulse=null}={}){
+export function batchFleetCoverage({assets=[],site,vlbRecords=[],lmvRecords=[],elbFleet=[],elbRecords=[],answers=[],pulse=null,roster:frozen=null}={}){
  const index=new Map(assets.map(asset=>[String(asset.id),asset]));
- const roster=siteRoster(assets,site);
+ // frozen: the muster kept with the batch when it was made (server/rules/batch-machine-answers.mjs); without it, the
+ // machines the Equipment Master puts at the site now.
+ const roster=frozen||siteRoster(assets,site);
  const savedFor=book=>new Map(answers.filter(one=>one.book===book).map(one=>[String(one.assetId),one]));
  const pulseRead=pulse?.rows&&pulse?.window?{ok:true,readAt:pulse.readAt||null}:{ok:false,error:pulse?.error||(pulse?.window===null?'The batch shift has no Shift Master start time.':'Pulse-1 could not be read.')};
  const pulseFor=list=>{
@@ -157,7 +159,7 @@ export function batchFleetCoverage({assets=[],site,vlbRecords=[],lmvRecords=[],e
   lmv:bookCoverage(COVERAGE_BOOKS[2],roster.lmv,cardAnswers(lmvRecords),index,savedFor('lmv'),pulseFor(roster.lmv)),
  };
  const warnings=Object.values(books).filter(book=>!book.complete).map(coverageWarning);
- return {mode:'warning',books,complete:!warnings.length,warnings,idleReasons:IDLE_REASONS,answerLabels:ANSWER_LABELS,pulseRead};
+ return {mode:'warning',books,complete:!warnings.length,warnings,idleReasons:IDLE_REASONS,answerLabels:ANSWER_LABELS,pulseRead,rosterFrozen:Boolean(frozen)};
 }
 
 export function coverageWarning(book){

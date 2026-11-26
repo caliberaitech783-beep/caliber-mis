@@ -6,7 +6,7 @@ import {readFileSync} from 'node:fs';
 import {pulseShiftStatus,sitePulseRequests,shiftWindow,pulseTime} from '../shared/pulse-shift-status.mjs';
 import {PGlite} from '@electric-sql/pglite';
 import {batchFleetCoverage,siteRoster,assetCoverageKind,idleAnswerIssue,answerMachineIssue,IDLE_REASONS} from '../shared/batch-fleet-coverage.mjs';
-import {BATCH_MACHINE_ANSWER_SCHEMA,readBatchMachineAnswers,saveIdleAnswer,clearMachineAnswer} from '../server/rules/batch-machine-answers.mjs';
+import {BATCH_MACHINE_ANSWER_SCHEMA,readBatchMachineAnswers,saveIdleAnswer,saveIdleAnswers,clearMachineAnswer,readBatchRoster,freezeBatchRoster} from '../server/rules/batch-machine-answers.mjs';
 
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 const asset=(id,door,category,site='Sasti OC',extra={})=>({id,door,category,currentLocation:site,equipmentName:door+' machine',...extra});
@@ -176,8 +176,60 @@ test('the batch routes read the Pulse-1 copy before the batch lock, with a time 
  assert.match(route,/app\.delete\('\/api\/vlb-batches\/:id\/machines\/:assetId\/answer'[\s\S]*?machine_answer_cleared/);
  assert.match(route,/await pool\.query\(BATCH_MACHINE_ANSWER_SCHEMA\)/);
  const stages=read('server/rules/vlb-batch-stages.mjs');
- assert.match(stages,/answers:await readBatchMachineAnswers\(client,batch\),pulse\}/);
+ assert.match(stages,/answers:await readBatchMachineAnswers\(client,batch\),pulse,roster\}/);
  const panel=read('src/batch-fleet-coverage.jsx');
  assert.doesNotMatch(panel,/Fetch Pulse-1/);
  for(const label of ["label:'Pulse-1 (this shift)'",'Idle reason…','>Clear<','are read from Pulse-1 (pulse.cmll.in)'])assert.ok(panel.includes(label),label);
+});
+
+// Owner, 25 Nov 2026: the muster is shown when a batch is made and at close, kept as it was when the batch was made,
+// and many machines take one idle reason at once.
+test('a frozen muster is what has to be answered: a machine moved away is still listed, one added later is not',()=>{
+ const moved=assets.map(one=>one.id===3?{...one,currentLocation:'Durgapur'}:one).concat([asset(11,'DT-NEW','Vehicle')]);
+ const roster={vehicle:[{assetId:'1',door:'DT-01',name:''},{assetId:'2',door:'DT-02',name:''},{assetId:'3',door:'DT-03',name:''}],equipment:[{assetId:'4',door:'EX-01',name:''}],lmv:[{assetId:'6',door:'LMV-01',name:''}]};
+ const coverage=batchFleetCoverage({assets:moved,site:'Sasti OC',roster});
+ assert.equal(coverage.rosterFrozen,true);
+ assert.deepEqual(coverage.books.vlb.rows.map(r=>r.door),['DT-01','DT-02','DT-03']);
+ assert.deepEqual([coverage.books.elb.total,coverage.books.lmv.total],[1,1]);
+ assert.equal(batchFleetCoverage({assets:moved,site:'Sasti OC'}).rosterFrozen,false);
+});
+
+test('the muster is kept once per batch; many machines take one reason, all or none, only from the muster',async()=>{
+ const db=new PGlite();
+ await db.exec('CREATE TABLE mis_vlb_batches(id UUID PRIMARY KEY);CREATE TABLE master_records(id BIGINT PRIMARY KEY,master_name TEXT,record_data JSONB);');
+ await db.exec(BATCH_MACHINE_ANSWER_SCHEMA);
+ const id='6f1c1d1e-0000-4000-8000-000000000002';
+ await db.query('INSERT INTO mis_vlb_batches VALUES($1)',[id]);
+ for(const one of assets)await db.query("INSERT INTO master_records VALUES($1,'Equipment master',$2::jsonb)",[one.id,JSON.stringify(one)]);
+ const batch={id,name:'B2',site:'Sasti OC',closed_at:null};
+ assert.equal(await readBatchRoster(db,batch),null);
+ assert.equal(await freezeBatchRoster(db,batch,siteRoster(assets,'Sasti OC')),7);
+ assert.equal(await freezeBatchRoster(db,batch,siteRoster(assets,'Sasti OC')),0,'kept once');
+ const kept=await readBatchRoster(db,batch);
+ assert.deepEqual(kept.vehicle.map(r=>r.door),['DT-01','DT-02','DT-03']);
+ assert.deepEqual(kept.lmv.map(r=>r.door),['LMV-01','LMV-02']);
+ // DT-03 leaves the site in the master: it is still on this batch's muster and can be answered.
+ await db.query("UPDATE master_records SET record_data=record_data||'{\"currentLocation\":\"Durgapur\"}' WHERE id=3");
+ const many=await saveIdleAnswers(db,batch,{book:'vlb',status:'transferred_out',reason:'Sent to Durgapur',assetIds:['2','3']},'mis1');
+ assert.deepEqual([many.saved,many.assetIds.sort()],[2,['2','3']]);
+ // One machine off the muster stops the whole save.
+ await assert.rejects(saveIdleAnswers(db,batch,{book:'vlb',status:'no_work',reason:'xyz',assetIds:['1','8']},'mis1'),/DT-09: this machine is not on the muster of this batch/);
+ await assert.rejects(saveIdleAnswers(db,batch,{book:'vlb',status:'no_work',reason:'xyz',assetIds:['6']},'mis1'),/on the LMV muster of this batch, not VLB/);
+ await assert.rejects(saveIdleAnswers(db,batch,{book:'vlb',status:'no_work',reason:'xyz',assetIds:[]},'mis1'),/Choose the machines/);
+ const answers=await readBatchMachineAnswers(db,batch);
+ assert.deepEqual(answers.map(r=>r.assetId).sort(),['2','3'],'nothing of the refused saves was written');
+ await db.close();
+});
+
+test('the muster sits at the top of the batch, opens on what is still to answer, and saves many machines at once',()=>{
+ const page=read('src/vlb-create-batch.jsx');
+ const muster=page.indexOf('<BatchFleetCoverage'),stageWait=page.indexOf('{viewed.stageWait&&<p'),entry=page.indexOf('aria-label="Batch entry options"'),twoStage=page.indexOf('<div className="vlb-two-stage">');
+ assert.ok(muster>0&&muster<stageWait&&muster<entry&&muster<twoStage,'above the stage note, the entry buttons and the stage actions');
+ const panel=read('src/batch-fleet-coverage.jsx');
+ assert.match(panel,/useState\(\(\)=>\{const key=\['vlb','lmv','elb'\]\.find\(one=>coverage\?\.books\?\.\[one\]\?\.remaining>0\);return key\?\{book:key,view:'remaining'\}:null;\}\)/);
+ for(const label of ['Machine muster · ','type="checkbox"','Select all {unanswered.length} with no answer','Save for {chosen.size} selected',"call('PUT','answers',"])assert.ok(panel.includes(label),label);
+ const route=read('server/routes/vlb-batches.mjs');
+ assert.match(route,/app\.put\('\/api\/vlb-batches\/:id\/machines\/answers'[\s\S]*?saveIdleAnswers\(client,batch,req\.body\|\|\{\},req\.batchActor\.login\)[\s\S]*?bulk:true/);
+ const stages=read('server/rules/vlb-batch-stages.mjs');
+ assert.match(stages,/let roster=await readBatchRoster\(client,batch\);\r?\n if\(!roster&&!batch\.closed_at&&await freezeBatchRoster\(client,batch,siteRoster\(assets,batch\.site\)\)\)/);
 });
