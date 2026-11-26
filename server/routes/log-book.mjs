@@ -59,7 +59,7 @@ import {randomUUID} from 'node:crypto';
 import {readSaveHandoverAnswer} from '../../shared/log-book-save-deadline.mjs';
 import {canonicalSiteName} from '../../shared/site-location.mjs';
 import {displaySiteName,displaySiteSelection} from '../../shared/region-scope.mjs';
-import {drillJobMetrics,isDrillMachine} from '../../shared/drill-log-book.mjs';
+import {DRILL_JOB_TYPES,DRILL_SHIFT_PERIODS,drillJobMetrics,isDrillMachine} from '../../shared/drill-log-book.mjs';
 
 export const LOG_BOOK_SCHEMA=`CREATE TABLE IF NOT EXISTS mis_log_books(
  id BIGSERIAL PRIMARY KEY,book_no TEXT UNIQUE,book_type TEXT NOT NULL CONSTRAINT mis_log_books_book_type_check CHECK(book_type IN ('vehicle','equipment','lmv','dlb')),
@@ -90,21 +90,21 @@ export function normalizeDrillLogBook(input={}){
  const location=text(input.location);if(!location)fail('Select a location.');
  const assetId=number(input.assetId,'Rig number',{integer:true}),employeeId=number(input.employeeId,'Operator',{integer:true}),shiftId=number(input.shiftId,'Shift',{integer:true});
  const workOrderId=input.workOrderId?number(input.workOrderId,'Work Order',{integer:true}):null;
- const shiftHours=number(input.shiftHours,'Shift hours');if(shiftHours<=0||shiftHours>24)fail('Shift hours must be between 0 and 24.');
+ const shiftPeriod=text(input.shiftPeriod).toLowerCase(),period=DRILL_SHIFT_PERIODS.find(row=>row.id===shiftPeriod);if(!period)fail('Select Day or Night for Shift Hrs.');const shiftHours=period.hours;
  const compressorOpening=number(input.compressorOpening,'Compressor opening HMR',{signed:true}),compressorClosing=number(input.compressorClosing,'Compressor closing HMR',{signed:true});
  const machineOpening=number(input.machineOpening,'Machine opening HMR',{signed:true}),machineClosing=number(input.machineClosing,'Machine closing HMR',{signed:true});
  if(compressorClosing<compressorOpening)fail('Compressor closing HMR cannot be less than opening HMR.');
  if(machineClosing<machineOpening)fail('Machine closing HMR cannot be less than opening HMR.');
  const compressorRunning=rounded(compressorClosing-compressorOpening),machineRunning=rounded(machineClosing-machineOpening);
  if(machineRunning>compressorRunning)fail('Machine running HMR must not exceed compressor running HMR.');
- const jobRows=(Array.isArray(input.jobRows)?input.jobRows:[]).filter(row=>row&&Object.values(row).some(value=>text(value)));
- if(!jobRows.length)fail('Enter at least one drill job row.');if(jobRows.length>20)fail('A Drill Log Book can contain up to 20 drill job rows.');
- const jobs=jobRows.map((row,index)=>{const jobType=text(row.jobType,200);if(!jobType)fail(`Enter Job Type for drill row ${index+1}.`);const holes=number(row.holes,`No. of holes in drill row ${index+1}`,{integer:true}),holeLength=number(row.holeLength,`Length of hole in drill row ${index+1}`);return {jobType,holes,holeLength,...drillJobMetrics({holes,holeLength},compressorRunning)};});
+ const supplied=Array.isArray(input.jobRows)?input.jobRows:[];
+ const jobs=DRILL_JOB_TYPES.map((jobType,index)=>{const row=supplied.find(item=>text(item?.jobType).toLowerCase()===jobType.toLowerCase());if(!row)fail(`The fixed drill job row ${index+1} must be ${jobType}.`);const hasHoles=text(row.holes)!=='',hasLength=text(row.holeLength)!=='';if(hasHoles!==hasLength)fail(`Enter both No. of holes and Length of hole for ${jobType}.`);const holes=hasHoles?number(row.holes,`No. of holes for ${jobType}`,{integer:true}):0,holeLength=hasLength?number(row.holeLength,`Length of hole for ${jobType}`):0;return {jobType,holes,holeLength,...drillJobMetrics({holes,holeLength},compressorRunning)};});
+ if(!jobs.some(row=>row.holes>0&&row.holeLength>0))fail('Enter drill details for at least one of Clay Area, Hard Bench or Coal.');
  const breakdowns=(Array.isArray(input.breakdowns)?input.breakdowns:[]).filter(row=>row&&Object.values(row).some(value=>text(value))).slice(0,20).map((row,index)=>{
   const startTime=text(row.startTime,8),endTime=text(row.endTime,8);if((startTime||endTime)&&(!/^\d{2}:\d{2}$/.test(startTime)||!/^\d{2}:\d{2}$/.test(endTime)))fail(`Enter both valid start and end times in breakdown row ${index+1}.`);
   return {detail:text(row.detail,500),startTime,endTime,actionTaken:text(row.actionTaken,1000),mechanic:text(row.mechanic,200),tmExecution:text(row.tmExecution,500),remark:text(row.remark,1000)};
  });
- return {docType:'DLB',bookDate,location,projectName:text(input.projectName||location,200),assetId,employeeId,shiftId,workOrderId,shiftHours,drillCardNo:text(input.drillCardNo,100),compressorOpening,compressorClosing,compressorRunning,machineOpening,machineClosing,machineRunning,jobs,breakdowns,requestKey:text(input.requestKey||randomUUID())};
+ return {docType:'DLB',bookDate,location,projectName:text(input.projectName||location,200),assetId,employeeId,shiftId,workOrderId,shiftPeriod,shiftHours,drillCardNo:text(input.drillCardNo,100),compressorOpening,compressorClosing,compressorRunning,machineOpening,machineClosing,machineRunning,jobs,breakdowns,requestKey:text(input.requestKey||randomUUID())};
 }
 
 export function employeeCode(record={}){return text(record.employeeId||record.empId||record.employeeCode||record.empCode||record.caliberId||record.code||record.idNo);}
@@ -432,7 +432,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
      const {rows}=await pool.query("SELECT id,master_name,record_data FROM master_records WHERE master_name=ANY($1::text[]) ORDER BY id",[batchPicker?['Shift Master','Users & employees','Region master',...woNames]:['Equipment master','Vehicle transfers','Shift Master','Users & employees','Employee master','ERP Employee master','Region master','C-Dir Employee master',...woNames]]);
      const assets=[],employees=[],shifts=[],workOrders=[],regionSites=[];const hasEmployees=rows.some(r=>r.master_name==='C-Dir Employee master');
      for(const row of rows){const r=row.record_data;
-       if(row.master_name==='Equipment master'){const site=text(r.currentLocation||r.site||r.location);assets.push({id:String(row.id),door:text(r.door||r.doorNo||equipmentDoorNumber(r)),registration:text(r.registration||r.reg),name:text(r.equipmentName||r.equipment||r.name||r.group),kind:assetBookKind(r),category:text(r.category||r.equipmentCategory),lmv:isLmv(r),noTrips:isNoTripVehicle(r),...(isLmv(r)?{lmvDoor:text(r.door)||text(r.doorNo),registration:text(r.registration)||text(r.reg)||text(r.registrationNumber)}:{}),site});}
+       if(row.master_name==='Equipment master'){const site=text(r.currentLocation||r.site||r.location);assets.push({id:String(row.id),door:text(r.door||r.doorNo||equipmentDoorNumber(r)),registration:text(r.registration||r.reg),name:text(r.equipmentName||r.equipment||r.name||r.group),group:text(r.group||r.equipmentGroup),make:text(r.make||r.manufacturer),model:text(r.model||r.equipmentModel),kind:assetBookKind(r),category:text(r.category||r.equipmentCategory),lmv:isLmv(r),noTrips:isNoTripVehicle(r),...(isLmv(r)?{lmvDoor:text(r.door)||text(r.doorNo),registration:text(r.registration)||text(r.reg)||text(r.registrationNumber)}:{}),site});}
        if(row.master_name==='Employee master'||row.master_name==='ERP Employee master'||row.master_name==='C-Dir Employee master'||(!hasEmployees&&row.master_name==='Users & employees'))employees.push({id:String(row.id),name:text(r.employee||r.name||r.login),caliberId:employeeCode(r),caliberCode:employeeIdentity(r).caliberCode,employeeCode:text(r.employeeCode||r.erpEmployeeCode),masterName:row.master_name,site:text(r.site||r.location||r.currentLocation),designation:text(r.currentDesignationName)||text(r.designationName)||text(r.designation)||text(r.userGroup),...(r.hrListed===false?{hrListed:false}:{}),...(r.hrLeft===true?{hrLeft:true}:{}),...(Array.isArray(r.siteMoves)&&r.siteMoves.length?{siteMoves:r.siteMoves.map(move=>({from:move.from,to:move.to,fromDate:move.fromDate,at:move.at}))}:{})});
        if(row.master_name==='Shift Master'){const site=text(r.site||r.siteName);shifts.push({id:String(row.id),name:text(r.shiftName||r.name||r.shift),site,shiftCode:text(r.shiftCode),status:text(r.status),sourceMissing:Boolean(r.sourceMissing),effectiveFrom:text(r.effectiveFrom),effectiveTo:text(r.effectiveTo),startTime:text(r.startTime||r.start),endTime:text(r.endTime||r.end)});}
        if(woNames.includes(row.master_name)&&!r.sourceMissing)workOrders.push({id:String(row.id),number:woNumber(r),jobs:workOrderJobTypes(r),status:text(r.status),site:text(r.site||r.location),workOrderDate:text(r.workOrderDate),begin:text(r.commencementDate),end:text(r.completionDate)});

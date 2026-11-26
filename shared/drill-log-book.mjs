@@ -1,11 +1,14 @@
 const text=value=>String(value??'').trim();
 
 export function isDrillMachine(asset={}){
- const description=[asset.category,asset.equipmentCategory,asset.group,asset.equipmentGroup,asset.name,asset.equipmentName,asset.equipment,asset.type,asset.machineType].map(text).join(' ');
+ const description=[asset.category,asset.equipmentCategory,asset.group,asset.equipmentGroup,asset.name,asset.equipmentName,asset.equipment,asset.type,asset.machineType,asset.make,asset.model].map(text).join(' ');
  return /\b(?:drill|drilling|drill\s*rig|blast\s*hole)\b/i.test(description);
 }
 
-export const blankDrillJob=()=>({jobType:'',holes:'',holeLength:''});
+export const DRILL_JOB_TYPES=['Clay Area','Hard Bench','Coal'];
+export const DRILL_SHIFT_PERIODS=[{id:'day',label:'Day - 12 Hrs',hours:12},{id:'night',label:'Night - 12 Hrs',hours:12}];
+export const blankDrillJob=(jobType='')=>({jobType,holes:'',holeLength:''});
+export const fixedDrillJobs=()=>DRILL_JOB_TYPES.map(blankDrillJob);
 export const blankDrillBreakdown=()=>({detail:'',startTime:'',endTime:'',actionTaken:'',mechanic:'',tmExecution:'',remark:''});
 
 export function drillJobMetrics(row={},compressorHours){
