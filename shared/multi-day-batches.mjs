@@ -10,7 +10,10 @@
 // only when no site and date still holds two VLB-open batches (server/rules/vlb-batch-policy.mjs).
 // The window ends by itself at the end of MULTI_DAY_UNTIL (India time). The Azure setting
 // VLB_MULTI_DAY_BATCHES_UNTIL=YYYY-MM-DD moves the last day; VLB_MULTI_DAY_BATCHES_UNTIL=off ends it at once.
-export const MULTI_DAY_UNTIL='2026-12-01';
+// Ended early by the owner on 27 Nov 2026 ("ek site par at a time 1 hi batch open hona chahiye"): the window
+// closed with the end of 26 Nov 2026, so the old rules are back. Batches already open stay open and are closed
+// as usual; no new batch opens at a site while an earlier one is open there.
+export const MULTI_DAY_UNTIL='2026-11-26';
 const IST_OFFSET_MS=330*60*1000;
 const OFF=['0','off','false','no'];
 
