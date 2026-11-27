@@ -64,6 +64,45 @@ export function ElbSavedCardsReport({batch,ReportSection,onView,rowAction,rowEdi
  const columns=elbSavedCardColumns.map(column=>renderField&&column.field?{...column,render:record=>renderField(record,column.field,column.value(record))}:column);
  return <ReportSection title={'Saved ELB cards · '+batch.name} category="elb-saved-batch" recordDateFilter={false} description={`${records.length} saved ELB card${records.length===1?'':'s'} · ${displaySiteName(batch.site)} · ${batch.report_date} · ${batch.shift}`} rowAction={rowAction} rowEditor={rowEditor} columns={onView?[...columns,{key:'details',label:'Details',render:record=><button type="button" onClick={()=>onView(record)}>View ELB</button>}]:columns} rows={records} rowKey={r=>r.id} showSearch={false} query={search} onResetSearch={()=>setSearch('')} smartPrintAction emptyMessage="No ELB cards match this search in the opened batch." headingControl={<div className="generated-report-search"><label>Smart Search<input type="search" data-smart-search aria-label="Smart Search saved ELB cards" placeholder="Book number, equipment, operator or job card" value={search} onChange={e=>setSearch(e.target.value)}/></label></div>}/>;
 }
+const drillJob=(record,name)=>(record.data?.jobs||[]).find(row=>row.jobType===name)||{};
+const breakdownText=record=>(record.data?.breakdowns||[]).map(row=>[row.detail,row.startTime&&row.endTime?row.startTime+'–'+row.endTime:'',row.actionTaken,row.mechanic,row.tmExecution,row.remark].filter(Boolean).join(' · ')).filter(Boolean).join(' | ');
+export const dlbSavedCardColumns=[
+ {key:'bookNo',label:'Book number',value:r=>r.book_no},
+ {key:'rig',label:'Rig / Door',value:r=>r.data?.rigNo||r.data?.rigName},
+ {key:'operator',label:'Operator',value:r=>r.data?.operatorName},
+ {key:'caliberId',label:'Caliber ID',value:r=>r.data?.caliberId},
+ {key:'shift',label:'Shift',value:r=>r.data?.shiftName},
+ {key:'drillCard',label:'Drill card NO',value:r=>r.data?.drillCardNo},
+ {key:'compressorOpening',label:'Compressor opening HMR',value:r=>r.data?.compressorOpening,sortValue:r=>elbMeter(r.data?.compressorOpening)},
+ {key:'compressorClosing',label:'Compressor closing HMR',value:r=>r.data?.compressorClosing,sortValue:r=>elbMeter(r.data?.compressorClosing)},
+ {key:'compressorRunning',label:'Compressor running HMR',value:r=>r.data?.compressorRunning,sortValue:r=>elbMeter(r.data?.compressorRunning)},
+ {key:'machineOpening',label:'Machine opening HMR',value:r=>r.data?.machineOpening,sortValue:r=>elbMeter(r.data?.machineOpening)},
+ {key:'machineClosing',label:'Machine closing HMR',value:r=>r.data?.machineClosing,sortValue:r=>elbMeter(r.data?.machineClosing)},
+ {key:'machineRunning',label:'Machine running HMR',value:r=>r.data?.machineRunning,sortValue:r=>elbMeter(r.data?.machineRunning)},
+ ...['Clay Area','Hard Bench','Coal'].flatMap(name=>{const key=name.toLowerCase().replaceAll(' ','');return [
+  {key:key+'Holes',label:name+' holes',value:r=>drillJob(r,name).holes},
+  {key:key+'Length',label:name+' hole length',value:r=>drillJob(r,name).holeLength},
+  {key:key+'Metrage',label:name+' total metrage',value:r=>drillJob(r,name).totalMetrage},
+  {key:key+'HolesHour',label:name+' holes/hr',value:r=>drillJob(r,name).holesPerHour},
+  {key:key+'MeterHour',label:name+' meter/hr',value:r=>drillJob(r,name).metersPerHour},
+ ]}),
+ {key:'workOrder',label:'WO / Contract',value:r=>r.data?.workOrderContract},
+ {key:'breakdowns',label:'Breakdown details',value:breakdownText},
+];
+export function DlbSavedCardsReport({batch,ReportSection,onView,rowAction,rowEditor}){
+ const [search,setSearch]=useState('');const records=batch.dlbRecords||[];
+ const columns=onView?[...dlbSavedCardColumns,{key:'details',label:'Details',render:record=><button type="button" onClick={()=>onView(record)}>View DLB</button>}]:dlbSavedCardColumns;
+ return <ReportSection title={'Saved DLB cards · '+batch.name} category="dlb-saved-batch" recordDateFilter={false} description={`${records.length} saved DLB card${records.length===1?'':'s'} · ${displaySiteName(batch.site)} · ${batch.report_date} · ${batch.shift}`} rowAction={rowAction} rowEditor={rowEditor} columns={columns} rows={records} rowKey={r=>r.id} showSearch={false} query={search} onResetSearch={()=>setSearch('')} smartPrintAction emptyMessage="No DLB cards match this search in the opened batch." headingControl={<div className="generated-report-search"><label>Smart Search<input type="search" data-smart-search aria-label="Smart Search saved DLB cards" placeholder="Book number, rig, operator, shift or HMR" value={search} onChange={e=>setSearch(e.target.value)}/></label></div>}/>;
+}
+export function DlbCardDetails({record,onClose}){
+ const data=record?.data||{},jobs=data.jobs||[],breakdowns=data.breakdowns||[];
+ return <section className="logbook-section dlb-saved" aria-label={'Saved DLB '+record.book_no}><div className="dlb-section-title"><h2>DLB details · {record.book_no}</h2><button type="button" onClick={onClose}>Back to DLB report</button></div>
+  <div className="logbook-table-wrap"><table className="logbook-table"><thead><tr><th>Rig / Door</th><th>Operator</th><th>Caliber ID</th><th>Shift</th><th>Drill card</th><th>WO / Contract</th></tr></thead><tbody><tr><td>{cell(data.rigNo||data.rigName)}</td><td>{cell(data.operatorName)}</td><td>{cell(data.caliberId)}</td><td>{cell(data.shiftName)}</td><td>{cell(data.drillCardNo)}</td><td>{cell(data.workOrderContract)}</td></tr></tbody></table></div>
+  <h3>HMR readings</h3><div className="logbook-table-wrap"><table className="logbook-table"><thead><tr><th></th><th>Opening HMR</th><th>Closing HMR</th><th>Running HMR</th></tr></thead><tbody><tr><th>Compressor</th><td>{cell(data.compressorOpening)}</td><td>{cell(data.compressorClosing)}</td><td>{cell(data.compressorRunning)}</td></tr><tr><th>Machine</th><td>{cell(data.machineOpening)}</td><td>{cell(data.machineClosing)}</td><td>{cell(data.machineRunning)}</td></tr></tbody></table></div>
+  <h3>Drill job details</h3><div className="logbook-table-wrap"><table className="logbook-table"><thead><tr><th>Job type</th><th>No. of holes</th><th>Length of hole</th><th>Total metrage</th><th>Holes/hr</th><th>Meter/hr</th></tr></thead><tbody>{jobs.map(row=><tr key={row.jobType}><td>{row.jobType}</td><td>{cell(row.holes)}</td><td>{cell(row.holeLength)}</td><td>{cell(row.totalMetrage)}</td><td>{cell(row.holesPerHour)}</td><td>{cell(row.metersPerHour)}</td></tr>)}</tbody></table></div>
+  <h3>Breakdown details</h3><div className="logbook-table-wrap"><table className="logbook-table"><thead><tr><th>Breakdown</th><th>Start</th><th>End</th><th>Action taken</th><th>Mechanic</th><th>TM execution</th><th>Remark</th></tr></thead><tbody>{breakdowns.length?breakdowns.map((row,index)=><tr key={index}><td>{cell(row.detail)}</td><td>{cell(row.startTime)}</td><td>{cell(row.endTime)}</td><td>{cell(row.actionTaken)}</td><td>{cell(row.mechanic)}</td><td>{cell(row.tmExecution)}</td><td>{cell(row.remark)}</td></tr>):<tr><td colSpan={7}>No breakdown details.</td></tr>}</tbody></table></div>
+ </section>;
+}
 const cell=value=>value===null||value===undefined||value===''?'—':value;
 // Machine-wise shift report: loaders with trips and HMR first, then every other machine by status.
 export function MachineReport({report,statuses}){

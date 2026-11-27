@@ -22,7 +22,7 @@ const fleetReport=tree=>nodes(tree,n=>n.type===SmartSearchReport&&String(n.props
 const cells=(report,row)=>report.columns.map(column=>String(column.value(row)??''));
 
 async function compile(file,scope,names){
- scope={StepBackButton:()=>null,TableSmartPrint,SortableHeader,sortRowsBlanksLast,WaitingScans:()=>null,SmartSearchReport,...scope};
+ scope={StepBackButton:()=>null,TableSmartPrint,SortableHeader,sortRowsBlanksLast,WaitingScans:()=>null,SmartSearchReport,...(file==='vlb-create-batch.jsx'?{DlbSavedCardsReport:({batch})=>React.createElement('div',null,'Saved DLB entries ('+(batch.dlbRecords||[]).length+') '+(batch.dlbRecords||[]).map(row=>row.book_no).join(' ')),DlbCardDetails:()=>null,DrillLogBook:()=>null}:{}),...scope};
  scope={activeWorkOrders,WorkOrderJobSelect:()=>null,...scope};
  scope={isJayantSite,manualEntryShiftIssue,employeeAtLocation,matchesSmartSearch,splitEquipmentOperatorHmr,...scope};
  const source=readFileSync(new URL('../src/'+file,import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function').replaceAll('export const','const');
@@ -203,7 +203,7 @@ test('create batch shows the stage indicator and Close batch only for two-stage 
  await button(tree,'Lock LMV').props.onClick();
  assert.equal(calls.at(-1).url,'/api/vlb-batches/batch1/lock-lmv');
  h.slots[5]={...base,twoStage:true,stage:'dlb_open',canLockDlb:true,dlbRecords:[{id:71,book_no:'CAL/DLB/01-11-26/001',data:{rigNo:'LDM21-20086',operatorName:'BHAGAVAT',shiftName:'Shift A',compressorRunning:2.1,machineRunning:4.1}}]};tree=render();
- html=renderToStaticMarkup(tree);assert.match(html,/Saved DLB entries \(1\)/);assert.match(html,/CAL\/DLB\/01-11-26\/001/);assert.match(html,/LDM21-20086/);assert.match(html,/BHAGAVAT/);assert.match(html,/2\.1/);assert.match(html,/4\.1/);
+ html=renderToStaticMarkup(tree);assert.match(html,/Saved DLB entries \(1\)/);assert.match(html,/CAL\/DLB\/01-11-26\/001/);
  button(tree,'Add Drill Log Book entry').props.onClick();assert.equal(dlbEntry.id,'batch1');
  assert.equal(button(tree,'ELB entry · Lock DLB first').props.disabled,true);
  await button(tree,'Lock DLB').props.onClick();assert.equal(calls.at(-1).url,'/api/vlb-batches/batch1/lock-dlb');

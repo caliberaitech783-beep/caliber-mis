@@ -539,6 +539,41 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
    await client.query('COMMIT');client.release();client=null;filterLogBookSites.remember(data.location);res.status(201).json(result);
   }catch(error){if(client)await client.query('ROLLBACK').catch(()=>{});if(error.status)return res.status(error.status).json({error:error.message});next(error)}finally{client?.release()}
  });
+ app.put('/api/drill-log-books/:id',...protect,async(req,res,next)=>{
+  let client;
+  try{
+   await ensure();if(!/^\d+$/.test(req.params.id))fail('Invalid Drill Log Book.',400);
+   const data=normalizeDrillLogBook(req.body||{});requireLogBookSite(req.logBookScope,data.location);
+   client=await pool.connect();await client.query('BEGIN');await lockVlbBatchWrites(client);
+   const record=(await client.query("SELECT * FROM mis_log_books WHERE id=$1 AND book_type='dlb' AND deleted_at IS NULL FOR UPDATE",[req.params.id])).rows[0];
+   if(!record)fail('Drill Log Book is unavailable.',404);requireLogBookSite(req.logBookScope,record.site);
+   if(Number(req.body?.revision)!==Number(record.revision))fail('This Drill Log Book changed. Reload it before saving.',409);
+   const batch=(await client.query("SELECT b.* FROM mis_dlb_batch_entries e JOIN mis_vlb_batches b ON b.id=e.batch_id WHERE e.logbook_id=$1 AND b.archived_at IS NULL AND b.deleted_at IS NULL FOR UPDATE OF b",[record.id])).rows[0];
+   if(!batch||batch.closed_at||batch.stage!=='dlb_open')fail('DLB entries can be edited only while DLB is open.',409);
+   const prior=record.data||{};
+   if(String(data.batchId)!==String(batch.id)||data.bookDate!==prior.bookDate||canonicalSiteName(data.location)!==canonicalSiteName(record.site))fail('The DLB must retain its batch, site and date.',409);
+   if([data.assetId,data.employeeId,data.shiftId,String(data.workOrderId||''),data.shiftPeriod].join('|')!==[Number(record.asset_id),Number(prior.employeeId),Number(prior.shiftId),String(prior.workOrderId||''),prior.shiftPeriod].join('|'))fail('Rig, operator, shift and shift hours cannot be changed after saving. Delete the entry and create a new one.',409);
+   const next={...prior,...data,rigNo:prior.rigNo,rigName:prior.rigName,operatorName:prior.operatorName,caliberId:prior.caliberId,shiftName:prior.shiftName,workOrderContract:prior.workOrderContract};
+   const saved=(await client.query("UPDATE mis_log_books SET data=$1::jsonb,updated_at=NOW(),revision=revision+1 WHERE id=$2 RETURNING id,book_no,book_type,data,revision,created_at,updated_at",[JSON.stringify(next),record.id])).rows[0];
+   await client.query('UPDATE mis_dlb_batch_entries SET snapshot=$1::jsonb WHERE logbook_id=$2',[JSON.stringify(saved),record.id]);
+   await client.query('COMMIT');client.release();client=null;res.json(saved);
+  }catch(error){if(client)await client.query('ROLLBACK').catch(()=>{});if(error.status)return res.status(error.status).json({error:error.message});next(error)}finally{client?.release()}
+ });
+ app.delete('/api/drill-log-books/:id',...protect,async(req,res,next)=>{
+  let client;
+  try{
+   await ensure();if(!/^\d+$/.test(req.params.id))fail('Invalid Drill Log Book.',400);
+   const actor=await vlbBatchActor(pool,req.session);if(!isMisAdministrator(req.session)&&!actor.mis)fail('Only an MIS administrator can delete DLB entries.',403);
+   client=await pool.connect();await client.query('BEGIN');await lockVlbBatchWrites(client);
+   const record=(await client.query("SELECT * FROM mis_log_books WHERE id=$1 AND book_type='dlb' AND deleted_at IS NULL FOR UPDATE",[req.params.id])).rows[0];
+   if(!record)fail('Drill Log Book is unavailable.',404);requireLogBookSite(req.logBookScope,record.site);
+   const batch=(await client.query("SELECT b.* FROM mis_dlb_batch_entries e JOIN mis_vlb_batches b ON b.id=e.batch_id WHERE e.logbook_id=$1 FOR UPDATE OF b",[record.id])).rows[0];
+   if(!batch||batch.closed_at||batch.stage!=='dlb_open')fail('DLB entries can be deleted only while DLB is open.',409);
+   if(Number(req.body?.revision)!==Number(record.revision))fail('This Drill Log Book changed. Reload it before deleting.',409);
+   await client.query('UPDATE mis_log_books SET deleted_at=NOW(),revision=revision+1 WHERE id=$1',[record.id]);await client.query('DELETE FROM mis_dlb_batch_entries WHERE logbook_id=$1',[record.id]);
+   await client.query('COMMIT');client.release();client=null;res.json({deleted:true});
+  }catch(error){if(client)await client.query('ROLLBACK').catch(()=>{});if(error.status)return res.status(error.status).json({error:error.message});next(error)}finally{client?.release()}
+ });
  app.get('/api/log-books/:kind',...protect,async(req,res,next)=>{
    try{await ensure();if(!['vehicle','equipment','lmv'].includes(req.params.kind))return res.status(400).json({error:'Invalid log book type.'});
      // Exact, indexed confirmation of the caller's own new card. No historical

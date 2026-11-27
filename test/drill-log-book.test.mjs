@@ -58,8 +58,10 @@ test('DLB API saves a site drill, numbers it, blocks duplicates and returns the 
  const body={...base(),shiftPeriod:'night',batchId,bookDate:'2026-11-26',requestKey:randomUUID()};const saved=await call('/api/drill-log-books','POST',body);
  assert.equal(saved.status,201,JSON.stringify(saved.data));assert.equal(saved.data.book_no,'CAL/DLB/26-11-26/001');assert.equal(saved.data.data.rigNo,'DR-01');assert.equal(saved.data.data.operatorName,'Drill Operator');
  assert.equal((await db.query('SELECT count(*)::int AS n FROM mis_dlb_batch_entries WHERE batch_id=$1',[batchId])).rows[0].n,1);
+ const updated=await call('/api/drill-log-books/'+saved.data.id,'PUT',{...body,revision:saved.data.revision,compressorClosing:1011,machineClosing:1213});assert.equal(updated.status,200,JSON.stringify(updated.data));assert.equal(updated.data.data.compressorClosing,1011);assert.equal(updated.data.data.machineOpening,1200);assert.equal(updated.data.revision,2);
  const duplicate=await call('/api/drill-log-books','POST',{...body,requestKey:randomUUID()});assert.equal(duplicate.status,409);assert.match(duplicate.data.error,/already exists/);
  const register=await call('/api/drill-log-books');assert.equal(register.status,200);assert.deepEqual(register.data.records.map(row=>row.book_no),['CAL/DLB/26-11-26/001']);
+ const deleted=await call('/api/drill-log-books/'+saved.data.id,'DELETE',{revision:updated.data.revision});assert.equal(deleted.status,200,JSON.stringify(deleted.data));assert.equal((await db.query('SELECT count(*)::int AS n FROM mis_dlb_batch_entries WHERE batch_id=$1',[batchId])).rows[0].n,0);
 });
 
 const SHIFTS=[['Shift A','06:00','14:00'],['Shift B','14:00','22:00'],['Shift C','22:00','06:00'],['Day','06:00','18:00'],['Night','18:00','06:00']].map(([shiftName,startTime,endTime])=>({site:'Sasti OC',shiftName,startTime,endTime}));

@@ -1,6 +1,7 @@
 import VlbBatchDeletion,{DeletedVlbBatches} from './vlb-batch-deletion.jsx';
 import VlbBatchCardDetails from './vlb-batch-card-details.jsx';
 import LogBookForm from './log-book-form.jsx';
+import DrillLogBook from './drill-log-book.jsx';
 import SmartSelect from './smart-select.jsx';
 import LogBookDeletion from './log-book-deletion.jsx';
 import React,{useEffect,useRef,useState} from 'react';
@@ -11,7 +12,7 @@ import {displaySiteName} from '../shared/region-scope.mjs';
 import {withLmvEntrySite} from './vlb-entry-context.mjs';
 import {activeWorkOrders,bookShiftCode,systemBookDate} from '../shared/trip-card-rules.mjs';
 import {vlbRecordSource,vlbRecordEntryType} from '../shared/vlb-batch-format.mjs';
-import VlbBatchReport,{ElbSavedCardsReport} from './vlb-batch-report.jsx';
+import VlbBatchReport,{DlbCardDetails,DlbSavedCardsReport,ElbSavedCardsReport} from './vlb-batch-report.jsx';
 import SmartSearchReport from './smart-search-report.jsx';
 import VlbBatchGovernance from './vlb-batch-governance.jsx';
 import VlbReopenDialog from './vlb-reopen-dialog.jsx';
@@ -55,12 +56,13 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
  const vlbLocked=viewed?.closed_at||viewed?.trialExpired||(twoStage&&stage!=='vlb_open'&&!lockPaused);
  const elbLocked=viewed?.closed_at||(stage!=='elb_open'&&!lockPaused)||viewed?.trialExpired;
  const lmvLocked=viewed?.closed_at||(stage!=='lmv_open'&&!lockPaused)||Boolean(viewed?.stageWait);
- const cardsLocked=kind=>kind==='equipment'?elbLocked:kind==='lmv'?lmvLocked:vlbLocked;
+ const dlbLocked=viewed?.closed_at||stage!=='dlb_open'||viewed?.trialExpired;
+ const cardsLocked=kind=>kind==='equipment'?elbLocked:kind==='lmv'?lmvLocked:kind==='dlb'?dlbLocked:vlbLocked;
  // An open batch never stops a user (owner, 19 Nov 2026): VLB, LMV and ELB cards show Edit
  // while that stage is open, whoever created or reopened the batch.
  const canEditCard=(record,kind)=>kind==='equipment'
   ? !elbLocked&&viewed.canEditSavedFleet===true&&!record.data?.operatorSplit
-  : !cardsLocked(kind);
+  : kind==='dlb'?!dlbLocked&&viewed.canEditSavedFleet===true:!cardsLocked(kind);
  const editingCard=(record,kind)=>inlineCard?.batchId===viewed.id&&inlineCard?.id===record.id&&inlineCard?.kind===kind;
  const editCard=(record,kind,field)=>{
   if(inlineCard&&!editingCard(record,kind)&&!window.confirm('Discard unsaved changes and edit this card?'))return;
@@ -79,7 +81,7 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
   : shown(value);
  const editor=(record,kind,colSpan)=>editingCard(record,kind)&&canEditCard(record,kind)&&<tr className="batch-inline-editor-row"><td colSpan={colSpan}>
   <div className="batch-inline-editor">
-   <LogBookForm key={kind+':'+record.id} kind={kind} session={session} vlbBatch={viewed} initialRecord={record} inlineEdit focusField={inlineCard.field} onExit={()=>setInlineCard(null)} onSaved={()=>{setInlineCard(null);setRefresh(n=>n+1)}}/>
+  {kind==='dlb'?<DrillLogBook key={'dlb:'+record.id} session={session} initialRecord={record} inlineEdit onExit={()=>setInlineCard(null)} onSaved={()=>{setInlineCard(null);setRefresh(n=>n+1)}}/>:<LogBookForm key={kind+':'+record.id} kind={kind} session={session} vlbBatch={viewed} initialRecord={record} inlineEdit focusField={inlineCard.field} onExit={()=>setInlineCard(null)} onSaved={()=>{setInlineCard(null);setRefresh(n=>n+1)}}/>}
   </div>
  </td></tr>;
  const lockedSite=!entryMode&&!twoStageList&&!actor?.admin&&openBatch&&!openBatch.restricted?openBatch.site:'';
@@ -180,7 +182,7 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
   if(!window.confirm('Delete '+record.book_no+' from '+viewed.name+'? Only this saved card will be removed.'))return;
   setBusy(true);setError('');
   try{
-   await read('/api/log-books/'+kind+'/'+record.id,{method:'DELETE',body:{revision:record.revision}});
+   await read((kind==='dlb'?'/api/drill-log-books/':'/api/log-books/'+kind+'/')+record.id,{method:'DELETE',body:{revision:record.revision}});
    setSelectedCard(current=>current?.kind===kind&&String(current.id)===String(record.id)?null:current);
   }catch(error){setError(error.message)}
   finally{setRefresh(n=>n+1);setBusy(false)}
@@ -301,7 +303,7 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
      <button type="button" disabled>ELB entry · Lock DLB first</button>
      {viewed.canUnlockVlb&&<button type="button" disabled={busy} onClick={unlockVlb}>Unlock VLB</button>}
     </div>}
-    {['dlb_open','elb_open','closed'].includes(stage)&&<DlbSavedEntries records={viewed.dlbRecords||[]}/>}
+    {['dlb_open','elb_open','closed'].includes(stage)&&<DlbSavedCardsReport key={viewed.id+':dlb'} batch={viewed} ReportSection={ReportSection} onView={record=>viewCard(record,'dlb')} rowAction={record=>action(record,'dlb')} rowEditor={(record,colSpan)=>editor(record,'dlb',colSpan)}/>}
     {stage==='elb_open'&&<><div className="vlb-batch-actions">{onEquipmentElb&&!equipmentElbHidden&&<button type="button" className="vlb-approval-primary vlb-open-elb-button" disabled={busy||viewed.canEnterFleet===false} onClick={()=>onEquipmentElb(viewed)}>Process Equipment ELB</button>}<button type="button" aria-expanded={!equipmentElbHidden} aria-controls="vlb-equipment-elb-details" onClick={()=>setEquipmentElbHidden(v=>!v)}>{equipmentElbHidden?'Show Equipment ELB':'Hide Equipment ELB'}</button>{viewed.canUnlockVlb&&<button type="button" disabled={busy} onClick={unlockVlb}>Unlock VLB</button>}<button type="button" disabled={busy||detailLoading||!viewed.canClose} onClick={()=>close(viewed)}>Close &amp; lock ELB</button>{canDeleteManualElb&&<button type="button" disabled={busy||detailLoading} aria-expanded={deleteBatchId===viewed.id} onClick={()=>setDeleteBatchId(id=>id===viewed.id?null:viewed.id)}>Delete manual ELBs</button>}</div>
     {canDeleteManualElb&&deleteBatchId===viewed.id&&<LogBookDeletion key={viewed.id} session={session} context={{manualElbScope:{site:viewed.site,date:viewed.report_date,shift:viewed.shift}}}/>}
      {!viewed.stageWait&&viewed.canClose===false&&<p role="status">The batch owner or an MIS administrator can close and lock this ELB.</p>}
@@ -324,7 +326,7 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
    {loading||detailLoading?<p role="status">Loading entries…</p>:viewed?<VlbBatchReport key={viewed.id} batch={lmvList?{...viewed,records:viewed.lmvRecords||[]}:viewed} bookLabel={lmvList?'LMV':'VLB'} ReportSection={ReportSection} onView={record=>viewCard(record,lmvList?'lmv':'vehicle')} rowAction={record=>action(record,lmvList?'lmv':'vehicle')} renderField={(record,field,value)=>fieldCell(record,lmvList?'lmv':'vehicle',field,value)} rowEditor={(record,colSpan)=>editor(record,lmvList?'lmv':'vehicle',colSpan)} entryType={entryFilter}/>:<><p>{records.length} cards · {manual} Manual + {records.length-manual} Scan · All included automatically. Each scan entry holds up to 40 cards; this final batch includes all matching saved entries and can exceed 40 cards.</p><SmartSearchReport ReportSection={ReportSection} title="Unbatched entries" category="vlb-unbatched-preview" description={[displaySiteName(selection.site),selection.date,selection.shift].filter(Boolean).join(' · ')||'Choose site, date and shift'} searchLabel="Smart Search unbatched entries" placeholder="Book number, trip card, vehicle or driver" columns={previewReportColumns} rows={records} rowKey={r=>r.id} emptyMessage={selection.site&&selection.date&&selection.shift?'No saved, unbatched entries match this selection.':'Select site, date and shift to load saved entries.'}/></>}
   </section>}
 
-  {viewed&&selectedCard&&<VlbBatchCardDetails key={viewed.id+":"+selectedCard.viewKey} kind={selectedCard.kind} onClose={()=>{setSelectedCard(null);document.querySelector(".vlb-active-batch-panel")?.scrollIntoView({block:"start"})}} session={session} batch={viewed} record={selectedCard} ReportSection={ReportSection}/> }
+  {viewed&&selectedCard&&(selectedCard.kind==='dlb'?<DlbCardDetails key={viewed.id+":"+selectedCard.viewKey} record={(viewed.dlbRecords||[]).find(row=>String(row.id)===String(selectedCard.id))} onClose={()=>{setSelectedCard(null);document.querySelector(".vlb-active-batch-panel")?.scrollIntoView({block:"start"})}}/>:<VlbBatchCardDetails key={viewed.id+":"+selectedCard.viewKey} kind={selectedCard.kind} onClose={()=>{setSelectedCard(null);document.querySelector(".vlb-active-batch-panel")?.scrollIntoView({block:"start"})}} session={session} batch={viewed} record={selectedCard} ReportSection={ReportSection}/>)}
   <VlbBatchGovernance batch={viewed} actor={actor} onManual={twoStage&&stage!=='vlb_open'&&!lockPaused?undefined:onManual} onScan={twoStage&&stage!=='vlb_open'&&!lockPaused?undefined:onScan} onRequestReopen={()=>setShowApproval(true)}/>
   {showApproval&&viewed?.closed_at&&<VlbReopenDialog key={viewed.id+':'+viewed.closure_revision} session={session} batch={viewed} onChanged={changed} onDismiss={()=>setShowApproval(false)}/>}
  </section>;
@@ -355,9 +357,6 @@ export function StageSteps({stage,waiting}){
 }
 const shown=value=>value===0||String(value??'').trim()?String(value):'—';
 
-function DlbSavedEntries({records}){
- return <section className="dlb-saved" aria-label="Saved DLB entries"><h2>Saved DLB entries ({records.length})</h2>{records.length?<div className="logbook-table-wrap"><table className="logbook-table"><thead><tr><th>Book NO</th><th>Rig / Door NO</th><th>Operator</th><th>Shift</th><th>Compressor HMR</th><th>Machine HMR</th></tr></thead><tbody>{records.map(record=>{const data=record.data||{};return <tr key={record.id}><td>{shown(record.book_no)}</td><td>{shown(data.rigNo||data.door)}</td><td>{shown(data.operatorName||data.employeeName)}</td><td>{shown(data.shiftName||data.bookShiftCode)}</td><td>{shown(data.compressorRunning)}</td><td>{shown(data.machineRunning)}</td></tr>})}</tbody></table></div>:<p>No DLB entries saved for this batch. DLB is optional.</p>}</section>;
-}
 const meterNumber=value=>{const text=String(value??'').trim();const number=Number(text);return text&&Number.isFinite(number)?number:'';};
 // Site batches: Batch ID, Cards, the three stage columns (two-stage lists only) and Status sort; the action column does not.
 const siteBatchColumns=[['name','Batch ID'],['cards','Cards'],['vlb','VLB'],['lmv','LMV'],['dlb','DLB'],['elb','ELB'],['status','Status']];

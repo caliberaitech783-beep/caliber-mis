@@ -19,7 +19,7 @@ import {misPageAllowed,misRequestAllowed} from '../shared/mis-application-access
 import {formatDisplayDateTime} from '../shared/date-time-format.mjs';
 
 async function compile(file,scope,names){
- scope={StepBackButton:()=>null,TableSmartPrint,SortableHeader,sortRowsBlanksLast,WaitingScans:()=>null,SmartSearchReport:()=>null,...scope};
+ scope={StepBackButton:()=>null,TableSmartPrint,SortableHeader,sortRowsBlanksLast,WaitingScans:()=>null,SmartSearchReport:()=>null,...(file==='vlb-create-batch.jsx'?{DlbSavedCardsReport:()=>null,DlbCardDetails:()=>null,DrillLogBook:()=>null}:{}),...scope};
  scope={activeWorkOrders,WorkOrderJobSelect:()=>null,...scope};
  const source=readFileSync(new URL('../src/'+file,import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function').replaceAll('export const','const');
  const {code}=await transformWithOxc(source,file,{jsx:{runtime:'classic'}});
@@ -311,4 +311,14 @@ test('Saved ELB cards get the VLB Smart Search, and sort by any heading with num
  assert.deepEqual(books('jobCard','asc'),['104','105','103'],'JC-9 before JC-10, empty job card last');
  assert.deepEqual(books('jobCard','desc'),['105','104','103'],'empty job card stays last in descending order too');
  assert.deepEqual(books('operator','asc'),['104','103','105']);
+});
+
+test('Saved DLB cards use the shared smart report with complete HMR, drill and breakdown details',async()=>{
+ const ReportSection=()=>null;
+ const {DlbSavedCardsReport,dlbSavedCardColumns}=await compile('vlb-batch-report.jsx',{React,useState:initial=>[initial,()=>{}],vlbRecordEntryType,vlbRecordSource,vlbRecordTrips,displaySiteName,meterCorrectionReport},['DlbSavedCardsReport','dlbSavedCardColumns']);
+ const record={id:7,book_no:'CAL/DLB/24-11-26/005',data:{rigNo:'LDM12',operatorName:'VEERBHAN SINGH',caliberId:'CMPL1',shiftName:'Shift B',drillCardNo:'DC-1',compressorOpening:10,compressorClosing:12,compressorRunning:2,machineOpening:20,machineClosing:23,machineRunning:3,jobs:[{jobType:'Clay Area',holes:4,holeLength:6,totalMetrage:24,holesPerHour:2,metersPerHour:12}],breakdowns:[{detail:'Hose',startTime:'10:00',endTime:'10:30',actionTaken:'Replaced'}]}};
+ const report=DlbSavedCardsReport({batch:{name:'B01',site:'Jayant OC',report_date:'2026-11-24',shift:'S2',dlbRecords:[record]},ReportSection,onView:()=>{},rowAction:()=>null,rowEditor:()=>null}).props;
+ assert.equal(report.title,'Saved DLB cards · B01');assert.equal(report.smartPrintAction,true);assert.equal(report.rows[0],record);assert.ok(report.headingControl);
+ const labels=dlbSavedCardColumns.map(column=>column.label);for(const label of ['Compressor opening HMR','Compressor closing HMR','Compressor running HMR','Machine opening HMR','Machine closing HMR','Machine running HMR','Clay Area holes','Hard Bench total metrage','Coal meter/hr','Breakdown details'])assert.ok(labels.includes(label),label);
+ assert.equal(dlbSavedCardColumns.find(column=>column.label==='Machine opening HMR').value(record),20);
 });
