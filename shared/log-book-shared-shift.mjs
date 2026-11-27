@@ -1,3 +1,4 @@
+import {cardDutyShift} from './duty-shift.mjs';
 import {isDummyEmployeeId} from './dummy-employee-ids.mjs';
 
 const key=value=>String(value??'').trim().toUpperCase();
@@ -31,4 +32,23 @@ export function cardWorkingHmr(data={}){
  const opening=Number(openingHmr),closing=Number(closingHmr);
  return Number.isFinite(opening)&&Number.isFinite(closing)&&opening>=0&&closing>=opening
   ? Math.round((closing-opening)*1000)/1000 : null;
+}
+
+// Call only for ELBs already scoped to the same machine, site, date and shift.
+// Two positive, non-overlapping meter segments of one named job retain their
+// own records; sharing an operator does not make the worked hours duplicates.
+export function elbCardsNeedDuplicateReview(left={},right={}){
+ if(!shareCardOperator(left,right))return false;
+ const job=key(left.jobCardNo),firstDuty=cardDutyShift(left),secondDuty=cardDutyShift(right);
+ if(!firstDuty.code||firstDuty.conflict||secondDuty.conflict||firstDuty.code!==secondDuty.code)return true;
+ if(!job||['-','—','NA','N/A','NONE','0'].includes(job)||job!==key(right.jobCardNo)||!cardOperators(left).length||!cardOperators(right).length||left.operatorSplit||right.operatorSplit)return true;
+ const segment=data=>{
+  if(key(data.openingHmr)===''||key(data.closingHmr)==='')return null;
+  const start=Number(data.openingHmr),end=Number(data.closingHmr),hours=cardWorkingHmr(data);
+  if(!Number.isFinite(start)||!Number.isFinite(end)||start<0||end<=start||hours===null||Math.abs(hours-(end-start))>0.000001)return null;
+  return {start,end};
+ };
+ const a=segment(left),b=segment(right);
+ if(!a||!b)return true;
+ return !(a.end<=b.start||b.end<=a.start);
 }
