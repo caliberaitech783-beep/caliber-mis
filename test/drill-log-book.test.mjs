@@ -6,6 +6,7 @@ import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
 import {DRILL_JOB_TYPES,drillJobMetrics,fixedDrillJobs,isDrillMachine} from '../shared/drill-log-book.mjs';
 import {normalizeDrillLogBook,registerLogBooks} from '../server/routes/log-book.mjs';
+import {batchDrillPeriods,drillBatchShiftIssue,drillPeriodBatchShift,drillShiftEntryAllowed} from '../shared/drill-batch-shift.mjs';
 import {misPageAllowed,misRequestAllowed} from '../shared/mis-application-access.mjs';
 import {requestedMisPage} from '../src/mis-navigation.mjs';
 
@@ -41,21 +42,44 @@ test('DLB screen explicitly filters site-wise drill machines',()=>{
  assert.match(source,/filter\(row=>isDrillMachine\(row\)&&sameSite\(row\)\)/);
  assert.match(source,/only drill machines assigned to the selected site are available/);
  assert.match(source,/label="Door NO"/);assert.match(source,/rigs\.length===1\?rigs\[0\]\.id/);
- assert.match(source,/DRILL_SHIFT_PERIODS\.map/);assert.match(source,/Fixed job types for every DLB entry/);
+ assert.match(source,/DRILL_SHIFT_PERIODS\.filter\(row=>drillPeriods\.includes\(row\.id\)\)\.map/);assert.match(source,/needs no Drill Log Book/);assert.match(source,/Fixed job types for every DLB entry/);
 });
 
 test('DLB API saves a site drill, numbers it, blocks duplicates and returns the register',async t=>{
  const db=new PGlite();t.after(()=>db.close());await db.exec('CREATE TABLE master_records(id BIGSERIAL PRIMARY KEY,master_name TEXT,record_data JSONB)');
- for(const [name,data] of [['Equipment master',{category:'Equipment',equipmentGroup:'DRILL',door:'DR-01',equipmentName:'D75K',currentLocation:'Jayant OB'}],['C-Dir Employee master',{name:'Drill Operator',empId:'CMPL100',site:'Jayant OB'}],['Shift Master',{site:'Jayant OB',shiftName:'Shift B',startTime:'12:00:00',endTime:'21:00:00'}]])await db.query('INSERT INTO master_records(master_name,record_data) VALUES($1,$2)',[name,JSON.stringify(data)]);
+ for(const [name,data] of [['Equipment master',{category:'Equipment',equipmentGroup:'DRILL',door:'DR-01',equipmentName:'D75K',currentLocation:'Jayant OB'}],['C-Dir Employee master',{name:'Drill Operator',empId:'CMPL100',site:'Jayant OB'}],['Shift Master',{site:'Jayant OB',shiftName:'Shift B',startTime:'14:00:00',endTime:'22:00:00'}],['Shift Master',{site:'Jayant OB',shiftName:'Shift A',startTime:'06:00:00',endTime:'14:00:00'}],['Shift Master',{site:'Jayant OB',shiftName:'Shift C',startTime:'22:00:00',endTime:'06:00:00'}],['Shift Master',{site:'Jayant OB',shiftName:'Day',startTime:'06:00:00',endTime:'18:00:00'}],['Shift Master',{site:'Jayant OB',shiftName:'Night',startTime:'18:00:00',endTime:'06:00:00'}]])await db.query('INSERT INTO master_records(master_name,record_data) VALUES($1,$2)',[name,JSON.stringify(data)]);
  const query=(sql,args)=>sql.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):!args&&sql.includes(';')?db.exec(sql):db.query(sql,args),pool={query,connect:async()=>({query,release(){}})};
  const app=express();app.use(express.json());const auth=(req,res,next)=>{if(!req.headers.authorization)return res.sendStatus(401);req.session={login:'dlb-test',role:'super',permissions:{adminLevel:'Admin'}};next()};registerLogBooks(app,{pool,requireSession:auth,requireAdministrator:auth});app.use((e,req,res,next)=>res.status(500).json({error:e.message}));
  const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.on('listening',resolve));t.after(()=>{server.closeAllConnections();server.close()});const url=`http://127.0.0.1:${server.address().port}`;
  const call=async(path,method='GET',body)=>{const response=await fetch(url+path,{method,headers:{Authorization:'admin','Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return {status:response.status,data:await response.json()}};
  const options=await call('/api/log-books/options');assert.equal(options.status,200);assert.equal(options.data.assets[0].group,'DRILL');assert.equal(isDrillMachine(options.data.assets[0]),true);
  const batchId=randomUUID();await db.query("INSERT INTO mis_vlb_batches(id,name,site,book_date,shift,sequence,created_by,request_key,stage,vlb_locked_at,lmv_locked_at) VALUES($1,'DLB test batch','Jayant OB','2026-11-26','S2',1,'dlb-test',$2,'dlb_open',NOW(),NOW())",[batchId,randomUUID()]);
- const body={...base(),batchId,bookDate:'2026-11-26',requestKey:randomUUID()};const saved=await call('/api/drill-log-books','POST',body);
+ const day=await call('/api/drill-log-books','POST',{...base(),batchId,bookDate:'2026-11-26',requestKey:randomUUID()});assert.equal(day.status,409);assert.match(day.data.error,/Day drill shift starts at 06:00, so its card goes in the Shift I batch/);
+ const body={...base(),shiftPeriod:'night',batchId,bookDate:'2026-11-26',requestKey:randomUUID()};const saved=await call('/api/drill-log-books','POST',body);
  assert.equal(saved.status,201,JSON.stringify(saved.data));assert.equal(saved.data.book_no,'CAL/DLB/26-11-26/001');assert.equal(saved.data.data.rigNo,'DR-01');assert.equal(saved.data.data.operatorName,'Drill Operator');
  assert.equal((await db.query('SELECT count(*)::int AS n FROM mis_dlb_batch_entries WHERE batch_id=$1',[batchId])).rows[0].n,1);
  const duplicate=await call('/api/drill-log-books','POST',{...body,requestKey:randomUUID()});assert.equal(duplicate.status,409);assert.match(duplicate.data.error,/already exists/);
  const register=await call('/api/drill-log-books');assert.equal(register.status,200);assert.deepEqual(register.data.records.map(row=>row.book_no),['CAL/DLB/26-11-26/001']);
+});
+
+const SHIFTS=[['Shift A','06:00','14:00'],['Shift B','14:00','22:00'],['Shift C','22:00','06:00'],['Day','06:00','18:00'],['Night','18:00','06:00']].map(([shiftName,startTime,endTime])=>({site:'Sasti OC',shiftName,startTime,endTime}));
+
+test('A 12-hour drill shift goes in the 8-hour batch in which it starts',()=>{
+ const context={shifts:SHIFTS,site:'Sasti OC',date:'2026-11-27'};
+ assert.equal(drillPeriodBatchShift('day',context),'S1');assert.equal(drillPeriodBatchShift('night',context),'S2');
+ assert.deepEqual(batchDrillPeriods('S1',context),['day']);assert.deepEqual(batchDrillPeriods('S2',context),['night']);assert.deepEqual(batchDrillPeriods('S3',context),[]);
+ assert.equal(drillBatchShiftIssue('night','S2',context),'');
+ assert.match(drillBatchShiftIssue('day','S2',context),/Day drill shift starts at 06:00, so its card goes in the Shift I batch .*takes the Night drill shift/);
+ assert.match(drillBatchShiftIssue('day','S3',context),/No drill shift starts in this batch: lock DLB without a card/);
+ // Without Day / Night entries Day starts with Shift I and Night 12 hours later.
+ const eight={...context,shifts:SHIFTS.slice(0,3)};
+ assert.equal(drillPeriodBatchShift('day',eight),'S1');assert.equal(drillPeriodBatchShift('night',eight),'S2');
+ // With no Shift Master at all the standard 05:00 / 13:00 / 21:00 shifts are used.
+ assert.deepEqual(batchDrillPeriods('S1',{site:'Elsewhere'}),['day']);assert.deepEqual(batchDrillPeriods('S2',{site:'Elsewhere'}),['night']);
+ // A night starting at 22:00 goes in Shift III.
+ assert.deepEqual(batchDrillPeriods('S3',{...context,shifts:[...SHIFTS.slice(0,4),{site:'Sasti OC',shiftName:'Night',startTime:'22:00',endTime:'10:00'}]}),['night']);
+ // A 12-hour batch takes the drill shift of its own name.
+ assert.deepEqual(batchDrillPeriods('D',context),['day']);assert.deepEqual(batchDrillPeriods('N',context),['night']);
+ assert.equal(drillShiftEntryAllowed({shiftName:'Shift B'},'S2','night'),true);assert.equal(drillShiftEntryAllowed({shiftName:'Night'},'S2','night'),true);
+ assert.equal(drillShiftEntryAllowed({shiftName:'Day'},'S2','night'),false);assert.equal(drillShiftEntryAllowed({shiftName:'Shift A'},'S2','night'),false);
 });
