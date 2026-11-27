@@ -23,6 +23,8 @@ test('DLB normalization preserves readings and calculated drill rows',()=>{
  const row=normalizeDrillLogBook(base());
  assert.equal(row.docType,'DLB');assert.equal(row.shiftPeriod,'day');assert.equal(row.shiftHours,12);assert.equal(row.compressorRunning,10);assert.equal(row.machineRunning,12);
  assert.deepEqual(row.jobs.map(job=>job.jobType),DRILL_JOB_TYPES);assert.deepEqual(row.jobs[0],{jobType:'Clay Area',holes:70,holeLength:6,totalMetrage:420,holesPerHour:7,metersPerHour:42});assert.equal(row.jobs[2].holes,0);
+ const blank=normalizeDrillLogBook({...base(),jobRows:fixedDrillJobs()});assert.ok(blank.jobs.every(job=>job.holes===0&&job.holeLength===0),'all three drill job rows are optional');
+ assert.throws(()=>normalizeDrillLogBook({...base(),jobRows:fixedDrillJobs().map((job,index)=>index?job:{...job,holes:1})}),/both No. of holes and Length of hole/);
  assert.throws(()=>normalizeDrillLogBook({...base(),machineClosing:1201}),/greater than or equal to compressor/);
  assert.throws(()=>normalizeDrillLogBook({...base(),shiftPeriod:''}),/Day or Night/);
 });
