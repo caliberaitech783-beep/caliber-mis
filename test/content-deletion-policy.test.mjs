@@ -24,6 +24,21 @@ test('saved LMV deletion reaches only the guarded numeric record route',()=>{
  assert.equal(contentDeletionBlocked('DELETE','/api/log-books/lmv/all'),true);
 });
 
+test('saved DLB deletion reaches its guarded handler while bulk and nested deletion stay blocked',async()=>{
+ const path='/api/drill-log-books/42';
+ assert.equal(contentDeletionBlocked('DELETE',path),false);
+ for(const url of ['/api/drill-log-books/all','/api/drill-log-books/42/history','/api/drill-log-books/42/43'])assert.equal(contentDeletionBlocked('DELETE',url),true,url);
+ const app=express();let invoked=false;
+ app.use(enforceContentDeletionPolicy);
+ app.delete('/api/drill-log-books/:id',(_req,res)=>{invoked=true;res.status(409).json({error:'DLB entries can be deleted only while DLB is open.'});});
+ const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.once('listening',resolve));
+ try{
+  const response=await fetch('http://127.0.0.1:'+server.address().port+path,{method:'DELETE'});
+  assert.equal(invoked,true);assert.equal(response.status,409);
+  assert.equal((await response.json()).error,'DLB entries can be deleted only while DLB is open.');
+ }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
+});
+
 test('single equipment alias revocation reaches its guarded route without allowing equipment deletion',()=>{
  const id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
  assert.equal(contentDeletionBlocked('DELETE','/api/equipment-aliases/'+id),false);
