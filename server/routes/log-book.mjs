@@ -60,6 +60,7 @@ import {readSaveHandoverAnswer} from '../../shared/log-book-save-deadline.mjs';
 import {canonicalSiteName} from '../../shared/site-location.mjs';
 import {displaySiteName,displaySiteSelection} from '../../shared/region-scope.mjs';
 import {DRILL_JOB_TYPES,DRILL_SHIFT_PERIODS,drillJobMetrics,isDrillMachine} from '../../shared/drill-log-book.mjs';
+import {drillBatchShiftIssue,drillShiftEntryAllowed} from '../../shared/drill-batch-shift.mjs';
 
 export const LOG_BOOK_SCHEMA=`CREATE TABLE IF NOT EXISTS mis_log_books(
  id BIGSERIAL PRIMARY KEY,book_no TEXT UNIQUE,book_type TEXT NOT NULL CONSTRAINT mis_log_books_book_type_check CHECK(book_type IN ('vehicle','equipment','lmv','dlb')),
@@ -523,11 +524,14 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
    if(!batch||batch.closed_at)fail('This batch is unavailable. Open an active batch at the DLB stage.',409);
    if(batch.stage!=='dlb_open')fail('DLB entry is available only after LMV is locked and before DLB is locked.',409);
    if(canonicalSiteName(batch.site)!==canonicalSiteName(data.location)||batch.report_date!==data.bookDate)fail('The DLB must retain its batch site and date.',409);
-   if(bookShiftCode(shift.shiftCode||shift.shiftName||shift.name)!==batch.shift)fail('Select the shift belonging to this batch.',409);
+   // A 12-hour drill shift goes in the 8-hour batch in which it starts (shared/drill-batch-shift.mjs).
+   if(!drillShiftEntryAllowed(shift,batch.shift,data.shiftPeriod))fail('Select the shift belonging to this batch.',409);
+   const siteShifts=(await client.query("SELECT id,record_data FROM master_records WHERE master_name='Shift Master'")).rows.map(row=>({...row.record_data,id:String(row.id)}));
+   const periodIssue=drillBatchShiftIssue(data.shiftPeriod,batch.shift,{shifts:siteShifts,site:batch.site,date:batch.report_date});if(periodIssue)fail(periodIssue,409);
    const prior=(await client.query("SELECT id,book_no,book_type,data,revision,created_at,updated_at,created_by FROM mis_log_books WHERE request_key=$1",[data.requestKey])).rows[0];
    if(prior){if(prior.created_by!==(req.session.login||req.session.name)||prior.book_type!=='dlb')fail('Save reference already used.',409);await client.query('COMMIT');client.release();client=null;return res.json(prior);}
-   const duplicate=(await client.query("SELECT book_no FROM mis_log_books WHERE book_type='dlb' AND deleted_at IS NULL AND book_date=$1 AND site=$2 AND asset_id=$3 AND data->>'shiftId'=$4 LIMIT 1",[data.bookDate,data.location,data.assetId,String(data.shiftId)])).rows[0];
-   if(duplicate)fail(`A Drill Log Book already exists for this rig, date and shift: ${duplicate.book_no}.`,409);
+   const duplicate=(await client.query("SELECT book_no FROM mis_log_books WHERE book_type='dlb' AND deleted_at IS NULL AND book_date=$1 AND site=$2 AND asset_id=$3 AND (data->>'shiftPeriod'=$4 OR data->>'shiftId'=$5) LIMIT 1",[data.bookDate,data.location,data.assetId,data.shiftPeriod,String(data.shiftId)])).rows[0];
+   if(duplicate)fail(`A Drill Log Book already exists for this rig, date and drill shift: ${duplicate.book_no}.`,409);
    const counter=(await client.query("INSERT INTO mis_log_book_counters(book_type,book_date,last_number) VALUES('dlb',$1,1) ON CONFLICT(book_type,book_date) DO UPDATE SET last_number=mis_log_book_counters.last_number+1 RETURNING last_number",[data.bookDate])).rows[0].last_number;
    const [year,month,day]=data.bookDate.split('-'),bookNo=`CAL/DLB/${day}-${month}-${year.slice(-2)}/${String(counter).padStart(3,'0')}`;
    const result=(await client.query("INSERT INTO mis_log_books(book_no,book_type,book_date,site,asset_id,data,request_key,created_by) VALUES($1,'dlb',$2,$3,$4,$5::jsonb,$6,$7) RETURNING id,book_no,book_type,data,revision,created_at,updated_at",[bookNo,data.bookDate,data.location,data.assetId,JSON.stringify(data),data.requestKey,req.session.login||req.session.name])).rows[0];

@@ -295,7 +295,8 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
      {viewed.canUnlockVlb&&<button type="button" disabled={busy} onClick={unlockVlb}>Unlock VLB</button>}
     </div>}
     {stage==='dlb_open'&&<div className="vlb-batch-actions">
-     {onDlbEntry&&<button type="button" onClick={()=>onDlbEntry(viewed)}>Add Drill Log Book entry</button>}
+     {Array.isArray(viewed.dlbShifts)&&<p className="vlb-stage-note" role="status">{viewed.dlbShifts.length?`Drill shift of this batch: ${viewed.dlbShifts.map(period=>period==='day'?'Day':'Night').join(' and ')} (12 Hrs). Its Drill Log Book goes here.`:'No 12-hour drill shift starts in this batch: Lock DLB needs no Drill Log Book.'}</p>}
+     {onDlbEntry&&(!Array.isArray(viewed.dlbShifts)||viewed.dlbShifts.length>0)&&<button type="button" onClick={()=>onDlbEntry(viewed)}>Add Drill Log Book entry</button>}
      <button type="button" className="vlb-approval-primary" disabled={busy||detailLoading||!viewed.canLockDlb} onClick={()=>lockStage('dlb')}>Lock DLB</button>
      <button type="button" disabled>ELB entry · Lock DLB first</button>
      {viewed.canUnlockVlb&&<button type="button" disabled={busy} onClick={unlockVlb}>Unlock VLB</button>}

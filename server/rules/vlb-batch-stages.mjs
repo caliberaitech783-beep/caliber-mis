@@ -27,6 +27,7 @@ import {mirrorReadAt} from '../services/pulse-breakdown-mirror.mjs';
 import {ACTIVE_VLB_ENTRY_FROM,ACTIVE_VLB_ENTRY_FILTER} from './vlb-card-counts.mjs';
 import {readWaitingScans,vlbLockScanBlocker,lmvLockScanBlocker,closeScanBlocker} from './vlb-waiting-scans.mjs';
 import {isDrillMachine} from '../../shared/drill-log-book.mjs';
+import {batchDrillPeriods,drillPeriodLabel} from '../../shared/drill-batch-shift.mjs';
 const batchWaitingScans=(client,batch)=>readWaitingScans(client,{site:batch.site,date:batch.report_date,shift:batch.shift});
 
 const fail=batchFail;
@@ -144,7 +145,7 @@ export async function stageDetails(client,batch,{assets,tripCardRecords,vlbCards
  const rosterShown=machineRosterShown();
  const coverage=rosterShown||coverageStop(batch).active?await machineCoverage(client,batch,{assets,vlbRecords:vlbCards,lmvRecords,fleet,elbRecords:elb,pulseRows}):null;
  const fleetCoverage=rosterShown?coverage:null,stop=coverage?.stop;
- return {twoStage:true,stage,stageWait:await readBatchStageWait(client,batch),holds,machines,fleet,fleetProgress:progress,elbRecords:elb,dlbRecords:dlb,elbTripCardRows,waitingScans,waitingScanMessage,fleetCoverage,
+ return {twoStage:true,stage,stageWait:await readBatchStageWait(client,batch),holds,machines,fleet,fleetProgress:progress,elbRecords:elb,dlbRecords:dlb,dlbShifts:await batchDrillShifts(client,batch),elbTripCardRows,waitingScans,waitingScanMessage,fleetCoverage,
   lockBlockers:stage==='vlb_open'?[...lockBlockers({stage,records:vlb,holds,unresolved:buildMachineSnapshot(vlb,assets,batch.site).unresolved,waitingScans}),...coverageBlockers(coverage,['vlb'],stop)]:[],
   lmvLockBlockers:stage==='lmv_open'?[...(lmvWaiting?[lmvWaiting]:[]),...coverageBlockers(coverage,['lmv'],stop)]:[],
   closeBlockers:stage==='elb_open'?[...closureBlockers({stage,fleet,holds,duplicates,waitingScans}),...coverageBlockers(coverage,['vlb','elb','lmv'],stop)]:[],machineReport:report,statuses:FLEET_STATUSES};
@@ -361,15 +362,23 @@ export async function lockLmv(client,batch,actor,{pulseRows}={}){
  return locked;
 }
 
+// The 12-hour drill shifts (day / night) whose Drill Log Book cards go in this batch (shared/drill-batch-shift.mjs).
+export async function batchDrillShifts(client,batch){
+ const {rows}=await client.query("SELECT id,record_data FROM master_records WHERE master_name='Shift Master'");
+ return batchDrillPeriods(batch.shift,{shifts:rows.map(row=>({...row.record_data,id:String(row.id)})),site:batch.site,date:batch.report_date});
+}
+
 export async function lockDlb(client,batch,actor){
  if(!twoStageEnabled()||batchStage(batch)!=='dlb_open')fail('DLB must be open before it can be locked.',409);
  await requireStageTurn(client,batch);
  const assets=await equipmentAssets(client);
  const drills=assets.filter(asset=>isDrillMachine(asset)&&canonicalSiteName(asset.currentLocation||asset.site||asset.location)===canonicalSiteName(batch.site));
  const saved=await batchDlbRecords(client,batch);
- if(drills.length&&!saved.length)fail('Add at least one Drill Log Book entry before locking DLB.',409);
+ // A 12-hour drill shift's card goes in the batch in which it starts; a batch in which none starts needs no card.
+ const periods=await batchDrillShifts(client,batch);
+ if(drills.length&&periods.length&&!saved.length)fail(`Add at least one Drill Log Book entry (${periods.map(drillPeriodLabel).join(' / ')} drill shift) before locking DLB.`,409);
  const locked=(await client.query("UPDATE mis_vlb_batches SET stage='elb_open',dlb_locked_at=NOW() WHERE id=$1 RETURNING *,book_date::text AS report_date",[batch.id])).rows[0];
- await auditVlbBatch(client,batch,actor,'dlb_locked',{cards:saved.length,siteDrills:drills.length});
+ await auditVlbBatch(client,batch,actor,'dlb_locked',{cards:saved.length,siteDrills:drills.length,drillShifts:periods});
  return locked;
 }
 

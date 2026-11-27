@@ -149,3 +149,4 @@
 .batch-fleet-coverage .roster-bulk-bar input[type=text]{min-width:160px;flex:1;max-width:320px}
 .batch-fleet-coverage .roster-ticked{font-size:12px;color:#555}
 .batch-fleet-coverage tr.roster-row-ticked td{background:#eef4ff}
+.vlb-create-batch .vlb-batch-actions>.vlb-stage-note{flex-basis:100%;margin:0 0 4px;color:#4b3a8c;font-weight:600}

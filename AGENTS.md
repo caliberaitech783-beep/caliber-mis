@@ -205,3 +205,13 @@ Set by the owner on 25 November 2026: the attendance Excel HR makes by hand is u
 - Everyone on the sheet is compared, staff and helpers too. P with a full punch (or a day HR marked present) is the same; P with only IN or OUT is a miss punch; P with a punch only at another site, and P with no punch, are mismatches; A, WO, L, CO, H, - or blank with no punch is the same, with a punch at this site it is "Punch, HR sheet not P". A mark not understood is not compared. Trip cards are shown beside a day, never counted.
 - Also listed: EMP. ID and name to correct, and people who punched at the site and are not on the sheet. The Excel gives the HR sheet back coloured, with these lists.
 - Rule: `shared/hr-sheet-biometric.mjs`; run: `src/hr-sheet-biometric-run.mjs`; screen: `src/hr-sheet-biometric.jsx`; `test/hr-sheet-biometric.test.mjs` checks it. Nothing is changed in Pulse-II.
+
+# A 12-hour drill shift goes in the 8-hour batch in which it starts
+
+Set by the owner on 27 November 2026 ("Option 1 banao"): a drill works 12-hour Day / Night shifts while a batch is 8 hours, and DLB must not hold a batch for a drill shift that is not its own.
+
+- A Drill Log Book card goes in the batch of the same date whose Shift I / II / III contains the start of its Day or Night shift: with Day 06:00 and Night 18:00, Day goes in Shift I and Night in Shift II. A 12-hour Day / Night batch takes the drill shift of its own name.
+- The start comes from the site's Shift Master: a Day / Night entry, else Day starts with Shift I and Night 12 hours after Day. The 8-hour windows are the site's Shift I / II / III entries, else 05:00 / 13:00 / 21:00.
+- The DLB save refuses a Day or Night that is not the batch's, naming the right batch. One card per rig, date and drill shift. The DLB screen offers only the batch's drill shift.
+- Lock DLB asks for a card only in a batch in which a drill shift starts; in the others it locks with none, and the batch page says so.
+- `shared/drill-batch-shift.mjs` holds the rule; `test/drill-log-book.test.mjs` checks it.
