@@ -74,6 +74,9 @@ export function misRequestAllowed(session,req){
  if(route==='/api/attendance-approval'||route==='/api/attendance-approval/day')return read;
  if(route==='/api/attendance-approval/approvers')return read||req.method==='PUT';
  if(route==='/api/attendance-approval/act')return req.method==='POST';
+ // RHR unlock with OTP: the route checks that the site is the login's.
+ if(route==='/api/attendance-approval/lock')return read;
+ if(route==='/api/attendance-approval/unlock'||route==='/api/attendance-approval/unlock/verify')return req.method==='POST';
  // Only session maintenance and menu discovery are unconditional. New routes fail closed.
  if(['/api/logout','/api/session-heartbeat','/api/session-messages','/api/preferred-language','/api/navigation-settings','/api/request-shifts','/api/announcements','/api/notifications'].includes(route))return read||['/api/logout','/api/session-heartbeat','/api/preferred-language'].includes(route);
  if(route==='/api/session-location')return read||req.method==='POST';

@@ -8068,12 +8068,14 @@ const employeeMasterDoor=createEmployeeMasterDoor({pool,sendButtons:(chatId,text
 // A tapped button belongs to a release approval or to the Employee Master door; each knows its own buttons.
 // Owner, 27 Nov 2026: trip card batches are approved day by day for every site by Site HR, Office HR, RHR and
 // Directors, then locked (shared/attendance-approval.mjs). Approve / Send back on Telegram or from the screen.
-const attendanceApproval=createAttendanceApproval({pool,sendButtons:(chatId,text,buttons,options)=>misTelegram.sendButtons(chatId,text,buttons,options),sendText:(chatId,text,options)=>misTelegram.sendText(chatId,text,options)});
+const attendanceApproval=createAttendanceApproval({pool,sendButtons:(chatId,text,buttons,options)=>misTelegram.sendButtons(chatId,text,buttons,options),sendText:(chatId,text,options)=>misTelegram.sendText(chatId,text,options),
+ // RHR unlock OTP (owner, 27 Nov 2026): Telegram, WhatsApp when Telegram is not connected. approvalOtpDelivery is set below; read when used.
+ deliverOtp:request=>approvalOtpDelivery.send(request)});
 // A tapped button belongs to a release approval, the Employee Master door or an attendance day; each knows its own buttons.
 telegramCallbacks.handle=async input=>(await releaseOtp.handleTelegramCallback(input))??(await employeeMasterDoor.handleTelegramCallback(input))??attendanceApproval.handleTelegramCallback(input);
 // A text after Send back is the reason.
 telegramCallbacks.text=input=>attendanceApproval.handleTelegramText(input);
-registerAttendanceApproval(app,{approval:attendanceApproval,requireSession,isAdministrator:session=>isMisAdministrator(session)||session?.role==='super'&&['admin','super admin'].includes(String(session?.permissions?.adminLevel||'').trim().toLowerCase())});
+registerAttendanceApproval(app,{approval:attendanceApproval,requireSession,siteAllowed:async(session,site)=>siteAllowed(await logBookScope(session),site),isAdministrator:session=>isMisAdministrator(session)||session?.role==='super'&&['admin','super admin'].includes(String(session?.permissions?.adminLevel||'').trim().toLowerCase())});
 attendanceApproval.start();
 // After every production release the workflow reports what it deployed; the owner gets it on Telegram.
 registerReleaseReport(app,{verifyIdentity:releaseIdentity,ownerLogins:()=>ownerTelegramLogins(pool),
