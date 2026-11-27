@@ -216,3 +216,15 @@ Set by the owner on 27 November 2026 ("Option 1 banao"): a drill works 12-hour D
 - The DLB save refuses a Day or Night that is not the batch's, naming the right batch. One card per rig, date and drill shift. The DLB screen offers only the batch's drill shift.
 - A Drill Log Book is optional at Lock DLB (27 Nov 2026). The batch page names the drill shift whose card goes in the batch, and in a batch in which none starts it offers no DLB entry.
 - `shared/drill-batch-shift.mjs` holds the rule; `test/drill-log-book.test.mjs` checks it.
+
+# Attendance approval of trip card batches, day by day
+
+Set by the owner on 27 November 2026: the trip card batches up to 20 Nov 2026 are locked only after Level 1 Site HR (verify attendance), Level 2 Office HR (cross-check and validate), Level 3 RHR, Regional HR (review), and Level 4 Directors (final approval). The approval is per site and per day, and each approver gets one Telegram message per day ("One per day"), or acts from the system.
+
+- A site's day is all its batches of one report date (every spelling of the site counts as one site). It reaches Level 1 by itself once every batch of that date is closed; the window runs from 1 Nov 2026 to 20 Nov 2026 (`APPROVAL_UNTIL_DEFAULT`; the Azure setting `ATTENDANCE_APPROVAL_UNTIL=YYYY-MM-DD` moves the last day).
+- Who approves is set by an administrator on Masters › Attendance approval ("Who approves"): per level, a site, a region (WCL / NCL) or All sites, and an MIS login from Login Details. Any one login of a level may act, and only at that level for those sites.
+- Telegram: one message per site, day, level and approver, with **Approve / Send back** (callback `att:<id>:a|b`), sent once per batch signature by a timer that one server runs at a time. Send back asks for the reason as the next message in that chat (30 minutes). A login gets messages only after it has connected Telegram.
+- Send back (any level, with a reason) puts the day back at Level 1 as "sent back" and tells the batch creators and Site HR. When a batch of the day is reopened and closed again, the day starts again at Site HR, marked corrected; a batch reopened while the day waits at any level does the same. Site HR may also take a sent-back day back as it is.
+- After Directors approve, the day is locked: database triggers refuse every change to that day's cards (`mis_log_books`: content, site, date, machine, deletion), its Present / VTC Training entries (`mis_shift_attendance`) and its batches (reopen, add, move, delete) with SQLSTATE `CA423`, answered as HTTP 423. There is no unlock.
+- Screen: Masters › Attendance approval, Step 1 sites, Step 2 that site's days (one line per date, because one approval is one day), Step 3 the day with its cards, trail and buttons, and "Approve all days waiting for me".
+- `shared/attendance-approval.mjs` holds the rule, `server/routes/attendance-approval.mjs` the tables, triggers, routes and Telegram, `src/attendance-approval.jsx` the screen; `test/attendance-approval.test.mjs` checks it.

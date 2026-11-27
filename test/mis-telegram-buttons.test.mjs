@@ -24,7 +24,7 @@ test('a tapped button reaches the release approval with the logins linked to tha
  assert.equal(await hook(tap(42,42,'group')),200);
  assert.equal(taps.length,0,'a group chat cannot approve');
  assert.equal(await hook(tap(42,42)),200);
- assert.deepEqual(taps,[{data:'rel:0123456789abcdef:a',logins:['anoop']}]);
+ assert.deepEqual(taps,[{data:'rel:0123456789abcdef:a',logins:['anoop'],chatId:'42'}]);
  const edit=calls.find(c=>c.method==='editMessageText'),answer=calls.find(c=>c.method==='answerCallbackQuery');
  assert.match(edit.body.text,/Pulse-II urgent production release\n\n✅ Approved by anoop/);
  assert.equal(answer.body.callback_query_id,'cb1');

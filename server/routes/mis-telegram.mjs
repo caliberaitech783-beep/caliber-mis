@@ -19,7 +19,7 @@ export const MIS_TELEGRAM_SCHEMA=`
  ALTER TABLE mis_telegram_outbox ADD COLUMN IF NOT EXISTS parse_mode TEXT NOT NULL DEFAULT '';
  ALTER TABLE mis_telegram_outbox ADD COLUMN IF NOT EXISTS photo JSONB;
 `;
-export function registerMisTelegram(app,{pool,store,requireSession,fetchImpl=telegramFetch,onCallback=null,sendReleaseApprovalSample=null}){
+export function registerMisTelegram(app,{pool,store,requireSession,fetchImpl=telegramFetch,onCallback=null,onText=null,sendReleaseApprovalSample=null}){
  const hideAudit=(req,res,next)=>{req.audit=false;next()};
  const read=async()=>await store.read(key)||{};
  const login=req=>String(req.session.login||'').trim().toLowerCase();
@@ -97,7 +97,7 @@ export function registerMisTelegram(app,{pool,store,requireSession,fetchImpl=tel
     const chatId=String(query.message?.chat?.id||''),fromId=String(query.from?.id||'');
     if(config.enabled&&onCallback&&chatId&&chatId===fromId&&query.message?.chat?.type==='private'){
      const {rows}=await pool.query('SELECT login_name FROM mis_telegram_links WHERE chat_id=$1',[chatId]);
-     const result=await onCallback({data:String(query.data||''),logins:rows.map(row=>row.login_name)});
+     const result=await onCallback({data:String(query.data||''),logins:rows.map(row=>row.login_name),chatId});
      if(result?.answer)answer=result.answer;
      // Telegram gives the shown text without its HTML; its entities keep the bold and link after the edit.
      if(result?.done){const kept=String(query.message.text||'').slice(0,3500),entities=(query.message.entities||[]).filter(e=>e.offset+e.length<=kept.length);
@@ -118,6 +118,18 @@ export function registerMisTelegram(app,{pool,store,requireSession,fetchImpl=tel
    return res.json({ok:true});
   }
   const message=req.body?.message,match=/^\/start(?:@\w+)? mis_([A-Za-z0-9_-]{32})$/.exec(message?.text||'');
+  // Any other text in a private chat linked to an MIS login: the reason after a Send back button (attendance approval).
+  if(config.enabled&&onText&&!match&&message?.chat?.type==='private'&&typeof message.text==='string'&&!message.text.startsWith('/')&&String(message.from?.id)===String(message.chat.id)){
+   try{
+    const chatId=String(message.chat.id);
+    const {rows}=await pool.query('SELECT login_name FROM mis_telegram_links WHERE chat_id=$1',[chatId]);
+    if(rows.length){
+     const result=await onText({chatId,text:message.text.slice(0,1000),logins:rows.map(row=>row.login_name)});
+     if(result?.reply)await call(config,'sendMessage',{chat_id:chatId,text:String(result.reply).slice(0,4000),disable_web_page_preview:true}).catch(()=>{});
+    }
+   }catch{/* Telegram does not resend a text; the person taps Send back again */}
+   return res.json({ok:true});
+  }
   if(!config.enabled||!match||message?.chat?.type!=='private'||String(message.from?.id)!==String(message.chat.id)||!/^[1-9]\d{0,18}$/.test(String(message.chat.id)))return res.json({ok:true});
   const client=await pool.connect();let linked=false;
   try{
@@ -204,6 +216,8 @@ export function registerMisTelegram(app,{pool,store,requireSession,fetchImpl=tel
   start(){if(!timer){timer=setInterval(()=>void drain(),10000);timer.unref?.();void ensureWebhook();}},
   // Sends at once (not through the outbox) a message with buttons to one private chat.
   async sendButtons(chatId,text,buttons,{parse_mode}={}){const config=await read();if(!config.enabled||!config.webhookReady)return false;await call(config,'sendMessage',{chat_id:String(chatId),text:String(text).slice(0,4000),disable_web_page_preview:true,...(parse_mode?{parse_mode}:{}),reply_markup:{inline_keyboard:buttons}});return true;},
+  // Sends at once a plain message (HTML, or asking for a reply) to one private chat.
+  async sendText(chatId,text,{parse_mode,reply_markup}={}){const config=await read();if(!config.enabled||!config.webhookReady)return false;await call(config,'sendMessage',{chat_id:String(chatId),text:String(text).slice(0,4000),disable_web_page_preview:true,...(parse_mode?{parse_mode}:{}),...(reply_markup?{reply_markup}:{})});return true;},
   stop(){clearInterval(timer);timer=null;},drain,
   async notify(event,ticket){
    const config=await read();if(!config.enabled||!config.webhookReady)return;

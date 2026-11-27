@@ -233,7 +233,7 @@ test('the server puts the door in front of the employee routes, and the batch-ti
  assert.ok(server.includes('registerEmployeeMasterDoor(app,{door:employeeMasterDoor,requireSession,requireAdministrator});'));
  assert.ok(server.includes('registerEmployeeMaster(app,{pool,requireSession,requireAdministrator,door:employeeMasterDoor});'));
  assert.ok(server.includes('registerHrMasterImport(app,{pool,requireSession,requireAdministrator,door:employeeMasterDoor});'));
- assert.ok(server.includes('telegramCallbacks.handle=async input=>(await releaseOtp.handleTelegramCallback(input))??employeeMasterDoor.handleTelegramCallback(input);'),'a release button is still answered first');
+ assert.ok(server.includes('telegramCallbacks.handle=async input=>(await releaseOtp.handleTelegramCallback(input))??(await employeeMasterDoor.handleTelegramCallback(input))??attendanceApproval.handleTelegramCallback(input);'),'a release button is still answered first');
  const routes=source('server/routes/employee-master.mjs');
  for(const line of ["app.put('/api/employee-master/location/:id',requireSession,open,","app.post('/api/employee-master',...protect,open,wrap(save));","app.put('/api/employee-master/:id',...protect,open,","app.post('/api/employee-master/import',...protect,open,"])assert.ok(routes.includes(line),line);
  assert.ok(source('server/routes/hr-master-import.mjs').includes("app.post('/api/employee-master/hr-import/apply',...protect,open,"));
