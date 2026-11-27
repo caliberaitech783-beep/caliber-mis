@@ -60,6 +60,16 @@ export function scanFleetIssues(rows,draft={},raw={},localDoor=''){
  const issues=new Map();for(const entry of entries){if(!String(entry.door||'').trim())continue;const issue=scanFleetAssignment(rows,{doorText:entry.door,location:draft.location},{},'',entry.kind,entry.label);if(!issue)continue;const key=fleetDoorKey(entry.door,entry.kind);if(!issues.has(key))issues.set(key,{...issue,key,fields:[]});issues.get(key).fields.push(entry.field);}
  return [...issues.values()];
 }
+// A failed connection is not a permanent fact about the card. Retain successful
+// checks and assignment issues; retry failed reads at a bounded rate.
+export function scanFleetReviewNeedsRefresh(card,actor,now=Date.now()){
+ const review=card.raw_fields?.fleetReview;
+ if(!review||review.signature!==scanFleetSignature(card.draft))return true;
+ if(!review.error)return false;
+ if(review.actor&&String(review.actor).toLowerCase()!==String(actor||'').toLowerCase())return true;
+ const checked=Date.parse(review.checkedAt);
+ return !Number.isFinite(checked)||now-checked>=30000;
+}
 export function scanFleetBlockingMessage(card){
  const review=card.raw_fields?.fleetReview;
  if(!review||review.signature!==scanFleetSignature(card.draft))return 'Pulse equipment site verification pending.';

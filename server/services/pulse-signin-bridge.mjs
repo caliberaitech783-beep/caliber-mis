@@ -7,7 +7,7 @@ export function createPulseSignInBridge({pool,fetchImpl=fetch}){
   WHERE s.created_at>NOW()-CASE WHEN c.remembered THEN INTERVAL '40 days' ELSE INTERVAL '7 days' END AND ($1::text IS NULL OR lower(s.login_name)=lower($1))
   AND (s.permissions->'misDesktopAccess' ?| ARRAY['Pulse Master Sync','Vehicle Log Book','Trip Card Bulk Scan','Equipment Log Book','Job Card Bulk Scan'] OR s.permissions->'misMobileAccess' ?| ARRAY['Pulse Master Sync','Vehicle Log Book','Trip Card Bulk Scan'])
   AND ($2::text IS NULL OR s.permissions->'misDesktopAccess' ? $2 OR s.permissions->'misMobileAccess' ? $2)
-  ORDER BY s.created_at DESC LIMIT 1`,[actor||null,menu||null]);if(!actor&&!menu)connected=Boolean(result.rows.length);return result.rows;};
+  ORDER BY s.created_at DESC LIMIT 5`,[actor||null,menu||null]);if(!actor&&!menu)connected=Boolean(result.rows.length);return result.rows;};
  const refresh=async()=>{try{await rows()}catch{connected=false}};
  return {
   status:()=>({connected}),
@@ -18,14 +18,19 @@ export function createPulseSignInBridge({pool,fetchImpl=fetch}){
   // raw: answer with Pulse's bytes (a Buffer) instead of parsed JSON, for the breakdown copy,
   // which compares the bytes before it parses anything (pulse-breakdown-mirror.mjs).
   async request(action,payload={},actor,{menu=null,timeoutMs=45000,raw=false}={}){
-   const [session]=await rows(actor,menu);
-   if(!session)throw Object.assign(new Error('Sign in to Pulse II normally to reconnect Pulse automatically.'),{status:401});
+   const sessions=await rows(actor,menu);
+   if(!sessions.length)throw Object.assign(new Error('Sign in to Pulse II normally to reconnect Pulse automatically.'),{status:401});
+   // Retry a rejected grant only within the same user's eligible sign-ins.
+   const candidates=actor&&['fleet','requests','masters','breakdown-mirror'].includes(action)?sessions:[sessions[0]];
+   for(const [index,session] of candidates.entries()){
    let response;try{response=await fetchImpl('https://pulse.cmll.in/api/integrations/mis/pulse',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({grant:session.grant_token,action,...payload}),redirect:'error',signal:AbortSignal.timeout(timeoutMs)});}catch{throw Error('Pulse is temporarily unavailable; automatic retry is pending.');}
    if(raw&&response.ok)return Buffer.from(await response.arrayBuffer());
    const data=await response.json().catch(()=>null);
+   if(response.status===401&&index<candidates.length-1)continue;
    const bare404=response.status===404&&!data?.error;
    if(!response.ok)throw Object.assign(new Error(bare404?'Pulse connection update is still being applied; automatic retry is pending.':data?.error||'Pulse connection failed.'),{status:bare404?503:response.status});
    return data;
+   }
   }
  };
 }
