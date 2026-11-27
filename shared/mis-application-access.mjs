@@ -18,6 +18,8 @@ export function misPageAllowed(session,page,view){
  if(page==='Machine Category Re-check')return misPageAllowed(session,'Caliber ID Re-check',view);
  // Machine Roster (owner, 25 Nov 2026): the site-wise machine list, for the same people, read only.
  if(page==='Machine Roster')return misPageAllowed(session,'Caliber ID Re-check',view);
+ // Attendance approval (owner, 27 Nov 2026): every MIS login; the page lists only the sites and levels given to it.
+ if(page==='Attendance approval')return true;
  if(page==='Caliber ID Re-check')return ['Vehicle Log Book','Equipment Log Book','Trip Card Bulk Scan','Job Card Bulk Scan','Employee master'].some(name=>misPageAllowed(session,name,view));
  if(page==='Batch reopening approvals')return session.role==='super'&&session.permissions.adminLevel==='Manager'&&managerRoleSelection(session.permissions.managerRoles?.length?session.permissions.managerRoles:session.permissions.managerRole).includes('Project Manager');
  if(['Tickets','Telegram Integration'].includes(page))return true;
@@ -67,6 +69,11 @@ export function misRequestAllowed(session,req){
  if(route==='/api/admin/elb-pulse-repair')return (read||req.method==='POST')&&isMisAdministrator(session);
  // 18 Nov 2026: the list of sites with Pulse-filled cards, read only, same administrators.
  if(route==='/api/admin/elb-pulse-repair/sites')return read&&isMisAdministrator(session);
+ // Attendance approval (owner, 27 Nov 2026): every login may ask; the route itself lets an approver act only at the level
+ // and sites given to that login, and only an administrator changes the approver list.
+ if(route==='/api/attendance-approval'||route==='/api/attendance-approval/day')return read;
+ if(route==='/api/attendance-approval/approvers')return read||req.method==='PUT';
+ if(route==='/api/attendance-approval/act')return req.method==='POST';
  // Only session maintenance and menu discovery are unconditional. New routes fail closed.
  if(['/api/logout','/api/session-heartbeat','/api/session-messages','/api/preferred-language','/api/navigation-settings','/api/request-shifts','/api/announcements','/api/notifications'].includes(route))return read||['/api/logout','/api/session-heartbeat','/api/preferred-language'].includes(route);
  if(route==='/api/session-location')return read||req.method==='POST';

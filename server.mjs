@@ -51,6 +51,7 @@ import {createDriveSpaceAlert} from './server/services/drive-space-alert.mjs';
 import {createHrSiteMoveOutbox} from './server/services/hr-site-move-outbox.mjs';
 import {registerEmployeeMaster} from './server/routes/employee-master.mjs';
 import {createEmployeeMasterDoor,registerEmployeeMasterDoor} from './server/routes/employee-master-door.mjs';
+import {createAttendanceApproval,registerAttendanceApproval} from './server/routes/attendance-approval.mjs';
 import {registerHrMasterImport} from './server/routes/hr-master-import.mjs';
 import {registerAFormMaster} from './server/routes/a-form-master.mjs';
 import {registerErpEmployees} from './server/routes/erp-employee-source.mjs';
@@ -8023,8 +8024,8 @@ app.get('/api/reports/master-data',requireSession,async(req,res,next)=>{
 
 const integrationSecrets=await createIntegrationSecretStore(pool,process.env.MIS_INTEGRATION_KEY_FILE||path.join(process.env.LOCALAPPDATA||process.env.HOME||os.homedir(),process.env.LOCALAPPDATA?'CaliberERP':'data/caliber-mis','integration.key'));
 // The release approval buttons are answered through the MIS Telegram webhook (set below).
-const telegramCallbacks={handle:null};
-const misTelegram=registerMisTelegram(app,{pool,store:integrationSecrets,requireSession,onCallback:input=>telegramCallbacks.handle?telegramCallbacks.handle(input):null,
+const telegramCallbacks={handle:null,text:null};
+const misTelegram=registerMisTelegram(app,{pool,store:integrationSecrets,requireSession,onCallback:input=>telegramCallbacks.handle?telegramCallbacks.handle(input):null,onText:input=>telegramCallbacks.text?telegramCallbacks.text(input):null,
  sendReleaseApprovalSample:()=>createReleaseApprovalSample({pool,sendButtons:(chatId,text,buttons,options)=>misTelegram.sendButtons(chatId,text,buttons,options)})()});
 registerReleaseNotice(app,{pool,sign:data=>integrationSecrets.sign(RELEASE_NOTICE_PURPOSE,data),drain:()=>misTelegram.drain()});
 app.get('/api/mis-ticket-sites',requireSession,async(req,res,next)=>{
@@ -8065,7 +8066,15 @@ const releaseOtp=registerReleaseOtp(app,{pool,
 // does so is switched off and opens only when the owner taps Allow on Telegram (shared/employee-master-door.mjs).
 const employeeMasterDoor=createEmployeeMasterDoor({pool,sendButtons:(chatId,text,buttons,options)=>misTelegram.sendButtons(chatId,text,buttons,options)});
 // A tapped button belongs to a release approval or to the Employee Master door; each knows its own buttons.
-telegramCallbacks.handle=async input=>(await releaseOtp.handleTelegramCallback(input))??employeeMasterDoor.handleTelegramCallback(input);
+// Owner, 27 Nov 2026: trip card batches are approved day by day for every site by Site HR, Office HR, RHR and
+// Directors, then locked (shared/attendance-approval.mjs). Approve / Send back on Telegram or from the screen.
+const attendanceApproval=createAttendanceApproval({pool,sendButtons:(chatId,text,buttons,options)=>misTelegram.sendButtons(chatId,text,buttons,options),sendText:(chatId,text,options)=>misTelegram.sendText(chatId,text,options)});
+// A tapped button belongs to a release approval, the Employee Master door or an attendance day; each knows its own buttons.
+telegramCallbacks.handle=async input=>(await releaseOtp.handleTelegramCallback(input))??(await employeeMasterDoor.handleTelegramCallback(input))??attendanceApproval.handleTelegramCallback(input);
+// A text after Send back is the reason.
+telegramCallbacks.text=input=>attendanceApproval.handleTelegramText(input);
+registerAttendanceApproval(app,{approval:attendanceApproval,requireSession,isAdministrator:session=>isMisAdministrator(session)||session?.role==='super'&&['admin','super admin'].includes(String(session?.permissions?.adminLevel||'').trim().toLowerCase())});
+attendanceApproval.start();
 // After every production release the workflow reports what it deployed; the owner gets it on Telegram.
 registerReleaseReport(app,{verifyIdentity:releaseIdentity,ownerLogins:()=>ownerTelegramLogins(pool),
  telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain(),inChannel:(channel,person)=>misTelegram.inChannel(channel,person)}),audit:releaseAudit});

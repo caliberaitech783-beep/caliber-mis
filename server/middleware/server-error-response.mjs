@@ -68,6 +68,10 @@ export function describeServerError(error) {
       body: { error: TRANSIENT_DATABASE_MESSAGE, transient: true },
     };
   }
+  // A day locked by attendance approval (server/routes/attendance-approval.mjs): the database refuses the change.
+  if (error?.code === 'CA423') {
+    return { status: 423, body: { error: String(error.message || 'This day is locked after attendance approval.'), code: 'ATTENDANCE_LOCKED', locked: true } };
+  }
   const status = explicitStatus(error);
   if (status >= 400 && status < 500) {
     // Body parser and route validation errors carry their own status. Route
