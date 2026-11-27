@@ -103,7 +103,7 @@ export function reconcileDay(saved,day,{at}){
 export function approveDay(saved,{login,name,at,source}){
  const level=Number(saved.level);
  if(level>=LOCKED_LEVEL)throw Object.assign(new Error('This day is already locked.'),{status:409});
- if(saved.status!=='waiting')throw Object.assign(new Error(saved.status==='sent_back'?'This day was sent back. It waits for the batch creators to correct it.':'Not every batch of this day is closed.'),{status:409});
+ if(saved.status!=='waiting')throw Object.assign(new Error(saved.status==='sent_back'?'This day was sent back. It waits for the batch creators to correct it.':saved.status==='unlocked'?'This day was unlocked by RHR for a correction. It waits for the batch to be reopened and closed again.':'Not every batch of this day is closed.'),{status:409});
  const next=level+1;
  return {...saved,level:next,status:next>=LOCKED_LEVEL?'locked':'waiting',sentBack:null,corrected:false,
   lockedAt:next>=LOCKED_LEVEL?at:saved.lockedAt||null,
@@ -123,7 +123,7 @@ export function sendBackDay(saved,{login,name,at,source,reason}){
 // A sent-back day waits for the batch creators. When they have corrected it (a batch reopened and closed again, so
 // the signature changes) reconcileDay puts it back at Level 1. Site HR may also take it back as it is.
 export function resumeDay(saved,{login,name,at,source}){
- if(saved.status!=='sent_back')throw Object.assign(new Error('This day was not sent back.'),{status:409});
+ if(!['sent_back','unlocked'].includes(saved.status))throw Object.assign(new Error('This day was not sent back or unlocked.'),{status:409});
  return {...saved,status:'waiting',level:1,sentBack:null,corrected:true,trail:[...(saved.trail||[]),{level:1,action:'taken_back',by:login,name:name||login,at,source}]};
 }
 
@@ -165,4 +165,25 @@ export const callbackData=(id,action)=>`att:${id}:${action}`;
 export function parseCallback(data){
  const match=/^att:([0-9a-f]{16}):([ab])$/.exec(String(data||''));
  return match?{id:match[1],action:match[2]==='a'?'approve':'back'}:null;
+}
+
+// RHR unlock with OTP (owner, 27 Nov 2026: "add an rhr unlock button with reason and it should be with otp; if any user
+// needs to reopen the batch he needs to send request for otp to rhr to open it with otp request").
+// A user who needs to reopen a batch of a locked day asks with a reason; the RHR of the site's region gets a six-digit
+// OTP on Telegram (WhatsApp if Telegram is not connected); the OTP entered unlocks the day. The day then waits, like a
+// day sent back, for its batch to be reopened, corrected and closed, and climbs the four levels again from Site HR.
+export const UNLOCK_REASON_MIN=10;
+export function unlockDay(saved,{login,name,at,reason,approvedBy=[],otpId}){
+ if(!(Number(saved?.level)>=LOCKED_LEVEL))throw Object.assign(new Error('This day is not locked.'),{status:409});
+ const entry={level:LOCKED_LEVEL,action:'unlocked',by:login,name:name||login,at,source:'OTP from RHR',reason,approvedBy,otpId};
+ return {...saved,level:1,status:'unlocked',lockedAt:null,corrected:true,sentBack:entry,trail:[...(saved.trail||[]),entry]};
+}
+export function unlockOtpMessage({site,region,date,requestedBy,reason,otp,minutes}){
+ return ['🔓 PULSE-II · ATTENDANCE UNLOCK',
+  `${requestedBy} asks to unlock ${site} · ${fmtDate(date)}${region?` (${region})`:''} to reopen its batch.`,
+  `Reason: ${reason}`,'',
+  `OTP ${otp}, valid ${minutes} minutes. Share it only if this day should be reopened. It then goes through Site HR, Office HR, RHR and Directors again.`].join('\n');
+}
+export function unlockedMessage({site,date,by,reason,rhr}){
+ return `🔓 <b>${html(site)} · ${html(fmtDate(date))} unlocked</b> with the OTP of RHR (${html(rhr)}) for ${html(by)}\n<b>Reason:</b> ${html(reason)}\nReopen the batch, correct it and close it again. The day then starts again at Site HR.`;
 }

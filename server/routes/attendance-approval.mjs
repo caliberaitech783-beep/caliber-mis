@@ -9,9 +9,11 @@
 // closed to Level 1 and sends the messages that are due.
 // A locked day: its raw site spellings and date go into mis_attendance_locked_sites, and database triggers on
 // mis_log_books, mis_shift_attendance and mis_vlb_batches refuse every change of that day (SQLSTATE CA423).
-import {randomBytes} from 'node:crypto';
+import {randomBytes,randomUUID} from 'node:crypto';
+import {generateOtp,hashOtp,otpExpiresAt,checkOtpAttempt,resendTooSoon,OTP_TTL_MINUTES} from '../../shared/otp-approval.mjs';
 import {APPROVAL_FROM,APPROVAL_LEVELS,LOCKED_LEVEL,ALL_SITES,ATTENDANCE_LOCKED_SQLSTATE,approvalUntil,levelInfo,levelLabel,siteKey,siteLabel,siteRegion,normalScope,scopeCovers,
- approversFor,canApprove,groupDays,reconcileDay,approveDay,sendBackDay,resumeDay,approvalMessage,lockedMessage,sentBackMessage,callbackData,parseCallback,displayDate} from '../../shared/attendance-approval.mjs';
+ approversFor,canApprove,groupDays,reconcileDay,approveDay,sendBackDay,resumeDay,approvalMessage,lockedMessage,sentBackMessage,callbackData,parseCallback,displayDate,
+ UNLOCK_REASON_MIN,unlockDay,unlockOtpMessage,unlockedMessage} from '../../shared/attendance-approval.mjs';
 import {VTC_TRAINING_REASON} from '../../shared/vtc-training.mjs';
 
 const LOCK_GUARD=`
@@ -76,6 +78,10 @@ export const ATTENDANCE_APPROVAL_SCHEMA=`
  CREATE TABLE IF NOT EXISTS mis_attendance_messages(id TEXT PRIMARY KEY,site_key TEXT NOT NULL,book_date DATE NOT NULL,level SMALLINT NOT NULL,signature TEXT NOT NULL,
   login TEXT NOT NULL,chat_id TEXT NOT NULL,sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),UNIQUE(site_key,book_date,level,signature,login));
  CREATE TABLE IF NOT EXISTS mis_attendance_reason_waits(chat_id TEXT PRIMARY KEY,message_id TEXT NOT NULL,login TEXT NOT NULL,expires_at TIMESTAMPTZ NOT NULL);
+ CREATE TABLE IF NOT EXISTS mis_attendance_unlock_otps(id UUID PRIMARY KEY,site_key TEXT NOT NULL,book_date DATE NOT NULL,site TEXT NOT NULL,reason TEXT NOT NULL,
+  requested_by TEXT NOT NULL,requested_name TEXT,sent_to TEXT[] NOT NULL,channels TEXT[] NOT NULL DEFAULT '{}',otp_hash TEXT NOT NULL,expires_at TIMESTAMPTZ NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,status TEXT NOT NULL DEFAULT 'sent',requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),used_at TIMESTAMPTZ,used_by TEXT);
+ CREATE INDEX IF NOT EXISTS mis_attendance_unlock_otps_day ON mis_attendance_unlock_otps(site_key,book_date,requested_at DESC);
  ${LOCK_GUARD}`;
 
 const REASON_WAIT_MINUTES=30;
@@ -86,7 +92,8 @@ const clean=(value,max)=>String(value??'').replace(/[\u0000-\u001f\u007f]+/g,' '
 const validDate=value=>/^\d{4}-\d{2}-\d{2}$/.test(String(value||''));
 const asState=row=>row&&{level:Number(row.level),status:row.status,signature:row.signature,corrected:Boolean(row.corrected),sentBack:row.sent_back||null,trail:row.trail||[],lockedAt:row.locked_at||null};
 
-export function createAttendanceApproval({pool,sendButtons=null,sendText=null,now=()=>Date.now(),env=process.env,log=console.error}){
+// deliverOtp({logins,message,otp,eventKey}) → {sentTo,channels,failures}: Telegram, WhatsApp when Telegram is not connected.
+export function createAttendanceApproval({pool,sendButtons=null,sendText=null,deliverOtp=null,now=()=>Date.now(),env=process.env,log=console.error}){
  let schema=null;
  const ensure=()=>schema??=pool.query(ATTENDANCE_APPROVAL_SCHEMA).catch(error=>{schema=null;throw error;});
  const iso=()=>new Date(now()).toISOString();
@@ -275,7 +282,7 @@ export function createAttendanceApproval({pool,sendButtons=null,sendText=null,no
     const level=state?.level||1,status=state?.status||(day.ready?'waiting':'not_ready');
     return {site:day.site,siteKey:day.siteKey,region:siteRegion(day.site),date:day.date,batches:day.batches.length,open:day.open,shifts:day.batches.map(b=>b.shift),
      level,status,corrected:Boolean(state?.corrected),sentBack:state?.sentBack||null,trail:state?.trail||[],lockedAt:state?.lockedAt||null,
-     mine:status==='waiting'&&level<LOCKED_LEVEL&&canApprove(list,who,day.site,level)||status==='sent_back'&&canApprove(list,who,day.site,1),
+     mine:status==='waiting'&&level<LOCKED_LEVEL&&canApprove(list,who,day.site,level)||['sent_back','unlocked'].includes(status)&&canApprove(list,who,day.site,1),
      approvers:Object.fromEntries(APPROVAL_LEVELS.map(l=>[l.level,approversFor(list,day.site,l.level)]))};
    })};
  }
@@ -324,12 +331,79 @@ export function createAttendanceApproval({pool,sendButtons=null,sendText=null,no
   }catch(error){log('Attendance approval run failed:',error?.message);}
   finally{client?.release();running=false;}
  }
- return {ensure,reconcile,notifyDue,act,handleTelegramCallback,handleTelegramText,overview,dayDetail,approvers,saveApprovers,loginNames,
+ // ---- RHR unlock with OTP (owner, 27 Nov 2026) ----
+ const publicUnlock=row=>row&&{id:row.id,status:row.status,sentTo:row.sent_to||[],channels:row.channels||[],expiresAt:row.expires_at,requestedAt:row.requested_at,requestedBy:row.requested_name||row.requested_by,reason:row.reason};
+ // Whether a site's day is locked, and the OTP request waiting for it, for the reopen window and the screen.
+ async function lockStatus({site,date}){
+  if(!validDate(date))throw fail(400,'Choose a date.');
+  await ensure();
+  const key=siteKey(site);
+  const row=(await pool.query('SELECT level,status,trail FROM mis_attendance_days WHERE site_key=$1 AND book_date=$2::date',[key,date])).rows[0];
+  const locked=Number(row?.level)>=LOCKED_LEVEL;
+  const live=locked?(await pool.query("SELECT * FROM mis_attendance_unlock_otps WHERE site_key=$1 AND book_date=$2::date AND status='sent' AND expires_at>$3 ORDER BY requested_at DESC LIMIT 1",[key,date,iso()])).rows[0]:null;
+  const list=await approvers();
+  return {site:siteLabel(site),date,locked,status:row?.status||null,level:row?Number(row.level):null,rhr:approversFor(list,site,3),request:publicUnlock(live)};
+ }
+ // A user who needs to reopen a batch of a locked day asks; the RHR of the region gets the OTP.
+ async function requestUnlock({site,date,reason,login,name}){
+  if(!validDate(date))throw fail(400,'Choose a date.');
+  const why=clean(reason,500);
+  if(why.length<UNLOCK_REASON_MIN)throw fail(400,'Write why this locked day has to be reopened (at least '+UNLOCK_REASON_MIN+' letters).');
+  if(!deliverOtp)throw fail(503,'OTP delivery is not set up on this server.');
+  await ensure();
+  const key=siteKey(site),label=siteLabel(site);
+  const row=(await pool.query('SELECT level FROM mis_attendance_days WHERE site_key=$1 AND book_date=$2::date',[key,date])).rows[0];
+  if(!(Number(row?.level)>=LOCKED_LEVEL))throw fail(409,'This day is not locked. Reopen the batch as usual.');
+  const rhr=approversFor(await approvers(),label,3);
+  if(!rhr.length)throw fail(409,'No RHR is set for '+label+' on Masters › Attendance approval, so the OTP cannot be sent.');
+  const live=(await pool.query("SELECT * FROM mis_attendance_unlock_otps WHERE site_key=$1 AND book_date=$2::date AND status='sent' ORDER BY requested_at DESC LIMIT 1",[key,date])).rows[0];
+  if(live&&resendTooSoon(live.requested_at,{now:now()}))throw fail(429,'An OTP was sent to RHR less than a minute ago. Wait before asking again.');
+  const id=randomUUID(),otp=generateOtp(),requestedName=clean(name,80)||lower(login);
+  const message=unlockOtpMessage({site:label,region:siteRegion(label),date,requestedBy:requestedName,reason:why,otp,minutes:OTP_TTL_MINUTES});
+  const delivery=await deliverOtp({logins:rhr,message,otp,eventKey:'attendance-unlock-otp:'+id});
+  if(!delivery?.sentTo?.length)throw fail(409,('RHR of '+label+' has no Telegram or mobile registered. '+(delivery?.failures||[]).join(' ')).trim());
+  if(live)await pool.query("UPDATE mis_attendance_unlock_otps SET status='cancelled' WHERE id=$1 AND status='sent'",[live.id]);
+  const saved=(await pool.query(`INSERT INTO mis_attendance_unlock_otps(id,site_key,book_date,site,reason,requested_by,requested_name,sent_to,channels,otp_hash,expires_at,requested_at)
+   VALUES($1,$2,$3::date,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,[id,key,date,label,why,lower(login),requestedName,delivery.sentTo,delivery.channels||[],hashOtp(id,otp),otpExpiresAt(now()),iso()])).rows[0];
+  return publicUnlock(saved);
+ }
+ // The OTP entered by the person who asked (or by the RHR). Right: the day is unlocked; wrong: counted, five at most.
+ async function verifyUnlock({id,otp,login,name}){
+  if(!/^[0-9a-f-]{36}$/i.test(String(id||'')))throw fail(400,'Invalid OTP reference.');
+  await ensure();
+  const who=lower(login),at=iso();
+  const client=await pool.connect();let result=null;
+  try{
+   await client.query('BEGIN');
+   const row=(await client.query('SELECT *,book_date::text AS date FROM mis_attendance_unlock_otps WHERE id=$1 FOR UPDATE',[id])).rows[0];
+   if(row&&who!==row.requested_by&&!(row.sent_to||[]).includes(who))throw fail(403,'Only the person who asked, or the RHR, can enter this OTP.');
+   const check=checkOtpAttempt(row,otp,{now:now()});
+   if(!check.ok){
+    if(row&&check.status!=='missing'&&(check.status!==row.status||(check.attempts??row.attempts)!==row.attempts))await client.query('UPDATE mis_attendance_unlock_otps SET status=$2,attempts=$3 WHERE id=$1',[row.id,check.status,check.attempts??row.attempts]);
+    await client.query('COMMIT');
+    throw fail(400,check.message);
+   }
+   const day=(await client.query('SELECT *,book_date::text AS date FROM mis_attendance_days WHERE site_key=$1 AND book_date=$2::date FOR UPDATE',[row.site_key,row.date])).rows[0];
+   if(!(Number(day?.level)>=LOCKED_LEVEL)){await client.query("UPDATE mis_attendance_unlock_otps SET status='cancelled' WHERE id=$1",[row.id]);await client.query('COMMIT');throw fail(409,'This day is not locked any more.');}
+   const state=unlockDay(asState(day),{login:row.requested_by,name:row.requested_name,at,reason:row.reason,approvedBy:row.sent_to,otpId:row.id});
+   await saveDay(client,{siteKey:row.site_key,date:row.date,site:day.site,creators:day.creators||[]},state,at);
+   const raws=(await client.query('SELECT site FROM mis_attendance_locked_sites WHERE book_date=$1::date',[row.date])).rows.map(r=>r.site).filter(raw=>siteKey(raw)===row.site_key);
+   if(raws.length)await client.query('DELETE FROM mis_attendance_locked_sites WHERE book_date=$1::date AND site=ANY($2::text[])',[row.date,raws]);
+   await client.query("UPDATE mis_attendance_unlock_otps SET status='used',used_at=$2,used_by=$3,attempts=$4 WHERE id=$1",[row.id,at,who,check.attempts]);
+   await client.query('COMMIT');
+   result={row,day};
+  }catch(error){await client.query('ROLLBACK').catch(()=>{});throw error;}
+  finally{client.release();}
+  const {row,day}=result,list=await approvers();
+  await tell([row.requested_by,...row.sent_to,...approversFor(list,day.site,1),...(day.creators||[])],unlockedMessage({site:day.site,date:row.date,by:row.requested_name||row.requested_by,reason:row.reason,rhr:(row.sent_to||[]).join(', ')}));
+  return {site:day.site,date:row.date,unlocked:true,status:'unlocked'};
+ }
+ return {ensure,reconcile,notifyDue,act,lockStatus,requestUnlock,verifyUnlock,handleTelegramCallback,handleTelegramText,overview,dayDetail,approvers,saveApprovers,loginNames,
   start({everyMs=120000,firstMs=45000}={}){if(timer)return;setTimeout(()=>void tick(),firstMs).unref?.();timer=setInterval(()=>void tick(),everyMs);timer.unref?.();},
   stop(){clearInterval(timer);timer=null;}};
 }
 
-export function registerAttendanceApproval(app,{approval,requireSession,isAdministrator}){
+export function registerAttendanceApproval(app,{approval,requireSession,isAdministrator,siteAllowed=null}){
  const wrap=handler=>async(req,res,next)=>{
   try{await handler(req,res);}
   catch(error){if(error.status)return res.status(error.status).json({error:error.message});next(error);}
@@ -347,6 +421,21 @@ export function registerAttendanceApproval(app,{approval,requireSession,isAdmini
   const result=await approval.act({site,date,action,reason,...who(req),source:'MIS'});
   req.audit={eventType:'Approval',module:'Attendance approval',action:action==='approve'?(result.level>=LOCKED_LEVEL?'Approve and lock attendance day':'Approve attendance day'):action==='back'?'Send attendance day back':'Take attendance day back',
    targetType:'Site day',targetReference:`${result.site} ${date}`,details:{level:result.level,status:result.status,reason:clean(reason,500)||undefined}};
+  res.json(result);
+ }));
+ // RHR unlock with OTP: any login that may reopen batches of the site (siteAllowed), an approver of the site or an administrator.
+ const mayAsk=async(req,site)=>admin(req)||Boolean(await siteAllowed?.(req.session,site))||(await approval.approvers()).some(a=>lower(a.login)===who(req).login&&scopeCovers(a.scope,site));
+ app.get('/api/attendance-approval/lock',requireSession,wrap(async(req,res)=>{res.set('Cache-Control','no-store').json(await approval.lockStatus({site:req.query.site,date:req.query.date}));}));
+ app.post('/api/attendance-approval/unlock',requireSession,wrap(async(req,res)=>{
+  const {site,date,reason}=req.body||{};
+  if(!await mayAsk(req,site))throw fail(403,'This site is not assigned to your login.');
+  const request=await approval.requestUnlock({site,date,reason,...who(req)});
+  req.audit={eventType:'Approval',module:'Attendance approval',action:'Ask RHR for the unlock OTP',targetType:'Site day',targetReference:siteLabel(site)+' '+date,details:{reason:clean(reason,500),sentTo:request.sentTo,channels:request.channels}};
+  res.status(201).json({request});
+ }));
+ app.post('/api/attendance-approval/unlock/verify',requireSession,wrap(async(req,res)=>{
+  const result=await approval.verifyUnlock({id:req.body?.id,otp:req.body?.otp,...who(req)});
+  req.audit={eventType:'Approval',module:'Attendance approval',action:'Unlock attendance day with RHR OTP',targetType:'Site day',targetReference:result.site+' '+result.date,details:{}};
   res.json(result);
  }));
  app.get('/api/attendance-approval/approvers',requireSession,wrap(async(req,res)=>{

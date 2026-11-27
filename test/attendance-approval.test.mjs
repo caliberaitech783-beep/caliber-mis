@@ -93,12 +93,14 @@ const fixture=async()=>{
  const query=(sql,params)=>/pg_(try_)?advisory/.test(sql)?Promise.resolve({rows:[{ok:true}]}):!params?.length?db.exec(sql).then(results=>results.at(-1)||{rows:[]}):db.query(sql,params);
  const pool={query,connect:async()=>({query,release(){}})};
  const sent=[],texts=[];
- const approval=createAttendanceApproval({pool,env:{},now:()=>Date.parse('2026-11-27T06:00:00Z'),log:()=>{},
+ const otps=[],clock={now:Date.parse('2026-11-27T06:00:00Z')};
+ const approval=createAttendanceApproval({pool,env:{},now:()=>clock.now,log:()=>{},
   sendButtons:async(chatId,text,buttons)=>{sent.push({chatId,text,buttons});return true;},
-  sendText:async(chatId,text,options)=>{texts.push({chatId,text,options});return true;}});
+  sendText:async(chatId,text,options)=>{texts.push({chatId,text,options});return true;},
+  deliverOtp:async request=>{otps.push(request);return {sentTo:request.logins,channels:['telegram'],failures:[]};}});
  await approval.ensure();
  for(const a of APPROVERS)await db.query('INSERT INTO mis_attendance_approvers(level,scope,login) VALUES($1,$2,$3)',[a.level,a.scope,a.login]);
- return {db,approval,sent,texts};
+ return {db,approval,sent,texts,otps,clock};
 };
 const tap=async(f,chat,action='a')=>{
  const message=[...f.sent].reverse().find(m=>m.chatId===chat);
@@ -209,4 +211,57 @@ test('every MIS login may reach the page and its routes; it is wired into the se
  assert.match(server,/telegramCallbacks\.text=input=>attendanceApproval\.handleTelegramText\(input\)/);
  assert.match(main,/'Machine Roster','Attendance approval'/);
  assert.match(source('server/routes/mis-telegram.mjs'),/onText\(\{chatId,text/);
+});
+
+// Owner, 27 Nov 2026: "add an rhr unlock button with reason and it should be with otp; if any user needs to reopen the
+// batch he needs to send request for otp to rhr to open it with otp request".
+test('a locked day is reopened only with an OTP from the RHR of its region, then climbs the four levels again',async()=>{
+ const f=await fixture();
+ await f.approval.reconcile();await f.approval.notifyDue();
+ for(const chat of ['chat-sasti.hr','chat-office.hr','chat-rhr.wcl','chat-director.one'])await tap(f,chat);
+ assert.equal((await f.approval.lockStatus({site:'Sasti OB',date:'2026-11-18'})).locked,true);
+
+ await assert.rejects(f.approval.requestUnlock({site:'Sasti OC',date:'2026-11-19',reason:'Wrong driver on a card',login:'maker1'}),/not locked/);
+ await assert.rejects(f.approval.requestUnlock({site:'Sasti OC',date:'2026-11-18',reason:'fix',login:'maker1'}),/at least 10/);
+ const request=await f.approval.requestUnlock({site:'Sasti OC',date:'2026-11-18',reason:'Shift III card of DT-112 has the wrong driver',login:'maker1',name:'Maker One'});
+ assert.deepEqual(f.otps.at(-1).logins,['rhr.wcl'],'only the RHR of WCL gets the OTP');
+ assert.match(f.otps.at(-1).message,/Maker One asks to unlock Sasti OC · 18-11-2026 \(WCL\)[\s\S]*wrong driver[\s\S]*OTP \d{6}/);
+ assert.equal(f.otps.at(-1).eventKey,'attendance-unlock-otp:'+request.id);
+ await assert.rejects(f.approval.requestUnlock({site:'Sasti OC',date:'2026-11-18',reason:'Shift III card of DT-112 has the wrong driver',login:'maker1'}),/less than a minute/);
+ const status=await f.approval.lockStatus({site:'Sasti OC',date:'2026-11-18'});
+ assert.equal(status.request.id,request.id);assert.deepEqual(status.rhr,['rhr.wcl']);
+
+ await assert.rejects(f.approval.verifyUnlock({id:request.id,otp:f.otps.at(-1).otp,login:'majri.hr'}),/Only the person who asked, or the RHR/);
+ await assert.rejects(f.approval.verifyUnlock({id:request.id,otp:'000000',login:'maker1'}),/Wrong OTP. 4 attempts left/);
+ await assert.rejects(f.db.query("UPDATE mis_vlb_batches SET closed_at=NULL WHERE id='b3'"),e=>e.code==='CA423','still locked before the right OTP');
+ const unlocked=await f.approval.verifyUnlock({id:request.id,otp:f.otps.at(-1).otp,login:'maker1'});
+ assert.equal(unlocked.status,'unlocked');
+ await assert.rejects(f.approval.verifyUnlock({id:request.id,otp:f.otps.at(-1).otp,login:'maker1'}),/already used/);
+ assert.ok(f.texts.some(t=>t.chatId==='chat-sasti.hr'&&/unlocked<\/b> with the OTP of RHR/.test(t.text)),'Site HR is told');
+ assert.equal((await f.approval.lockStatus({site:'Sasti OC',date:'2026-11-18'})).locked,false);
+ await assert.rejects(f.approval.act({site:'Sasti OC',date:'2026-11-18',action:'approve',login:'sasti.hr'}),/unlocked by RHR/);
+
+ // The batch is reopened, the card corrected, the batch closed: the day is back at Site HR, marked corrected.
+ await f.db.query("UPDATE mis_vlb_batches SET closed_at=NULL WHERE id='b3'");
+ await f.db.query(`UPDATE mis_log_books SET data='{"employeeRecordId":"21"}' WHERE site='Sasti OC'`);
+ await f.approval.reconcile();
+ await f.db.query("UPDATE mis_vlb_batches SET closed_at='2026-11-27T07:00:00Z',closure_revision=1 WHERE id='b3'");
+ await f.approval.reconcile();
+ const day=(await f.db.query("SELECT level,status,corrected,trail FROM mis_attendance_days WHERE book_date='2026-11-18'")).rows[0];
+ assert.deepEqual({level:day.level,status:day.status,corrected:day.corrected},{level:1,status:'waiting',corrected:true});
+ assert.ok(day.trail.some(t=>t.action==='unlocked'&&t.reason.includes('DT-112')&&t.approvedBy.includes('rhr.wcl')));
+ const before=f.sent.length;await f.approval.notifyDue();
+ assert.equal(f.sent.length,before+1);assert.equal(f.sent.at(-1).chatId,'chat-sasti.hr');
+});
+
+test('the OTP request and unlock are reachable for every MIS login, and the reopen window shows the RHR OTP panel',()=>{
+ const session={permissions:{separateMisCredentials:true,misDesktopAccess:[]}};
+ assert.equal(misRequestAllowed(session,{path:'/api/attendance-approval/lock',method:'GET'}),true);
+ assert.equal(misRequestAllowed(session,{path:'/api/attendance-approval/unlock',method:'POST'}),true);
+ assert.equal(misRequestAllowed(session,{path:'/api/attendance-approval/unlock/verify',method:'POST'}),true);
+ const dialog=source('src/vlb-reopen-dialog.jsx');
+ assert.match(dialog,/<AttendanceUnlock session=\{session\} site=\{batch\.site\} date=\{batch\.report_date\}/);
+ assert.match(dialog,/batch\.canReopen&&!dayLocked&&/,'Reopen batch waits for the unlock');
+ assert.match(source('src/attendance-unlock.jsx'),/Send OTP request to RHR/);
+ assert.match(source('server.mjs'),/deliverOtp:request=>approvalOtpDelivery\.send\(request\)/);
 });

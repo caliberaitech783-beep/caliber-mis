@@ -6,6 +6,7 @@
 // Rule: shared/attendance-approval.mjs; routes: server/routes/attendance-approval.mjs.
 import React,{useEffect,useMemo,useRef,useState} from 'react';
 import {APPROVAL_LEVELS,LOCKED_LEVEL,ALL_SITES,displayDate,istTime,levelLabel,scopeOptions} from '../shared/attendance-approval.mjs';
+import AttendanceUnlock from './attendance-unlock.jsx';
 import './caliber-recheck.css';
 
 const count=value=>Number(value||0).toLocaleString('en-IN');
@@ -14,6 +15,7 @@ const pill=(text,tone)=><span style={{display:'inline-block',padding:'1px 6px',b
 function statusText(day){
  if(day.status==='locked'||day.level>=LOCKED_LEVEL)return pill('🔒 Locked','#3B6D11');
  if(day.status==='sent_back')return pill('Sent back','#A32D2D');
+ if(day.status==='unlocked')return pill('🔓 Unlocked by RHR OTP','#A32D2D');
  if(day.status==='not_ready')return pill(day.open?`${day.open} batch open`:'Batch reopened','#5F5E5A');
  return pill(`At ${levelLabel(day.level)}${day.corrected?' (corrected)':''}`,'#854F0B');
 }
@@ -109,7 +111,7 @@ export default function AttendanceApproval({session,ReportSection}){
  return <section className="caliber-recheck">
   <header className="cr-head">
    <div><h1>Attendance approval</h1>
-    <p>Trip card batches from {data?displayDate(data.from):'01-11-2026'} to {data?displayDate(data.until):'20-11-2026'}, day by day for every site: Level 1 Site HR verifies attendance, Level 2 Office HR cross-checks and validates, Level 3 RHR reviews, Level 4 Directors give final approval, and the day is locked. A day starts at Site HR when every batch of it is closed. Each approver also gets one Telegram message per day with Approve / Send back. A day sent back returns to the batch creators; when they reopen, correct and close the batch it starts again at Site HR. A locked day's batches cannot be reopened and its cards cannot change.</p></div>
+    <p>Trip card batches from {data?displayDate(data.from):'01-11-2026'} to {data?displayDate(data.until):'20-11-2026'}, day by day for every site: Level 1 Site HR verifies attendance, Level 2 Office HR cross-checks and validates, Level 3 RHR reviews, Level 4 Directors give final approval, and the day is locked. A day starts at Site HR when every batch of it is closed. Each approver also gets one Telegram message per day with Approve / Send back. A day sent back returns to the batch creators; when they reopen, correct and close the batch it starts again at Site HR. A locked day's batches cannot be reopened and its cards cannot change, unless the RHR of the region gives an OTP: the user writes why, RHR gets the OTP, and the OTP entered unlocks the day, which then goes through the four levels again.</p></div>
    <button type="button" disabled={busy} onClick={()=>void load()}>{busy?'Reading…':'Refresh'}</button>
   </header>
   {error&&<p className="cr-error" role="alert">{error}</p>}
@@ -132,7 +134,7 @@ export default function AttendanceApproval({session,ReportSection}){
   {day&&<ReportSection key={'aa-day-'+site+date} reportKey="Attendance approval day" title={`Step 3 · ${day.site} · ${displayDate(day.date)}`} category="attendance-approval-day" dataReady={Boolean(detail)} recordDateFilter={false}
    description={detail?.summary?`Cards: VLB ${count(detail.summary.vlb)} · ELB ${count(detail.summary.elb)} · LMV ${count(detail.summary.lmv)} · present ${count(detail.summary.present)} duties · ${count(detail.summary.people)} people${detail.summary.training?` · VTC Training ${count(detail.summary.training)}`:''}`:detail?.error||'Reading the day…'}
    rows={day.trail.map((t,i)=>({...t,key:i}))} rowKey={t=>t.key}
-   columns={[{key:'level',label:'Level',value:t=>levelLabel(t.level)},{key:'action',label:'What',value:t=>({approved:'Approved',sent_back:'Sent back',taken_back:'Taken back by Site HR',batch_reopened:'A batch was reopened',batches_changed:'Batches changed, back to Site HR'})[t.action]||t.action},
+   columns={[{key:'level',label:'Level',value:t=>levelLabel(t.level)},{key:'action',label:'What',value:t=>({unlocked:'Unlocked with RHR OTP',approved:'Approved',sent_back:'Sent back',taken_back:'Taken back by Site HR',batch_reopened:'A batch was reopened',batches_changed:'Batches changed, back to Site HR'})[t.action]||t.action},
     {key:'by',label:'By',value:t=>t.name||t.by||''},{key:'at',label:'When',value:t=>istTime(t.at)},{key:'source',label:'From',value:t=>t.source||''},{key:'reason',label:'Reason',value:t=>t.reason||''}]}
    emptyMessage={`Nothing done yet. Waiting for ${levelLabel(day.level)}.`}>
    {detail?.batches&&<p className="cr-note">Batches: {detail.batches.map(b=>`${b.shift}${b.closed?'':' (open)'} by ${b.createdBy||'—'}`).join(' · ')}</p>}
@@ -142,8 +144,9 @@ export default function AttendanceApproval({session,ReportSection}){
     <input value={reason} onChange={e=>setReason(e.target.value)} placeholder="Reason to send back" maxLength={500} style={{minWidth:260}}/>
     <button type="button" disabled={acting} onClick={()=>void act('back')}>Send back</button>
    </div>}
-   {day.mine&&day.status==='sent_back'&&<div className="cr-actions">
-    <span className="cr-note">Sent back by {day.sentBack?.name}: “{day.sentBack?.reason}”. It starts again at Site HR by itself when a batch is reopened and closed.</span>
+   {(day.status==='locked'||day.level>=LOCKED_LEVEL)&&<AttendanceUnlock key={'unlock-'+day.siteKey+day.date} session={session} site={day.site} date={day.date} onUnlocked={load}/>}
+   {day.mine&&['sent_back','unlocked'].includes(day.status)&&<div className="cr-actions">
+    <span className="cr-note">{day.status==='unlocked'?'Unlocked with the OTP of RHR':'Sent back'} by {day.sentBack?.name}: “{day.sentBack?.reason}”. It starts again at Site HR by itself when a batch is reopened and closed.</span>
     <button type="button" disabled={acting} onClick={()=>void act('resume')}>Take back as it is</button>
    </div>}
   </ReportSection>}
