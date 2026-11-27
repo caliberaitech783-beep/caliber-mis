@@ -367,7 +367,6 @@ export async function lockDlb(client,batch,actor){
  const assets=await equipmentAssets(client);
  const drills=assets.filter(asset=>isDrillMachine(asset)&&canonicalSiteName(asset.currentLocation||asset.site||asset.location)===canonicalSiteName(batch.site));
  const saved=await batchDlbRecords(client,batch);
- if(drills.length&&!saved.length)fail('Add at least one Drill Log Book entry before locking DLB.',409);
  const locked=(await client.query("UPDATE mis_vlb_batches SET stage='elb_open',dlb_locked_at=NOW() WHERE id=$1 RETURNING *,book_date::text AS report_date",[batch.id])).rows[0];
  await auditVlbBatch(client,batch,actor,'dlb_locked',{cards:saved.length,siteDrills:drills.length});
  return locked;
