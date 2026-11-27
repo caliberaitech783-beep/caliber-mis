@@ -265,3 +265,22 @@ test('the OTP request and unlock are reachable for every MIS login, and the reop
  assert.match(source('src/attendance-unlock.jsx'),/Send OTP request to RHR/);
  assert.match(source('server.mjs'),/deliverOtp:request=>approvalOtpDelivery\.send\(request\)/);
 });
+
+// Owner, 27 Nov 2026: "send me the test message in telegram" → a "Send sample to my Telegram" button.
+test('Send sample to my Telegram: only to the login\'s own chat, marked SAMPLE, buttons change nothing',async()=>{
+ const f=await fixture();
+ await assert.rejects(f.approval.sendSample({login:'nobody'}),/has not connected Telegram/);
+ const result=await f.approval.sendSample({login:'Office.HR'});
+ assert.deepEqual(result,{sent:1,site:'Sasti OC',date:'2026-11-18',realDay:true},'a real closed day is used');
+ assert.equal(f.sent.length,1);assert.equal(f.sent[0].chatId,'chat-office.hr');
+ assert.match(f.sent[0].text,/^🧪 <b>SAMPLE<\/b>[\s\S]*LEVEL 1 · SITE HR[\s\S]*Sasti OC<\/b> · 18-11-2026[\s\S]*Batches: 3/);
+ assert.deepEqual(f.sent[0].buttons[0].map(b=>b.callback_data),['atts:a','atts:b']);
+ assert.equal(f.texts.at(-1).chatId,'chat-office.hr');assert.match(f.texts.at(-1).text,/SAMPLE[\s\S]*ATTENDANCE UNLOCK[\s\S]*OTP 123456/);
+ assert.match((await f.approval.handleTelegramCallback({data:'atts:a',logins:['office.hr'],chatId:'chat-office.hr'})).answer,/Sample only: nothing was approved/);
+ assert.match((await f.approval.handleTelegramCallback({data:'atts:b',logins:['office.hr'],chatId:'chat-office.hr'})).answer,/Sample only: nothing was sent back/);
+ await assert.rejects(f.approval.sendSample({login:'office.hr'}),/less than 30 seconds/);
+ f.clock.now+=31000;await f.approval.sendSample({login:'office.hr'});assert.equal(f.sent.length,2);
+ assert.equal((await f.db.query('SELECT count(*)::int AS n FROM mis_attendance_days')).rows[0].n,0,'a sample saves no approval');
+ assert.equal(misRequestAllowed({permissions:{separateMisCredentials:true,misDesktopAccess:[]}},{path:'/api/attendance-approval/sample',method:'POST'}),true);
+ assert.match(source('src/attendance-approval.jsx'),/Send sample to my Telegram/);
+});

@@ -231,7 +231,38 @@ export function createAttendanceApproval({pool,sendButtons=null,sendText=null,de
   return {site:day.site,date,level:after.level,status:after.status};
  }
 
+ // "Send sample to my Telegram" (owner, 27 Nov 2026): the approval message as an approver gets it, and the RHR
+ // unlock OTP message, to the login's own chat only. Marked SAMPLE; its buttons change nothing.
+ const lastSample=new Map();
+ async function sendSample({login}){
+  const who=lower(login);
+  if(!sendButtons)throw fail(503,'The Pulse-II Telegram bot is not set up on this server.');
+  const at=now();if(at-(lastSample.get(who)||0)<30000)throw fail(429,'A sample was sent less than 30 seconds ago. Look in Telegram.');
+  await ensure();
+  const chats=await chatsOf(pool,[who]);
+  if(!chats.length)throw fail(409,'Your login has not connected Telegram. Connect it on the Telegram Integration page first.');
+  // A real closed day when there is one, so the figures are true; else an example day.
+  const day=groupDays(await readBatches(pool)).find(d=>d.ready);
+  const site=day?.site||'Sasti OC',date=day?.date||'2026-11-18';
+  const summary=day?await daySummary(pool,day):{present:239,people:211,training:2,vlb:93,elb:35,lmv:17,cards:145};
+  const batches=day?.batches||[{shift:'Shift I'},{shift:'Shift II'},{shift:'Shift III'}];
+  const head='🧪 <b>SAMPLE</b> · this is how an approval reaches you. Tapping its buttons changes nothing.\n\n';
+  const text=head+approvalMessage({site,region:siteRegion(site),date,level:1,batches,summary,trail:[]});
+  const otpText='🧪 SAMPLE · this is how the RHR gets an unlock OTP. Not a real OTP.\n\n'+unlockOtpMessage({site,region:siteRegion(site),date,requestedBy:'An MIS user',reason:'Shift III card of DT-112 has the wrong driver',otp:'123456',minutes:OTP_TTL_MINUTES});
+  let sent=0;
+  for(const chat of chats){
+   try{
+    if(await sendButtons(chat.chatId,text,[[{text:`✅ Approve ${displayDate(date).slice(0,5)}`,callback_data:'atts:a'},{text:`↩ Send back ${displayDate(date).slice(0,5)}`,callback_data:'atts:b'}]],{parse_mode:'HTML'}))sent++;
+    if(sendText)await sendText(chat.chatId,otpText);
+   }catch(error){log('Attendance approval sample failed:',error?.message);}
+  }
+  if(!sent)throw fail(503,'Telegram did not take the sample. Check the bot on the Telegram Integration page.');
+  lastSample.set(who,at);
+  return {sent,site,date,realDay:Boolean(day)};
+ }
+
  async function handleTelegramCallback({data,logins,chatId}){
+  if(/^atts:[ab]$/.test(String(data||'')))return {answer:String(data).endsWith('a')?'Sample only: nothing was approved. A real message has the same buttons.':'Sample only: nothing was sent back. On a real day the bot asks for the reason next.'};
   const parsed=parseCallback(data);if(!parsed)return null;
   await ensure();
   const message=(await pool.query('SELECT *,book_date::text AS date FROM mis_attendance_messages WHERE id=$1',[parsed.id])).rows[0];
@@ -398,7 +429,7 @@ export function createAttendanceApproval({pool,sendButtons=null,sendText=null,de
   await tell([row.requested_by,...row.sent_to,...approversFor(list,day.site,1),...(day.creators||[])],unlockedMessage({site:day.site,date:row.date,by:row.requested_name||row.requested_by,reason:row.reason,rhr:(row.sent_to||[]).join(', ')}));
   return {site:day.site,date:row.date,unlocked:true,status:'unlocked'};
  }
- return {ensure,reconcile,notifyDue,act,lockStatus,requestUnlock,verifyUnlock,handleTelegramCallback,handleTelegramText,overview,dayDetail,approvers,saveApprovers,loginNames,
+ return {ensure,reconcile,notifyDue,act,sendSample,lockStatus,requestUnlock,verifyUnlock,handleTelegramCallback,handleTelegramText,overview,dayDetail,approvers,saveApprovers,loginNames,
   start({everyMs=120000,firstMs=45000}={}){if(timer)return;setTimeout(()=>void tick(),firstMs).unref?.();timer=setInterval(()=>void tick(),everyMs);timer.unref?.();},
   stop(){clearInterval(timer);timer=null;}};
 }
@@ -425,6 +456,11 @@ export function registerAttendanceApproval(app,{approval,requireSession,isAdmini
  }));
  // RHR unlock with OTP: any login that may reopen batches of the site (siteAllowed), an approver of the site or an administrator.
  const mayAsk=async(req,site)=>admin(req)||Boolean(await siteAllowed?.(req.session,site))||(await approval.approvers()).some(a=>lower(a.login)===who(req).login&&scopeCovers(a.scope,site));
+ app.post('/api/attendance-approval/sample',requireSession,wrap(async(req,res)=>{
+  const result=await approval.sendSample(who(req));
+  req.audit={eventType:'Integration',module:'Attendance approval',action:'Send sample approval to own Telegram',targetType:'Telegram',targetReference:'attendance-approval-sample',details:result};
+  res.json(result);
+ }));
  app.get('/api/attendance-approval/lock',requireSession,wrap(async(req,res)=>{res.set('Cache-Control','no-store').json(await approval.lockStatus({site:req.query.site,date:req.query.date}));}));
  app.post('/api/attendance-approval/unlock',requireSession,wrap(async(req,res)=>{
   const {site,date,reason}=req.body||{};
