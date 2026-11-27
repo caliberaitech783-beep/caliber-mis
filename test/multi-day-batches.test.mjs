@@ -10,13 +10,15 @@ import {MULTI_DAY_UNTIL,multiDayBatches,multiDayBatchesUntil,multiDayBatchesEndA
 import {batchStageWaits} from '../server/rules/vlb-batch-queue.mjs';
 
 // Owner, 25 Nov 2026: "I need to open multiple batch for multiple days....fix it for 7 days".
-test('the window runs to the end of 1 Dec 2026 in India and can be moved or ended by the Azure setting',()=>{
- assert.equal(MULTI_DAY_UNTIL,'2026-12-01');
- assert.equal(multiDayBatchesUntil({}),'2026-12-01');
- assert.equal(multiDayBatchesEndAt('2026-12-01').toISOString(),'2026-12-01T18:30:00.000Z');
+// Owner, 27 Nov 2026: ended early, "ek site par at a time 1 hi batch open hona chahiye".
+test('the window ended with 26 Nov 2026 in India and can still be moved or ended by the Azure setting',()=>{
+ assert.equal(MULTI_DAY_UNTIL,'2026-11-26');
+ assert.equal(multiDayBatchesUntil({}),'2026-11-26');
+ assert.equal(multiDayBatchesEndAt('2026-11-26').toISOString(),'2026-11-26T18:30:00.000Z');
  assert.equal(multiDayBatches({},new Date('2026-11-25T12:00:00Z')),true);
- assert.equal(multiDayBatches({},new Date('2026-12-01T18:29:59Z')),true,'still on at 23:59 IST on 1 Dec');
- assert.equal(multiDayBatches({},new Date('2026-12-01T18:30:00Z')),false,'ends by itself at 00:00 IST on 2 Dec');
+ assert.equal(multiDayBatches({},new Date('2026-11-26T18:29:59Z')),true,'on until 23:59 IST on 26 Nov');
+ assert.equal(multiDayBatches({},new Date('2026-11-26T18:30:00Z')),false,'off from 00:00 IST on 27 Nov');
+ assert.equal(multiDayBatches({},new Date('2026-11-27T09:00:00Z')),false,'off today');
  for(const off of ['off','0','false','no','OFF'])assert.equal(multiDayBatches({VLB_MULTI_DAY_BATCHES_UNTIL:off},new Date('2026-11-26T00:00:00Z')),false);
  assert.equal(multiDayBatches({VLB_MULTI_DAY_BATCHES_UNTIL:'2026-12-05'},new Date('2026-12-04T10:00:00Z')),true,'the setting moves the last day');
 });
@@ -44,6 +46,9 @@ test('while the window runs, batches of several days and several shifts of one d
   assert.equal(p.data.creationBlocker,null);assert.equal(p.data.previousShift,null);
   const res=await create(date,'S1');assert.equal(res.status,201,JSON.stringify(res.data));
  }
+ // The schema reads the window when it loads; the window is over by default now (owner, 27 Nov 2026), so drop
+ // the one-VLB-open index here as a start during the window did.
+ await db.exec('DROP INDEX IF EXISTS mis_vlb_one_open_vlb_per_site_date');
  // Owner, 25 Nov 2026: several shifts of the same date open together, all VLB-open.
  for(const shift of ['S2','S3']){
   const p=await preview('2026-11-25',shift);assert.equal(p.data.creationBlocker,null);assert.equal(p.data.previousShift,null);
@@ -57,6 +62,16 @@ test('while the window runs, batches of several days and several shifts of one d
  const {data}=await call('');
  assert.ok(data.batches.length>=3);
  for(const batch of data.batches)assert.equal(batch.stageWait,'');
+
+ // Owner, 27 Nov 2026: once the window is over the batches already open stay open, and no new one opens.
+ process.env.VLB_MULTI_DAY_BATCHES_UNTIL='off';
+ const after=await call('');
+ assert.equal(after.data.batches.filter(batch=>!batch.closed_at).length,5,'the five open batches stay open');
+ for(const [date,shift] of [['2026-11-28','S1'],['2026-11-27','S2']]){
+  const p=await preview(date,shift);assert.match(p.data.creationBlocker||'',/before creating/,date+' '+shift);
+  const res=await create(date,shift);assert.equal(res.status,409,JSON.stringify(res.data));
+ }
+ assert.equal((await db.query('SELECT COUNT(*)::int AS n FROM mis_vlb_batches')).rows[0].n,5,'no sixth batch');
 });
 
 test('the stage queue itself is unchanged when the window is off',()=>{
