@@ -1,51 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {machineSummary,machineLabel,machineDiscrepancies,machineTripTotal} from '../shared/trip-card-rules.mjs';
-import {normalizeScanEquipmentRows} from '../shared/scan-machine-rules.mjs';
-
-const assets=[
- {id:'demo',door:'DEMO21-00179',kind:'equipment',site:'Dhoptala OB',cardAliases:['DE21']},
- ...[124,130,125,129,131].map(n=>({id:String(n),door:'VPC'+n,kind:'equipment',site:'Dhoptala OB'})),
-];
+import {normalizeScanEquipmentRows,selectTripEquipment} from '../shared/scan-machine-rules.mjs';
+const assets=[{id:'31',door:'TPC31 - 01135',kind:'equipment',site:'Test'},{id:'90',door:'VPC90 - 86169',kind:'equipment',site:'Test'}];
 const source=readFileSync(new URL('../src/bulk-card-scanning.jsx',import.meta.url),'utf8');
-const handler=source.match(/onClick=\{\(\)=>\{(const listed=[\s\S]*?)\}\}><Plus\s+size=\{14\}\/>Add machine row/)[1];
-const click=draft=>{
- const comparisonDraft=normalizeScanEquipmentRows(draft,assets);
- let result;
- const update=(key,value)=>{assert.equal(key,'scanMachineSummary');result={...draft,[key]:normalizeScanEquipmentRows({...draft,[key]:value,machineNotationRuleVersion:1},assets)[key]};};
- new Function('draft','comparisonDraft','machineSummary','machineLabel','update',handler)(draft,comparisonDraft,machineSummary,machineLabel,update);
- return result;
-};
-const videoDraft=()=>({location:'Dhoptala OB',machineNotationRuleVersion:1,
- trips:[{equipmentName:'DE21',tripCount:3},...[124,130,125,129,131].map((n,i)=>({equipmentName:'VPC'+n,tripCount:i===0?3:i===1?2:1}))],
- scanMachineSummary:[{equipmentName:'DEMO21-00179',tripCount:3}],
-});
-
-test('Add machine row adds the next missing machine instead of counting a resolved alias twice',()=>{
- const draft=videoDraft(),before=JSON.stringify(draft),result=click(draft);
- assert.deepEqual(result.scanMachineSummary.map(r=>[r.equipmentName,r.tripCount]),[['DEMO21-00179',3],['VPC124',3]]);
- assert.equal(JSON.stringify(draft),before);
-});
-
-test('successive clicks add all five missing machines from the video and retain the 11-trip total',()=>{
- let draft=videoDraft();
- for(let i=0;i<5;i++)draft=click(draft);
- assert.equal(draft.scanMachineSummary.length,6);
- assert.equal(machineTripTotal(draft.scanMachineSummary),11);
- const comparison=normalizeScanEquipmentRows(draft,assets);
- assert.deepEqual(machineDiscrepancies(comparison.trips,comparison.scanMachineSummary),[]);
- const extra=click(draft);
- assert.equal(extra.scanMachineSummary.length,7);
- assert.equal(extra.scanMachineSummary.at(-1).equipmentName,'');
- assert.equal(extra.scanMachineSummary.at(-1).tripCount,'');
- assert.equal(extra.scanMachineSummary[0].tripCount,3);
-});
-
-test('aliases already listed in an unnormalized summary do not duplicate a resolved trip machine',()=>{
- const draft=videoDraft();
- draft.trips[0].equipmentName='DEMO21-00179';
- draft.scanMachineSummary[0].equipmentName='DE21';
- const result=click(draft);
- assert.deepEqual(result.scanMachineSummary.map(r=>[r.equipmentName,r.tripCount]),[['DEMO21-00179',3],['VPC124',3]]);
-});
+const handler=source.match(/onClick=\{\(\)=>(update\('scanMachineSummary',[^\n]+?)\}><Plus size=\{14\}\/>Add machine row/)[1];
+const click=draft=>{let result;const update=(key,value)=>{result=normalizeScanEquipmentRows({...draft,[key]:value,machineNotationRuleVersion:1},assets)};new Function('draft','update',handler)(draft,update);return result};
+const draft=()=>({location:'Test',machineNotationRuleVersion:1,trips:[{equipmentName:'TPC31 - 01135',tripCount:3},{equipmentName:'VPC90 - 86169',tripCount:2}],scanMachineSummary:[{equipmentName:'TPC31 - 01135',tripCount:21}]});
+test('Add machine row creates an editable blank without increasing the existing TPC31 count from the recording',()=>{const d=draft(),before=JSON.stringify(d),r=click(d);assert.equal(r.scanMachineSummary.length,2);assert.equal(r.scanMachineSummary[0].tripCount,21);assert.equal(r.scanMachineSummary[1].equipmentName,'');assert.equal(r.scanMachineSummary[1].tripCount,'');assert.equal(JSON.stringify(d),before)});
+test('repeated clicks retain separate blank rows without changing any existing trip counts',()=>{let d=draft();for(let i=0;i<5;i++)d=click(d);assert.equal(d.scanMachineSummary.length,6);assert.equal(d.scanMachineSummary[0].tripCount,21);for(const r of d.scanMachineSummary.slice(1)){assert.equal(r.equipmentName,'');assert.equal(r.tripCount,'')}});
+test('new row accepts a master equipment selection and a trip count',()=>{let d=click(draft());d.scanMachineSummary[1]=selectTripEquipment(d.scanMachineSummary[1],'90',assets,d.location);d.scanMachineSummary[1].tripCount='2';const r=normalizeScanEquipmentRows(d,assets);assert.equal(r.scanMachineSummary[1].equipmentId,'90');assert.equal(r.scanMachineSummary[1].tripCount,'2');assert.equal(r.scanMachineSummary[0].tripCount,21)});
