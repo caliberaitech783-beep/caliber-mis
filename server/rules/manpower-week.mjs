@@ -6,10 +6,10 @@
 import {buildManpowerReport,trimManpowerWeek,manpowerCategoryCells} from './manpower-report.mjs';
 import {linkVlbTripHandovers} from '../../shared/vlb-trip-handover.mjs';
 
-export function buildManpowerWeek({rows,rowsJson,masters,mastersJson,attendance,batches,filters,view}){
+export function buildManpowerWeek({rows,rowsJson,masters,mastersJson,attendance,batches,filters,view,hrChanges=[]}){
  rows??=JSON.parse(rowsJson);masters??=JSON.parse(mastersJson);
  const vehicles=linkVlbTripHandovers(rows.filter(r=>r.book_type==='vehicle'));
- const report=buildManpowerReport({records:[...vehicles,...rows.filter(r=>r.book_type!=='vehicle')],attendance,...masters,batches,filters,parts:view==='ot'?'ot':'all'});
+ const report=buildManpowerReport({records:[...vehicles,...rows.filter(r=>r.book_type!=='vehicle')],attendance,...masters,batches,filters,hrChanges,parts:view==='ot'?'ot':'all'});
  return view==='ot'?report:trimManpowerWeek(report,view);
 }
 // The Manpower by Category counts of a month's card keys (JSON text of the joined weeks' details lines).

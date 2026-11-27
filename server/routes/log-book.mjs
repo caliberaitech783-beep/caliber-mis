@@ -23,6 +23,7 @@ import {vlbBatchActor} from '../rules/vlb-batch-access.mjs';
 import {registerVlbBatches} from './vlb-batches.mjs';
 import {registerManpowerReports} from './manpower-report-api.mjs';
 import {registerShiftAttendance,SHIFT_ATTENDANCE_SCHEMA} from './shift-attendance.mjs';
+import {HR_ATTENDANCE_CHANGE_SCHEMA} from './hr-attendance-change.mjs';
 import {registerBiometricAttendance} from './biometric-attendance.mjs';
 import {registerAttendanceSheetCheck,readBiometricDays} from './attendance-sheet-check.mjs';
 import {createHrEmployeeSync} from '../services/hr-employee-sync.mjs';
@@ -345,7 +346,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
   try{return await readSaveHandoverAnswer(async()=>(await withVlbTripHandovers(pool,[record],await filterLogBookSites(pool,req.logBookScope)))[0]);}
   catch(error){console.warn('[log-book] '+record.book_no+' is saved; answered without handover links:',error?.message||error);return linkVlbTripHandovers([record])[0]||record;}
  };
- const ensure=()=>ready??=(pool.query(LOG_BOOK_SCHEMA+SHIFT_ATTENDANCE_SCHEMA+ATTENDANCE_DAY_STORE_SCHEMA+OPERATIONS_DAY_STORE_SCHEMA).catch(error=>{ready=null;throw error}));
+ const ensure=()=>ready??=(pool.query(LOG_BOOK_SCHEMA+SHIFT_ATTENDANCE_SCHEMA+HR_ATTENDANCE_CHANGE_SCHEMA+ATTENDANCE_DAY_STORE_SCHEMA+OPERATIONS_DAY_STORE_SCHEMA).catch(error=>{ready=null;throw error}));
  const protect=[requireSession,requireAdministrator,async(req,res,next)=>{try{req.logBookScope=await getSiteScope(req.session);next()}catch(error){if(error.status)return res.status(error.status).json({error:error.message});next(error)}}];
  registerLogBookDashboard(app,{pool,protect,ensureBooks:ensure});
  registerFleetReconciliation(app,{pool,protect,ensureBooks:ensure,pulseMasterSync,breakdownMirror});

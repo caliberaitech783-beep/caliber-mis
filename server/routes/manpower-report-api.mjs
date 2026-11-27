@@ -5,6 +5,7 @@ import {sharedLogBookSites} from '../services/log-book-site-list.mjs';
 import {directLane,reportKey} from '../services/report-lane.mjs';
 import {buildReportInWorker} from '../services/report-build-pool.mjs';
 import {requireHrAttendance} from './hr-attendance-access.mjs';
+import {readHrAbsences} from './hr-attendance-change.mjs';
 import {createAttendancePunches,punchKeysBetween} from '../services/attendance-punches.mjs';
 import {createHrEmployeeSync} from '../services/hr-employee-sync.mjs';
 import {attendanceAnswerCache,fingerprint,ATTENDANCE_WEEK_KEEP_MS,ATTENDANCE_RECENT_KEEP_MS} from '../services/attendance-answer-cache.mjs';
@@ -85,6 +86,8 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
    [filters.from,filters.to,filters.site?[canonicalSiteName(filters.site)]:req.logBookScope.sites]);
    if(attendance.length>50000)throw Object.assign(new Error('This range contains too many attendance entries. Select a shorter date range.'),{status:400});
    const linked=await withHandovers(client,visible.filter(r=>r.book_type==='vehicle'),sites);
+   // What HR Pulse marked absent with an OTP: the card stays, its attendance is not counted (shared/hr-attendance-change.mjs).
+   const hrChanges=(await readHrAbsences(client,{from:filters.contextFrom,to:filters.contextTo})).filter(c=>siteAllowed(req.logBookScope,c.siteKey));
    const masters=(await client.query("SELECT id,master_name,record_data FROM master_records WHERE master_name=ANY($1::text[]) ORDER BY id",[['Equipment master','Shift Master','Employee master','ERP Employee master','C-Dir Employee master','Users & employees']])).rows;
    const fromMaster=names=>masters.filter(r=>names.includes(r.master_name)).map(r=>({...r.record_data,id:String(r.id)}));
    const batches=(await client.query(`SELECT id,name,site,book_date::text AS report_date,closed_at,shift,stage FROM mis_vlb_batches
@@ -92,7 +95,7 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
    await client.query('COMMIT');
    // The connection goes back to the pool before the report is put together.
    client.release();client=null;
-   const report=buildManpowerReport({records:[...linked,...visible.filter(r=>r.book_type!=='vehicle')],attendance:attendance.filter(r=>siteAllowed(req.logBookScope,r.site)),assets:fromMaster(['Equipment master']),employees:fromMaster(['Employee master','ERP Employee master','C-Dir Employee master','Users & employees']),shifts:fromMaster(['Shift Master']),batches,filters});
+   const report=buildManpowerReport({records:[...linked,...visible.filter(r=>r.book_type!=='vehicle')],attendance:attendance.filter(r=>siteAllowed(req.logBookScope,r.site)),assets:fromMaster(['Equipment master']),employees:fromMaster(['Employee master','ERP Employee master','C-Dir Employee master','Users & employees']),shifts:fromMaster(['Shift Master']),batches,filters,hrChanges});
    const fleetSites=new Set(report.otSites.filter(s=>siteAllowed(req.logBookScope,s.site)).map(s=>s.siteKey));
    return {...report,fleet:report.fleet.filter(m=>fleetSites.has(m.siteKey)),fleetWork:report.fleetWork.filter(w=>fleetSites.has(w.siteKey)),otSites:report.otSites.filter(s=>siteAllowed(req.logBookScope,s.site)),attendanceSites:report.attendanceSites.filter(s=>siteAllowed(req.logBookScope,s.site)),attendanceShifts:report.attendanceShifts.filter(s=>siteAllowed(req.logBookScope,s.siteKey)),generatedAt:new Date().toISOString()};
    }catch(error){if(client)await client.query('ROLLBACK').catch(()=>{});throw error;}
@@ -118,6 +121,7 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
    [filters.from,filters.to,filters.site?[canonicalSiteName(filters.site)]:req.logBookScope.sites]);
    if(attendance.length>50000)throw Object.assign(new Error('This range contains too many attendance entries. Select a shorter date range.'),{status:400});
    const masters=await reportMasters(client);
+   const hrAbsent=(await readHrAbsences(client,{from:filters.contextFrom,to:filters.contextTo})).filter(c=>siteAllowed(req.logBookScope,c.siteKey));
    const batches=(await client.query(`SELECT id,name,site,book_date::text AS report_date,closed_at,shift,stage FROM mis_vlb_batches
     WHERE deleted_at IS NULL AND archived_at IS NULL AND book_date BETWEEN $1 AND $2`,[filters.from,filters.to])).rows.filter(b=>siteAllowed(req.logBookScope,b.site));
    const present=attendance.filter(r=>siteAllowed(req.logBookScope,r.site)),parts=[],mastersJson=JSON.stringify(masters);
@@ -125,7 +129,7 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
     const range=manpowerFilters({...filters,...window}),rows=(await slimCards(client,range,sites,view==='ot'?ATTENDANCE_CARD_FIELDS:REPORT_CARD_FIELDS,{withBatches:true,tooLarge:'One week of saved cards is too large to read. Open one site and try again.'})).filter(r=>siteAllowed(req.logBookScope,r.site));
     // The week is built on a worker thread (buildManpowerWeek), so card saving is not frozen while a month is read;
     // the cards and masters go over as JSON text, the cheapest hand-over for the main thread.
-    parts.push({window,report:await buildInWorker('manpower-week',{rowsJson:JSON.stringify(rows),attendance:present.filter(r=>r.date>=window.from&&r.date<=window.to),mastersJson,batches,filters:range,view})});
+    parts.push({window,report:await buildInWorker('manpower-week',{rowsJson:JSON.stringify(rows),attendance:present.filter(r=>r.date>=window.from&&r.date<=window.to),mastersJson,batches,filters:range,view,hrChanges:hrAbsent.filter(c=>c.date>=range.contextFrom&&c.date<=range.contextTo)})});
    }
    await client.query('COMMIT');
    client.release();client=null;
@@ -148,6 +152,8 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
  const readAttendance=hr=>async(req,res,next)=>{
   try{
    const filters=manpowerFilters({from:req.query.from,to:req.query.to});
+   // HR Pulse asks only=days to check its saved days against the signatures (shared/hr-attendance-change.mjs).
+   const only=hr&&req.query.only==='days'?'days':'';
    await ensureBooks();
    const body=await lane.run(reportKey(hr?'hr-attendance':'manpower-attendance',req),async()=>{
    let client,building=null;
@@ -166,6 +172,8 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
    const batches=(await client.query(`SELECT ${ATTENDANCE_BATCH_COLUMNS} FROM mis_vlb_batches
     WHERE deleted_at IS NULL AND archived_at IS NULL AND book_date BETWEEN $1 AND $2`,[filters.contextFrom,filters.contextTo])).rows.filter(b=>siteAllowed(req.logBookScope,b.site));
    const present=attendance.filter(r=>siteAllowed(req.logBookScope,r.site)),scope={sites:req.logBookScope?.sites};
+   // What HR Pulse marked absent with an OTP; a change makes a new key, so no kept week or answer outlives it.
+   const hrAbsent=(await readHrAbsences(client,{from:filters.contextFrom,to:filters.contextTo})).filter(c=>siteAllowed(req.logBookScope,c.siteKey));
    // Only locked site-days are read (the rest is left out of the report anyway): from the stored locked days where a
    // stored day still matches its cards and batches, the rest live. See server/services/attendance-day-store.mjs.
    const locked=lockedSiteDays(shifts,batches),signatures=await cardSignatures(client,{from:filters.contextFrom,to:filters.contextTo},sites,batches);
@@ -179,13 +187,13 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
    // days ago is not read or built again.
    const mastersKey=fingerprint(mastersJson),siteNames=[...new Set(batches.map(b=>b.site))],keepBefore=nextReportDate(today(),-1);
    const plans=attendanceWindows(filters.from,filters.to).map(window=>{const range=manpowerFilters(window);
-    return {window,range,days:lockedSignedDays(signatures,{from:range.contextFrom,to:range.contextTo},locked),attendance:present.filter(r=>r.date>=window.from&&r.date<=window.to),punched:punchKeysBetween(punched,range.contextFrom,range.contextTo),kept:Boolean(answerCache)&&window.to<keepBefore};});
+    return {window,range,days:lockedSignedDays(signatures,{from:range.contextFrom,to:range.contextTo},locked),attendance:present.filter(r=>r.date>=window.from&&r.date<=window.to),punched:punchKeysBetween(punched,range.contextFrom,range.contextTo),hrChanges:hrAbsent.filter(c=>c.date>=range.contextFrom&&c.date<=range.contextTo),kept:Boolean(answerCache)&&window.to<keepBefore};});
    for(const plan of plans){
     plan.linksJson=hr?null:await dayCardBatchesText(client,plan.days);
     const weekBatches=batches.filter(b=>b.report_date>=plan.range.contextFrom&&b.report_date<=plan.range.contextTo).sort((a,b)=>String(a.id).localeCompare(String(b.id)));
-    plan.key=fingerprint('attendance-week',hr,scope.sites??null,plan.range,mastersKey,siteNames,weekBatches,plan.days.map(d=>[d.site,d.date,d.signature]),plan.linksJson,plan.attendance,plan.punched);
+    plan.key=fingerprint('attendance-week',hr,scope.sites??null,plan.range,mastersKey,siteNames,weekBatches,plan.days.map(d=>[d.site,d.date,d.signature]),plan.linksJson,plan.attendance,plan.punched,plan.hrChanges);
    }
-   const answerKey=fingerprint('attendance-answer',hr,scope.sites??null,filters,plans.map(p=>p.key),[...locked].sort());
+   const answerKey=fingerprint('attendance-answer',hr,scope.sites??null,filters,plans.map(p=>p.key),[...locked].sort(),only);
    const ready=answerCache?.get(answerKey);
    if(ready){await client.query('COMMIT');client.release();client=null;return ready;}
    const weeks=[];
@@ -195,7 +203,7 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
     const read=await lockedDayCards(client,{from:plan.range.contextFrom,to:plan.range.contextTo},{sites,locked,signatures,useStore:useDayStore,asText:true});
     // One week is built at a time, so a month of cards is never held at once.
     if(building)await building;
-    building=buildInWorker('attendance-week',{cardsJson:read.cardsJson,linksJson:plan.linksJson,mastersJson,attendance:plan.attendance,batches,filters:plan.range,hr,scope,punched:plan.punched})
+    building=buildInWorker('attendance-week',{cardsJson:read.cardsJson,linksJson:plan.linksJson,mastersJson,attendance:plan.attendance,batches,filters:plan.range,hr,scope,punched:plan.punched,hrChanges:plan.hrChanges})
      .then(json=>{if(plan.kept)answerCache.set(plan.key,json,ATTENDANCE_WEEK_KEEP_MS);return {window:plan.window,json};});
     // A build that fails while the next week is read is reported when it is awaited, not as an unhandled error.
     building.catch(()=>{});
@@ -206,7 +214,7 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
    const built=await Promise.all(weeks);
    building=null;
    // The weeks are joined and the answer written as JSON text on the worker too; it is sent as it is.
-   const text=await buildInWorker('attendance-answer',{weeks:built,filters,hr,scope,locked:[...locked]});
+   const text=await buildInWorker('attendance-answer',{weeks:built,filters,hr,scope,locked:[...locked],only});
    answerCache?.set(answerKey,text,plans.every(p=>p.kept)?ATTENDANCE_WEEK_KEEP_MS:ATTENDANCE_RECENT_KEEP_MS);
    return text;
    }catch(error){if(client)await client.query('ROLLBACK').catch(()=>{});await building?.catch(()=>{});throw error;}

@@ -52,6 +52,8 @@ import {createHrSiteMoveOutbox} from './server/services/hr-site-move-outbox.mjs'
 import {registerEmployeeMaster} from './server/routes/employee-master.mjs';
 import {createEmployeeMasterDoor,registerEmployeeMasterDoor} from './server/routes/employee-master-door.mjs';
 import {createAttendanceApproval,registerAttendanceApproval} from './server/routes/attendance-approval.mjs';
+import {createHrAttendanceChange,registerHrAttendanceChange} from './server/routes/hr-attendance-change.mjs';
+import {requireHrAttendance} from './server/routes/hr-attendance-access.mjs';
 import {registerHrMasterImport} from './server/routes/hr-master-import.mjs';
 import {registerAFormMaster} from './server/routes/a-form-master.mjs';
 import {registerErpEmployees} from './server/routes/erp-employee-source.mjs';
@@ -8077,6 +8079,11 @@ telegramCallbacks.handle=async input=>(await releaseOtp.handleTelegramCallback(i
 telegramCallbacks.text=input=>attendanceApproval.handleTelegramText(input);
 registerAttendanceApproval(app,{approval:attendanceApproval,requireSession,siteAllowed:async(session,site)=>siteAllowed(await logBookScope(session),site),isAdministrator:session=>isMisAdministrator(session)||session?.role==='super'&&['admin','super admin'].includes(String(session?.permissions?.adminLevel||'').trim().toLowerCase())});
 attendanceApproval.start();
+// Owner, 27 Nov 2026: Pulse-II is the master of trip card attendance. A change HR Pulse makes (present / absent) is asked
+// for here, approved with the RHR's OTP and kept here, so both always say the same (shared/hr-attendance-change.mjs).
+// logBooks and approvalOtpDelivery are set below; both are read only when a request comes.
+registerHrAttendanceChange(app,{requireHr:requireHrAttendance(),changes:createHrAttendanceChange({pool,approvers:()=>attendanceApproval.approvers(),
+ deliverOtp:request=>approvalOtpDelivery.send(request),sendText:(chatId,text,options)=>misTelegram.sendText(chatId,text,options),ensure:()=>logBooks.initialize()})});
 // After every production release the workflow reports what it deployed; the owner gets it on Telegram.
 registerReleaseReport(app,{verifyIdentity:releaseIdentity,ownerLogins:()=>ownerTelegramLogins(pool),
  telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain(),inChannel:(channel,person)=>misTelegram.inChannel(channel,person)}),audit:releaseAudit});
