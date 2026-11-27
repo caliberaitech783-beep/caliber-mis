@@ -442,3 +442,4 @@
  .scan-review-page:not(.scan-review-compact) .scan-selected-card:not(.scan-source-expanded) .scan-preview-viewport.scan-preview-fit{display:flex;justify-content:center;overflow:hidden;background:#eee}
  .scan-review-page:not(.scan-review-compact) .scan-selected-card:not(.scan-source-expanded) .scan-preview-fit>.scan-preview-image{flex:none;display:block;height:100%}
 }
+.scan-refresh-notice{padding:10px 14px;border:1px solid #e0c76a;border-radius:6px;background:#fff8df;color:#654b0c}

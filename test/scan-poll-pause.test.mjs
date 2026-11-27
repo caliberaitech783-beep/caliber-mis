@@ -31,8 +31,8 @@ test('the scan screen polls through the visible-tab helper, not fixed timers',()
  assert.match(screen,/startVisiblePoll\(refresh,SCAN_PROGRESS_ACTIVE_MS\)/);
  // Automatic saving depends on seeing cards finish reading, so a hidden tab keeps reading while work is running.
  assert.match(screen,/const progressWorking=\(\)=>scanProgressActive\(cardsView\.current\.cards,\{uploading:uploadingRef\.current\}\)/);
- assert.match(screen,/SCAN_PROGRESS_ACTIVE_MS,\{keepPolling:progressWorking\}\)/);
- assert.match(screen,/return load\(activeRef\.current,false,retryPending\)\.then\(\(\)=>\{progressFailures=0\},e=>\{progressFailures\+\+;/);
+ assert.match(screen,/\(\)=>scanProgressRetryDelay\(progressFailures\),\{keepPolling:progressWorking\}\)/);
+ assert.match(screen,/return load\(pollId,false,retryPending\)\.then\(\(\)=>\{progressFailures=0\},e=>\{if\(activeRef\.current!==pollId\)return;progressFailures\+\+;/);
 });
 
 test('the scanner panel, batch report and user sessions stop asking in a hidden tab',()=>{
