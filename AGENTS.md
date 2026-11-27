@@ -213,5 +213,5 @@ Set by the owner on 27 November 2026 ("Option 1 banao"): a drill works 12-hour D
 - A Drill Log Book card goes in the batch of the same date whose Shift I / II / III contains the start of its Day or Night shift: with Day 06:00 and Night 18:00, Day goes in Shift I and Night in Shift II. A 12-hour Day / Night batch takes the drill shift of its own name.
 - The start comes from the site's Shift Master: a Day / Night entry, else Day starts with Shift I and Night 12 hours after Day. The 8-hour windows are the site's Shift I / II / III entries, else 05:00 / 13:00 / 21:00.
 - The DLB save refuses a Day or Night that is not the batch's, naming the right batch. One card per rig, date and drill shift. The DLB screen offers only the batch's drill shift.
-- Lock DLB asks for a card only in a batch in which a drill shift starts; in the others it locks with none, and the batch page says so.
+- A Drill Log Book is optional at Lock DLB (27 Nov 2026). The batch page names the drill shift whose card goes in the batch, and in a batch in which none starts it offers no DLB entry.
 - `shared/drill-batch-shift.mjs` holds the rule; `test/drill-log-book.test.mjs` checks it.

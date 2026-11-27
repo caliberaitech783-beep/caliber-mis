@@ -1,6 +1,6 @@
 import {operationalDate} from './operational-start.mjs';
 import {canonicalSiteName} from './site-location.mjs';
-import {cardWorkingHmr,shareCardOperator} from './log-book-shared-shift.mjs';
+import {cardWorkingHmr,shareCardOperator,elbCardsNeedDuplicateReview} from './log-book-shared-shift.mjs';
 import {bookShiftCode,selectedMasterShift,CARD_SHIFTS,normalizeCardShift} from './trip-card-rules.mjs';
 import {equipmentDoorNumber} from './equipment-door.mjs';
 import {assetBookKind} from './equipment-kind.mjs';
@@ -95,7 +95,7 @@ export function buildProductionReport({filters,records=[],assets=[],shifts=[],ba
  for(const r of [...vehicles,...equipment]){
   const d=r.data,s=recordShift(r),a=assetMap.get(String(r.asset_id||d.assetId)),identity=[r.book_type,r.asset_id||d.assetId,s].join(':');
   const peers=shiftCards.get(identity)||[];
-  if(peers.some(peer=>shareCardOperator(d,peer)))issue('duplicate','Multiple cards for the same asset, shift and driver or operator need review before totals can be generated.',r.book_no);
+  if(peers.some(peer=>r.book_type==='equipment'?elbCardsNeedDuplicateReview(d,peer):shareCardOperator(d,peer)))issue('duplicate','Multiple cards for the same asset, shift and driver or operator need review before totals can be generated.',r.book_no);
   peers.push(d);
   shiftCards.set(identity,peers);
   if(!a){issue('asset','Equipment master identity is missing.',r.book_no);continue;}

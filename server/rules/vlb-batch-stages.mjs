@@ -2,7 +2,7 @@ import {assignmentWindows,logBookAssignment} from '../../shared/log-book-transfe
 import {transferForAsset} from '../../shared/equipment-transfer-history.mjs';
 import {idleShiftHours} from '../../shared/breakdown-hours-source.mjs';
 import {validShiftHours,isJayantSite} from '../../shared/site-shift-hours.mjs';
-import {cardWorkingHmr,shareCardOperator} from '../../shared/log-book-shared-shift.mjs';
+import {cardWorkingHmr,shareCardOperator,elbCardsNeedDuplicateReview} from '../../shared/log-book-shared-shift.mjs';
 import {assertCombinedShiftMeters} from './log-book-shift-hmr.mjs';
 import {manualShiftHours,manualShiftWindow} from '../../shared/manual-shift.mjs';
 import {manualEntryShiftIssue} from '../../shared/duty-shift.mjs';
@@ -27,7 +27,7 @@ import {mirrorReadAt} from '../services/pulse-breakdown-mirror.mjs';
 import {ACTIVE_VLB_ENTRY_FROM,ACTIVE_VLB_ENTRY_FILTER} from './vlb-card-counts.mjs';
 import {readWaitingScans,vlbLockScanBlocker,lmvLockScanBlocker,closeScanBlocker} from './vlb-waiting-scans.mjs';
 import {isDrillMachine} from '../../shared/drill-log-book.mjs';
-import {batchDrillPeriods,drillPeriodLabel} from '../../shared/drill-batch-shift.mjs';
+import {batchDrillPeriods} from '../../shared/drill-batch-shift.mjs';
 const batchWaitingScans=(client,batch)=>readWaitingScans(client,{site:batch.site,date:batch.report_date,shift:batch.shift});
 
 const fail=batchFail;
@@ -155,7 +155,7 @@ function duplicateElb(records){
  for(const record of records){
   const data=record.data||{},key=String(record.asset_id||data.assetId);
   const peers=byAsset.get(key)||[];
-  if(peers.some(peer=>shareCardOperator(data,peer)))duplicates.add(data.door||key);
+  if(peers.some(peer=>elbCardsNeedDuplicateReview(data,peer)))duplicates.add(data.door||key);
   peers.push(data);
   byAsset.set(key,peers);
  }
@@ -374,9 +374,8 @@ export async function lockDlb(client,batch,actor){
  const assets=await equipmentAssets(client);
  const drills=assets.filter(asset=>isDrillMachine(asset)&&canonicalSiteName(asset.currentLocation||asset.site||asset.location)===canonicalSiteName(batch.site));
  const saved=await batchDlbRecords(client,batch);
- // A 12-hour drill shift's card goes in the batch in which it starts; a batch in which none starts needs no card.
+ // DLB is optional (main, 27 Nov 2026); the audit names the drill shifts whose cards go in this batch (shared/drill-batch-shift.mjs).
  const periods=await batchDrillShifts(client,batch);
- if(drills.length&&periods.length&&!saved.length)fail(`Add at least one Drill Log Book entry (${periods.map(drillPeriodLabel).join(' / ')} drill shift) before locking DLB.`,409);
  const locked=(await client.query("UPDATE mis_vlb_batches SET stage='elb_open',dlb_locked_at=NOW() WHERE id=$1 RETURNING *,book_date::text AS report_date",[batch.id])).rows[0];
  await auditVlbBatch(client,batch,actor,'dlb_locked',{cards:saved.length,siteDrills:drills.length,drillShifts:periods});
  return locked;

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {chooseScanCard,scanProgressChanged,scanProgressChangedIds,mergeScanCardRefresh,mergeScanProgressStages} from '../src/scan-reader-status.mjs';
-import {scanProgressActive,SCAN_PARTIAL_REFRESH_MAX,SCAN_FULL_REFRESH_MAX_MS,SCAN_ENTRY_OPEN_TIMEOUT_MS,SCAN_PROGRESS_READ_TIMEOUT_MS} from '../shared/scan-progress-poll.mjs';
+import {scanRefreshRequestOptions,scanProgressActive,SCAN_PARTIAL_REFRESH_MAX,SCAN_FULL_REFRESH_MAX_MS,SCAN_ENTRY_OPEN_TIMEOUT_MS,SCAN_PROGRESS_READ_TIMEOUT_MS} from '../shared/scan-progress-poll.mjs';
 
 // Reading the whole entry each time one card finished re-validated every unsaved
 // card: for an entry of N cards that is N whole reads of up to N cards each. On
@@ -48,15 +48,15 @@ function harness(server){
  const source=readFileSync(new URL('../src/bulk-card-scanning.jsx',import.meta.url),'utf8');
  const line=source.split('\n').find(line=>line.startsWith(' const load=async(id,fresh=true,'));
  assert.ok(line,'load found');
- const paths=[],noop=()=>{},state={rows:[],gate:undefined,now:1_000_000,uploading:false};
- const scope={kind:'vehicle',lmv:false,vlbBatch:null,scanProgressChanged,scanProgressChangedIds,mergeScanCardRefresh,mergeScanProgressStages,scanProgressActive,SCAN_PARTIAL_REFRESH_MAX,SCAN_FULL_REFRESH_MAX_MS,SCAN_ENTRY_OPEN_TIMEOUT_MS,SCAN_PROGRESS_READ_TIMEOUT_MS,chooseScanCard,
+ const paths=[],noop=()=>{},state={rows:[],requests:[],notice:'refresh delayed',gate:undefined,now:1_000_000,uploading:false};
+ const scope={kind:'vehicle',lmv:false,vlbBatch:null,scanRefreshRequestOptions,scanProgressChanged,scanProgressChangedIds,mergeScanCardRefresh,mergeScanProgressStages,scanProgressActive,SCAN_PARTIAL_REFRESH_MAX,SCAN_FULL_REFRESH_MAX_MS,SCAN_ENTRY_OPEN_TIMEOUT_MS,SCAN_PROGRESS_READ_TIMEOUT_MS,chooseScanCard,
   cardsView:{get current(){return {source:state.rows}}},batchLoads:{current:new Map()},partialSince:{current:0},uploadingRef:{get current(){return state.uploading}},activeRef:{current:'batch'},dirtyRef:{current:false},
   Date:{now:()=>state.now},window:{location:{search:''}},
-  api:async path=>{paths.push(path.replace('/api/scan-batches/batch',''));const query=path.split('?')[1]||'',cards=server();
+  api:async (path,options)=>{state.requests.push(options);paths.push(path.replace('/api/scan-batches/batch',''));const query=path.split('?')[1]||'',cards=server();
    if(query==='progress=1')return {batch:{id:'batch'},cards:cards.map(slim),progress:true};
    if(query.startsWith('cards=')){const ids=query.slice(6).split(',');return {batch:{id:'batch'},partial:true,cards:cards.filter(card=>ids.includes(card.id)),contextGate:{partial:true},duplicates:[]};}
    return {batch:{id:'batch'},cards,contextGate:{partial:false},duplicates:[]};},
-  setConnectionError:noop,setBatch:noop,setContextGate:gate=>state.gate=gate,setStorage:noop,setReader:noop,setDuplicates:noop,setCards:fn=>state.rows=fn(state.rows),setSelected:noop};
+  setConnectionError:noop,setRefreshNotice:notice=>state.notice=notice,setBatch:noop,setContextGate:gate=>state.gate=gate,setStorage:noop,setReader:noop,setDuplicates:noop,setCards:fn=>state.rows=fn(state.rows),setSelected:noop};
  const load=new Function(...Object.keys(scope),line.trim()+';return load;')(...Object.values(scope));
  return {load,paths,state,partialSince:scope.partialSince};
 }
@@ -76,6 +76,17 @@ test('while cards are being read, each poll reads only the cards that changed',a
  assert.ok(partialSince.current>0);
  await load('batch',false);
  assert.deepEqual(paths.slice(4),['?progress=1'],'nothing changed and a card is still being read: no further read');
+});
+
+test('background validation gets a fresh detail budget and clears a delayed refresh notice',async()=>{
+ const {load,state}=harness(()=>[full(A,'review',2)]);
+ const original=AbortSignal.timeout,budgets=[];
+ AbortSignal.timeout=ms=>{budgets.push(ms);return new AbortController().signal;};
+ try{await load('batch',false);}finally{AbortSignal.timeout=original;}
+ assert.deepEqual(budgets,[20000,90000]);
+ assert.notEqual(state.requests[0].signal,state.requests[1].signal);
+ assert.equal(state.notice,'');
+ assert.ok(state.rows[0].checks,'complete validated cards are retained for automatic saving');
 });
 
 test('the whole entry is read once after the work settles, and at least every minute meanwhile',async()=>{

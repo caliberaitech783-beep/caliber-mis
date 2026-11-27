@@ -10,7 +10,7 @@ test('opening a scan entry waits longer than a progress poll',()=>{
  assert.ok(SCAN_ENTRY_OPEN_TIMEOUT_MS>=60000);
  assert.equal(SCAN_PROGRESS_READ_TIMEOUT_MS,20000);
  const page=readFileSync(new URL('../src/bulk-card-scanning.jsx',import.meta.url),'utf8');
- assert.match(page,/AbortSignal\.timeout\(fresh\?SCAN_ENTRY_OPEN_TIMEOUT_MS:SCAN_PROGRESS_READ_TIMEOUT_MS\)/);
+ assert.match(page,/scanRefreshRequestOptions\(fresh\)/);
  assert.doesNotMatch(page,/const read=\{signal:AbortSignal\.timeout\(20000\)\}/);
  assert.match(page,/setNotice\('Opening scan entry…/,'the click shows that the entry is opening');
  assert.match(page,/setError\(scanEntryOpenError\(e\)\)/);

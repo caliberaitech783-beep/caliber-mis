@@ -86,6 +86,7 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
   ['Shift Master',{site:'Sasti OC',shiftName:'Shift B',shiftCode:'II',startTime:'13:00:00',endTime:'21:00:00'}],
   ['Equipment master',{category:'Equipment',door:'VPC-019',equipmentName:'VPC 019',group:'Excavator',currentLocation:'Sasti OC'}],
   ['Equipment master',{category:'Equipment',door:'D1',equipmentName:'Dozer D1',group:'Dozer',currentLocation:'Sasti OC'}],
+  ['Equipment master',{category:'Equipment',door:'DR1',equipmentName:'Blast Hole Drill Rig',group:'DRILL',currentLocation:'Sasti OC'}],
   ['Equipment master',{category:'Equipment',door:'VPC-077',equipmentName:'VPC 077',group:'Excavator',currentLocation:'Jayant OC'}],
   ['Equipment master',{category:'Equipment',door:'G9',equipmentName:'Grader G9',group:'Grader',currentLocation:'Jayant OC'}],
  ];
@@ -188,7 +189,7 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
  assert.equal(nextElb.status,200,JSON.stringify(nextElb.data));
  assert.match(nextElb.data.stageWait,/Close DLB/);
  assert.equal((await call('/api/vlb-batches')).data.batches.find(row=>row.id===next.data.id).stageWait,nextElb.data.stageWait);
- const lockedDlb=await call(batch+'/lock-dlb','POST',{});
+ const lockedDlb=await call(batch+'/lock-dlb','POST',{}); // DLB is optional even when the site has a drill machine.
  assert.equal(lockedDlb.status,200,JSON.stringify(lockedDlb.data));
  assert.equal(lockedDlb.data.stage,'elb_open');
  const nextDlb=await call(nextPath+'/lock-dlb','POST',{},'bob');
@@ -200,8 +201,8 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
  assert.equal((await call('/api/log-books/lmv/'+savedLmv.data.id,'DELETE',{revision:savedLmv.data.revision})).status,409);
  assert.ok(lockedDlb.data.vlb_locked_at);assert.ok(lockedDlb.data.dlb_locked_at);assert.equal(lockedDlb.data.canClose,true);assert.equal(lockedDlb.data.canContinue,false);
  assert.deepEqual(lockedDlb.data.machines.map(m=>[m.label,m.trips,m.sourceCards]),[['VPC-019',8,1],['VPC-077',4,1]]);
- assert.deepEqual(lockedDlb.data.fleet.map(r=>[r.door,r.trips]),[['VPC-019',8],['VPC-077',4],['D1',0]],'manual ELB contains loaders and unused site equipment');
- assert.equal(lockedDlb.data.fleetProgress.total,3);
+ assert.deepEqual(lockedDlb.data.fleet.map(r=>[r.door,r.trips]),[['VPC-019',8],['VPC-077',4],['D1',0],['DR1',0]],'manual ELB contains loaders and unused site equipment');
+ assert.equal(lockedDlb.data.fleetProgress.total,4);
  // The batch page reads the batch every 10 s. A read writes the machine list only when a machine is
  // missing from it, in one statement, and uses one connection that it always returns.
  const fleetWrites=()=>statements.filter(sql=>sql.includes('INSERT INTO mis_vlb_batch_fleet')).length;
@@ -213,13 +214,13 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
  }
  await db.query("DELETE FROM mis_vlb_batch_fleet WHERE batch_id=$1 AND door='D1'",[created.data.id]);
  statements.length=0;
- assert.deepEqual((await call(batch)).data.fleet.map(r=>[r.door,r.trips]),[['VPC-019',8],['VPC-077',4],['D1',0]],'a machine missing from the list is added by the read');
+ assert.deepEqual((await call(batch)).data.fleet.map(r=>[r.door,r.trips]),[['VPC-019',8],['VPC-077',4],['D1',0],['DR1',0]],'a machine missing from the list is added by the read');
  assert.equal(fleetWrites(),1,'all missing machines are added in one statement');
- statements.length=0;assert.equal((await call(batch)).data.fleet.length,3);assert.equal(fleetWrites(),0);
+ statements.length=0;assert.equal((await call(batch)).data.fleet.length,4);assert.equal(fleetWrites(),0);
  statements.length=0;taken=returned=0;
  assert.equal((await call('/api/vlb-batches/not-a-batch')).status,400);assert.deepEqual([taken,returned],[1,1],'a refused read returns its connection too');
  await db.query('DELETE FROM mis_vlb_batch_fleet WHERE batch_id=$1 AND asset_id=$2',[created.data.id,ids.D1]);
- assert.deepEqual((await call(batch)).data.fleet.map(row=>row.door),['VPC-019','VPC-077','D1'],'an older open batch automatically gains its missing zero-trip site equipment');
+ assert.deepEqual((await call(batch)).data.fleet.map(row=>row.door),['VPC-019','VPC-077','D1','DR1'],'an older open batch automatically gains its missing zero-trip site equipment');
  assert.equal((await call(batch+'/lock-vlb','POST',{})).status,409,'cannot lock twice');
  assert.equal((await call('/api/log-books/vehicle','POST',card('V1',[{equipmentName:'V19',tripCount:1}]))).status,409,'VLB frozen after lock');
  const fleet=assetId=>batch+'/fleet/'+assetId;
@@ -252,7 +253,7 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
  let closeTry=await call(batch+'/close','POST',{});assert.equal(closeTry.status,409);assert.match(closeTry.data.error,/VPC-077 loaded 4 trips, no ELB saved/);
  const elbForm=await call('/api/log-books/equipment','POST',{bookDate:'2026-12-18',location:'Sasti OC',assetId:ids['VPC-077'],employeeId:ids.alice,shiftId:ids['Shift A'],shiftHours:8,openingHmr:40,closingHmr:44,shiftStatus:'working',requestKey:randomUUID()});
  assert.equal(elbForm.status,201,JSON.stringify(elbForm.data));
- view=await call(batch);assert.deepEqual(view.data.fleetProgress,{total:3,saved:2,remaining:0,optionalUnsaved:1,skipped:0,drafts:0,loaders:2});assert.deepEqual(view.data.closeBlockers,[]);
+ view=await call(batch);assert.deepEqual(view.data.fleetProgress,{total:4,saved:2,remaining:0,optionalUnsaved:2,skipped:0,drafts:0,loaders:2});assert.deepEqual(view.data.closeBlockers,[]);
  const relief={...editInput,additionalCard:true,employeeId:ids.bob,openingHmr:505,closingHmr:508,requestKey:randomUUID()};
  const over=await call(fleet(ids['VPC-019']),'POST',{...relief,closingHmr:508.001});
  assert.equal(over.status,409,JSON.stringify(over.data));
@@ -285,7 +286,22 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
  assert.equal((await call(batch)).data.fleet.find(row=>row.door==='VPC-077').saved_at,null);
  const replacement=await call('/api/log-books/equipment','POST',{bookDate:'2026-12-18',location:'Sasti OC',assetId:ids['VPC-077'],employeeId:ids.alice,shiftId:ids['Shift A'],shiftHours:8,openingHmr:40,closingHmr:44,shiftStatus:'working',requestKey:randomUUID()});
  assert.equal(replacement.status,201,JSON.stringify(replacement.data));
+
+ // D30 regression: retain both original ELBs of one job with consecutive HMR ranges.
+ const segmentData={...replacement.data.data,jobCardNo:'2527',openingHmr:13090.6,closingHmr:13095.1,totalWorkingHmr:4.5,availabilityHours:4.5,runningHours:4.5,idleHours:3.5};
+ await db.query('UPDATE mis_log_books SET data=$2 WHERE id=$1',[replacement.data.id,JSON.stringify(segmentData)]);
+ const earlierData={...segmentData,openingHmr:13086.9,closingHmr:13090.6,totalWorkingHmr:3.7,availabilityHours:3.7,runningHours:3.7,idleHours:4.3};
+ const earlier=(await db.query("INSERT INTO mis_log_books(book_no,book_type,book_date,site,asset_id,data,request_key,created_by) VALUES('ELB-D30-earlier','equipment',$1,$2,$3,$4,$5,'alice') RETURNING *",[selection.date,selection.site,ids['VPC-077'],JSON.stringify(earlierData),randomUUID()])).rows[0];
+ await db.query('INSERT INTO mis_elb_batch_entries(batch_id,logbook_id,snapshot) VALUES($1,$2,$3)',[created.data.id,earlier.id,JSON.stringify(earlier)]);
+ assert.deepEqual((await call(batch)).data.closeBlockers,[],'separate D30 segments need no deletion');
+ await db.query('UPDATE mis_log_books SET data=$2 WHERE id=$1',[earlier.id,JSON.stringify({...earlierData,closingHmr:13090.7,totalWorkingHmr:3.8})]);
+ const overlapping=await call(batch+'/close','POST',{},'admin');assert.equal(overlapping.status,409);assert.match(overlapping.data.error,/Duplicate ELB/);
+ await db.query('UPDATE mis_log_books SET data=$2 WHERE id=$1',[earlier.id,JSON.stringify(earlierData)]);
  const closed=await call(batch+'/close','POST',{},'admin');assert.equal(closed.status,200,JSON.stringify(closed.data));assert.equal(closed.data.stage,'closed');assert.ok(closed.data.closed_at);
+ const retained=(await db.query('SELECT id,data,deleted_at FROM mis_log_books WHERE id=ANY($1::bigint[]) ORDER BY id',[[replacement.data.id,earlier.id]])).rows;
+ assert.equal(retained.length,2);assert.ok(retained.every(r=>r.deleted_at===null));
+ assert.deepEqual(retained.map(r=>r.data),[segmentData,earlierData],'closing changes neither ELB meter evidence');
+
  assert.equal(closed.data.audit.find(entry=>entry.action==='saved_and_locked').actor,'admin');
  assert.equal((await call(nextPath)).data.stageWait,'');
  const nextFleet=await call(nextPath+'/fleet/'+ids['VPC-019'],'POST',{shiftStatus:'working',employeeId:ids.alice,openingHmr:200,closingHmr:205},'bob');
