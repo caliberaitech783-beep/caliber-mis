@@ -9,8 +9,8 @@ test('blocked HTTP saves retain viewable images and correction data; rechecking 
  const query=(sql,args)=>sql.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):!args&&sql.includes(';')?db.exec(sql):db.query(sql,args);
  const pool={query,connect:async()=>({query,release(){}})};
  const app=express();app.use(express.json());const session=(req,res,next)=>{req.session={login:'owner'};next()};
- const fleet=[{door:'V1',currentLocation:'Sasti OC'},{door:'D19',currentLocation:'Sasti OC'}];let removed=0;
- const service=registerBulkCardScanning(app,{pool,requireSession:session,requireAdministrator:(req,res,next)=>next(),ocr:{close(){}},readPulseFleet:async()=>fleet,imageStorage:{hydrate:async card=>card,remove:async()=>{removed++;throw Error('Fleet validation must never delete an image')}}});
+ const fleet=[{door:'V1',currentLocation:'Sasti OC'},{door:'D19',currentLocation:'Sasti OC'}];let removed=0,pulseExpired=true;
+ const service=registerBulkCardScanning(app,{pool,requireSession:session,requireAdministrator:(req,res,next)=>next(),ocr:{close(){}},readPulseFleet:async()=>{if(pulseExpired)throw Object.assign(Error('Pulse sign-in expired. Sign in normally again to reconnect.'),{status:401});return fleet;},imageStorage:{hydrate:async card=>card,remove:async()=>{removed++;throw Error('Fleet validation must never delete an image')}}});
  await service.start();t.after(()=>service.stop());app.use((error,req,res,next)=>res.status(error.status||500).json({error:error.message}));
  const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.once('listening',resolve));t.after(()=>{server.closeAllConnections();server.close()});
  const base='http://127.0.0.1:'+server.address().port,cardId=randomUUID(),batchId=randomUUID();
@@ -21,6 +21,19 @@ test('blocked HTTP saves retain viewable images and correction data; rechecking 
  await db.query("INSERT INTO mis_scan_cards(id,batch_id,ordinal,filename,image,image_hash,ocr_text,raw_fields,draft,status) VALUES($1,$2,1,'original.png',$3,'unique-image-hash','OCR text',$4,$5,'review')",[cardId,batchId,image,JSON.stringify({originalExtraction:'Keep me'}),JSON.stringify(draft)]);
  const post=revision=>fetch(base+'/api/scan-cards/'+cardId+'/auto-save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision})});
  assert.equal((await post(1)).status,409);
+ let failed=(await db.query('SELECT raw_fields FROM mis_scan_cards WHERE id=$1',[cardId])).rows[0];
+ assert.match(failed.raw_fields.fleetReview.error,/sign-in expired/);
+ pulseExpired=false;
+ await db.query("UPDATE mis_scan_cards SET raw_fields=jsonb_set(raw_fields,'{fleetReview,checkedAt}',to_jsonb((NOW()-INTERVAL '1 minute')::text)) WHERE id=$1",[cardId]);
+ await fetch(base+'/api/scan-batches/'+batchId);
+ for(let attempt=0;attempt<100;attempt++){
+  failed=(await db.query('SELECT raw_fields FROM mis_scan_cards WHERE id=$1',[cardId])).rows[0];
+  if(!failed.raw_fields.fleetReview.error)break;
+  await new Promise(resolve=>setTimeout(resolve,10));
+ }
+ assert.equal(failed.raw_fields.fleetReview.error,'','a batch read retries the expired check without changing the card');
+ assert.ok(failed.raw_fields.fleetReview.issues.length,'actual equipment issues still block saving');
+
  let saved=(await db.query('SELECT * FROM mis_scan_cards WHERE id=$1',[cardId])).rows[0];assert.equal(saved.status,'review');assert.deepEqual(saved.draft,draft);assert.equal(saved.ocr_text,'OCR text');assert.equal(saved.raw_fields.originalExtraction,'Keep me');assert.ok(saved.raw_fields.fleetBlock||saved.raw_fields.fleetReview?.issues?.length);assert.deepEqual(Buffer.from(saved.image),image);assert.equal(removed,0);
  const preview=await fetch(base+'/api/scan-cards/'+cardId+'/image');assert.equal(preview.status,200);assert.deepEqual(Buffer.from(await preview.arrayBuffer()),image);
  const batch=await (await fetch(base+'/api/scan-batches/'+batchId)).json();assert.equal(batch.cards.length,1);assert.ok(batch.cards[0].checks.errors.some(message=>/fleet|equipment|kept for review/i.test(message)));

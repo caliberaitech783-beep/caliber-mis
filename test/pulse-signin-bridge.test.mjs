@@ -55,3 +55,17 @@ test('raw asks return Pulse bytes unparsed, and a refusal still carries Pulse er
  status=401;
  await assert.rejects(()=>bridge.request('breakdown-mirror',{},null,{raw:true}),error=>error.status===401&&error.message==='Pulse sign-in expired.');
 });
+
+test('stale newest grant falls back to the same users eligible sign-in only on read authentication rejection',async()=>{
+ const calls=[];
+ const bridge=createPulseSignInBridge({pool:{query:async(sql,args)=>{assert.equal(args[0],'owner');return {rows:[{grant_token:'stale'},{grant_token:'valid'}]}}},fetchImpl:async(_url,options)=>{const body=JSON.parse(options.body);calls.push(body);return body.grant==='stale'?Response.json({error:'Pulse sign-in expired.'},{status:401}):Response.json([{door:'V683'}]);}});
+ assert.deepEqual(await bridge.request('fleet',{site:'Gauri Pauni OC (2nd)'},'owner'),[{door:'V683'}]);
+ assert.deepEqual(calls.map(x=>x.grant),['stale','valid']);
+ calls.length=0;
+ await assert.rejects(bridge.request('verify',{},'owner'),e=>e.status===401);
+ assert.equal(calls.length,1);
+});
+test('permission rejection does not try another grant',async()=>{
+ let calls=0;const bridge=createPulseSignInBridge({pool:{query:async()=>({rows:[{grant_token:'one'},{grant_token:'two'}]})},fetchImpl:async()=>{calls++;return Response.json({error:'Denied'},{status:403});}});
+ await assert.rejects(bridge.request('fleet',{},'owner'),e=>e.status===403);assert.equal(calls,1);
+});
