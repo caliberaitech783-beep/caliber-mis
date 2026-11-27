@@ -301,7 +301,7 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
      <button type="button" disabled>ELB entry · Lock DLB first</button>
      {viewed.canUnlockVlb&&<button type="button" disabled={busy} onClick={unlockVlb}>Unlock VLB</button>}
     </div>}
-    {stage==='dlb_open'&&<DlbSavedEntries records={viewed.dlbRecords||[]}/>}
+    {['dlb_open','elb_open','closed'].includes(stage)&&<DlbSavedEntries records={viewed.dlbRecords||[]}/>}
     {stage==='elb_open'&&<><div className="vlb-batch-actions">{onEquipmentElb&&!equipmentElbHidden&&<button type="button" className="vlb-approval-primary vlb-open-elb-button" disabled={busy||viewed.canEnterFleet===false} onClick={()=>onEquipmentElb(viewed)}>Process Equipment ELB</button>}<button type="button" aria-expanded={!equipmentElbHidden} aria-controls="vlb-equipment-elb-details" onClick={()=>setEquipmentElbHidden(v=>!v)}>{equipmentElbHidden?'Show Equipment ELB':'Hide Equipment ELB'}</button>{viewed.canUnlockVlb&&<button type="button" disabled={busy} onClick={unlockVlb}>Unlock VLB</button>}<button type="button" disabled={busy||detailLoading||!viewed.canClose} onClick={()=>close(viewed)}>Close &amp; lock ELB</button>{canDeleteManualElb&&<button type="button" disabled={busy||detailLoading} aria-expanded={deleteBatchId===viewed.id} onClick={()=>setDeleteBatchId(id=>id===viewed.id?null:viewed.id)}>Delete manual ELBs</button>}</div>
     {canDeleteManualElb&&deleteBatchId===viewed.id&&<LogBookDeletion key={viewed.id} session={session} context={{manualElbScope:{site:viewed.site,date:viewed.report_date,shift:viewed.shift}}}/>}
      {!viewed.stageWait&&viewed.canClose===false&&<p role="status">The batch owner or an MIS administrator can close and lock this ELB.</p>}
