@@ -81,6 +81,17 @@ export default function AttendanceApproval({session,ReportSection}){
   }catch(e){setError(e.message);}
   finally{setActing(false);}
  };
+ // Owner, 27 Nov 2026: see on one's own Telegram how an approval and the RHR unlock OTP arrive. Changes nothing.
+ const sendSample=async()=>{
+  setActing(true);setError('');setNotice('');
+  try{
+   const response=await fetch('/api/attendance-approval/sample',{method:'POST',headers,body:'{}'});
+   const answer=await response.json().catch(()=>({}));
+   if(!response.ok)throw new Error(answer.error||'The sample could not be sent.');
+   setNotice(`Sample sent to your Telegram: the approval message for ${answer.site} · ${displayDate(answer.date)}${answer.realDay?'':' (example day)'} and the RHR unlock OTP message. Its buttons change nothing.`);
+  }catch(e){setError(e.message);}
+  finally{setActing(false);}
+ };
  const approveAllMine=async()=>{
   const mine=siteDays.filter(d=>d.mine&&d.status==='waiting');
   if(!mine.length)return;
@@ -112,7 +123,10 @@ export default function AttendanceApproval({session,ReportSection}){
   <header className="cr-head">
    <div><h1>Attendance approval</h1>
     <p>Trip card batches from {data?displayDate(data.from):'01-11-2026'} to {data?displayDate(data.until):'20-11-2026'}, day by day for every site: Level 1 Site HR verifies attendance, Level 2 Office HR cross-checks and validates, Level 3 RHR reviews, Level 4 Directors give final approval, and the day is locked. A day starts at Site HR when every batch of it is closed. Each approver also gets one Telegram message per day with Approve / Send back. A day sent back returns to the batch creators; when they reopen, correct and close the batch it starts again at Site HR. A locked day's batches cannot be reopened and its cards cannot change, unless the RHR of the region gives an OTP: the user writes why, RHR gets the OTP, and the OTP entered unlocks the day, which then goes through the four levels again.</p></div>
-   <button type="button" disabled={busy} onClick={()=>void load()}>{busy?'Reading…':'Refresh'}</button>
+   <div className="cr-actions">
+    <button type="button" disabled={acting} onClick={()=>void sendSample()}>Send sample to my Telegram</button>
+    <button type="button" disabled={busy} onClick={()=>void load()}>{busy?'Reading…':'Refresh'}</button>
+   </div>
   </header>
   {error&&<p className="cr-error" role="alert">{error}</p>}
   {notice&&<p className="cr-notice" role="status">{notice}</p>}

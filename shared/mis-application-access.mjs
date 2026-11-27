@@ -76,6 +76,8 @@ export function misRequestAllowed(session,req){
  if(route==='/api/attendance-approval/act')return req.method==='POST';
  // RHR unlock with OTP: the route checks that the site is the login's.
  if(route==='/api/attendance-approval/lock')return read;
+ // Send sample to my Telegram: only to the login's own chat.
+ if(route==='/api/attendance-approval/sample')return req.method==='POST';
  if(route==='/api/attendance-approval/unlock'||route==='/api/attendance-approval/unlock/verify')return req.method==='POST';
  // Only session maintenance and menu discovery are unconditional. New routes fail closed.
  if(['/api/logout','/api/session-heartbeat','/api/session-messages','/api/preferred-language','/api/navigation-settings','/api/request-shifts','/api/announcements','/api/notifications'].includes(route))return read||['/api/logout','/api/session-heartbeat','/api/preferred-language'].includes(route);
