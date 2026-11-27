@@ -202,7 +202,8 @@ test('create batch shows the stage indicator and Close batch only for two-stage 
  assert.equal(button(tree,'DLB entry · Lock LMV first').props.disabled,true);
  await button(tree,'Lock LMV').props.onClick();
  assert.equal(calls.at(-1).url,'/api/vlb-batches/batch1/lock-lmv');
- h.slots[5]={...base,twoStage:true,stage:'dlb_open',canLockDlb:true,dlbRecords:[]};tree=render();
+ h.slots[5]={...base,twoStage:true,stage:'dlb_open',canLockDlb:true,dlbRecords:[{id:71,book_no:'CAL/DLB/01-11-26/001',data:{rigNo:'LDM21-20086',operatorName:'BHAGAVAT',shiftName:'Shift A',compressorRunning:2.1,machineRunning:4.1}}]};tree=render();
+ html=renderToStaticMarkup(tree);assert.match(html,/Saved DLB entries \(1\)/);assert.match(html,/CAL\/DLB\/01-11-26\/001/);assert.match(html,/LDM21-20086/);assert.match(html,/BHAGAVAT/);assert.match(html,/2\.1/);assert.match(html,/4\.1/);
  button(tree,'Add Drill Log Book entry').props.onClick();assert.equal(dlbEntry.id,'batch1');
  assert.equal(button(tree,'ELB entry · Lock DLB first').props.disabled,true);
  await button(tree,'Lock DLB').props.onClick();assert.equal(calls.at(-1).url,'/api/vlb-batches/batch1/lock-dlb');

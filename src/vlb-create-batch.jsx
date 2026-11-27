@@ -301,6 +301,7 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
      <button type="button" disabled>ELB entry · Lock DLB first</button>
      {viewed.canUnlockVlb&&<button type="button" disabled={busy} onClick={unlockVlb}>Unlock VLB</button>}
     </div>}
+    {stage==='dlb_open'&&<DlbSavedEntries records={viewed.dlbRecords||[]}/>}
     {stage==='elb_open'&&<><div className="vlb-batch-actions">{onEquipmentElb&&!equipmentElbHidden&&<button type="button" className="vlb-approval-primary vlb-open-elb-button" disabled={busy||viewed.canEnterFleet===false} onClick={()=>onEquipmentElb(viewed)}>Process Equipment ELB</button>}<button type="button" aria-expanded={!equipmentElbHidden} aria-controls="vlb-equipment-elb-details" onClick={()=>setEquipmentElbHidden(v=>!v)}>{equipmentElbHidden?'Show Equipment ELB':'Hide Equipment ELB'}</button>{viewed.canUnlockVlb&&<button type="button" disabled={busy} onClick={unlockVlb}>Unlock VLB</button>}<button type="button" disabled={busy||detailLoading||!viewed.canClose} onClick={()=>close(viewed)}>Close &amp; lock ELB</button>{canDeleteManualElb&&<button type="button" disabled={busy||detailLoading} aria-expanded={deleteBatchId===viewed.id} onClick={()=>setDeleteBatchId(id=>id===viewed.id?null:viewed.id)}>Delete manual ELBs</button>}</div>
     {canDeleteManualElb&&deleteBatchId===viewed.id&&<LogBookDeletion key={viewed.id} session={session} context={{manualElbScope:{site:viewed.site,date:viewed.report_date,shift:viewed.shift}}}/>}
      {!viewed.stageWait&&viewed.canClose===false&&<p role="status">The batch owner or an MIS administrator can close and lock this ELB.</p>}
@@ -353,6 +354,10 @@ export function StageSteps({stage,waiting}){
  return <ol className="vlb-stage-steps" aria-label="Batch stage">{[['vlb_open','1 VLB open'],['lmv_open','2 LMV open'],['dlb_open','3 DLB open'],['elb_open','4 ELB open'],['closed','5 ELB locked · Batch closed']].map(([key,label])=><li key={key} aria-current={stage===key?'step':undefined} className={stage===key?'current':undefined}>{waiting&&stage===key?label.replace('open','waiting'):label}</li>)}</ol>;
 }
 const shown=value=>value===0||String(value??'').trim()?String(value):'—';
+
+function DlbSavedEntries({records}){
+ return <section className="dlb-saved" aria-label="Saved DLB entries"><h2>Saved DLB entries ({records.length})</h2>{records.length?<div className="logbook-table-wrap"><table className="logbook-table"><thead><tr><th>Book NO</th><th>Rig / Door NO</th><th>Operator</th><th>Shift</th><th>Compressor HMR</th><th>Machine HMR</th></tr></thead><tbody>{records.map(record=>{const data=record.data||{};return <tr key={record.id}><td>{shown(record.book_no)}</td><td>{shown(data.rigNo||data.door)}</td><td>{shown(data.operatorName||data.employeeName)}</td><td>{shown(data.shiftName||data.bookShiftCode)}</td><td>{shown(data.compressorRunning)}</td><td>{shown(data.machineRunning)}</td></tr>})}</tbody></table></div>:<p>No DLB entries saved for this batch. DLB is optional.</p>}</section>;
+}
 const meterNumber=value=>{const text=String(value??'').trim();const number=Number(text);return text&&Number.isFinite(number)?number:'';};
 // Site batches: Batch ID, Cards, the three stage columns (two-stage lists only) and Status sort; the action column does not.
 const siteBatchColumns=[['name','Batch ID'],['cards','Cards'],['vlb','VLB'],['lmv','LMV'],['dlb','DLB'],['elb','ELB'],['status','Status']];
