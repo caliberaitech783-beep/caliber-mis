@@ -13,6 +13,7 @@ import {misPageAllowed} from '../shared/mis-application-access.mjs';
 import BatchStatusReport from './batch-status-report.jsx';
 import ManpowerReports from './manpower-reports.jsx';
 import RecentActivityPanel,{useRecentActivity,windowLabel} from './log-book-recent-activity.jsx';
+import {dlbSavedCardColumns} from './vlb-batch-report.jsx';
 // Trip Timing & Gap and Loading Equipment-wise are the same screens as on the Reports page; they load after the cards so the
 // dashboard opens quickly, and they share one reading of the month's log books.
 const OperationsReports=lazy(()=>import('./operations-reports.jsx'));
@@ -42,7 +43,7 @@ function recordValue(row={},key){
  if(key==='door')return row.door||'';
  return '';
 }
-const recordReportColumns=openScan=>[...recordColumns.map(([key,label])=>({key,label,blanksLast:true,value:row=>recordValue(row,key)})),{key:'original',label:'Original',value:()=>'',render:row=><button onClick={()=>void openScan(row)}>Download scan</button>}];
+const recordReportColumns=(openScan,kind)=>[...(kind==='dlb'?dlbSavedCardColumns:recordColumns.map(([key,label])=>({key,label,blanksLast:true,value:row=>recordValue(row,key)}))),{key:'original',label:'Original',value:()=>'',render:row=><button onClick={()=>void openScan(row)}>Download scan</button>}];
 function RecordDetails({selection,filters,session,fetcher,close,ReportSection}){
  const [state,setState]=useState({records:[],loading:true,error:'',cursor:null});
  const [recordSort,setRecordSort]=useState({key:'',direction:'asc'});
@@ -55,7 +56,7 @@ function RecordDetails({selection,filters,session,fetcher,close,ReportSection}){
  // With the shared report table (the dashboard page) the pop-up has the VLB batch look: Smart Search, a filter and sort menu on
  // every heading and Smart Print. Without it the plain sortable table below is drawn.
  const printTitle=title+' · '+period+(state.cursor?' · first '+number(state.records.length)+' cards':'');
- if(ReportSection)return <Dialog title={title} close={close}>{state.error&&<p role="alert" className="lb-error">{state.error}</p>}<SmartSearchReport ReportSection={ReportSection} title={printTitle} category="log-book-saved-cards" description={period+' · Saved entries only'} searchLabel="Smart Search saved cards" placeholder="Book number, site, date or door" columns={recordReportColumns(openScan)} rows={state.records} rowKey={row=>row.id} dataReady={!state.loading||state.records.length>0} emptyMessage={state.loading?'Loading records…':'No saved cards match these filters.'}/>{state.loading&&<p role="status">Loading records…</p>}{state.cursor&&<button disabled={state.loading} onClick={()=>void load(state.cursor)}>Load more cards</button>}</Dialog>;
+ if(ReportSection)return <Dialog title={title} close={close}>{state.error&&<p role="alert" className="lb-error">{state.error}</p>}<SmartSearchReport ReportSection={ReportSection} title={printTitle} category="log-book-saved-cards" description={period+' · Saved entries only'} searchLabel="Smart Search saved cards" placeholder={selection.kind==='dlb'?'Book number, rig, operator, shift or HMR':'Book number, site, date or door'} columns={recordReportColumns(openScan,selection.kind)} rows={state.records} rowKey={row=>row.id} dataReady={!state.loading||state.records.length>0} emptyMessage={state.loading?'Loading records…':'No saved cards match these filters.'}/>{state.loading&&<p role="status">Loading records…</p>}{state.cursor&&<button disabled={state.loading} onClick={()=>void load(state.cursor)}>Load more cards</button>}</Dialog>;
  return <Dialog title={title} close={close} actions={state.records.length>0&&<TableSmartPrint title={title+' · '+period+(state.cursor?' · first '+number(state.records.length)+' cards':'')}/>}><p className="lb-muted">{period} · Saved entries only</p>{state.error&&<p role="alert" className="lb-error">{state.error}</p>}<div className="lb-table-wrap"><table><thead><tr>{recordColumns.map(([key,label])=><SortableHeader key={key} label={label} sortKey={key} sort={recordSort} onSort={changeRecordSort} filterIcon={false}/>)}<th data-smart-print-skip="">Original</th></tr></thead><tbody>{sortRowsBlanksLast(state.records,recordSort,recordValue).map(r=><tr key={r.id}><td>{r.book_no}</td><td>{r.site}<small>{r.day}</small></td><td>{r.door||'—'}</td><td><button onClick={()=>void openScan(r)}>Download scan</button></td></tr>)}</tbody></table></div>{!state.records.length&&!state.loading&&<p>No saved cards match these filters.</p>}{state.loading&&<p role="status">Loading records…</p>}{state.cursor&&<button disabled={state.loading} onClick={()=>void load(state.cursor)}>Load more cards</button>}</Dialog>
 }
 // The dashboard on A3 landscape sheets, one report to a sheet: the cards (with the last 24 hours when Sr 1 is shown),

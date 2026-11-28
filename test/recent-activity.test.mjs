@@ -46,9 +46,9 @@ test('log books are counted by save time and shifts by lock time, in 6, 12 and 2
 test('DLB is counted beside VLB, LMV and ELB with its own lock and drill-down totals',()=>{
  const recent=buildRecentActivity({now:NOW,kinds:['vehicle','dlb','equipment'],
   cards:[{site:'Dudhichua OC',book_type:'dlb',date:'2026-11-11',shift:'I',h6:2,h12:2,h24:2}],
-  batches:[{id:'d1',name:'DLB batch',site:'Dudhichua OC',date:'2026-11-11',shift:'I',created_at:ago(5),vlb_locked_at:ago(4),lmv_locked_at:ago(3),dlb_locked_at:ago(2),closed_at:ago(1),cards:8,dlb_saved:2,machines_saved:4}]});
+  batches:[{id:'d1',name:'DLB batch',site:'Dudhichua OC',date:'2026-11-11',shift:'III',created_at:ago(5),vlb_locked_at:ago(4),lmv_locked_at:ago(3),dlb_locked_at:ago(2),closed_at:ago(1),cards:8,dlb_saved:2,dlb_periods:[{shift:'S1',count:2}],machines_saved:4}]});
  assert.deepEqual(recent.logs[6],{total:2,vehicle:0,lmv:0,dlb:2,equipment:0});
- assert.equal(recent.shifts[6].dlb,1);assert.equal(recent.shiftCards[6].dlb,2);
+ assert.equal(recent.shifts[6].dlb,1);assert.equal(recent.shiftCards[6].dlb,2);assert.deepEqual(completedIn(recent,'dlb',6).map(row=>row.shiftLabel),['Shift A'],'DLB uses its 12-hour day/night shift, never the eight-hour batch Shift C');
  assert.deepEqual(lockCards(locksIn(recent,6)),{vehicle:8,lmv:0,dlb:2,equipment:4});
  assert.deepEqual(batchStageTimes(recent.locked[0]).stages,[],'the saved stage timing is already attached to the locked row');
  assert.deepEqual(recent.locked[0].stages.map(stage=>stage.key),['vlb','lmv','dlb','elb']);
