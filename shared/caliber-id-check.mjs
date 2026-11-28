@@ -35,9 +35,19 @@ export function caliberNumber(value){
 // day each, which is what a misread number looks like.
 const DRIVES=/DRIV|\bDRV\b|\bDVR\b|OP[AE]?R[AEI]?T|\bOPRT?\b|\bOPT\b|\bOP\b|ALL\s*ROUNDER|\b(?:SERVICE|SHIFT)\s+(?:VAN|VEN|BUS)\b/;
 // "Operator" of something that is not a vehicle or a machine in the log books.
-const NOT_A_MACHINE=/DAT[AE]\s*ENTRY|COMPUTER|\bEDP\b|WEIGH|\bCCTV\b|LATHE|LEATH|\bLETH\b/;
+const NOT_A_MACHINE=/DAT[AE]\s*ENTRY|COMPUTER|\bEDP\b|WEIGH|\bCCTV\b|LATHE|LEATH|\bLETH\b|TRAINER/;
 export const employeeDesignation=record=>text(record?.currentDesignationName||record?.designationName||record?.designation);
 export const employeeDepartment=record=>text(record?.currentDepartmentName||record?.departmentName||record?.department);
+// Owner, 28 Nov 2026: "driver trainer and Lathe operator as other staff (not trip card) ... it should not show in trip card
+// attendance ... it should have the category of normal staff". A trainer (Driver Trainer, Volvo Driver Trainer; a trainee
+// is not one) and a lathe operator are normal staff: never a driver or an operator, and a duty of theirs on a card or a
+// Present entry is not trip card attendance (server/rules/manpower-report.mjs). The designation decides; with none, the department.
+const OTHER_STAFF=/TRAINER|LATHE|LEATH|\bLETH\b/;
+export const OTHER_STAFF_CATEGORY='Normal staff';
+export function isOtherStaff(record){
+ const value=typeof record==='string'?record:employeeDesignation(record)||employeeDepartment(record);
+ return OTHER_STAFF.test(text(value).toUpperCase());
+}
 // Departments that hold drivers under a name with no "driver" or "operator" in it (HR's file, 23 Nov 2026:
 // 1,012 of the 1,018 people of VEHICLE and 34 of the 36 of LMV are drivers).
 const DRIVER_DEPARTMENT=/^(?:VEHICLE|LMV)$/;
