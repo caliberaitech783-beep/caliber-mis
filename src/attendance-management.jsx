@@ -119,9 +119,9 @@ export function AttendanceComparison({session,ReportSection,page}){
  useEffect(()=>{
   if(!rangeValid(filters))return;
   let live=true;setState(s=>({...s,busy:true,error:''}));setSite('');setSlot(null);
-  const q=new URLSearchParams(filters);
+  const q=new URLSearchParams({...filters,shiftDates:'1'});
   Promise.all([readJson('/api/reports/biometric-punches?'+q,session),readJson('/api/reports/manpower/attendance?'+new URLSearchParams({...filters,view:'attendance'}),session)])
-   .then(([bio,att])=>live&&setState({busy:false,error:'',data:{punches:bio.punches,duties:[...(att.otDuties||[]),...(att.attendanceEquipment||[])],lockedDays:att.lockedDays||[]}}),
+   .then(([bio,att])=>live&&setState({busy:false,error:'',data:{punches:bio.punches,masters:bio.masters,duties:[...(att.otDuties||[]),...(att.attendanceEquipment||[])],lockedDays:att.lockedDays||[]}}),
     e=>live&&setState({busy:false,error:e.message,data:null}));
   return()=>{live=false};
  },[filters.from,filters.to,refresh,session.token]);

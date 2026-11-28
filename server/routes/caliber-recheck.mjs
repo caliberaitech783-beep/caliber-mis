@@ -1,3 +1,5 @@
+import {readBiometricShifts} from '../services/biometric-shifts.mjs';
+import {cShiftDays,adjacentDate} from '../../shared/c-shift-punches.mjs';
 // The re-check of saved cards against Employee Master, and the one correction run (owner, 22 Nov 2026).
 //
 //  1. GET  /api/caliber-recheck        every saved card of the dates is judged again (shared/caliber-recheck.mjs);
@@ -253,13 +255,14 @@ export function registerCaliberRecheck(app,{pool,requireSession,requireAdministr
  // and /shift, so the same people and sites may do it.
  // The punches of the dates: the site machines' (from HR Pulse) and the imported ones. A machine read that fails is said.
  const readPunches=async(from,to)=>{
+  const masters=await readBiometricShifts(pool);
   const machine={connected:false,error:''};
   const [machineList,importedList]=await Promise.all([
-   Promise.resolve().then(()=>readHrPunchesWithDayBefore(hrPunches,{from,to})).then(answer=>{machine.connected=true;return machineDays(answer,{siteName:name=>hrSiteName(name)||name}).days;},
+   Promise.resolve().then(()=>readHrPunchesWithDayBefore(hrPunches,{from,to})).then(answer=>{machine.connected=true;return machineDays(answer,{siteName:name=>hrSiteName(name)||name,masters}).days;},
     error=>{machine.error=error?.status===503?'Pulse-II is not connected to HR Pulse, so the machine punches could not be read.':'HR Pulse did not give the machine punches ('+(error?.message||'no answer')+').';return [];}),
-   pool.query(IMPORTED_PUNCHES_SQL,[from,to]).then(result=>importedDays(result.rows.map(row=>({caliberCode:row.caliber_code,date:row.date,inTime:row.in_time,outTime:row.out_time,site:row.site})))).catch(error=>{if(error.code==='42P01'||/does not exist/.test(error.message))return [];throw error;}),
+   pool.query(IMPORTED_PUNCHES_SQL,[adjacentDate(from,-1),adjacentDate(to,1)]).then(result=>importedDays(result.rows.map(row=>({caliberCode:row.caliber_code,date:row.date,inTime:row.in_time,outTime:row.out_time,site:row.site})))).catch(error=>{if(error.code==='42P01'||/does not exist/.test(error.message))return [];throw error;}),
   ]);
-  return {machine,machineList,importedList,days:mergeBiometricDays(machineList,importedList).filter(day=>day.date>=from&&day.date<=to)};
+  return {machine,machineList,importedList,days:cShiftDays(mergeBiometricDays(machineList,importedList),{masters}).filter(day=>day.date>=from&&day.date<=to)};
  };
  // Every site of the login has a line in Step 1, punched or not; a site's name is its own (not the key).
  const known=new Map(REGION_DATA.flatMap(region=>region.sites).map(site=>[canonicalSiteName(site),site]));

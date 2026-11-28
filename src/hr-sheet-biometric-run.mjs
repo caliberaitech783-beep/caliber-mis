@@ -1,3 +1,4 @@
+import {cShiftDays} from '../shared/c-shift-punches.mjs';
 // Attendance Sheet Mismatch › HR sheet vs Biometric: the reads and the run (the screen is src/hr-sheet-biometric.jsx, the
 // rules shared/hr-sheet-biometric.mjs). Kept apart from the screen so it runs in a test without a browser.
 // Reads: the punches Pulse-II holds (/attendance-sheet/biometric) unless a device file was uploaded, Employee Master for
@@ -35,6 +36,7 @@ export async function runHrSheetBiometricCheck({sheet,fileName,site,bio=null,bio
   read('/api/reports/manpower/attendance-sheet/people',session,{method:'POST',body:JSON.stringify({site,ids:ids.length?ids:sheet.people.map(p=>p.id).slice(0,SHEET_MAX_PEOPLE)})}),
   cardsRead,
  ]);
+ days=cShiftDays(days,{masters:master.masters||biometric.masters,site});
  const result=hrSheetBiometricCheck({sheet,site:master.site||site,days,people:master.people||[],lines:cards.lines,from:range.from,to:range.to});
  const bioLabel=bio?'device file '+bioName:'held in Pulse-II, '+(SOURCE_CHOICES.find(c=>c.value===source)?.label||source);
  const book=hrSheetBiometricWorkbook(result,{fileName,bioLabel,checkedAt:formatDisplayDateTime(new Date())});

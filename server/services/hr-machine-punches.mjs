@@ -22,8 +22,12 @@ export function joinPunchAnswers(first={},second={},{keepSecond=()=>true,keepSec
 }
 
 export async function readHrPunchesWithDayBefore(hrPunches,{from,to}){
- const eve=dayBefore(from);
- if(span(eve,to)<=HR_PUNCH_MAX_DAYS)return hrPunches({from:eve,to});
- const [main,before]=await Promise.all([hrPunches({from,to}),hrPunches({from:eve,to:eve})]);
- return joinPunchAnswers(main,before,{keepSecond:row=>String(row?.[2]??'')<from,keepSecondCorrection:row=>String(row?.[1]??'')<from});
+ const eve=dayBefore(from),after=new Date(Date.parse(to+'T00:00:00Z')+DAY).toISOString().slice(0,10);
+ const ranges=[];
+ for(let start=eve;start<=after;){
+  const end=new Date(Math.min(Date.parse(after+'T00:00:00Z'),Date.parse(start+'T00:00:00Z')+(HR_PUNCH_MAX_DAYS-1)*DAY)).toISOString().slice(0,10);
+  ranges.push({from:start,to:end});start=new Date(Date.parse(end+'T00:00:00Z')+DAY).toISOString().slice(0,10);
+ }
+ const answers=await Promise.all(ranges.map(range=>hrPunches(range)));
+ return answers.reduce((all,answer)=>joinPunchAnswers(all,answer),{});
 }

@@ -66,9 +66,9 @@ test('the server sends the days of the site and the days elsewhere of people on 
  const down=await readBiometricDays({pool:importedPool,hrPunches:async()=>{throw Object.assign(Error('HR connection is not set up'),{status:503});},...RANGE});
  assert.deepEqual([down.machine.connected,down.days.length],[false,1]);
  assert.match(down.machine.error,/not connected to HR Pulse/);
- const machineOnly=await readBiometricDays({pool:{query:async()=>{throw Error('not asked');}},hrPunches:async()=>HR,...RANGE,source:'machine'});
+ const machineOnly=await readBiometricDays({pool:{query:async sql=>{if(sql.includes('master_records'))return {rows:[]};throw Error('not asked');}},hrPunches:async()=>HR,...RANGE,source:'machine'});
  assert.equal(machineOnly.imported.asked,false);
- const noTable=await readBiometricDays({pool:{query:async()=>{throw Object.assign(Error('no table'),{code:'42P01'});}},hrPunches:async()=>{throw Error('not asked');},...RANGE,source:'imported'});
+ const noTable=await readBiometricDays({pool:{query:async sql=>{if(sql.includes('master_records'))return {rows:[]};throw Object.assign(Error('no table'),{code:'42P01'});}},hrPunches:async()=>{throw Error('not asked');},...RANGE,source:'imported'});
  assert.deepEqual([noTable.days,noTable.machine.asked],[[],false]);
 });
 
