@@ -113,8 +113,10 @@ export function registerMisTelegram(app,{pool,store,requireSession,fetchImpl=tel
      const result=await onCallback({data:String(query.data||''),logins:rows.map(row=>row.login_name),chatId});
      if(result?.answer)answer=result.answer;
      // Telegram gives the shown text without its HTML; its entities keep the bold and link after the edit.
+     // keepOtherButtons (a summary of several attendance days): only the tapped button's row goes; without it every button goes.
      if(result?.done){const kept=String(query.message.text||'').slice(0,3500),entities=(query.message.entities||[]).filter(e=>e.offset+e.length<=kept.length);
-      await call(config,'editMessageText',{chat_id:chatId,message_id:query.message.message_id,text:kept+'\n\n'+result.answer,disable_web_page_preview:true,...(entities.length?{entities}:{})}).catch(()=>{});}
+      const rows=result.keepOtherButtons?(query.message.reply_markup?.inline_keyboard||[]).filter(row=>Array.isArray(row)&&!row.some(button=>button?.callback_data===query.data)):[];
+      await call(config,'editMessageText',{chat_id:chatId,message_id:query.message.message_id,text:kept+'\n\n'+result.answer,disable_web_page_preview:true,...(entities.length?{entities}:{}),...(rows.length?{reply_markup:{inline_keyboard:rows}}:{})}).catch(()=>{});}
     }
    }catch{answer='Could not record this. Please try again.';}
    await call(config,'answerCallbackQuery',{callback_query_id:String(query.id),text:answer.slice(0,190)}).catch(()=>{});
