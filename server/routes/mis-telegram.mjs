@@ -11,6 +11,17 @@ const webhook='https://pulse-ll.cmll.in/api/mis-telegram/webhook';
 // channel_post + my_chat_member (16 Nov 2026): linking an automation's Telegram channel by a posted code,
 // and noticing when the bot is removed from such a channel.
 export const MIS_TELEGRAM_UPDATES=['message','callback_query','channel_post','my_chat_member'];
+// The bot's command menu (owner, 28 Nov 2026), set on Telegram at every start so it always matches the replies below.
+export const MIS_BOT_COMMANDS=[
+ {command:'start',description:'Welcome and how to connect'},
+ {command:'help',description:'What this bot sends'},
+ {command:'status',description:'Is this Telegram connected?'},
+ {command:'stop',description:'Turn off messages here'},
+];
+const TELEGRAM_PAGE='https://pulse-ll.cmll.in/?page=telegram';
+const CONNECT_STEPS=`To connect: sign in to Pulse-II, open Telegram Integration (${TELEGRAM_PAGE}) and press "Connect my Telegram". The link opens this chat and connects your login.`;
+export const MIS_BOT_HELP=['Caliber Pulse-II MIS bot','','It sends you:','• Shift and VLB batch alerts for your site','• Reports such as the speed report','• Approval requests and release updates','• Updates on your MIS tickets','','Commands:','/status – is this Telegram connected?','/stop – turn off messages here','/help – this message','',CONNECT_STEPS].join('\n');
+const shownDate=value=>{const date=new Date(value);return Number.isNaN(date.getTime())?'':date.toLocaleDateString('en-GB',{timeZone:'Asia/Kolkata'}).replace(/\//g,'-')};
 const equal=(a,b)=>{const x=Buffer.from(String(a||'')),y=Buffer.from(String(b||''));return x.length===y.length&&x.length>0&&timingSafeEqual(x,y)};
 export const MIS_TELEGRAM_SCHEMA=`
  CREATE TABLE IF NOT EXISTS mis_telegram_links(login_name TEXT PRIMARY KEY,chat_id TEXT NOT NULL,linked_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
@@ -63,7 +74,9 @@ export function registerMisTelegram(app,{pool,store,requireSession,fetchImpl=tel
   config.botUsername=bot.username;config.webhookSecret=old.webhookSecret||randomBytes(32).toString('base64url');config.webhookReady=false;
   await store.write(key,config);
   await call(config,'setWebhook',{url:webhook,secret_token:config.webhookSecret,allowed_updates:MIS_TELEGRAM_UPDATES,drop_pending_updates:false});
-  config.webhookReady=true;await store.write(key,config);res.json(view(config));
+  config.webhookReady=true;await store.write(key,config);
+  await call(config,'setMyCommands',{commands:MIS_BOT_COMMANDS}).catch(()=>{});
+  res.json(view(config));
  }));
  app.get('/api/mis-telegram/me',requireSession,wrap(async(req,res)=>{
   const config=await read(),{rows}=await pool.query('SELECT chat_id,linked_at FROM mis_telegram_links WHERE login_name=$1',[login(req)]);
@@ -118,6 +131,33 @@ export function registerMisTelegram(app,{pool,store,requireSession,fetchImpl=tel
    return res.json({ok:true});
   }
   const message=req.body?.message,match=/^\/start(?:@\w+)? mis_([A-Za-z0-9_-]{32})$/.exec(message?.text||'');
+  // A typed command in a private chat: /start (without a connect code), /help, /status, /stop. Groups and channels get nothing.
+  const command=!match&&message?.chat?.type==='private'&&typeof message.text==='string'&&String(message.from?.id)===String(message.chat.id)&&/^[1-9]\d{0,18}$/.test(String(message.chat.id))
+   ?/^\/([A-Za-z_]{1,32})(?:@\w+)?(?:\s+([\s\S]*))?$/.exec(message.text.trim()):null;
+  if(config.enabled&&command){
+   try{
+    const chatId=String(message.chat.id),name=command[1].toLowerCase(),argument=String(command[2]||'').trim().toLowerCase();
+    const {rows}=await pool.query('SELECT login_name,linked_at FROM mis_telegram_links WHERE chat_id=$1 ORDER BY login_name',[chatId]);
+    const logins=rows.map(row=>String(row.login_name).toUpperCase()),named=logins.join(', ');
+    let text;
+    if(name==='start')text=rows.length?`Welcome back. This Telegram is connected to Pulse-II login ${named}.\n\nSend /help to see what I send.`:`Welcome to the Caliber Pulse-II MIS bot.\n\n${CONNECT_STEPS}`;
+    else if(name==='help')text=MIS_BOT_HELP;
+    else if(name==='status')text=rows.length?['This Telegram is connected to Pulse-II:',...rows.map(row=>`• ${String(row.login_name).toUpperCase()}${shownDate(row.linked_at)?' (since '+shownDate(row.linked_at)+')':''}`),'','Send /stop to turn off messages here.'].join('\n'):`This Telegram is not connected to any Pulse-II login.\n\n${CONNECT_STEPS}`;
+    else if(name==='stop'){
+     if(!rows.length)text='This Telegram is not connected, so Pulse-II sends nothing here.';
+     // Approvals reach the owner here too, so one tap on the menu never cuts them off: /stop asks, /stop yes does it.
+     else if(argument!=='yes')text=`This stops every Pulse-II message to this Telegram for login ${named}, approval requests too.\n\nTo confirm, send: /stop yes`;
+     else{
+      const removed=(await pool.query('DELETE FROM mis_telegram_links WHERE chat_id=$1 RETURNING login_name',[chatId])).rows.map(row=>String(row.login_name).toUpperCase());
+      req.audit={eventType:'Integration',module:'Telegram',action:'Telegram turned off with /stop',targetType:'Telegram',targetReference:removed.join(', ').slice(0,200),details:{logins:removed}};
+      text=`Done. Pulse-II messages to this Telegram are off for login ${removed.join(', ')}.\n\nTo turn them on again, press "Connect my Telegram" in Telegram Integration (${TELEGRAM_PAGE}).`;
+     }
+    }
+    else text='I do not know that command. Send /help to see what I can do.';
+    await call(config,'sendMessage',{chat_id:chatId,text,disable_web_page_preview:true}).catch(()=>{});
+   }catch{/* Telegram does not resend a command; the person sends it again */}
+   return res.json({ok:true});
+  }
   // Any other text in a private chat linked to an MIS login: the reason after a Send back button (attendance approval).
   if(config.enabled&&onText&&!match&&message?.chat?.type==='private'&&typeof message.text==='string'&&!message.text.startsWith('/')&&String(message.from?.id)===String(message.chat.id)){
    try{
@@ -139,7 +179,7 @@ export function registerMisTelegram(app,{pool,store,requireSession,fetchImpl=tel
    await client.query('COMMIT');
   }catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}
   // Linking is committed before the optional welcome message; a Telegram outage cannot undo it.
-  if(linked)await call(config,'sendMessage',{chat_id:String(message.chat.id),text:'Your Caliber Pulse-II MIS account is connected. Ticket resolution updates will appear here.'}).catch(()=>{});
+  await call(config,'sendMessage',{chat_id:String(message.chat.id),text:linked?'Your Caliber Pulse-II MIS account is connected. Ticket resolution updates will appear here.\n\nSend /help to see what I send.':`This connect link has expired or was already used.\n\n${CONNECT_STEPS}`}).catch(()=>{});
   res.json({ok:true});
  }));
  // A row with a photo (the site picture of a batch completion report) goes as one photo with the
@@ -188,7 +228,10 @@ export function registerMisTelegram(app,{pool,store,requireSession,fetchImpl=tel
  }
  // Webhooks saved before 15 Nov 2026 only asked Telegram for messages; buttons need callback_query too.
  async function ensureWebhook(){
-  try{const config=await read();if(config.enabled&&config.webhookReady&&config.botToken)await call(config,'setWebhook',{url:webhook,secret_token:config.webhookSecret,allowed_updates:MIS_TELEGRAM_UPDATES,drop_pending_updates:false});}catch{}
+  try{const config=await read();if(config.enabled&&config.webhookReady&&config.botToken){
+   await call(config,'setWebhook',{url:webhook,secret_token:config.webhookSecret,allowed_updates:MIS_TELEGRAM_UPDATES,drop_pending_updates:false}).catch(()=>{});
+   await call(config,'setMyCommands',{commands:MIS_BOT_COMMANDS}).catch(()=>{});
+  }}catch{}
  }
  // Channel members, remembered 10 minutes so a report to six people asks Telegram once per person. A failed
  // question is not remembered: the person gets the personal copy and the next message asks again.
