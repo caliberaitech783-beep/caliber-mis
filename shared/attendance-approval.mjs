@@ -147,7 +147,7 @@ export function approvalMessage({site,region,date,level,batches=[],summary={},tr
   '',
   `<b>${html(site)}</b> · ${html(fmtDate(date))} (one day)`,
   `Batches: ${batches.length}${shifts?` · ${html(shifts)}`:''} · all closed`,
-  ...(summary.present!=null?[`Present: ${Number(summary.present).toLocaleString('en-IN')} duties · ${Number(summary.people||0).toLocaleString('en-IN')} people${summary.training?` · VTC Training ${summary.training}`:''}`]:[]),
+  ...(summary.present!=null?[`Present: ${Number(summary.present).toLocaleString('en-IN')} duties · ${Number(summary.people||0).toLocaleString('en-IN')} people${summary.training?` · VTC Training ${summary.training}`:''}${summary.od?` · OD ${summary.od}`:''}`]:[]),
   ...(summary.cards!=null?[`Cards: VLB ${summary.vlb||0} · ELB ${summary.elb||0} · LMV ${summary.lmv||0}`]:[]),
   ...(corrected?['<i>Corrected after it was sent back or a batch was reopened.</i>']:[]),
   ...(lastDone.size?['',...[...lastDone.values()].sort((a,b)=>a.level-b.level).map(t=>`${html(levelLabel(t.level))}: ${html(t.name||t.by)} · ${html(istTime(t.at))} ✓`)]:[]),
@@ -171,6 +171,7 @@ export function summaryDayLine({date,batches=[],summary={},corrected=false}){
  const parts=[`<b>${html(shortDate(date))}</b>`,`${batches.length} batch${batches.length===1?'':'es'}${shifts?` (${html(shifts)})`:''}`];
  if(summary.present!=null)parts.push(`Present ${Number(summary.present).toLocaleString('en-IN')}`,`${Number(summary.people||0).toLocaleString('en-IN')} people`);
  if(summary.training)parts.push(`VTC ${summary.training}`);
+ if(summary.od)parts.push(`OD ${summary.od}`);
  if(summary.cards!=null)parts.push(`VLB ${summary.vlb||0} · ELB ${summary.elb||0} · LMV ${summary.lmv||0}`);
  return parts.join(' · ')+(corrected?' · ✏️ corrected':'');
 }

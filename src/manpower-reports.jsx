@@ -34,8 +34,8 @@ const percent=(part,whole)=>whole?Math.round(part*1000/whole)/10+'%':'—';
 const FLAG_ORDER={red:0,orange:1,review:2,normal:3};
 const dutyCount=(n,kind)=>n+' '+kind+(n===1?' duty':' duties');
 // Colours shared by both reports. Red, orange and brown are the OT patterns; blue and purple are attendance only
-// (purple: VTC Training, present, shared/vtc-training.mjs).
-const dutyFlags=[['red','Red','Back-to-back shifts, or all three shifts'],['orange','Orange','Shift A and Shift C with a gap'],['review','Brown','Shift pattern needs review'],['zero','Blue','Present with 0 trips'],['training','Purple','VTC Training (present)']];
+// (purple: VTC Training, present, shared/vtc-training.mjs; teal: On Duty, OD, present, the OD Master).
+const dutyFlags=[['red','Red','Back-to-back shifts, or all three shifts'],['orange','Orange','Shift A and Shift C with a gap'],['review','Brown','Shift pattern needs review'],['zero','Blue','Present with 0 trips'],['training','Purple','VTC Training (present)'],['od','Teal','On Duty, OD (present)']];
 const otFlags=dutyFlags.slice(0,3);
 // Step 1 (sites) and Step 3 (equipment categories) sort by any heading; the All sites / All categories line stays last.
 // Percentages are stored as text ("12.5%") and sort as numbers; "—" and empty values go to the bottom.
@@ -258,7 +258,7 @@ function attendanceOverview({stepSorts,setStepSorts,report,filters,query,ReportS
  const date=scope&&pick.date>=filters.from&&pick.date<=filters.to?pick.date:'',shift=scope?pick.shift||'':'';
  const inScope=r=>(at===EVERY||r.siteKey===at)&&(!date||r.date===date)&&(!shift||r.shift===shift);
  const chosen=scope?rows.filter(inScope):[],here=scope?batches.filter(inScope):[];
- const equipment=(()=>{const out=new Map();for(const r of chosen){const e=out.get(r.equipment)||{id:r.equipment,equipment:r.equipment,duties:0,actual:0,red:0,orange:0,review:0,zero:0,training:0};e.duties++;if(r.actual)e.actual++;if(dutyFlags.some(([id])=>id===r.flag))e[r.flag]++;out.set(r.equipment,e);}return [...out.values()].map(e=>({...e,second:e.duties-e.actual})).sort((a,b)=>b.duties-a.duties||a.equipment.localeCompare(b.equipment));})();
+ const equipment=(()=>{const out=new Map();for(const r of chosen){const e=out.get(r.equipment)||{id:r.equipment,equipment:r.equipment,duties:0,actual:0,red:0,orange:0,review:0,zero:0,training:0,od:0};e.duties++;if(r.actual)e.actual++;if(dutyFlags.some(([id])=>id===r.flag))e[r.flag]++;out.set(r.equipment,e);}return [...out.values()].map(e=>({...e,second:e.duties-e.actual})).sort((a,b)=>b.duties-a.duties||a.equipment.localeCompare(b.equipment));})();
  const totals={id:EVERY,equipment:'All equipment',duties:chosen.length,actual:actual(chosen),second:chosen.length-actual(chosen),...Object.fromEntries(dutyFlags.map(([id])=>[id,chosen.filter(r=>r.flag===id).length]))};
  const heading=[siteLabel(at||siteKey),date?shortDate(date):dateLabel,shift?shiftName(shift):'All shifts'].join(' · ');
  const where=b=>[at===EVERY&&siteLabel(b.siteKey),!date&&days&&shortDate(b.date),!shift&&shiftName(b.shift)].filter(Boolean).join(' ');

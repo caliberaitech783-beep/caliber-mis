@@ -1,0 +1,22 @@
+/* VTC Master and OD Master (src/attendance-masters.jsx). VTC is purple and OD teal, as in the attendance muster. */
+.attendance-masters .am-head-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
+.attendance-masters .am-head-tools label{display:grid;gap:3px;font-size:12px}
+.attendance-masters .am-notice{margin:8px 0;padding:8px 12px;border:1px solid #9fd8c6;border-radius:7px;background:#e7f7f1;color:#0b5a46;font-size:13px}
+.attendance-masters .am-form{display:grid;gap:10px;margin:10px 0;padding:12px 14px;border:1px solid #d9e1ed;border-radius:10px;background:var(--card,#fff)}
+.attendance-masters .am-form h2,.attendance-masters .am-days h2{margin:0;font-size:15px}
+.attendance-masters .am-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.attendance-masters .am-grid label,.attendance-masters .am-form>label{display:grid;gap:4px;font-size:12px;font-weight:600}
+.attendance-masters .am-note{margin:0;color:#5d6b82;font-size:12px}
+.attendance-masters .am-actions{display:flex;gap:8px;flex-wrap:wrap}
+.attendance-masters .am-days{display:grid;gap:10px;margin:14px 0;padding:12px 14px;border:1px solid #d9e1ed;border-radius:10px;background:var(--card,#fff)}
+.attendance-masters .am-grid-days{display:grid;grid-template-columns:repeat(auto-fill,minmax(34px,1fr));gap:3px}
+.attendance-masters .am-day{display:grid;justify-items:center;gap:2px;font-size:11px;color:#5d6b82}
+.attendance-masters .am-cell{display:inline-grid;place-items:center;min-width:30px;height:24px;border-radius:4px;background:#f1f3f7;color:#4d4d5c;font:700 11px system-ui}
+.attendance-masters .am-cell.am-vtc,.attendance-masters .am-status.am-vtc{background:#ecdffb;color:#5b2296}
+.attendance-masters .am-cell.am-od,.attendance-masters .am-status.am-od{background:#d4f3ea;color:#0b5a46}
+.attendance-masters .am-cell.am-coming{background:#f1efe8;color:#888780}
+.attendance-masters .am-status{display:inline-block;padding:2px 8px;border-radius:6px;font-size:12px;font-weight:600}
+.attendance-masters .am-legend{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px;color:#5d6b82}
+:root[data-theme="dark"] .attendance-masters :is(.am-form,.am-days){border-color:#3b4559}
+:root[data-theme="dark"] .attendance-masters :is(.am-cell.am-vtc,.am-status.am-vtc){background:#3a2458;color:#e6d6ff}
+:root[data-theme="dark"] .attendance-masters :is(.am-cell.am-od,.am-status.am-od){background:#0d3b30;color:#bff0e0}

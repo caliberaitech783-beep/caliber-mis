@@ -18,6 +18,9 @@ export function misPageAllowed(session,page,view){
  if(page==='Machine Category Re-check')return misPageAllowed(session,'Caliber ID Re-check',view);
  // Machine Roster (owner, 25 Nov 2026): the site-wise machine list, for the same people, read only.
  if(page==='Machine Roster')return misPageAllowed(session,'Caliber ID Re-check',view);
+ // VTC Master and OD Master (owner, 28 Nov 2026): HR (whoever keeps Employee Master) and the card makers, as Caliber ID
+ // Re-check, each for the sites of their login (server/routes/attendance-masters.mjs).
+ if(page==='VTC Master'||page==='OD Master')return misPageAllowed(session,'Caliber ID Re-check',view);
  // Attendance approval (owner, 27 Nov 2026): every MIS login; the page lists only the sites and levels given to it.
  if(page==='Attendance approval')return true;
  if(page==='Caliber ID Re-check')return ['Vehicle Log Book','Equipment Log Book','Trip Card Bulk Scan','Job Card Bulk Scan','Employee master'].some(name=>misPageAllowed(session,name,view));
@@ -120,6 +123,13 @@ export function misRequestAllowed(session,req){
   if(/^\/api\/caliber-recheck\/(?:pick|confirm|correction)\/\d{1,18}$/.test(route))return req.method==='DELETE';
   if(route==='/api/caliber-recheck/apply')return req.method==='POST'&&isMisAdministrator(session);
   return false;
+ }
+ // VTC Master and OD Master: read, save, change and remove, for the people of the pages above (the route checks the site).
+ if(route==='/api/attendance-masters'||route==='/api/attendance-masters/people'||/^\/api\/attendance-masters\/\d{1,18}$/.test(route)){
+  if(!allowed('VTC Master'))return false;
+  if(route==='/api/attendance-masters')return read||req.method==='POST';
+  if(route==='/api/attendance-masters/people')return read;
+  return req.method==='PUT'||req.method==='DELETE';
  }
  if(route==='/api/erp-masters/status')return read&&['Work Order master','Financial Year master','Company master','Pulse Master Sync'].some(allowed);
  if(route==='/api/erp-masters/sync')return allowed('Pulse Master Sync');

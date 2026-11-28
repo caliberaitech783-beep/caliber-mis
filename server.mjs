@@ -60,6 +60,7 @@ import {registerAFormMaster} from './server/routes/a-form-master.mjs';
 import {registerErpEmployees} from './server/routes/erp-employee-source.mjs';
 import {registerEmployeeSiteMoves} from './server/routes/employee-site-move.mjs';
 import {registerCaliberRecheck} from './server/routes/caliber-recheck.mjs';
+import {registerAttendanceMasters} from './server/routes/attendance-masters.mjs';
 import {registerLocalDocumentScanning} from './server/routes/local-document-scanning.mjs';
 import {createLocalCardArchive,scanArchiveConfig} from './server/services/scan-card-archive.mjs';
 import {registerBulkCardScanning} from './server/routes/bulk-card-scanning.mjs';
@@ -8141,6 +8142,8 @@ const expressOtpDeps={pool,requireSession,accessContext:vehicleTransferAccessCon
 // Project Manager of the site the worker is leaving, by the same delivery as a vehicle transfer.
 // The re-check of saved cards against Employee Master and the one correction run (owner, 22 Nov 2026).
 registerCaliberRecheck(app,{pool,requireSession,requireAdministrator,getSiteScope:logBookScope});
+// VTC Master and OD Master (owner, 28 Nov 2026): their days are present in attendance (shared/attendance-masters.mjs).
+registerAttendanceMasters(app,{pool,requireSession,requireAdministrator,getSiteScope:logBookScope,timerMs:scheduledJobsEnabled?5*60_000:0});
 // Two-way with HR Pulse: a site move made here with an OTP is sent to HR Pulse at once (the outbox is made further down, with the HR connection).
 let hrSiteMoveOutbox=null;
 registerEmployeeSiteMoves(app,{pool,requireSession,requireAdministrator,getSiteScope:logBookScope,pmLogins:vehicleTransferPmLogins,deliver:request=>approvalOtpDelivery.send(request),afterMove:()=>hrSiteMoveOutbox?.flush()});

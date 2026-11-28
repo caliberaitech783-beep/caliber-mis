@@ -64,7 +64,7 @@ test('Masters › Machine Roster sits after Equipment master, for the people of 
  assert.equal(misRequestAllowed(login(['Vehicle Log Book']),{path:'/api/caliber-recheck/roster',method:'GET'}),true);
  assert.equal(misRequestAllowed(login(['Vehicle Log Book']),{path:'/api/caliber-recheck/roster',method:'POST'}),false);
  const main=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');
- assert.match(main,/'Equipment master','Machine Roster',(?:'Attendance approval',)?'Capacity master'/);
+ assert.match(main,/'Equipment master','Machine Roster',(?:'Attendance approval',(?:'VTC Master','OD Master',)?)?'Capacity master'/);
  assert.match(main,/renderedActive==='Machine Roster' \? \(<MachineRoster /);
  const page=readFileSync(new URL('../src/machine-roster.jsx',import.meta.url),'utf8');
  assert.match(page,/title="Step 1 · Machine roster/);assert.match(page,/'Step 2 · Machine roster · '/);

@@ -11,6 +11,8 @@
 .ar-register :is(.ar-legend-item,.ar-code).ar-flag-zero{background:#e1edff;color:#1c4f9c}
 /* VTC Training (shared/vtc-training.mjs): present, in its own purple. */
 .ar-register :is(.ar-legend-item,.ar-code).ar-flag-training{background:#ecdffb;color:#5b2296}
+/* On Duty, OD (OD Master): present, in its own teal. */
+.ar-register :is(.ar-legend-item,.ar-code).ar-flag-od{background:#d4f3ea;color:#0b5a46}
 .ar-register :is(.ar-legend-item,.ar-code).ar-absent{background:#ffe0e0;color:#a31f20}
 .ar-register :is(.ar-legend-item,.ar-code).ar-pending{background:#ececf1;color:#4d4d5c}
 .ar-register :is(.ar-legend-item,.ar-code).ar-away{background:#dcf2f4;color:#0e5e6f}

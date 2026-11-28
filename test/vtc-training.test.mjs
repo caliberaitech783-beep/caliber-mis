@@ -109,7 +109,7 @@ test('a VTC Training entry is not listed among a batch\'s Present — 0 trips en
  const batch={site:'Sasti OC',report_date:date,shift:'S1'};
  const rows=[{...training,employee_id:'21',employee:{name:'Driver One'}},{...zero,employee_id:'22',employee:{name:'Driver Two'}}];
  assert.deepEqual(vlbZeroTripEntries(rows,batch).map(e=>e.employeeName),['Driver Two']);
- assert.match(ZERO_TRIP_ENTRY_SQL,/a\.reason<>'VTC Training'/);
+ assert.match(ZERO_TRIP_ENTRY_SQL,/a\.reason NOT IN \('VTC Training','On Duty \(OD\)'\)/);
 });
 
 test('VLB / ELB Manual has its own VTC Training button and form, and the colour is drawn',()=>{
