@@ -65,3 +65,29 @@ test('what HR Pulse changed stays with the site, and an absence still names the 
  assert.deepEqual([none.otDuties.length,none.attendanceEquipment.length,none.days.length],[0,0,0]);
  assert.deepEqual(none.misSiteDays[date],['Jayant OC','Majri OC','Sasti OC']);
 });
+
+// 28 Nov 2026: the cut judged the site of every line again (thousands of lines, a handful of names); it now judges each
+// name once. The answer must be the same, line for line, as judging every line.
+test('the cut that judges each site name once gives the same answer as judging every line',()=>{
+ const sites=['Majri OC','Sasti OC','Jayant OC','Dudhichua OC','Dudhichua East OC','Gauri Pauni OC (2nd)','Dhoptala OC (2nd)'];
+ let seed=7;const rnd=n=>{seed=(seed*1103515245+12345)%2147483648;return seed%n;};
+ const line=(i,extra={})=>{const s=sites[rnd(sites.length)];return {date:'2026-11-'+String(10+rnd(3)).padStart(2,'0'),site:s,siteKey:s.toLowerCase().replace(/[^a-z0-9]+/g,' ').trim(),shift:'S'+(1+rnd(3)),employeeId:'CMLL'+rnd(60),employeeKey:'CMLL'+rnd(60),employeeName:'E'+i,...extra};};
+ const many=(n,extra)=>Array.from({length:n},(_,i)=>line(i,extra));
+ const answer={attendanceEquipment:many(300),otDuties:many(400),performance:many(400),details:many(100),exceptions:many(50,{reason:'x'}),ot:many(40,{schedule:''}),
+  attendanceShifts:many(60,{state:'closed',batch:'B'}),hrChanges:many(10,{mark:'absent'}),days:many(21,{signature:'s',lines:1}),pendingDays:many(5,{shifts:[]}),supports:HR_FEED_SUPPORTS};
+ // The rule as it was written before: every line judged by sameSite.
+ const slow=(a,site)=>{
+  const k=s=>String(s||'').trim().toLowerCase().replace(/[^a-z0-9]+/g,' ').trim(),mine=e=>Boolean(e)&&(sameSite(site,e.site)||sameSite(site,e.siteKey));
+  const dutyKey=e=>JSON.stringify([k(e.siteKey||e.site),e.date,e.shift,String(e.employeeId||'').trim().toUpperCase()]),slotKey=(key,e)=>JSON.stringify([key,e.date,e.shift]);
+  const slots=new Set();for(const e of [...a.otDuties,...a.attendanceEquipment])if(mine(e))slots.add(slotKey(e.employeeKey,e));for(const c of a.hrChanges)if(mine(c))slots.add(slotKey(c.employeeKey||c.employeeId,c));
+  const kept=new Set();for(const e of [...a.otDuties,...a.attendanceEquipment])if(mine(e)||slots.has(slotKey(e.employeeKey,e)))kept.add(dutyKey(e));
+  const whole=e=>mine(e)||kept.has(dutyKey(e));
+  return {otDuties:a.otDuties.filter(whole),attendanceEquipment:a.attendanceEquipment.filter(whole),performance:a.performance.filter(whole),details:a.details.filter(whole),exceptions:a.exceptions.filter(whole),
+   ot:a.ot.filter(mine),attendanceShifts:a.attendanceShifts.filter(r=>sameSite(site,r.siteKey)),days:a.days.filter(d=>sameSite(site,d.siteKey)),pendingDays:a.pendingDays.filter(d=>sameSite(site,d.siteKey)),
+   hrChanges:a.hrChanges.filter(c=>mine(c)||slots.has(slotKey(c.employeeKey||c.employeeId,c))||kept.has(dutyKey(c)))};
+ };
+ for(const site of ['Majri OC','Dudhichua OB East','Dudhichua OB West','Jayant OB','Gauri Pauni OB 2nd','Nagpur CO']){
+  const cut=cutHrAnswerToSite(answer,site),want=slow(answer,site);
+  for(const key of Object.keys(want))assert.deepEqual(cut[key],want[key],site+' '+key);
+ }
+});

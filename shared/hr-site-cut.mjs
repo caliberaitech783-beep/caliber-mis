@@ -41,7 +41,10 @@ const dutyKey=entry=>JSON.stringify([siteKeyOf(entry.siteKey||entry.site),entry.
 const slotKey=(employeeKey,entry)=>JSON.stringify([employeeKey,entry.date,entry.shift]);
 
 export function cutHrAnswerToSite(answer,site){
- const mine=entry=>Boolean(entry)&&(sameSite(site,entry.site)||sameSite(site,entry.siteKey));
+ // An answer holds a handful of site names on thousands of lines: each name is judged once (28 Nov 2026; the cut took
+ // twice as long as writing the whole answer). The rule itself is sameSite, unchanged.
+ const judged=new Map(),isSite=name=>{let yes=judged.get(name);if(yes===undefined){yes=sameSite(site,name);judged.set(name,yes);}return yes;};
+ const mine=entry=>Boolean(entry)&&(isSite(entry.site)||isSite(entry.siteKey));
  const duties=list(answer.otDuties),lines=list(answer.attendanceEquipment),changes=list(answer.hrChanges);
  const misSiteDays={};
  for(const entry of [...duties,...lines,...changes.filter(c=>c?.mark==='absent')])if(entry?.site&&entry.date)(misSiteDays[entry.date]??=new Set()).add(entry.site);
@@ -62,11 +65,11 @@ export function cutHrAnswerToSite(answer,site){
   performance:list(answer.performance).filter(whole),
   details:list(answer.details).filter(whole),
   exceptions:list(answer.exceptions).filter(whole),
-  attendanceShifts:list(answer.attendanceShifts).filter(row=>row&&sameSite(site,row.siteKey)),
+  attendanceShifts:list(answer.attendanceShifts).filter(row=>row&&isSite(row.siteKey)),
   ot:list(answer.ot).filter(mine),
   ...(Array.isArray(answer.hrChanges)?{hrChanges:changes.filter(keepChange)}:{}),
-  ...(Array.isArray(answer.days)?{days:answer.days.filter(day=>day&&sameSite(site,day.siteKey))}:{}),
-  ...(Array.isArray(answer.pendingDays)?{pendingDays:answer.pendingDays.filter(day=>day&&sameSite(site,day.siteKey))}:{}),
+  ...(Array.isArray(answer.days)?{days:answer.days.filter(day=>day&&isSite(day.siteKey))}:{}),
+  ...(Array.isArray(answer.pendingDays)?{pendingDays:answer.pendingDays.filter(day=>day&&isSite(day.siteKey))}:{}),
   cut:'site',
   misSiteDays:Object.fromEntries(Object.entries(misSiteDays).sort(([a],[b])=>a.localeCompare(b)).map(([date,sites])=>[date,[...sites].sort()])),
  };

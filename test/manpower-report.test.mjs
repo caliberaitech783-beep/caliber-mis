@@ -159,9 +159,9 @@ const lockedBatches=(open=[])=>Array.from({length:17},(_,i)=>'2026-11-'+String(i
  const k=[name,day,shift].join('|');return {id:k,name:'BATCH '+k,site:name,report_date:day,shift,stage:open.includes(k)?'vlb_open':'closed',closed_at:open.includes(k)?null:day+'T23:00:00Z'};})));
 // The card signature read of the stored locked days: count, id sum and revision sum per card site and date.
 const signatureRows=(cards,[from,to,sites])=>{const out=new Map();for(const c of cards){if(c.book_date<from||c.book_date>to||sites&&!sites.includes(c.site))continue;const k=c.site+'|'+c.book_date,row=out.get(k)||{site:c.site,date:c.book_date,n:0,ids:0,revs:0};row.n++;row.ids+=Number(c.id);row.revs+=Number(c.revision||1);out.set(k,row);}return [...out.values()].map(r=>({...r,ids:String(r.ids),revs:String(r.revs)}));};
-function apiHarness(scope={sites:['sasti ob']},cards=[card()],{batches=[],answerCache=createTextCache(),today='2026-11-12',builds=[]}={}){
+function apiHarness(scope={sites:['sasti ob']},cards=[card()],{batches=[],answerCache=createTextCache(),today='2026-11-12',builds=[],more={}}={}){
  const handlers={};const calls=[];let released=false;const client={async query(sql,args){calls.push({sql,args});if(sql.startsWith('SELECT DISTINCT site'))return {rows:[{site},{site:'Jayant OC'}]};if(sql.includes('GROUP BY site,book_date'))return {rows:signatureRows(cards,args)};if(sql.includes('json_agg(c ORDER BY')){const day=cards.filter(c=>args[0].some((name,i)=>name===c.site&&args[1][i]===c.book_date));return {rows:[{n:day.length,cards:JSON.stringify(day)}]};}if(sql.startsWith("SELECT json_build_object('assets'"))return {rows:[{masters:JSON.stringify({assets:assets.map(a=>({...a,id:String(a.id)})),employees:employees.map(e=>({...e,id:String(e.id)})),shifts:shifts.map(x=>({...x,id:String(x.id)}))})}]};if(sql.startsWith('SELECT id,record_data FROM master_records'))return {rows:shifts.map(record_data=>({id:record_data.id,record_data}))};if(sql.includes('SELECT l.id')&&sql.includes('unnest('))return {rows:cards.filter(c=>args[0].some((name,i)=>name===c.site&&args[1][i]===c.book_date))};if(sql.includes('SELECT l.id'))return {rows:Array.isArray(args?.[3])?cards.map(c=>({...c,data:Object.fromEntries(Object.entries(c.data).filter(([k])=>args[3].includes(k)))})):cards};if(sql.includes('FROM mis_vlb_batches'))return {rows:typeof batches==='function'?batches():batches};if(sql.startsWith('SELECT id,master_name'))return {rows:[...assets.map(record_data=>({id:record_data.id,master_name:'Equipment master',record_data})),...employees.map(record_data=>({id:record_data.id,master_name:'Employee master',record_data})),...shifts.map(record_data=>({id:record_data.id,master_name:'Shift Master',record_data}))]};return {rows:[]};},release(){released=true;}};
- const protect=[()=>{},()=>{},()=>{}];const api=registerManpowerReports({get(path,...steps){if(path==='/api/integrations/hr/attendance')assert.equal(steps.length,2);else assert.deepEqual(steps.slice(0,3),protect);handlers[path]=steps.at(-1);}},{pool:{connect:async()=>client},protect,ensureBooks:async()=>{},withHandovers:async(_,rows)=>rows,today:()=>today,answerCache,buildInWorker:(task,input)=>{builds.push(task);return buildReportInWorker(task,input);}});
+ const protect=[()=>{},()=>{},()=>{}];const api=registerManpowerReports({get(path,...steps){if(path==='/api/integrations/hr/attendance')assert.equal(steps.length,2);else assert.deepEqual(steps.slice(0,3),protect);handlers[path]=steps.at(-1);}},{pool:{connect:async()=>client},protect,ensureBooks:async()=>{},withHandovers:async(_,rows)=>rows,today:()=>today,answerCache,...more,buildInWorker:(task,input)=>{builds.push(task);return buildReportInWorker(task,input);}});
  return {calls,builds,hrFeedDays:api.hrFeedDays,async run(query={from:date,to:date},path='/api/reports/manpower'){let result,status=200;const headers={};await handlers[path]({query,logBookScope:scope},{set(k,v){headers[k]=v;return this;},status(s){status=s;return this;},type(t){headers['Content-Type']=t;return this;},send(text){result=JSON.parse(text);},json(value){result=value;}},e=>{throw e;});return {result,status,headers,released};}};
 }
 test('API uses scope, excludes deleted cards, and reads one private consistent snapshot',async()=>{
@@ -622,4 +622,80 @@ test('the HR feed is cut to one site only when HR Pulse asks for it, and each an
  // Pulse-II's own register is never cut.
  const register=(await h.run({...range,site:'Majri OC',cut:'site',view:'attendance'},'/api/reports/manpower/attendance')).result;
  assert.equal(register.cut,undefined);assert.equal(register.otDuties.length,2);
+});
+
+// Owner, 28 Nov 2026: "plz make the MIS read faster also". Measured on live that day through HR Pulse, one day of one site:
+// 21 s the first time, 3 to 5 s when the answer was already kept, and the store of kept texts full (190 of 200 MB, 24
+// texts) with 6 hits against 73 misses.
+test('the master lists are read again only when one of them has changed',async()=>{
+ const {createKeptMasters,MASTERS_MARK_SQL}=await import('../server/routes/manpower-report-api.mjs');
+ let answer={n:3,mark:'m1'},reads=0;
+ const client={async query(sql,args){assert.equal(sql,MASTERS_MARK_SQL);assert.ok(args[0].includes('Employee master')&&args[0].includes('Shift Master'));return {rows:answer?[answer]:[]};}};
+ const keep=createKeptMasters({read:async()=>{reads++;return {shifts:[{id:'31'}],mastersJson:'{"employees":['+reads+']}'};}});
+ const first=await keep(client),again=await keep(client);
+ assert.equal(reads,1,'the same count and mark: the lists are not read again');
+ assert.deepEqual([first.kept,again.kept],[false,true]);
+ assert.equal(again.mastersJson,first.mastersJson);assert.equal(again.mastersKey,first.mastersKey);assert.match(first.mastersKey,/^[0-9a-f]{64}$/);assert.deepEqual(again.shifts,[{id:'31'}]);
+ // A line edited (a new mark), then a line removed (a new count): each is read again, once.
+ answer={n:3,mark:'m2'};const edited=await keep(client);
+ assert.deepEqual([reads,edited.kept],[2,false]);assert.notEqual(edited.mastersKey,first.mastersKey);
+ answer={n:2,mark:'m2'};await keep(client);await keep(client);
+ assert.equal(reads,3);
+ // A database that does not answer the question: the lists are read every time, as before.
+ answer=null;const none=await keep(client);await keep(client);
+ assert.deepEqual([reads,none.kept],[5,false]);
+});
+
+test('a read cut to one site for HR Pulse keeps its answer but not its week text, and says where its time went',async()=>{
+ const {createReadTimes}=await import('../server/services/attendance-read-times.mjs');
+ const weeks=createTextCache(),answers=createTextCache(),readTimes=createReadTimes(),builds=[];
+ const h=apiHarness({sites:null},monthCards(),{batches:lockedBatches(),answerCache:weeks,today:'2026-11-30',builds,more:{readyAnswers:answers,readTimes}});
+ const path='/api/integrations/hr/attendance',day={from:'2026-11-09',to:'2026-11-11'},cards=()=>h.calls.filter(c=>c.sql.includes('json_agg(c ORDER BY')).length;
+ const first=await h.run({...day,site:'Sasti',cut:'site'},path);
+ assert.equal(first.status,200);assert.deepEqual(builds,['attendance-week','attendance-answer']);assert.equal(cards(),1);
+ assert.equal(weeks.stats().entries,0,'the week text of one day\'s own dates is not kept');
+ assert.equal(answers.stats().entries,1,'its answer is');
+ assert.match(first.headers['Server-Timing'],/^punches;dur=\d+, entries;dur=\d+, masters;dur=\d+, batches;dur=\d+, signatures;dur=\d+, keys;dur=\d+, cards;dur=\d+, build;dur=\d+, answer;dur=\d+$/);
+ // The same day again: the kept answer, with nothing read or built.
+ const again=await h.run({...day,site:'Sasti',cut:'site'},path);
+ assert.deepEqual(again.result,first.result);assert.equal(builds.length,2);assert.equal(cards(),1);
+ assert.match(again.headers['Server-Timing'],/^punches;dur=\d+, .*keys;dur=\d+$/);
+ // The whole answer of the same dates (no cut) keeps its week as before, and another site's cut read then uses that week.
+ await h.run(day,path);
+ assert.equal(weeks.stats().entries,1);assert.equal(answers.stats().entries,2);assert.equal(cards(),2);
+ const other=await h.run({...day,site:'Jayant OC',cut:'site'},path);
+ assert.equal(other.status,200);assert.equal(cards(),2,'no card is read again');assert.deepEqual(builds.slice(4),['attendance-answer']);
+ // What the reads say of themselves: no site, no figure, only the kind of read and its milliseconds.
+ const {reads,latest,answerKept,built}=readTimes.stats();
+ assert.equal(reads,4);assert.deepEqual([answerKept.reads,built.reads],[1,3]);
+ assert.deepEqual(latest.map(r=>r.from),['kept weeks','build','kept answer','build']);
+ const {at,ms,steps,...about}=latest[3];
+ assert.deepEqual(about,{feed:'hr',days:3,cut:true,only:false,from:'build',weeks:1,weeksKept:0,mastersKept:false});
+ assert.ok(typeof at==='string'&&ms>=0&&Object.keys(steps).length===9);
+ assert.deepEqual(Object.keys(latest[2]).sort(),['at','cut','days','feed','from','mastersKept','ms','only','steps']);
+});
+
+test('the times of the reads are kept per step, the newest few are listed, and old ones leave',async()=>{
+ const {createReadTimes}=await import('../server/services/attendance-read-times.mjs');
+ let time=0;const times=createReadTimes({kept:3,now:()=>time,clock:()=>'t'+time});
+ const read=(stepsMs,about)=>{const clock=times.start();for(const [step,ms] of stepsMs){time+=ms;clock.mark(step);}return clock.done(about);};
+ const one=read([['punches',1000],['masters',2000],['cards',300],['build',700],['cards',200]],{from:'build'});
+ assert.equal(one.ms,4200);assert.deepEqual(one.steps,{punches:1000,masters:2000,cards:500,build:700});
+ assert.equal(one.header,'punches;dur=1000, masters;dur=2000, cards;dur=500, build;dur=700');
+ read([['punches',0],['masters',10]],{from:'kept answer'});read([['punches',0],['masters',30]],{from:'kept answer'});
+ let s=times.stats();
+ // A read is stamped when it ends.
+ assert.deepEqual([s.reads,s.usualMs,s.worstMs,s.since],[3,30,4200,'t4200']);
+ assert.deepEqual(s.answerKept,{reads:2,usualMs:10,worstMs:30,usualSteps:{punches:0,masters:10,cards:0,build:0}});
+ assert.deepEqual(s.built.usualSteps,{punches:1000,masters:2000,cards:500,build:700});
+ read([['punches',5]],{from:'build'});
+ s=times.stats();
+ assert.equal(s.reads,3,'only the newest three are kept');assert.deepEqual(s.latest.map(r=>r.ms),[5,30,10]);
+});
+
+test('the kept answers and the kept weeks share the room the one store had',async()=>{
+ const {attendanceCacheBytes,attendanceAnswerBytes}=await import('../server/services/attendance-answer-cache.mjs');
+ assert.equal((attendanceCacheBytes({})+attendanceAnswerBytes({}))/1048576,200);
+ assert.equal(attendanceAnswerBytes({ATTENDANCE_ANSWER_CACHE_MB:'0'}),0);assert.equal(attendanceAnswerBytes({ATTENDANCE_ANSWER_CACHE_MB:'64'}),64*1048576);
+ assert.equal(attendanceCacheBytes({ATTENDANCE_CACHE_MB:'300'}),300*1048576);
 });

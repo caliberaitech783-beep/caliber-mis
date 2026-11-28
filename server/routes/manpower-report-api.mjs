@@ -8,7 +8,8 @@ import {requireHrAttendance} from './hr-attendance-access.mjs';
 import {readHrAbsences,readHrTimes} from './hr-attendance-change.mjs';
 import {createAttendancePunches,punchKeysBetween} from '../services/attendance-punches.mjs';
 import {createHrEmployeeSync} from '../services/hr-employee-sync.mjs';
-import {attendanceAnswerCache,fingerprint,ATTENDANCE_WEEK_KEEP_MS,ATTENDANCE_RECENT_KEEP_MS} from '../services/attendance-answer-cache.mjs';
+import {attendanceAnswerCache,attendanceReadyAnswers,fingerprint,ATTENDANCE_WEEK_KEEP_MS,ATTENDANCE_RECENT_KEEP_MS} from '../services/attendance-answer-cache.mjs';
+import {attendanceReadTimes} from '../services/attendance-read-times.mjs';
 import {HISTORY_CARD_FIELDS,ATTENDANCE_CARD_FIELDS,ATTENDANCE_BATCH_COLUMNS,attendanceDayStoreEnabled,cardSignatures,lockedDayCards,lockedSignedDays,dayCardBatchesText} from '../services/attendance-day-store.mjs';
 
 const todayIst=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
@@ -50,9 +51,34 @@ export async function reportMastersText(client){
  return {shifts,mastersJson:row?.masters||'{"assets":[],"employees":[],"shifts":[]}'};
 }
 
+// The master lists kept until one of them changes (28 Nov 2026, owner: "plz make the MIS read faster also").
+// Every Attendance read asked the database to write all six lists out again (the Employee master alone is about 21,000
+// lines), also when the answer was already kept: measured on live, 3 to 5 seconds went before a kept answer was sent.
+// Now the read first asks one small question: how many lines the lists hold, and a mark made of every line's id and the
+// number of the change that last wrote it (xmin, which PostgreSQL gives every line and moves on every insert and update).
+// While the count and the mark are the same, the lists are the same lines unchanged, and the text read before is used.
+// Any line added, edited or removed gives a new mark, and the lists are read again. The question is asked inside the
+// read's own snapshot, so the text always matches what that read would have read itself.
+export const MASTERS_MARK_SQL=`SELECT count(*)::int AS n,md5(COALESCE(string_agg(id::text||':'||xmin::text,',' ORDER BY id),'')) AS mark
+ FROM master_records WHERE master_name=ANY($1::text[])`;
+export function createKeptMasters({read=reportMastersText}={}){
+ let held=null;
+ return async client=>{
+  const row=(await client.query(MASTERS_MARK_SQL,[MASTER_NAMES])).rows[0];
+  // No mark (a database that does not answer the question): read every time, as before.
+  const mark=row&&typeof row.mark==='string'&&row.mark?row.n+':'+row.mark:'';
+  if(mark&&held?.mark===mark)return {...held.value,kept:true};
+  const {shifts,mastersJson}=await read(client),value={shifts,mastersJson,mastersKey:fingerprint(mastersJson)};
+  held=mark?{mark,value}:null;
+  return {...value,kept:false};
+ };
+}
+
 // readPunches: ({from,to}) => who punched the biometric machine ("number|siteKey|date"; server/services/attendance-punches.mjs).
 // A card left out for an ID mix-up counts when its Caliber ID punched (owner, 24 Nov 2026, "Card + punch").
-export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandovers=async(_,rows)=>rows,today=todayIst,lane=directLane,useDayStore=attendanceDayStoreEnabled(),buildInWorker=buildReportInWorker,answerCache=attendanceAnswerCache,readPunches=createAttendancePunches({pool,hrPunches:createHrEmployeeSync({pool}).biometricPunches})}){
+export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandovers=async(_,rows)=>rows,today=todayIst,lane=directLane,useDayStore=attendanceDayStoreEnabled(),buildInWorker=buildReportInWorker,answerCache=attendanceAnswerCache,
+ // readyAnswers: the store of the finished answers (its own on the server; a test that gives one store uses it for both).
+ readyAnswers=answerCache===attendanceAnswerCache?attendanceReadyAnswers:answerCache,keptMasters=createKeptMasters(),readTimes=attendanceReadTimes,readPunches=createAttendancePunches({pool,hrPunches:createHrEmployeeSync({pool}).biometricPunches})}){
  // The server's one list of sites that hold cards (server/services/log-book-site-list.mjs).
  const filterLogBookSites=sharedLogBookSites(pool);
  app.get('/api/reports/manpower',...protect,async(req,res,next)=>{
@@ -158,12 +184,16 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
    // Without cut=site the answer holds every site of the login, as before (an HR Pulse from before 28 Nov 2026 sends site alone).
    const cutSite=hr&&!only&&req.query.cut==='site'&&typeof req.query.site==='string'&&req.query.site.trim()&&req.query.site.length<=200?req.query.site.trim():'';
    await ensureBooks();
+   // steps: where this read's time went (server/services/attendance-read-times.mjs); none when another read's answer is shared.
+   let steps=null;
    const body=await lane.run(reportKey(hr?'hr-attendance':'manpower-attendance',req),async()=>{
    let client,building=null;
+   const clock=readTimes.start(),about={feed:hr?'hr':'register',days:Math.round((Date.parse(filters.to)-Date.parse(filters.from))/86400000)+1,cut:Boolean(cutSite),only:Boolean(only)};
    try{
    // Who punched (machine and imported), read once for the whole range before a database connection is held (HR Pulse
    // is waited for at most a few seconds); a failed read counts no punch.
    const punched=await readPunches({from:filters.contextFrom,to:filters.contextTo}).catch(()=>[]);
+   clock.mark('punches');
    client=await pool.connect();
    await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
    const sites=await filterLogBookSites(client,req.logBookScope);
@@ -171,7 +201,9 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
     FROM mis_shift_attendance WHERE book_date BETWEEN $1 AND $2 AND ($3::text[] IS NULL OR site=ANY($3::text[]))
     ORDER BY book_date,site,shift,employee_id LIMIT 50001`,[filters.from,filters.to,req.logBookScope.sites]);
    if(attendance.length>50000)throw Object.assign(new Error('This range contains too many attendance entries. Select a shorter date range.'),{status:400});
-   const {shifts,mastersJson}=await reportMastersText(client);
+   clock.mark('entries');
+   const {shifts,mastersJson,mastersKey,kept:mastersKept}=await keptMasters(client);
+   clock.mark('masters');
    const batches=(await client.query(`SELECT ${ATTENDANCE_BATCH_COLUMNS} FROM mis_vlb_batches
     WHERE deleted_at IS NULL AND archived_at IS NULL AND book_date BETWEEN $1 AND $2`,[filters.contextFrom,filters.contextTo])).rows.filter(b=>siteAllowed(req.logBookScope,b.site));
    const present=attendance.filter(r=>siteAllowed(req.logBookScope,r.site)),scope={sites:req.logBookScope?.sites};
@@ -182,7 +214,9 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
    const hrTimes=hr?(await readHrTimes(client,{from:filters.contextFrom,to:filters.contextTo})).filter(c=>siteAllowed(req.logBookScope,c.siteKey)):[];
    // Only locked site-days are read (the rest is left out of the report anyway): from the stored locked days where a
    // stored day still matches its cards and batches, the rest live. See server/services/attendance-day-store.mjs.
+   clock.mark('batches');
    const locked=lockedSiteDays(shifts,batches),signatures=await cardSignatures(client,{from:filters.contextFrom,to:filters.contextTo},sites,batches);
+   clock.mark('signatures');
    // One week of cards at a time from the same snapshot (each with its adjoining days), so a month of every site
    // neither reaches the card read limit nor sits in memory at once. Every week sees the whole range's batches,
    // so a site is listed in each week even when it saved nothing in that week.
@@ -191,7 +225,7 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
    // Repeat opens (server/services/attendance-answer-cache.mjs): each week gets a key from everything it is built from,
    // and the answer a key from its weeks. An unchanged answer is sent at once; an unchanged week that ended at least two
    // days ago is not read or built again.
-   const mastersKey=fingerprint(mastersJson),siteNames=[...new Set(batches.map(b=>b.site))],keepBefore=nextReportDate(today(),-1);
+   const siteNames=[...new Set(batches.map(b=>b.site))],keepBefore=nextReportDate(today(),-1);
    const plans=attendanceWindows(filters.from,filters.to).map(window=>{const range=manpowerFilters(window);
     return {window,range,days:lockedSignedDays(signatures,{from:range.contextFrom,to:range.contextTo},locked),attendance:present.filter(r=>r.date>=window.from&&r.date<=window.to),punched:punchKeysBetween(punched,range.contextFrom,range.contextTo),hrChanges:hrAbsent.filter(c=>c.date>=range.contextFrom&&c.date<=range.contextTo),kept:Boolean(answerCache)&&window.to<keepBefore};});
    for(const plan of plans){
@@ -200,17 +234,22 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
     plan.key=fingerprint('attendance-week',hr,scope.sites??null,plan.range,mastersKey,siteNames,weekBatches,plan.days.map(d=>[d.site,d.date,d.signature]),plan.linksJson,plan.attendance,plan.punched,plan.hrChanges);
    }
    const answerKey=fingerprint('attendance-answer',hr,scope.sites??null,filters,plans.map(p=>p.key),[...locked].sort(),only,cutSite,hrTimes);
-   const ready=answerCache?.get(answerKey);
-   if(ready){await client.query('COMMIT');client.release();client=null;return ready;}
-   const weeks=[];
+   clock.mark('keys');
+   const ready=readyAnswers?.get(answerKey);
+   if(ready){await client.query('COMMIT');client.release();client=null;steps=clock.done({...about,from:'kept answer',mastersKept});return ready;}
+   const weeks=[];let weeksKept=0;
    for(const plan of plans){
     const kept=plan.kept?answerCache.get(plan.key):null;
-    if(kept){weeks.push(Promise.resolve({window:plan.window,json:kept}));continue;}
+    if(kept){weeksKept++;weeks.push(Promise.resolve({window:plan.window,json:kept}));continue;}
     const read=await lockedDayCards(client,{from:plan.range.contextFrom,to:plan.range.contextTo},{sites,locked,signatures,useStore:useDayStore,asText:true});
+    clock.mark('cards');
     // One week is built at a time, so a month of cards is never held at once.
     if(building)await building;
+    clock.mark('build');
     building=buildInWorker('attendance-week',{cardsJson:read.cardsJson,linksJson:plan.linksJson,mastersJson,attendance:plan.attendance,batches,filters:plan.range,hr,scope,punched:plan.punched,hrChanges:plan.hrChanges})
-     .then(json=>{if(plan.kept)answerCache.set(plan.key,json,ATTENDANCE_WEEK_KEEP_MS);return {window:plan.window,json};});
+     // A read cut to one site for HR Pulse is one day's own dates: no other read can use its week text, and at about
+     // 8 MB each a month of them pushed everything else out of the store (28 Nov 2026). It is not kept; its answer is.
+     .then(json=>{if(plan.kept&&!cutSite)answerCache.set(plan.key,json,ATTENDANCE_WEEK_KEEP_MS);return {window:plan.window,json};});
     // A build that fails while the next week is read is reported when it is awaited, not as an unhandled error.
     building.catch(()=>{});
     weeks.push(building);
@@ -219,13 +258,17 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
    client.release();client=null;
    const built=await Promise.all(weeks);
    building=null;
+   clock.mark('build');
    // The weeks are joined and the answer written as JSON text on the worker too; it is sent as it is.
    const text=await buildInWorker('attendance-answer',{weeks:built,filters,hr,scope,locked:[...locked],only,site:cutSite,hrTimes});
-   answerCache?.set(answerKey,text,plans.every(p=>p.kept)?ATTENDANCE_WEEK_KEEP_MS:ATTENDANCE_RECENT_KEEP_MS);
+   readyAnswers?.set(answerKey,text,plans.every(p=>p.kept)?ATTENDANCE_WEEK_KEEP_MS:ATTENDANCE_RECENT_KEEP_MS);
+   clock.mark('answer');
+   steps=clock.done({...about,from:weeksKept===plans.length?'kept weeks':'build',weeks:plans.length,weeksKept,mastersKept});
    return text;
    }catch(error){if(client)await client.query('ROLLBACK').catch(()=>{});await building?.catch(()=>{});throw error;}
    finally{client?.release();}
    });
+   if(steps?.header)res.set('Server-Timing',steps.header);
    res.set('Cache-Control','private, no-store').type('application/json').send(body);
   }catch(error){if(error.status)return res.status(error.status).json({error:error.message});next(error);}
  };
