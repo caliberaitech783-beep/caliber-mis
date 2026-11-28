@@ -108,9 +108,12 @@ export function buildRecentActivity({now=Date.now(),cards=[],batches=[],lmvBooks
    const at=times[kind];
    if(at===null||at>now+60000||now-at>widest)continue;
    const hoursAgo=Math.max(0,(now-at)/3600000);
-   for(const hours of list)if(hoursAgo<=hours)shifts[hours][kind]++;
-   completed.push({kind,batchId:batch.id||'',batchName:batch.name||'',site:displaySiteName(batch.site),date:batch.date,dateLabel:displayDate(batch.date),
-    shift:code,shiftLabel:SHIFT_LABELS[code]||code,cards:inside[kind],at:new Date(at).toISOString(),minutesAgo:Math.floor((now-at)/60000)});
+   const completions=kind==='dlb'?(batch.dlb_periods||[]).filter(period=>period.count>0).map(period=>({shift:period.shift,cards:period.count})):[{shift:code,cards:inside[kind]}];
+   for(const completion of completions){
+    for(const hours of list)if(hoursAgo<=hours)shifts[hours][kind]++;
+    completed.push({kind,batchId:batch.id||'',batchName:batch.name||'',site:displaySiteName(batch.site),date:batch.date,dateLabel:displayDate(batch.date),
+     shift:completion.shift,shiftLabel:SHIFT_LABELS[completion.shift]||completion.shift,cards:completion.cards,at:new Date(at).toISOString(),minutesAgo:Math.floor((now-at)/60000)});
+   }
   }
   // The whole batch, at the time it was saved and locked: only the cards of the log books this login may see.
   const lockedAt=times.elb;

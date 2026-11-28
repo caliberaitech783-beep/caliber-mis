@@ -1,9 +1,13 @@
 import path from 'node:path';
 
+// Caliber One (pulse.cmll.in/one, owner 28 Nov 2026) shows Pulse, Pulse-II, HR Pulse and Diesel as tabs of
+// one installed window, so Pulse-II pages may be framed by Pulse as well as by Pulse-II itself. No other site.
+export const FRAME_ANCESTORS="frame-ancestors 'self' https://pulse.cmll.in";
+
 export function securityHeaders(req,res,next){
   res.set('X-Content-Type-Options','nosniff');
   res.set('Referrer-Policy','strict-origin-when-cross-origin');
-  res.set('Content-Security-Policy',"default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; script-src 'self' 'wasm-unsafe-eval'; script-src-attr 'none'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com; frame-src 'self' blob: data:; media-src 'self' blob: data:; worker-src 'self' blob:; connect-src 'self' https: wss: ws://127.0.0.1:* ws://localhost:* http://127.0.0.1:* http://localhost:*");
+  res.set('Content-Security-Policy',"default-src 'self'; base-uri 'self'; object-src 'none'; "+FRAME_ANCESTORS+"; script-src 'self' 'wasm-unsafe-eval'; script-src-attr 'none'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com; frame-src 'self' blob: data:; media-src 'self' blob: data:; worker-src 'self' blob:; connect-src 'self' https: wss: ws://127.0.0.1:* ws://localhost:* http://127.0.0.1:* http://localhost:*");
   if(req.secure)res.set('Strict-Transport-Security','max-age=31536000');
   next();
 }

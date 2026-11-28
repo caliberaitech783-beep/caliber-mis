@@ -94,14 +94,15 @@ test('drive figures are read as df shows them',()=>{
 });
 
 test('A28 sits on the Automation tab, has its own switch and goes to the release approvers',()=>{
- const line=AUTOMATIONS.at(-1);
+ // Found by its number, not as the last line: A29 was added after it on 28 Nov 2026.
+ const line=AUTOMATIONS.find(item=>item.code==='A28');
  assert.equal(line.code,'A28');assert.equal(line.key,'drive-space');
  assert.equal(automationForEventKey('drive-space:2026-11-24T06:00:anoop'),'drive-space','the ON/OFF switch stops it');
  const base={misTelegram:{enabled:true},pulseTelegram:{configured:true},pulseTelegramPurpose:()=>true,vlbAlerts:{pulseAdminLogins:[]},mismatch:{logins:[]},whatsappSettings:{},switches:{}};
- const row=automationRows({...base,driveSpace:{running:true,last:{totalGb:500,usedGb:452.3,freeGb:47.7}}}).at(-1);
+ const row=automationRows({...base,driveSpace:{running:true,last:{totalGb:500,usedGb:452.3,freeGb:47.7}}}).find(r=>r.number===28);
  assert.equal(row.number,28);assert.equal(row.channels.telegram,'on');
  assert.equal(row.trigger,'Checked every 10 minutes on the live server; last reading 452.3 GB of 500 GB used, 47.7 GB free');
- const off=automationRows({...base,driveSpace:{running:false,last:null}}).at(-1);
+ const off=automationRows({...base,driveSpace:{running:false,last:null}}).find(r=>r.number===28);
  assert.equal(off.channels.telegram,'off');assert.match(off.notSendingReason,/not the live server/);
  // Owner, 24 Nov 2026: its own Telegram channel ("Azure limit increase warning"), one post per telling.
  assert.equal(CHANNEL_AUTOMATION_KEYS.has('drive-space'),true);

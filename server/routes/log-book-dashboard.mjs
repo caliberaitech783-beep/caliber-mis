@@ -11,7 +11,9 @@ import {vlbRecordShift} from '../../shared/vlb-batch-format.mjs';
 
 // The shift a saved card belongs to. An LMV log book carries its own shift code; a trip card or an ELB card
 // carries the card's shift, or failing that the shift of its batch.
-const savedCardShift=row=>row.book_type==='lmv'
+const savedCardShift=row=>row.book_type==='dlb'
+ ?(String(row.shift_period||'').toLowerCase()==='night'?'S2':'S1')
+ :row.book_type==='lmv'
  ?bookShiftCode(row.book_shift)||bookShiftCode(row.card_shift)||bookShiftCode(row.shift_name)||bookShiftCode(row.batch_shift)
  :bookShiftCode(row.card_shift)||bookShiftCode(row.batch_shift)||bookShiftCode(row.book_shift)||bookShiftCode(row.shift_name);
 
@@ -77,9 +79,9 @@ export function registerLogBookDashboard(app,{pool,protect,ensureBooks,now=()=>D
   const counts=windows.map((hours,index)=>`count(*) FILTER (WHERE created_at>=$${index+1}::timestamptz)::int AS h${hours}`).join(',');
   const p=windows.length;
   const cards=(await pool.query(`SELECT CASE WHEN book_type='lmv' THEN COALESCE(NULLIF(data->>'location',''),site) ELSE site END AS site,book_type,book_date::text AS date,
-   COALESCE(data->>'bookShiftCode','') AS book_shift,COALESCE(data->>'cardShift','') AS card_shift,COALESCE(data->>'batchShift','') AS batch_shift,COALESCE(data->>'shiftName','') AS shift_name,
+   COALESCE(data->>'bookShiftCode','') AS book_shift,COALESCE(data->>'cardShift','') AS card_shift,COALESCE(data->>'batchShift','') AS batch_shift,COALESCE(data->>'shiftName','') AS shift_name,COALESCE(data->>'shiftPeriod','') AS shift_period,
    ${counts}
-   FROM mis_log_books WHERE deleted_at IS NULL AND book_date>=$${p+1}::date AND created_at>=$${p+2}::timestamptz AND book_type=ANY($${p+3}::text[]) GROUP BY 1,2,3,4,5,6,7`,
+   FROM mis_log_books WHERE deleted_at IS NULL AND book_date>=$${p+1}::date AND created_at>=$${p+2}::timestamptz AND book_type=ANY($${p+3}::text[]) GROUP BY 1,2,3,4,5,6,7,8`,
    [...windows.map(since),OPERATIONAL_START,since(widest),['vehicle','lmv','dlb','equipment']])).rows.filter(allowed)
    .map(row=>({site:row.site,book_type:row.book_type,date:row.date,shift:savedCardShift(row),...Object.fromEntries(windows.map(hours=>['h'+hours,row['h'+hours]]))}));
   // Every site this login may see that works in batches, so that a site which locked nothing can be named.
@@ -93,6 +95,12 @@ export function registerLogBookDashboard(app,{pool,protect,ensureBooks,now=()=>D
    (SELECT count(*)::int FROM mis_vlb_batch_fleet f JOIN mis_log_books l ON l.id=f.logbook_id AND l.deleted_at IS NULL WHERE f.batch_id=b.id) AS machines_saved
    FROM mis_vlb_batches b WHERE b.deleted_at IS NULL AND b.archived_at IS NULL AND b.book_date>=$2::date AND (b.vlb_locked_at>=$1::timestamptz OR b.lmv_locked_at>=$1::timestamptz OR b.dlb_locked_at>=$1::timestamptz OR b.closed_at>=$1::timestamptz)
    ORDER BY b.book_date,b.id LIMIT 5000`,[since(widest),OPERATIONAL_START])).rows.filter(allowed);
+  const batchIds=batches.map(batch=>String(batch.id));
+  const dlbPeriods=batchIds.length?(await pool.query(`SELECT e.batch_id::text AS batch_id,CASE lower(COALESCE(l.data->>'shiftPeriod','')) WHEN 'night' THEN 'S2' ELSE 'S1' END AS shift,count(*)::int AS count
+   FROM mis_dlb_batch_entries e JOIN mis_log_books l ON l.id=e.logbook_id AND l.deleted_at IS NULL
+   WHERE e.batch_id::text=ANY($1::text[]) GROUP BY 1,2`,[batchIds])).rows:[];
+  const periodsByBatch=new Map();for(const row of dlbPeriods){const list=periodsByBatch.get(row.batch_id)||[];list.push({shift:row.shift,count:Number(row.count||0)});periodsByBatch.set(row.batch_id,list);}
+  for(const batch of batches)batch.dlb_periods=periodsByBatch.get(String(batch.id))||[];
   // Who saved and locked each batch: the lock is recorded in the batch history at the same moment (index on occurred_at).
   // Who started it is on the batch itself. Both are shown by name where Users & employees has one.
   const closedBatches=batches.filter(batch=>batch.closed_at);
@@ -119,7 +127,7 @@ export function registerLogBookDashboard(app,{pool,protect,ensureBooks,now=()=>D
   const {filters,kinds,hours,params}=await context(req),kind=String(req.query.kind||'');
   if(!kinds.includes(kind))return res.status(403).json({error:'This logbook type is not available to your login.'});
   const before=String(req.query.before||'');if(before&&!/^\d+$/.test(before))return res.status(400).json({error:'Invalid page cursor.'});
-  const rows=(await pool.query(`SELECT id,book_no,book_type,book_date::text AS day,site,data->>'door' AS door,data->>'cardShift' AS shift FROM mis_log_books WHERE ${where} AND book_type=$6 AND ($7::bigint IS NULL OR id<$7::bigint)${hours?' AND created_at>=$8::timestamptz':''} ORDER BY id DESC LIMIT 101`,[...params,kind,before||null,...(hours?[new Date(now()-hours*3600000).toISOString()]:[])])).rows.filter(row=>!filters.location||canonicalSiteName(row.site)===canonicalSiteName(filters.location));
+  const rows=(await pool.query(`SELECT id,book_no,book_type,book_date::text AS day,site,data,COALESCE(NULLIF(data->>'door',''),NULLIF(data->>'rigNo',''),data->>'assetName') AS door,CASE WHEN book_type='dlb' THEN CASE lower(COALESCE(data->>'shiftPeriod','')) WHEN 'night' THEN 'S2' ELSE 'S1' END ELSE data->>'cardShift' END AS shift FROM mis_log_books WHERE ${where} AND book_type=$6 AND ($7::bigint IS NULL OR id<$7::bigint)${hours?' AND created_at>=$8::timestamptz':''} ORDER BY id DESC LIMIT 101`,[...params,kind,before||null,...(hours?[new Date(now()-hours*3600000).toISOString()]:[])])).rows.filter(row=>!filters.location||canonicalSiteName(row.site)===canonicalSiteName(filters.location));
   res.json({records:rows.slice(0,100),nextCursor:rows.length>100?String(rows[99].id):null});
  }));
 }
