@@ -10,6 +10,9 @@ const hrSiteAliases = new Map([
   ['wcl lalpeth', 'lalpeth ob']
 ]);
 
+// A site as HR Pulse writes it ("WCL Sasti", "Dudhichua OB East"), as Pulse-II's site key; '' when it is not one of ours.
+export const hrSiteKey = value => {const site = canonicalSiteName(value); return site ? hrSiteAliases.get(site) || site : '';};
+
 export function hrAttendanceScope(profile) {
   const permissions = profile?.permissions;
   if (permissions?.application !== 'HR' ||
