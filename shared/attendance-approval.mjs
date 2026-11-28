@@ -59,6 +59,19 @@ export function scopeCovers(scope,site){
 export function approversFor(approvers,site,level){
  return [...new Set((approvers||[]).filter(a=>Number(a.level)===Number(level)&&scopeCovers(a.scope,site)).map(a=>String(a.login||'').trim().toLowerCase()).filter(Boolean))];
 }
+// The levels and sites one login approves, for the "connect your Telegram" pop-up (owner, 28 Nov 2026):
+// → [{level,label,sites:[...]}] by level; All sites and a region read as such.
+export function approverRoles(approvers,login){
+ const who=String(login||'').trim().toLowerCase();if(!who)return [];
+ const byLevel=new Map();
+ for(const a of approvers||[]){
+  if(String(a.login||'').trim().toLowerCase()!==who||!levelInfo(a.level))continue;
+  const sites=byLevel.get(Number(a.level))||byLevel.set(Number(a.level),[]).get(Number(a.level));
+  const name=a.scope===ALL_SITES?'All sites':REGION_DATA.some(r=>r.code===a.scope)?`Region ${a.scope}`:String(a.scope||'');
+  if(name&&!sites.includes(name))sites.push(name);
+ }
+ return [...byLevel].sort((a,b)=>a[0]-b[0]).map(([level,sites])=>({level,label:levelInfo(level).label,sites}));
+}
 export function canApprove(approvers,login,site,level){
  return approversFor(approvers,site,level).includes(String(login||'').trim().toLowerCase());
 }

@@ -26,3 +26,6 @@
 [data-theme="dark"] .telegram-gate-message { background: #1b2c45; }
 [data-theme="dark"] .telegram-gate > footer { border-color: #36455d; background: #111c30; }
 [data-theme="dark"] .telegram-gate > footer button { border-color: #3d4f6a; color: #d6e0ee; background: #1b2c45; }
+/* Attendance approvers who have not connected the MIS bot (approver-telegram-notice.jsx, 28 Nov 2026). */
+.approver-telegram-roles { margin: 0 0 12px; padding-left: 20px; font-size: 14px; line-height: 1.5; }
+.approver-telegram-notice .telegram-gate-body a { color: #1b6fa8; font-weight: 700; }
