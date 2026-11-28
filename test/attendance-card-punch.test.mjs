@@ -67,3 +67,54 @@ test('punch keys come from the machine and the imported punches; HR Pulse not an
  const noTable=createAttendancePunches({pool:{query:async()=>{throw Object.assign(Error('relation "mis_biometric_punches" does not exist'),{code:'42P01'});}}});
  assert.deepEqual(await noTable({from:date,to:date}),[]);
 });
+
+// 28 Nov 2026 (owner: "plz make the MIS read faster also"). HR Pulse's roster asks for one day at a time, each with two days
+// on either side; the machine punches were read from HR Pulse again for every day asked. They are now read in fixed blocks
+// of dates that the asks for neighbouring days share.
+test('machine punches are read in fixed blocks of dates that neighbouring days share',async()=>{
+ const {punchBlocks,PUNCH_BLOCK_DAYS}=await import('../server/services/attendance-punches.mjs');
+ assert.equal(PUNCH_BLOCK_DAYS,4);
+ assert.deepEqual(punchBlocks('2026-11-01','2026-11-04'),[['2026-11-01','2026-11-04']]);
+ assert.deepEqual(punchBlocks('2026-11-03','2026-11-07'),[['2026-11-01','2026-11-04'],['2026-11-05','2026-11-08']]);
+ assert.deepEqual(punchBlocks('2026-11-04','2026-11-09'),[['2026-11-01','2026-11-04'],['2026-11-05','2026-11-08'],['2026-11-09','2026-11-12']]);
+ assert.deepEqual(punchBlocks('2026-10-31','2026-11-01'),[['2026-10-28','2026-10-31'],['2026-11-01','2026-11-04']],'a date before 1 Nov falls in an earlier block');
+ // One punch a day by one person, 1 to 12 Nov; HR Pulse answers the dates it is asked for (the read adds the day before).
+ const asks=[];
+ const hrPunches=async({from,to})=>{asks.push(from+'..'+to);const punches=[];for(let d=1;d<=12;d++){const day='2026-11-'+String(d).padStart(2,'0');if(day>=from&&day<=to)punches.push(['CMPL907040','17',day+' 06:05',0,'0']);}return {sites:['Majri OC'],punches};};
+ const pool={query:async()=>({rows:[]})};
+ const read=createAttendancePunches({pool,hrPunches});
+ const keys=(from,to)=>Array.from({length:Number(to.slice(8))-Number(from.slice(8))+1},(_,i)=>'907040|'+KEY+'|2026-11-'+String(Number(from.slice(8))+i).padStart(2,'0'));
+ // The roster's read of 5 Nov (3 to 7 Nov with the adjoining days) takes two blocks, each asked with its day before.
+ assert.deepEqual(await read({from:'2026-11-03',to:'2026-11-07'}),keys('2026-11-03','2026-11-07'));
+ assert.deepEqual(asks,['2026-10-31..2026-11-04','2026-11-04..2026-11-08']);
+ // The reads of 6 Nov and 7 Nov ask HR Pulse for only the one block they do not have yet.
+ assert.deepEqual(await read({from:'2026-11-04',to:'2026-11-08'}),keys('2026-11-04','2026-11-08'));
+ assert.equal(asks.length,2,'6 Nov: nothing new is asked');
+ assert.deepEqual(await read({from:'2026-11-05',to:'2026-11-09'}),keys('2026-11-05','2026-11-09'));
+ assert.deepEqual(asks.slice(2),['2026-11-08..2026-11-12']);
+ // The same keys as one read of exactly those dates gave before the blocks.
+ const whole=await hrPunches({from:'2026-11-04',to:'2026-11-09'});
+ assert.deepEqual(await read({from:'2026-11-05',to:'2026-11-09'}),punchKeys(whole.punches.filter(p=>p[2]>='2026-11-05').map(p=>({caliberCode:p[0],date:p[2].slice(0,10),site:'Majri OC'}))));
+});
+
+test('a block HR Pulse does not answer costs only its own dates, and is asked again after a minute',async()=>{
+ let time=0,asked=0;
+ const hrPunches=async({from})=>{asked++;if(from<'2026-11-04')throw Error('HR Pulse is down');return {sites:['Majri OC'],punches:[['CMPL907040','17','2026-11-06 06:05',0,'0']]};};
+ const read=createAttendancePunches({pool:{query:async()=>({rows:[]})},hrPunches,now:()=>time});
+ assert.deepEqual(await read({from:'2026-11-03',to:'2026-11-07'}),['907040|'+KEY+'|2026-11-06'],'the block that answered still counts');
+ assert.equal(asked,2);
+ await read({from:'2026-11-03',to:'2026-11-07'});
+ assert.equal(asked,2,'within the minute the failed block is not asked again');
+ time=61_000;
+ await read({from:'2026-11-03',to:'2026-11-07'});
+ assert.equal(asked,3,'after a minute only the failed block is asked again');
+});
+
+test('when HR Pulse does not answer, a month\'s read waits for the punches once, not once for every block',async()=>{
+ let asked=0;
+ const silent=createAttendancePunches({pool:{query:async()=>({rows:[]})},hrPunches:()=>{asked++;return new Promise(()=>{});},waitMs:30});
+ const began=Date.now();
+ assert.deepEqual(await silent({from:'2026-11-01',to:'2026-11-30'}),[]);
+ assert.equal(asked,2,'only the first two of the eight blocks were asked');
+ assert.ok(Date.now()-began<500,'one wait, not eight');
+});

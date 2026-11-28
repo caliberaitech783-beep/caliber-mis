@@ -12,13 +12,25 @@
 // Anything that changes a key (a card saved or edited, a batch locked or reopened, a master changed) makes a new key, so
 // the old text is simply never asked for again and leaves the cache when it is old or the cache is full.
 // ATTENDANCE_CACHE_MB=0 switches it off. The cache lives in each server's memory and is empty after a restart.
+//
+// 28 Nov 2026 (owner: "plz make the MIS read faster also"). On live the one store was full (190 of 200 MB) with 24 texts and
+// had helped 6 times against 73 misses. HR Pulse's roster asks for one day at a time, and each ask kept a week text of
+// every site (about 8 MB) that no other ask could use (its dates are that day's own), which pushed out the small answers a
+// repeat would have used. So:
+//  - the answers have their own store (attendanceReadyAnswers, ATTENDANCE_ANSWER_CACHE_MB, 40 MB), which a week can never
+//    push out; the weeks keep the rest (160 MB), so the two together hold what the one held before;
+//  - a read cut to one site for HR Pulse does not keep its week text (server/routes/manpower-report-api.mjs).
 import {createHash} from 'node:crypto';
 
 export const ATTENDANCE_WEEK_KEEP_MS=30*60_000;
 export const ATTENDANCE_RECENT_KEEP_MS=5*60_000;
 export const attendanceCacheBytes=(env=process.env)=>{
  const mb=Number(env.ATTENDANCE_CACHE_MB);
- return (env.ATTENDANCE_CACHE_MB!==undefined&&env.ATTENDANCE_CACHE_MB!==''&&Number.isFinite(mb)&&mb>=0?mb:200)*1024*1024;
+ return (env.ATTENDANCE_CACHE_MB!==undefined&&env.ATTENDANCE_CACHE_MB!==''&&Number.isFinite(mb)&&mb>=0?mb:160)*1024*1024;
+};
+export const attendanceAnswerBytes=(env=process.env)=>{
+ const mb=Number(env.ATTENDANCE_ANSWER_CACHE_MB);
+ return (env.ATTENDANCE_ANSWER_CACHE_MB!==undefined&&env.ATTENDANCE_ANSWER_CACHE_MB!==''&&Number.isFinite(mb)&&mb>=0?mb:40)*1024*1024;
 };
 export const fingerprint=(...parts)=>{const h=createHash('sha256');for(const p of parts)h.update(typeof p==='string'?p:JSON.stringify(p)??'null').update('\u0000');return h.digest('hex');};
 
@@ -44,3 +56,5 @@ export function createTextCache({maxBytes=attendanceCacheBytes(),now=()=>Date.no
  };
 }
 export const attendanceAnswerCache=createTextCache();
+// The finished answers (see the note of 28 Nov 2026 above).
+export const attendanceReadyAnswers=createTextCache({maxBytes:attendanceAnswerBytes()});

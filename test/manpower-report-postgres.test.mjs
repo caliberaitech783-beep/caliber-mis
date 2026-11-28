@@ -50,3 +50,48 @@ test('manpower HTTP report reads scoped saved books and batches from PostgreSQL'
  assert.deepEqual(counts.cells,manpowerCategoryCells(payload.details));assert.deepEqual(counts.summary,payload.summary);assert.deepEqual(counts.totals,payload.totals);assert.equal(counts.details,undefined);
  const cards=await (await fetch(url+'&view=category-cards',{headers:{Authorization:'Bearer fixture'}})).json();assert.deepEqual(cards.details,payload.details);
 });
+
+// 28 Nov 2026 (owner: "plz make the MIS read faster also"): the master lists are read again only when their mark moves.
+// The mark is made of every line's id and the number of the change that last wrote it (xmin); this is the real database
+// saying that it moves with every insert, edit and delete, that nothing else moves it, and that it belongs to the read's
+// own snapshot.
+test('the mark of the master lists moves with every insert, edit and delete, and only then',{skip:!connectionString},async t=>{
+ const target=new URL(connectionString);assert.ok(['localhost','127.0.0.1'].includes(target.hostname)&&target.pathname==='/caliber_mis');
+ const {default:pg}=await import('pg');
+ const {createKeptMasters,reportMastersText}=await import('../server/routes/manpower-report-api.mjs');
+ const schema='masters_'+randomUUID().replaceAll('-',''),bootstrap=new pg.Client({connectionString});await bootstrap.connect();await bootstrap.query('CREATE SCHEMA '+schema);
+ const pool=new pg.Pool({connectionString,options:'-c search_path='+schema});
+ t.after(async()=>{await pool.end();await bootstrap.query('DROP SCHEMA '+schema+' CASCADE');await bootstrap.end();});
+ await pool.query('CREATE TABLE master_records(id BIGSERIAL PRIMARY KEY,master_name TEXT,record_data JSONB)');
+ const add=(name,data)=>pool.query('INSERT INTO master_records(master_name,record_data) VALUES($1,$2) RETURNING id',[name,data]).then(r=>r.rows[0].id);
+ await add('Equipment master',{door:'V1',site:'Sasti OC'});
+ const driver=await add('Employee master',{caliberId:'101',name:'Example Driver'});
+ await add('Shift Master',{site:'Sasti OC',shiftCode:'A',startTime:'05:00',endTime:'13:00'});
+ const keep=createKeptMasters(),names=text=>JSON.parse(text).employees.map(e=>e.name);
+ const first=await keep(pool),again=await keep(pool);
+ assert.deepEqual([first.kept,again.kept],[false,true]);
+ assert.equal(first.mastersJson,(await reportMastersText(pool)).mastersJson,'the kept text is exactly what the database writes');
+ assert.deepEqual(names(first.mastersJson),['Example Driver']);assert.equal(first.shifts.length,1);
+ // An edit, an insert and a delete each give a new mark, and the text read then holds the change.
+ await pool.query("UPDATE master_records SET record_data=record_data||'{\"name\":\"Renamed Driver\"}' WHERE id=$1",[driver]);
+ const edited=await keep(pool);assert.equal(edited.kept,false);assert.deepEqual(names(edited.mastersJson),['Renamed Driver']);
+ const second=await add('ERP Employee master',{caliberId:'102',name:'Second Driver'});
+ const added=await keep(pool);assert.equal(added.kept,false);assert.deepEqual(names(added.mastersJson),['Renamed Driver','Second Driver']);
+ await pool.query('DELETE FROM master_records WHERE id=$1',[second]);
+ const removed=await keep(pool);assert.equal(removed.kept,false);assert.deepEqual(names(removed.mastersJson),['Renamed Driver']);
+ assert.equal((await keep(pool)).kept,true);
+ // A list the report does not read moves nothing.
+ await add('Vehicle transfers',{door:'V1'});
+ assert.equal((await keep(pool)).kept,true);
+ // Inside a read's snapshot the mark is the snapshot's: a change made meanwhile is not seen, and neither is its text.
+ const client=await pool.connect();
+ try{
+  await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+  assert.equal((await keep(client)).kept,true);
+  await pool.query("UPDATE master_records SET record_data=record_data||'{\"name\":\"Changed Meanwhile\"}' WHERE id=$1",[driver]);
+  const inside=await keep(client);
+  assert.equal(inside.kept,true);assert.deepEqual(names(inside.mastersJson),['Renamed Driver']);
+  await client.query('COMMIT');
+ }finally{client.release();}
+ const after=await keep(pool);assert.equal(after.kept,false);assert.deepEqual(names(after.mastersJson),['Changed Meanwhile']);
+});
