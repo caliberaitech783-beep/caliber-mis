@@ -601,7 +601,7 @@ test('the HR feed is cut to one site only when HR Pulse asks for it, and each an
  const cards=[on(1,'2026-11-10',1),on(2,'2026-11-10',2,{employeeId:22,caliberId:'102'})],range={from:'2026-11-09',to:'2026-11-11'};
  const h=apiHarness({sites:null},cards,{batches:lockedBatches()}),path='/api/integrations/hr/attendance';
  const whole=(await h.run(range,path)).result;
- assert.equal(whole.cut,undefined);assert.deepEqual(whole.supports,['site-cut']);assert.equal(whole.otDuties.length,2);
+ assert.equal(whole.cut,undefined);assert.deepEqual(whole.supports,['site-cut','duty-times']);assert.equal(whole.otDuties.length,2);
  // HR Pulse writes the site its own way; an HR Pulse from before this change sends site without cut and gets every site.
  assert.equal((await h.run({...range,site:'Majri OC'},path)).result.cut,undefined);
  const sasti=(await h.run({...range,site:'Sasti',cut:'site'},path)).result;

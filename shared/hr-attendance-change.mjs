@@ -9,12 +9,22 @@
 //            counted. The change is a line in mis_hr_attendance_changes and a review item on the card.
 //   card:    an earlier HR change is taken back; attendance is again what the cards say.
 // One person, site, date and shift has one live change. Server: server/routes/hr-attendance-change.mjs.
+// Duty times (owner, 28 Nov 2026: "Yes, send to MIS"): HR Pulse corrected a present duty's times only on its own side, so
+// Pulse-II never knew them. They are asked for here too, with the same OTP, and kept on a track of their own:
+//   times:       the duty's start and end (HH:MM, an end before the start is the next day) replace the Shift Master times
+//                in what Pulse-II sends HR Pulse. The duty's presence does not change.
+//   card-times:  the times are taken back; the duty is again on the Shift Master times.
+// One person, site, date and shift has one live times change, apart from its present / absent change.
 import {createHash} from 'node:crypto';
 import {canonicalSiteName} from './site-location.mjs';
 import {employeeNumber} from './hr-employee-master.mjs';
 import {OTP_TTL_MINUTES} from './otp-approval.mjs';
 
-export const HR_MARKS=['present','absent','card'];
+export const HR_PRESENCE_MARKS=['present','absent','card'];
+export const HR_TIME_MARKS=['times','card-times'];
+export const HR_MARKS=[...HR_PRESENCE_MARKS,...HR_TIME_MARKS];
+export const marksOfTrack=mark=>HR_TIME_MARKS.includes(mark)?HR_TIME_MARKS:HR_PRESENCE_MARKS;
+const CLOCK=/^([01]\d|2[0-3]):[0-5]\d$/;
 export const HR_PRESENT_REASON='Marked present in HR Pulse';
 export const HR_PRESENT_KIND='hr';
 export const HR_CHANGE_REASON_MIN=10;
@@ -37,7 +47,9 @@ export const dutyToken=({employeeKey,site,siteKey,date,shift})=>[personToken(emp
 // What HR Pulse sends: {site,date,shift,employeeId,mark,reason}. Returns the cleaned change or throws (status 400).
 export function hrChangeInput(body,{today=indiaToday()}={}){
  const mark=text(body?.mark).toLowerCase(),date=text(body?.date),shift=text(body?.shift).toUpperCase(),site=clean(body?.site,120),employee=clean(body?.employeeId??body?.employeeKey,60),reason=clean(body?.reason,500);
- if(!HR_MARKS.includes(mark))throw fail(400,'Choose Present, Absent or "as the trip card says".');
+ if(!HR_MARKS.includes(mark))throw fail(400,'Choose Present, Absent, "as the trip card says" or the duty times.');
+ const start=mark==='times'?text(body?.start):'',end=mark==='times'?text(body?.end):'';
+ if(mark==='times'&&(!CLOCK.test(start)||!CLOCK.test(end)||start===end))throw fail(400,'Enter both duty times in HH:MM, under 24 hours apart.');
  if(!realDate(date))throw fail(400,'Choose the date.');
  if(date<HR_CHANGE_FROM)throw fail(400,'Trip card attendance starts on 1 November 2026.');
  if(date>today)throw fail(400,'Attendance of a later date cannot be changed.');
@@ -45,7 +57,18 @@ export function hrChangeInput(body,{today=indiaToday()}={}){
  if(!HR_DUTY_SHIFTS.includes(shift))throw fail(400,'Choose the shift: S1, S2, S3, D or N.');
  if(!personToken(employee))throw fail(400,'Choose the employee.');
  if(reason.length<HR_CHANGE_REASON_MIN)throw fail(400,'Write why this attendance is changed (at least '+HR_CHANGE_REASON_MIN+' letters).');
- return {mark,date,shift,site,siteKey:canonicalSiteName(site),employee,person:personToken(employee),reason};
+ return {mark,date,shift,site,siteKey:canonicalSiteName(site),employee,person:personToken(employee),reason,start,end};
+}
+
+// The duty window of corrected times, written like a Shift Master label ("2026-11-10 06:00"): an end before the start
+// is on the next day.
+const dayAfter=date=>new Date(Date.parse(date+'T00:00:00Z')+86400000).toISOString().slice(0,10);
+export const timesWindow=(date,start,end)=>({start:`${date} ${start}`,end:`${end<start?dayAfter(date):date} ${end}`});
+// The live "times" changes as a lookup by duty (dutyToken). Each: {id,siteKey,date,shift,person,start,end,by,reason,at}.
+export function hrDutyTimes(changes){
+ const out=new Map();
+ for(const c of Array.isArray(changes)?changes:[]){const person=text(c?.person);if(person&&c?.siteKey&&c?.date&&c?.shift&&CLOCK.test(text(c?.start))&&CLOCK.test(text(c?.end)))out.set([person,c.siteKey,c.date,c.shift].join('|'),c);}
+ return out;
 }
 
 // The live "absent" changes as a lookup by duty. Each: {id,siteKey,date,shift,person,by,reason,at}.
@@ -62,18 +85,23 @@ export const presentRemarks=({by,reason,approvedBy=[]})=>clean('HR Pulse'+(by?' 
 const MARK_LINE={
  present:'A Present entry is made in Pulse-II for this shift. No trip card is made.',
  absent:'The trip card stays with its trips and hours; only the attendance of this shift is not counted.',
- card:'The earlier HR change is taken back; attendance is again what the trip cards say.'};
+ card:'The earlier HR change is taken back; attendance is again what the trip cards say.',
+ times:'Only the duty times sent to HR Pulse change; the trip card and the attendance stay as they are.',
+ 'card-times':'The corrected duty times are taken back; the duty is again on the Shift Master times.'};
 const MARK_WORD={present:'PRESENT',absent:'ABSENT',card:'as the trip card says'};
-export function hrChangeOtpMessage({site,region,date,shift,employeeId,employeeName,mark,requestedBy,reason,otp,minutes=OTP_TTL_MINUTES}){
+const who=({employeeId,employeeName})=>`${employeeName||employeeId}${employeeName?` (${employeeId})`:''}`;
+const asked=c=>c.mark==='times'?`to set the duty times of ${who(c)} to ${c.start}–${c.end}`:c.mark==='card-times'?`to take back the corrected duty times of ${who(c)}`:`to mark ${who(c)} ${MARK_WORD[c.mark]}`;
+const made=c=>c.mark==='times'?`The duty times of ${who(c)} are now ${c.start}–${c.end}`:c.mark==='card-times'?`The duty times of ${who(c)} are again the Shift Master times`:`${who(c)} is now ${MARK_WORD[c.mark]}`;
+export function hrChangeOtpMessage({site,region,date,shift,requestedBy,reason,otp,minutes=OTP_TTL_MINUTES,...change}){
  return ['🧾 PULSE-II · ATTENDANCE CHANGE FROM HR PULSE',
-  `${requestedBy} (HR Pulse) asks to mark ${employeeName||employeeId}${employeeName?` (${employeeId})`:''} ${MARK_WORD[mark]} · ${site}${region?` (${region})`:''} · ${fmtDate(date)} · ${shift}.`,
+  `${requestedBy} (HR Pulse) asks ${asked(change)} · ${site}${region?` (${region})`:''} · ${fmtDate(date)} · ${shift}.`,
   `Reason: ${reason}`,'',
-  `OTP ${otp}, valid ${minutes} minutes. Share it only if this change is right. ${MARK_LINE[mark]}`].join('\n');
+  `OTP ${otp}, valid ${minutes} minutes. Share it only if this change is right. ${MARK_LINE[change.mark]}`].join('\n');
 }
-export function hrChangeDoneMessage({site,date,shift,employeeId,employeeName,mark,requestedBy,reason,approvedBy=[]}){
+export function hrChangeDoneMessage({site,date,shift,requestedBy,reason,approvedBy=[],...change}){
  return ['🧾 PULSE-II · ATTENDANCE CHANGED FROM HR PULSE',
-  `${employeeName||employeeId}${employeeName?` (${employeeId})`:''} is now ${MARK_WORD[mark]} · ${site} · ${fmtDate(date)} · ${shift}.`,
-  `Asked by ${requestedBy} (HR Pulse)${approvedBy.length?', OTP from '+approvedBy.join(', '):''}.`,`Reason: ${reason}`,MARK_LINE[mark]].join('\n');
+  `${made(change)} · ${site} · ${fmtDate(date)} · ${shift}.`,
+  `Asked by ${requestedBy} (HR Pulse)${approvedBy.length?', OTP from '+approvedBy.join(', '):''}.`,`Reason: ${reason}`,MARK_LINE[change.mark]].join('\n');
 }
 
 // One signature per site and day of what Pulse-II sends HR Pulse (duty and presence lines). HR Pulse keeps a saved day

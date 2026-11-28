@@ -5,7 +5,7 @@ import {sharedLogBookSites} from '../services/log-book-site-list.mjs';
 import {directLane,reportKey} from '../services/report-lane.mjs';
 import {buildReportInWorker} from '../services/report-build-pool.mjs';
 import {requireHrAttendance} from './hr-attendance-access.mjs';
-import {readHrAbsences} from './hr-attendance-change.mjs';
+import {readHrAbsences,readHrTimes} from './hr-attendance-change.mjs';
 import {createAttendancePunches,punchKeysBetween} from '../services/attendance-punches.mjs';
 import {createHrEmployeeSync} from '../services/hr-employee-sync.mjs';
 import {attendanceAnswerCache,fingerprint,ATTENDANCE_WEEK_KEEP_MS,ATTENDANCE_RECENT_KEEP_MS} from '../services/attendance-answer-cache.mjs';
@@ -177,6 +177,9 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
    const present=attendance.filter(r=>siteAllowed(req.logBookScope,r.site)),scope={sites:req.logBookScope?.sites};
    // What HR Pulse marked absent with an OTP; a change makes a new key, so no kept week or answer outlives it.
    const hrAbsent=(await readHrAbsences(client,{from:filters.contextFrom,to:filters.contextTo})).filter(c=>siteAllowed(req.logBookScope,c.siteKey));
+   // The duty times HR Pulse corrected with an OTP (28 Nov 2026): only the HR feed sends them; they are put on the duties
+   // when the answer is written, so a times change makes a new answer key and moves the day's signature.
+   const hrTimes=hr?(await readHrTimes(client,{from:filters.contextFrom,to:filters.contextTo})).filter(c=>siteAllowed(req.logBookScope,c.siteKey)):[];
    // Only locked site-days are read (the rest is left out of the report anyway): from the stored locked days where a
    // stored day still matches its cards and batches, the rest live. See server/services/attendance-day-store.mjs.
    const locked=lockedSiteDays(shifts,batches),signatures=await cardSignatures(client,{from:filters.contextFrom,to:filters.contextTo},sites,batches);
@@ -196,7 +199,7 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
     const weekBatches=batches.filter(b=>b.report_date>=plan.range.contextFrom&&b.report_date<=plan.range.contextTo).sort((a,b)=>String(a.id).localeCompare(String(b.id)));
     plan.key=fingerprint('attendance-week',hr,scope.sites??null,plan.range,mastersKey,siteNames,weekBatches,plan.days.map(d=>[d.site,d.date,d.signature]),plan.linksJson,plan.attendance,plan.punched,plan.hrChanges);
    }
-   const answerKey=fingerprint('attendance-answer',hr,scope.sites??null,filters,plans.map(p=>p.key),[...locked].sort(),only,cutSite);
+   const answerKey=fingerprint('attendance-answer',hr,scope.sites??null,filters,plans.map(p=>p.key),[...locked].sort(),only,cutSite,hrTimes);
    const ready=answerCache?.get(answerKey);
    if(ready){await client.query('COMMIT');client.release();client=null;return ready;}
    const weeks=[];
@@ -217,7 +220,7 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
    const built=await Promise.all(weeks);
    building=null;
    // The weeks are joined and the answer written as JSON text on the worker too; it is sent as it is.
-   const text=await buildInWorker('attendance-answer',{weeks:built,filters,hr,scope,locked:[...locked],only,site:cutSite});
+   const text=await buildInWorker('attendance-answer',{weeks:built,filters,hr,scope,locked:[...locked],only,site:cutSite,hrTimes});
    answerCache?.set(answerKey,text,plans.every(p=>p.kept)?ATTENDANCE_WEEK_KEEP_MS:ATTENDANCE_RECENT_KEEP_MS);
    return text;
    }catch(error){if(client)await client.query('ROLLBACK').catch(()=>{});await building?.catch(()=>{});throw error;}

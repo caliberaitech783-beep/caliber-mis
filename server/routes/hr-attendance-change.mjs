@@ -1,25 +1,34 @@
 // A change HR Pulse makes to trip card attendance is made here, with an OTP (owner, 27 Nov 2026).
 // Rules: shared/hr-attendance-change.mjs. HR Pulse calls these with the user's Pulse HR grant (requireHrAttendance):
-//   POST /api/integrations/hr/attendance/change         {site,date,shift,employeeId,mark,reason} → the OTP goes to RHR;
+//   POST /api/integrations/hr/attendance/change         {site,date,shift,employeeId,mark,reason,start?,end?} → the OTP goes to RHR;
 //   POST /api/integrations/hr/attendance/change/verify  {id,otp} → the change is made in Pulse-II;
 //   GET  /api/integrations/hr/attendance/changes?from=&to=  the changes of the dates (made, and waiting for an OTP).
 // mark: present (a Present entry, kind 'hr', in mis_shift_attendance), absent (the card stays, only its attendance is not
 // counted) or card (an earlier HR change is taken back). One person, site, date and shift has one live change.
+// mark times {start,end} / card-times (28 Nov 2026): the corrected duty times of a present duty, on a track of their own
+// (one live times change per duty, whatever its present / absent change); they reach HR Pulse in the feed (readHrTimes).
 // The OTP goes to the RHR of the site's region (Level 3 on Masters › Attendance approval): six digits, 10 minutes, single
 // use, five wrong attempts, one request a minute. A day the Directors locked is not changed; it is unlocked first.
 import {randomUUID} from 'node:crypto';
 import {generateOtp,hashOtp,otpExpiresAt,checkOtpAttempt,resendTooSoon,OTP_TTL_MINUTES} from '../../shared/otp-approval.mjs';
-import {HR_PRESENT_KIND,HR_PRESENT_REASON,hrChangeInput,hrChangeOtpMessage,hrChangeDoneMessage,presentRemarks} from '../../shared/hr-attendance-change.mjs';
+import {HR_PRESENT_KIND,HR_PRESENT_REASON,HR_TIME_MARKS,marksOfTrack,hrChangeInput,hrChangeOtpMessage,hrChangeDoneMessage,presentRemarks} from '../../shared/hr-attendance-change.mjs';
 import {ATTENDANCE_LOCKED_SQLSTATE,approversFor,siteKey,siteLabel,siteRegion} from '../../shared/attendance-approval.mjs';
 import {employeeNumber} from '../../shared/hr-employee-master.mjs';
 import {siteAllowed} from '../../shared/log-book-access.mjs';
 
 export const HR_ATTENDANCE_CHANGE_SCHEMA=`
  CREATE TABLE IF NOT EXISTS mis_hr_attendance_changes(id UUID PRIMARY KEY,site_key TEXT NOT NULL,site TEXT NOT NULL,book_date DATE NOT NULL,shift TEXT NOT NULL,
-  person TEXT NOT NULL,employee_id TEXT NOT NULL,employee_name TEXT,employee_record BIGINT,mark TEXT NOT NULL CHECK(mark IN ('present','absent','card')),reason TEXT NOT NULL,
+  person TEXT NOT NULL,employee_id TEXT NOT NULL,employee_name TEXT,employee_record BIGINT,mark TEXT NOT NULL CONSTRAINT mis_hr_attendance_changes_mark_check CHECK(mark IN ('present','absent','card','times','card-times')),reason TEXT NOT NULL,
   requested_by TEXT NOT NULL,requested_name TEXT,sent_to TEXT[] NOT NULL,channels TEXT[] NOT NULL DEFAULT '{}',otp_hash TEXT NOT NULL,expires_at TIMESTAMPTZ NOT NULL,
   attempts INTEGER NOT NULL DEFAULT 0,status TEXT NOT NULL DEFAULT 'sent',requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),used_at TIMESTAMPTZ,used_by TEXT,
-  replaced_at TIMESTAMPTZ,replaced_by UUID);
+  replaced_at TIMESTAMPTZ,replaced_by UUID,start_time TEXT,end_time TEXT);
+ ALTER TABLE mis_hr_attendance_changes ADD COLUMN IF NOT EXISTS start_time TEXT,ADD COLUMN IF NOT EXISTS end_time TEXT;
+ DO $$BEGIN
+  IF NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conname='mis_hr_attendance_changes_mark_check' AND pg_get_constraintdef(oid) LIKE '%card-times%') THEN
+   ALTER TABLE mis_hr_attendance_changes DROP CONSTRAINT IF EXISTS mis_hr_attendance_changes_mark_check;
+   ALTER TABLE mis_hr_attendance_changes ADD CONSTRAINT mis_hr_attendance_changes_mark_check CHECK(mark IN ('present','absent','card','times','card-times'));
+  END IF;
+ END$$;
  CREATE INDEX IF NOT EXISTS mis_hr_attendance_changes_day ON mis_hr_attendance_changes(book_date,site_key);
  CREATE INDEX IF NOT EXISTS mis_hr_attendance_changes_duty ON mis_hr_attendance_changes(site_key,book_date,shift,person,requested_at DESC);`;
 
@@ -41,13 +50,24 @@ export async function readHrAbsences(db,{from,to}){
  if(!await hasTable(db,'mis_hr_attendance_changes'))return [];
  return (await db.query(LIVE_ABSENT_SQL,[from,to])).rows.map(r=>({...r,at:r.at?new Date(r.at).toISOString():''}));
 }
+// The live corrected duty times of the dates, as the HR feed reads them (hrDutyTimes in shared/hr-attendance-change.mjs).
+const LIVE_TIMES_SQL=`SELECT id::text AS id,site_key AS "siteKey",book_date::text AS date,shift,person,start_time AS start,end_time AS "end",COALESCE(NULLIF(requested_name,''),requested_by) AS by,reason,used_at AS at
+ FROM mis_hr_attendance_changes WHERE mark='times' AND status='used' AND replaced_at IS NULL AND book_date BETWEEN $1::date AND $2::date ORDER BY book_date,site_key,shift,person`;
+export async function readHrTimes(db,{from,to}){
+ if(!await hasTable(db,'mis_hr_attendance_changes'))return [];
+ // A database whose table is older than the times columns has no times change yet.
+ const has=(await db.query(`SELECT 1 FROM information_schema.columns WHERE table_name='mis_hr_attendance_changes' AND column_name='start_time' LIMIT 1`)).rows.length>0;
+ if(!has)return [];
+ return (await db.query(LIVE_TIMES_SQL,[from,to])).rows.map(r=>({...r,at:r.at?new Date(r.at).toISOString():''}));
+}
 
 // approvers: () => the Attendance approval list ([{level,scope,login}]); the RHR of the site's region gets the OTP.
 // deliverOtp: ({logins,message,otp,eventKey}) => {sentTo,channels,failures}. sendText: Telegram text to a chat.
 export function createHrAttendanceChange({pool,approvers=async()=>[],deliverOtp=null,sendText=null,ensure=async()=>{},now=()=>Date.now(),today=undefined,log=console.error}){
  const iso=()=>new Date(now()).toISOString();
  const publicChange=row=>row&&{id:row.id,site:row.site,siteKey:row.site_key,date:row.date||String(row.book_date).slice(0,10),shift:row.shift,employeeId:row.employee_id,employeeName:row.employee_name||'',
-  mark:row.mark,reason:row.reason,status:row.status,live:row.status==='used'&&!row.replaced_at&&row.mark!=='card',requestedBy:row.requested_name||row.requested_by,requestedAt:row.requested_at,
+  mark:row.mark,reason:row.reason,status:row.status,live:row.status==='used'&&!row.replaced_at&&!['card','card-times'].includes(row.mark),requestedBy:row.requested_name||row.requested_by,requestedAt:row.requested_at,
+  ...(row.mark==='times'?{start:row.start_time||'',end:row.end_time||''}:{}),
   sentTo:row.sent_to||[],channels:row.channels||[],expiresAt:row.expires_at,usedAt:row.used_at||null};
  const dutyArgs=change=>[change.siteKey,change.date,change.shift,change.person];
  const DUTY=`site_key=$1 AND book_date=$2::date AND shift=$3 AND person=$4`;
@@ -75,8 +95,8 @@ export function createHrAttendanceChange({pool,approvers=async()=>[],deliverOtp=
    WHERE deleted_at IS NULL AND book_type IN ('vehicle','equipment','lmv') AND book_date=$1::date`,[change.date])).rows;
   const mine=c=>siteKey(c.site)===change.siteKey&&([c.caliber,c.second_caliber].some(v=>employeeNumber(v)===change.person)||[c.employee,c.second].some(v=>v&&person.ids.includes(String(v))));
   const entries=(await db.query(`SELECT site,kind FROM mis_shift_attendance WHERE book_date=$1::date AND shift=$2 AND employee_id=ANY($3::bigint[])`,[change.date,change.shift,person.ids])).rows.filter(r=>siteKey(r.site)===change.siteKey);
-  const live=(await db.query(`SELECT id,mark FROM mis_hr_attendance_changes WHERE ${DUTY} AND status='used' AND replaced_at IS NULL AND mark<>'card' ORDER BY used_at DESC LIMIT 1`,dutyArgs(change))).rows[0]||null;
-  return {card:cards.some(mine),entry:entries.length>0,hrEntry:entries.some(r=>r.kind===HR_PRESENT_KIND),live};
+  const liveOf=marks=>db.query(`SELECT id,mark FROM mis_hr_attendance_changes WHERE ${DUTY} AND status='used' AND replaced_at IS NULL AND mark=ANY($5::text[]) ORDER BY used_at DESC LIMIT 1`,[...dutyArgs(change),marks]).then(r=>r.rows[0]||null);
+  return {card:cards.some(mine),entry:entries.length>0,hrEntry:entries.some(r=>r.kind===HR_PRESENT_KIND),live:await liveOf(['present','absent']),liveTimes:await liveOf(['times'])};
  }
  function refuse(change,person,state){
   const who=`${person.name||person.employeeId} (${person.employeeId})`,when=`${siteLabel(change.site)} · ${change.date.slice(8,10)}-${change.date.slice(5,7)}-${change.date.slice(0,4)} · ${change.shift}`;
@@ -89,6 +109,12 @@ export function createHrAttendanceChange({pool,approvers=async()=>[],deliverOtp=
    if(state.entry)throw fail(409,`${who} already has a Present entry in Pulse-II · ${when}.`);
   }
   if(change.mark==='card'&&!state.live&&!state.hrEntry)throw fail(409,`HR Pulse changed nothing for ${who} · ${when}. There is nothing to take back.`);
+  // Duty times belong to a duty that is present: a card or a Present entry, and not marked absent.
+  if(change.mark==='times'){
+   if(state.live?.mark==='absent')throw fail(409,`${who} is marked absent from HR Pulse · ${when}. Duty times are set only on a present duty.`);
+   if(!state.card&&!state.entry)throw fail(409,`Pulse-II holds no trip card and no Present entry of ${who} · ${when}. Duty times are set only on a present duty.`);
+  }
+  if(change.mark==='card-times'&&!state.liveTimes)throw fail(409,`HR Pulse corrected no duty times of ${who} · ${when}. There is nothing to take back.`);
  }
  const lockedError=change=>fail(423,`Attendance of ${siteLabel(change.site)} on ${change.date.slice(8,10)}-${change.date.slice(5,7)}-${change.date.slice(0,4)} is locked after the Directors approved it. Ask RHR to unlock the day on Masters › Attendance approval first.`);
 
@@ -103,16 +129,17 @@ export function createHrAttendanceChange({pool,approvers=async()=>[],deliverOtp=
   refuse(change,person,await held(pool,change,person));
   const label=siteLabel(change.site),rhr=approversFor(await approvers(),label,3);
   if(!rhr.length)throw fail(409,'No RHR is set for '+label+' on Masters › Attendance approval, so the OTP cannot be sent.');
-  const waiting=(await pool.query(`SELECT id,requested_at FROM mis_hr_attendance_changes WHERE ${DUTY} AND status='sent' ORDER BY requested_at DESC LIMIT 1`,dutyArgs(change))).rows[0];
+  // A request still waiting for its OTP on the same track (present / absent, or times) is replaced by this one.
+  const waiting=(await pool.query(`SELECT id,requested_at FROM mis_hr_attendance_changes WHERE ${DUTY} AND status='sent' AND mark=ANY($5::text[]) ORDER BY requested_at DESC LIMIT 1`,[...dutyArgs(change),marksOfTrack(change.mark)])).rows[0];
   if(waiting&&resendTooSoon(waiting.requested_at,{now:now()}))throw fail(429,'An OTP was sent to RHR less than a minute ago. Wait before asking again.');
   const id=randomUUID(),otp=generateOtp(),by=lower(actor)||'hr-pulse',requestedName=clean(actorName,80)||by;
-  const message=hrChangeOtpMessage({site:label,region:siteRegion(label),date:change.date,shift:change.shift,employeeId:person.employeeId,employeeName:person.name,mark:change.mark,requestedBy:requestedName,reason:change.reason,otp,minutes:OTP_TTL_MINUTES});
+  const message=hrChangeOtpMessage({site:label,region:siteRegion(label),date:change.date,shift:change.shift,employeeId:person.employeeId,employeeName:person.name,mark:change.mark,start:change.start,end:change.end,requestedBy:requestedName,reason:change.reason,otp,minutes:OTP_TTL_MINUTES});
   const delivery=await deliverOtp({logins:rhr,message,otp,eventKey:'hr-attendance-change-otp:'+id});
   if(!delivery?.sentTo?.length)throw fail(409,('RHR of '+label+' has no Telegram or mobile registered. '+(delivery?.failures||[]).join(' ')).trim());
   if(waiting)await pool.query("UPDATE mis_hr_attendance_changes SET status='cancelled' WHERE id=$1 AND status='sent'",[waiting.id]);
-  const saved=(await pool.query(`INSERT INTO mis_hr_attendance_changes(id,site_key,site,book_date,shift,person,employee_id,employee_name,employee_record,mark,reason,requested_by,requested_name,sent_to,channels,otp_hash,expires_at,requested_at)
-   VALUES($1,$2,$3,$4::date,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *,book_date::text AS date`,
-   [id,change.siteKey,label,change.date,change.shift,change.person,person.employeeId,person.name,person.record,change.mark,change.reason,by,requestedName,delivery.sentTo,delivery.channels||[],hashOtp(id,otp),otpExpiresAt(now()),iso()])).rows[0];
+  const saved=(await pool.query(`INSERT INTO mis_hr_attendance_changes(id,site_key,site,book_date,shift,person,employee_id,employee_name,employee_record,mark,reason,requested_by,requested_name,sent_to,channels,otp_hash,expires_at,requested_at,start_time,end_time)
+   VALUES($1,$2,$3,$4::date,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING *,book_date::text AS date`,
+   [id,change.siteKey,label,change.date,change.shift,change.person,person.employeeId,person.name,person.record,change.mark,change.reason,by,requestedName,delivery.sentTo,delivery.channels||[],hashOtp(id,otp),otpExpiresAt(now()),iso(),change.start||null,change.end||null])).rows[0];
   return publicChange(saved);
  }
 
@@ -135,11 +162,12 @@ export function createHrAttendanceChange({pool,approvers=async()=>[],deliverOtp=
    }
    const change={siteKey:row.site_key,site:row.site,date:row.date,shift:row.shift,person:row.person,mark:row.mark,reason:row.reason};
    if(await dayLocked(client,change)){await client.query("UPDATE mis_hr_attendance_changes SET status='cancelled' WHERE id=$1",[row.id]);await client.query('COMMIT');throw lockedError(change);}
-   // One live change per duty: whatever HR Pulse set before is replaced by this one.
-   await client.query(`UPDATE mis_hr_attendance_changes SET replaced_at=$5,replaced_by=$6 WHERE ${DUTY} AND status='used' AND replaced_at IS NULL`,[...dutyArgs(change),at,row.id]);
+   // One live change per duty and track: whatever HR Pulse set before on the same track is replaced by this one.
+   await client.query(`UPDATE mis_hr_attendance_changes SET replaced_at=$5,replaced_by=$6 WHERE ${DUTY} AND status='used' AND replaced_at IS NULL AND mark=ANY($7::text[])`,[...dutyArgs(change),at,row.id,marksOfTrack(change.mark)]);
    const person=await personOf(client,change);
-   // A Present entry HR Pulse made earlier goes with every new change; "present" writes it again below.
-   await client.query(`DELETE FROM mis_shift_attendance WHERE book_date=$1::date AND shift=$2 AND kind=$3 AND employee_id=ANY($4::bigint[]) AND site=$5`,[change.date,change.shift,HR_PRESENT_KIND,person.ids,change.siteKey]);
+   // A Present entry HR Pulse made earlier goes with every new present / absent change; "present" writes it again below.
+   // A times change leaves the duty's presence as it is.
+   if(!HR_TIME_MARKS.includes(change.mark))await client.query(`DELETE FROM mis_shift_attendance WHERE book_date=$1::date AND shift=$2 AND kind=$3 AND employee_id=ANY($4::bigint[]) AND site=$5`,[change.date,change.shift,HR_PRESENT_KIND,person.ids,change.siteKey]);
    if(change.mark==='present'){
     const made=await client.query(`INSERT INTO mis_shift_attendance(book_date,site,shift,employee_id,asset_id,kind,reason,remarks,recorded_by)
      VALUES($1::date,$2,$3,$4::bigint,NULL,$5,$6,$7,$8) ON CONFLICT (book_date,site,shift,employee_id) DO NOTHING`,
@@ -155,7 +183,7 @@ export function createHrAttendanceChange({pool,approvers=async()=>[],deliverOtp=
    throw error;
   }finally{client.release();}
   void tell([...(done.sent_to||[]),...approversFor(await approvers().catch(()=>[]),done.site,1)],hrChangeDoneMessage({site:done.site,date:done.date,shift:done.shift,employeeId:done.employee_id,employeeName:done.employee_name,
-   mark:done.mark,requestedBy:done.requested_name||done.requested_by,reason:done.reason,approvedBy:done.sent_to||[]})).catch(error=>log('HR attendance change message failed:',error?.message));
+   mark:done.mark,start:done.start_time||'',end:done.end_time||'',requestedBy:done.requested_name||done.requested_by,reason:done.reason,approvedBy:done.sent_to||[]})).catch(error=>log('HR attendance change message failed:',error?.message));
   return publicChange(done);
  }
  async function tell(logins,message){
@@ -173,7 +201,7 @@ export function createHrAttendanceChange({pool,approvers=async()=>[],deliverOtp=
    AND (status='used' OR (status='sent' AND expires_at>$3)) ORDER BY book_date,site_key,shift,person,requested_at LIMIT 5001`,[from,to,iso()]);
   return rows.filter(r=>siteAllowed(scope,r.site)).map(publicChange);
  }
- return {request,verify,list,absences:range=>readHrAbsences(pool,range)};
+ return {request,verify,list,absences:range=>readHrAbsences(pool,range),times:range=>readHrTimes(pool,range)};
 }
 
 // requireHr: the Pulse HR grant check (requireHrAttendance()); it sets req.logBookScope and req.securitySession.

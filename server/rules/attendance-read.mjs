@@ -9,8 +9,10 @@
 import {buildManpowerReport,joinAttendanceReports,pendingSiteDays} from './manpower-report.mjs';
 import {linkVlbTripHandovers} from '../../shared/vlb-trip-handover.mjs';
 import {siteAllowed} from '../../shared/log-book-access.mjs';
-import {hrDaySignatures} from '../../shared/hr-attendance-change.mjs';
+import {hrDaySignatures,hrDutyTimes,dutyToken,timesWindow} from '../../shared/hr-attendance-change.mjs';
 import {cutHrAnswerToSite,HR_FEED_SUPPORTS} from '../../shared/hr-site-cut.mjs';
+// duty-times: HR Pulse may ask for corrected duty times with an OTP (mark times / card-times), 28 Nov 2026.
+const FEED_SUPPORTS=[...HR_FEED_SUPPORTS,'duty-times'];
 
 // What the register reads of a duty line and of a presence line.
 const DUTY_FIELDS=['id','date','shift','site','siteKey','employeeKey','employeeId','caliberCode','employeeName','category','equipment','doors','makeModel','logBook','flag','flagLabel','hours','trips','km','books'];
@@ -43,17 +45,23 @@ export function buildAttendanceWeek({cards,cardsJson=[],links,linksJson,masters,
 //  supports: what the feed can do (shared/hr-site-cut.mjs), so HR Pulse asks for a cut only once Pulse-II gives it.
 // site (the HR feed, 28 Nov 2026): HR Pulse's name of the one site its roster shows; the answer is cut to it
 // (shared/hr-site-cut.mjs). The signatures are made before the cut, so a site's day is signed the same either way.
-export function attendanceAnswer({parts,filters,hr=false,scope,locked,only='',site='',generatedAt=new Date().toISOString()}){
+// hrTimes (HR feed, 28 Nov 2026): the live duty times HR Pulse corrected with an OTP (readHrTimes). A duty they belong to
+// carries hrTimes {id,start,end,window:{start,end},by,reason,at}, which is part of the day's signature, so a saved day in
+// HR Pulse is read again after a times change. performance keeps the Shift Master times: HR Pulse reads two different
+// times in one shift there as a Shift Master conflict and would hold the whole shift's attendance and OT.
+export function attendanceAnswer({parts,filters,hr=false,scope,locked,only='',site='',hrTimes=[],generatedAt=new Date().toISOString()}){
  const lockedSet=locked instanceof Set?locked:new Set(locked||[]);
  const report=joinAttendanceReports(parts,filters);
  if(hr){
   const inDates=k=>{const cut=k.lastIndexOf('|'),date=k.slice(cut+1);return date>=filters.from&&date<=filters.to&&siteAllowed(scope,k.slice(0,cut));};
-  const presence=report.attendanceEquipment.map(row=>pick(row,[...PRESENCE_FIELDS,'status','reason','remarks','logBooks'])),duties=report.otDuties.map(row=>pick(row,[...DUTY_FIELDS,'logBooks']));
+  const times=hrDutyTimes(hrTimes),timesOf=row=>times.size&&row.employeeKey&&row.shift?times.get(dutyToken(row)):undefined;
+  const timesLine=(row,t)=>({id:String(t.id),start:t.start,end:t.end,window:timesWindow(row.date,t.start,t.end),by:String(t.by||''),reason:String(t.reason||''),at:String(t.at||'')});
+  const presence=report.attendanceEquipment.map(row=>pick(row,[...PRESENCE_FIELDS,'status','reason','remarks','logBooks'])),duties=report.otDuties.map(row=>{const line=pick(row,[...DUTY_FIELDS,'logBooks']),t=timesOf(row);return t?{...line,hrTimes:timesLine(row,t)}:line;});
   const days=hrDaySignatures([...presence,...duties],[...lockedSet].filter(inDates));
   // Only locked site-days are sent. These are the days left out because a shift is still open, reopened or has no batch;
   // nobody is absent on them, the figures come once the day is locked.
   const pendingDays=pendingSiteDays(report.attendanceShifts.filter(row=>siteAllowed(scope,row.siteKey)),lockedSet);
-  if(only==='days')return {days,pendingDays,supports:HR_FEED_SUPPORTS,generatedAt};
+  if(only==='days')return {days,pendingDays,supports:FEED_SUPPORTS,generatedAt};
   const answer={
   attendanceEquipment:presence,
   attendanceShifts:report.attendanceShifts.filter(row=>siteAllowed(scope,row.siteKey)),
@@ -62,7 +70,7 @@ export function attendanceAnswer({parts,filters,hr=false,scope,locked,only='',si
   details:report.otDuties.filter(row=>row.scanned).map(row=>({...pick(row,['date','site','siteKey','shift','employeeId','employeeName']),batchStatus:'Saved scan'})),
   exceptions:report.exceptions.map(row=>pick(row,['date','site','siteKey','shift','employeeId','employeeName','reason'])),
   ot:report.ot.map(row=>pick(row,['site','siteKey','employeeId','schedule'])),
-  pendingDays,supports:HR_FEED_SUPPORTS
+  pendingDays,supports:FEED_SUPPORTS
   };
   return site?cutHrAnswerToSite(answer,site):answer;
  }

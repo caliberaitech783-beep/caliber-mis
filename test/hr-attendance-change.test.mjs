@@ -13,7 +13,7 @@ import {PGlite} from '@electric-sql/pglite';
 import {HR_PRESENT_REASON,HR_PRESENT_KIND,hrChangeInput,dutyToken,hrAbsences,hrDaySignatures,hrChangeOtpMessage} from '../shared/hr-attendance-change.mjs';
 import {buildManpowerReport,manpowerFilters} from '../server/rules/manpower-report.mjs';
 import {buildAttendanceWeek,trimAttendanceWeek,attendanceAnswer} from '../server/rules/attendance-read.mjs';
-import {createHrAttendanceChange,readHrAbsences,HR_ATTENDANCE_CHANGE_SCHEMA} from '../server/routes/hr-attendance-change.mjs';
+import {createHrAttendanceChange,readHrAbsences,readHrTimes,HR_ATTENDANCE_CHANGE_SCHEMA} from '../server/routes/hr-attendance-change.mjs';
 import {SHIFT_ATTENDANCE_SCHEMA} from '../server/routes/shift-attendance.mjs';
 
 const source=file=>readFileSync(new URL('../'+file,import.meta.url),'utf8');
@@ -211,4 +211,98 @@ test('the routes are HR Pulse\'s, the table is made with the log books, and ever
  assert.equal(reports.split('readHrAbsences(client,').length-1,3,'the full report, the weekly reads and the attendance read');
  assert.match(reports,/plan\.punched,plan\.hrChanges\)/,'a change makes a new cache key');
  assert.match(source('AGENTS.md'),/# Trip card attendance has one master: Pulse-II/);
+ // Duty times (28 Nov 2026): the HR feed reads them, a times change makes a new answer key, and the answer is written with them.
+ assert.match(reports,/readHrTimes\(client,\{from:filters\.contextFrom,to:filters\.contextTo\}\)/);
+ assert.match(reports,/only,cutSite,hrTimes\)/);
+ assert.match(reports,/site:cutSite,hrTimes\}/);
+});
+
+// Owner, 28 Nov 2026, on HR Pulse correcting a duty's times only on its own side: "Yes, send to MIS".
+test('duty times from HR Pulse: both times in HH:MM, kept apart from present / absent',()=>{
+ const ok={site:'Sasti OB',date,shift:'S1',employeeId:'CMLL101',mark:'times',start:'06:00',end:'14:30',reason:'Driver came one hour late'};
+ const change=hrChangeInput(ok,{today:'2026-11-27'});
+ assert.deepEqual([change.mark,change.start,change.end],['times','06:00','14:30']);
+ for(const patch of [{start:''},{end:'25:00'},{start:'6:00'},{end:'06:00',start:'06:00'}])
+  assert.throws(()=>hrChangeInput({...ok,...patch},{today:'2026-11-27'}),error=>error.status===400&&/HH:MM/.test(error.message));
+ assert.deepEqual([hrChangeInput({...ok,mark:'card-times'},{today:'2026-11-27'}).start,hrChangeInput({...ok,mark:'absent'},{today:'2026-11-27'}).end],['',''],'only "times" carries times');
+ const text=hrChangeOtpMessage({site:'Sasti OC',region:'WCL',date,shift:'S1',employeeId:'CMPL101',employeeName:'Driver One',mark:'times',start:'06:00',end:'14:30',requestedBy:'Meena',reason:'Reason here',otp:'123456'});
+ assert.match(text,/asks to set the duty times of Driver One \(CMPL101\) to 06:00–14:30 · Sasti OC \(WCL\)[\s\S]*OTP 123456[\s\S]*trip card and the attendance stay/);
+ assert.match(hrChangeOtpMessage({site:'Sasti OC',date,shift:'S1',employeeId:'CMPL101',mark:'card-times',requestedBy:'Meena',reason:'Reason here',otp:'1'}),/take back the corrected duty times of CMPL101/);
+});
+
+test('the HR feed sends corrected times on the duty only, and the day\'s signature moves with them',()=>{
+ const week=records=>({window:{from:date,to:date},report:trimAttendanceWeek(buildAttendanceWeek({cards:records,masters:{assets,employees,shifts},batches,filters:manpowerFilters({from:date,to:date}),hr:true,scope:{sites:null}}))});
+ const answer=(hrTimes=[],only='')=>attendanceAnswer({parts:[week([card(1,1),card(2,3,{assetId:2,door:'V2',employeeId:22,caliberId:'CMPL102',employeeName:'Driver Two'})])],filters:manpowerFilters({from:date,to:date}),hr:true,scope:{sites:null},locked:['sasti ob|'+date],only,hrTimes,generatedAt:'now'});
+ const times={id:'t1',siteKey:'sasti ob',date,shift:'S1',person:'101',start:'06:00',end:'14:30',by:'Meena',reason:'Driver came one hour late',at:'2026-11-27T06:00:00.000Z'};
+ const before=answer(),after=answer([times]);
+ // performance keeps the Shift Master times: HR Pulse reads two times in one shift there as a schedule conflict.
+ assert.deepEqual(after.performance,before.performance);
+ const duty=after.otDuties.find(d=>d.employeeKey==='CMLL101');
+ assert.deepEqual(duty.hrTimes,{id:'t1',start:'06:00',end:'14:30',window:{start:date+' 06:00',end:date+' 14:30'},by:'Meena',reason:'Driver came one hour late',at:'2026-11-27T06:00:00.000Z'});
+ assert.equal(after.otDuties.find(d=>d.employeeKey==='CMLL102').hrTimes,undefined);
+ assert.notEqual(before.days[0].signature,after.days[0].signature,'a times change moves the signature');
+ assert.equal(answer([times],'days').days[0].signature,after.days[0].signature,'the signature check gives the same signature');
+ assert.ok(after.supports.includes('duty-times')&&after.supports.includes('site-cut'));
+ // An end before the start is on the next day (Shift C).
+ const night=answer([{...times,shift:'S3',person:'102',start:'22:00',end:'06:00'}]);
+ assert.deepEqual(night.otDuties.find(d=>d.employeeKey==='CMLL102').hrTimes.window,{start:date+' 22:00',end:'2026-11-11 06:00'});
+});
+
+test('times: the OTP sets them in Pulse-II, they leave presence alone, and "take back" ends them',async()=>{
+ const {db,pool,changes,otps,texts,all,ask}=await fixture();
+ const asked=await ask({mark:'times',start:'06:00',end:'14:30',reason:'Driver came one hour late'});
+ assert.deepEqual([asked.mark,asked.start,asked.end,asked.live],['times','06:00','14:30',false]);
+ assert.match(otps[0].message,/set the duty times of Driver One \(CMPL101\) to 06:00–14:30/);
+ assert.deepEqual(await readHrTimes(pool,{from:date,to:date}),[],'nothing before the OTP');
+ const done=await changes.verify({id:asked.id,otp:otps[0].otp,scope:all,actor:'meena.hr'});
+ assert.equal(done.live,true);
+ const live=await readHrTimes(pool,{from:date,to:date});
+ assert.deepEqual(live.map(c=>[c.siteKey,c.date,c.shift,c.person,c.start,c.end,c.by]),[['sasti ob',date,'S1','101','06:00','14:30','Meena']]);
+ await new Promise(resolve=>setTimeout(resolve,20));
+ assert.match(texts.map(t=>t.text).join('\n'),/duty times of Driver One \(CMPL101\) are now 06:00–14:30/);
+
+ // A new times change replaces the old one; an absent change does not touch the times, and the times do not stop it.
+ const again=await ask({mark:'times',start:'07:00',end:'15:00',reason:'Second look at the gate register'});
+ await changes.verify({id:again.id,otp:otps.at(-1).otp,scope:all,actor:'meena.hr'});
+ assert.deepEqual((await readHrTimes(pool,{from:date,to:date})).map(c=>c.start),['07:00']);
+ const gone=await ask({mark:'absent'});
+ await changes.verify({id:gone.id,otp:otps.at(-1).otp,scope:all,actor:'meena.hr'});
+ assert.equal((await readHrAbsences(pool,{from:date,to:date})).length,1);
+ assert.deepEqual((await readHrTimes(pool,{from:date,to:date})).map(c=>c.start),['07:00'],'the absent change leaves the times');
+ await assert.rejects(ask({mark:'times',start:'08:00',end:'16:00',reason:'Times of an absent duty'}),refused(409,/marked absent[\s\S]*only on a present duty/));
+
+ const back=await ask({mark:'card-times',reason:'Times were right after all'});
+ await changes.verify({id:back.id,otp:otps.at(-1).otp,scope:all,actor:'meena.hr'});
+ assert.deepEqual(await readHrTimes(pool,{from:date,to:date}),[]);
+ assert.equal((await readHrAbsences(pool,{from:date,to:date})).length,1,'taking the times back leaves the absent change');
+ await assert.rejects(ask({mark:'card-times',reason:'Nothing left to take back'}),refused(409,/no duty times[\s\S]*nothing to take back/));
+ assert.equal((await db.query('SELECT count(*)::int AS n FROM mis_shift_attendance')).rows[0].n,0);
+});
+
+test('times are refused where nobody is present, and a present entry made by HR stays when its times change',async()=>{
+ const {db,changes,otps,all,ask}=await fixture();
+ await assert.rejects(ask({mark:'times',employeeId:'102',start:'06:00',end:'14:00'}),refused(409,/no trip card and no Present entry of Driver Two[\s\S]*present duty/));
+ const present=await ask({mark:'present',employeeId:'102',shift:'S2',reason:'Punched, card not made'});
+ await changes.verify({id:present.id,otp:otps.at(-1).otp,scope:all,actor:'meena.hr'});
+ const times=await ask({mark:'times',employeeId:'102',shift:'S2',start:'13:30',end:'21:00',reason:'Late start at the gate'});
+ await changes.verify({id:times.id,otp:otps.at(-1).otp,scope:all,actor:'meena.hr'});
+ assert.equal((await db.query('SELECT count(*)::int AS n FROM mis_shift_attendance')).rows[0].n,1,'the Present entry stays');
+ const listed=await changes.list({from:date,to:date,scope:all});
+ assert.deepEqual(listed.map(c=>[c.mark,c.live,c.start??null]),[['present',true,null],['times',true,'13:30']]);
+});
+
+test('a table made before duty times gets the columns and the wider mark list',async()=>{
+ const db=new PGlite();
+ await db.exec(`CREATE TABLE mis_hr_attendance_changes(id UUID PRIMARY KEY,site_key TEXT NOT NULL,site TEXT NOT NULL,book_date DATE NOT NULL,shift TEXT NOT NULL,
+  person TEXT NOT NULL,employee_id TEXT NOT NULL,employee_name TEXT,employee_record BIGINT,mark TEXT NOT NULL CHECK(mark IN ('present','absent','card')),reason TEXT NOT NULL,
+  requested_by TEXT NOT NULL,requested_name TEXT,sent_to TEXT[] NOT NULL,channels TEXT[] NOT NULL DEFAULT '{}',otp_hash TEXT NOT NULL,expires_at TIMESTAMPTZ NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,status TEXT NOT NULL DEFAULT 'sent',requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),used_at TIMESTAMPTZ,used_by TEXT,
+  replaced_at TIMESTAMPTZ,replaced_by UUID);`);
+ assert.deepEqual(await readHrTimes(db,{from:date,to:date}),[],'an old table has no times');
+ await db.exec(HR_ATTENDANCE_CHANGE_SCHEMA);
+ await db.exec(HR_ATTENDANCE_CHANGE_SCHEMA);
+ await db.query(`INSERT INTO mis_hr_attendance_changes(id,site_key,site,book_date,shift,person,employee_id,mark,reason,requested_by,sent_to,otp_hash,expires_at,status,used_at,start_time,end_time)
+  VALUES('00000000-0000-4000-8000-000000000001','sasti ob','Sasti OC',$1,'S1','101','CMPL101','times','Late start','meena',ARRAY['rhr'],'x',now(),'used',now(),'06:00','14:30')`,[date]);
+ assert.deepEqual((await readHrTimes(db,{from:date,to:date})).map(c=>[c.start,c.end]),[['06:00','14:30']]);
+ await assert.rejects(db.query(`UPDATE mis_hr_attendance_changes SET mark='delete'`),/check/i);
 });
