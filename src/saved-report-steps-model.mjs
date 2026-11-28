@@ -15,6 +15,7 @@ export const LINE_REPORTS={
  vehicle:{date:0,site:1,door:3,shift:6,count:'Log books'},
  equipment:{date:0,site:1,door:3,shift:6,count:'Log books'},
  lmv:{date:0,site:1,door:3,shift:6,count:'Log books'},
+ dlb:{date:0,site:1,door:3,shift:6,count:'Log books'},
  breakdown:{date:0,site:1,door:3,shift:6,count:'Log books'},
  meters:{date:0,site:1,door:3,shift:6,count:'Exceptions'},
  missing:{date:0,site:1,door:2,shift:3,count:'Findings'}
