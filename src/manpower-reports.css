@@ -67,3 +67,5 @@
 :root[data-theme="dark"] .mp-att-sites tbody th[scope=row]{color:#eef3fb}:root[data-theme="dark"] .mp-att-sites tbody tr.mp-on th[scope=row]{background:#3a2d5c}
 /* Step 1 / Step 3 sort headings: the button wraps like the heading it replaced, so the Step table still fits the screen. */
 .mp-category thead th .sort-header{min-width:0;width:auto;display:inline-flex;align-items:flex-start;white-space:normal;text-align:inherit}.mp-category thead th .sort-header>span{display:block}.mp-category thead th .sort-header svg{margin-top:2px}
+/* On Duty, OD (OD Master): present, teal. */
+.mp-flag-od{background:#0f8a6c;border-color:#0b6b54;color:#fff}.mp-reports tr.mp-duty-od>td{background:color-mix(in srgb,#0f8a6c 16%,var(--card,#fff))}.mp-reports tr.mp-duty-od>td:first-child{border-left:5px solid #0f8a6c}

@@ -14,7 +14,7 @@ import {generateOtp,hashOtp,otpExpiresAt,checkOtpAttempt,resendTooSoon,OTP_TTL_M
 import {APPROVAL_FROM,APPROVAL_LEVELS,LOCKED_LEVEL,ALL_SITES,ATTENDANCE_LOCKED_SQLSTATE,approvalUntil,levelInfo,levelLabel,siteKey,siteLabel,siteRegion,normalScope,scopeCovers,
  approversFor,approverRoles,canApprove,groupDays,reconcileDay,approveDay,sendBackDay,resumeDay,approvalSummaryMessages,summaryButtons,lockedMessage,sentBackMessage,callbackData,parseCallback,displayDate,
  UNLOCK_REASON_MIN,unlockDay,unlockOtpMessage,unlockedMessage} from '../../shared/attendance-approval.mjs';
-import {VTC_TRAINING_REASON} from '../../shared/vtc-training.mjs';
+import {VTC_TRAINING_REASON,OD_REASON} from '../../shared/vtc-training.mjs';
 
 const LOCK_GUARD=`
  CREATE OR REPLACE FUNCTION mis_attendance_day_locked(p_site TEXT,p_date DATE) RETURNS BOOLEAN LANGUAGE sql STABLE AS
@@ -149,7 +149,7 @@ export function createAttendanceApproval({pool,sendButtons=null,sendText=null,de
   const withPerson=cards.filter(c=>c.person);
   const people=new Set([...withPerson.map(c=>c.person),...present.map(p=>p.id)]);
   return {cards:cards.length,vlb:by('vehicle'),elb:by('equipment'),lmv:by('lmv'),present:withPerson.length+present.length,people:people.size,
-   training:present.filter(p=>p.reason===VTC_TRAINING_REASON).length};
+   training:present.filter(p=>p.reason===VTC_TRAINING_REASON).length,od:present.filter(p=>p.reason===OD_REASON).length};
  }
 
  // One summary message per approver, site and level with every day due, each day with its own Approve / Send back row

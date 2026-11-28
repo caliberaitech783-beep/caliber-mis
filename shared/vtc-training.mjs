@@ -34,3 +34,22 @@ export function trainingDays(from,to,{today=indiaToday(),start='2026-11-01'}={})
  }
  return {days};
 }
+
+// On Duty (OD) (owner, 28 Nov 2026: "VTC and OD master"): a driver or operator sent away on duty (office or HO work, a
+// medical exam, court, a statutory exam, work at another site) is present that day. It is kept like VTC Training: one
+// entry in mis_shift_attendance with the reason OD_REASON in TRAINING_SHIFT, no machine, never a zero-trip entry, its
+// own colour (teal, flag 'od'). The OD Master (shared/attendance-masters.mjs) writes it.
+export const OD_REASON='On Duty (OD)';
+export const OD_FLAG='od';
+export const OD_STATUS='Present — On Duty (OD)';
+export const OD_FLAG_LABEL='TEAL — On Duty (OD)';
+export const OD_SOURCE='od';
+export const isOdEntry=entry=>String(entry?.reason??'').trim()===OD_REASON;
+// VTC Training and OD: a presence away from the machine. Neither is a zero-trip entry; a duty of the day goes first.
+export const isAwayEntry=entry=>isTrainingEntry(entry)||isOdEntry(entry);
+// The words of an away presence: VTC Training when the shift holds one, else OD.
+export function awayPresence(entries=[]){
+ const od=entries.length&&!entries.some(isTrainingEntry)&&entries.some(isOdEntry);
+ return od?{reason:OD_REASON,status:OD_STATUS,flag:OD_FLAG,flagLabel:OD_FLAG_LABEL,source:OD_SOURCE,logBook:'OD'}
+  :{reason:VTC_TRAINING_REASON,status:TRAINING_STATUS,flag:TRAINING_FLAG,flagLabel:TRAINING_FLAG_LABEL,source:TRAINING_SOURCE,logBook:'VTC Training'};
+}

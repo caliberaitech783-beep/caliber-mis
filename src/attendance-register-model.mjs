@@ -23,8 +23,9 @@ const total=values=>{const list=values.filter(v=>v!==null&&v!==undefined&&v!==''
 export const percent=(part,whole)=>whole?Math.round(part*1000/whole)/10+'%':'—';
 // Strongest colour first: the OT colours, then blue (present with 0 trips), then a normal duty.
 // training: VTC Training (shared/vtc-training.mjs), present in its own colour; a duty colour or 0 trips goes first.
-const FLAG_RANK={red:0,orange:1,review:2,zero:3,training:4,normal:5};
-export const strongest=flags=>flags.reduce((best,f)=>(FLAG_RANK[f]??5)<(FLAG_RANK[best]??5)?f:best,'normal');
+// od: On Duty (OD Master, shared/attendance-masters.mjs), present in teal, after VTC Training.
+const FLAG_RANK={red:0,orange:1,review:2,zero:3,training:4,od:5,normal:6};
+export const strongest=flags=>flags.reduce((best,f)=>(FLAG_RANK[f]??6)<(FLAG_RANK[best]??6)?f:best,'normal');
 const dutyKey=d=>[d.employeeKey,d.siteKey,d.date,d.shift].join('|');
 
 export function registerDays(from,to){const days=[];for(let day=from;day&&day<=to&&days.length<32;day=nextDay(day))days.push(day);return days;}
@@ -41,7 +42,7 @@ export function buildAttendanceRegister({duties=[],presence=[],shifts=[],sites=[
  const lines=duties.map(d=>({...d,source:'card'})),held=new Set(lines.map(dutyKey));
  for(const p of presence){
   if(!p.actual||!p.employeeKey||!p.shift)continue;const k=dutyKey(p);if(held.has(k))continue;held.add(k);
-  lines.push({id:'presence:'+k,date:p.date,shift:p.shift,site:p.site,siteKey:p.siteKey,employeeKey:p.employeeKey,employeeId:p.employeeId,caliberCode:p.caliberCode,employeeName:p.employeeName,category:'',equipment:p.equipment,doors:p.doors,makeModel:p.makeModel,logBook:p.flag==='training'?'VTC Training':'Zero-trip entry',flag:p.flag==='zero'||p.flag==='training'?p.flag:'normal',flagLabel:p.flagLabel||'',hours:null,trips:p.trips??0,km:null,books:'',source:'presence'});
+  lines.push({id:'presence:'+k,date:p.date,shift:p.shift,site:p.site,siteKey:p.siteKey,employeeKey:p.employeeKey,employeeId:p.employeeId,caliberCode:p.caliberCode,employeeName:p.employeeName,category:'',equipment:p.equipment,doors:p.doors,makeModel:p.makeModel,logBook:p.flag==='training'?'VTC Training':p.flag==='od'?'OD':'Zero-trip entry',flag:p.flag==='zero'||p.flag==='training'||p.flag==='od'?p.flag:'normal',flagLabel:p.flagLabel||'',hours:null,trips:p.trips??0,km:null,books:'',source:'presence'});
  }
  const days=registerDays(from,to);
  const siteList=[...new Map([...sites.map(s=>[s.siteKey,s.site]),...lines.map(l=>[l.siteKey,l.site])]).entries()].map(([siteKey,site])=>({siteKey,site})).sort((a,b)=>byText(a.site,b.site));
@@ -103,7 +104,7 @@ export function buildAttendanceRegister({duties=[],presence=[],shifts=[],sites=[
    const cellOf=p=>p.cells[days.indexOf(r.date)];
    const marked=people.filter(p=>who.has(p.employeeKey)).map(cellOf).filter(Boolean);
    return {id:siteKey+'|'+r.date+'|'+r.shift,siteKey,date:r.date,shift:r.shift,status:r.status,batch:r.batch,present:who.size,
-    double:marked.filter(c=>c.lines.length>1).length,red:marked.filter(c=>c.flag==='red').length,orange:marked.filter(c=>c.flag==='orange').length,review:marked.filter(c=>c.flag==='review').length,zero:marked.filter(c=>c.flag==='zero').length,training:marked.filter(c=>c.flag==='training').length};
+    double:marked.filter(c=>c.lines.length>1).length,red:marked.filter(c=>c.flag==='red').length,orange:marked.filter(c=>c.flag==='orange').length,review:marked.filter(c=>c.flag==='review').length,zero:marked.filter(c=>c.flag==='zero').length,training:marked.filter(c=>c.flag==='training').length,od:marked.filter(c=>c.flag==='od').length};
   }).sort((a,b)=>byText(a.date,b.date)||byText(a.shift,b.shift));
  };
  // The people of one site on one date: day totals for the date by shift table and the list under Step 3.
@@ -130,7 +131,7 @@ export function batchCategories(people){
  const groups=new Map();
  for(const p of people)for(const name of p.categories){if(!groups.has(name))groups.set(name,[]);groups.get(name).push(p);}
  const line=(id,equipment,list)=>({id,equipment,present:list.length,double:list.filter(p=>p.code.includes('+')).length,
-  red:list.filter(p=>p.flag==='red').length,orange:list.filter(p=>p.flag==='orange').length,review:list.filter(p=>p.flag==='review').length,zero:list.filter(p=>p.flag==='zero').length,training:list.filter(p=>p.flag==='training').length});
+  red:list.filter(p=>p.flag==='red').length,orange:list.filter(p=>p.flag==='orange').length,review:list.filter(p=>p.flag==='review').length,zero:list.filter(p=>p.flag==='zero').length,training:list.filter(p=>p.flag==='training').length,od:list.filter(p=>p.flag==='od').length});
  const rows=[...groups].map(([name,list])=>line(name,name,list)).sort((a,b)=>b.present-a.present||byText(a.equipment,b.equipment));
  return {rows,total:line('*','All categories',people)};
 }

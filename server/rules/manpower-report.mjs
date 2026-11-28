@@ -8,7 +8,7 @@ import {equipmentGroupName} from '../../shared/equipment-group.mjs';
 import {isDummyEmployeeId} from '../../shared/dummy-employee-ids.mjs';
 import {employeeNumber} from '../../shared/hr-employee-master.mjs';
 import {cardDutyShift,TWELVE_HOUR_CODES} from '../../shared/duty-shift.mjs';
-import {isTrainingEntry,TRAINING_FLAG,TRAINING_FLAG_LABEL,TRAINING_STATUS,TRAINING_SOURCE,VTC_TRAINING_REASON} from '../../shared/vtc-training.mjs';
+import {isAwayEntry,awayPresence} from '../../shared/vtc-training.mjs';
 import {hrAbsences,dutyToken,absentNote,isHrPresentEntry} from '../../shared/hr-attendance-change.mjs';
 import {batchStage} from './vlb-two-stage.mjs';
 import {fleetAssetKind,assetIdentity} from './fleet-reconciliation.mjs';
@@ -286,36 +286,37 @@ export function buildManpowerReport({records=[],attendance=[],assets=[],employee
  // VTC Training (owner, 25 Nov 2026): "if that driver or operator has done any shift on that particular day ... it should
  // consider as single present". A training day is dropped when the person has any other duty that day (a card or a
  // zero-trip entry, any shift, any site), so the day counts once, as that duty.
- const workedDays=new Set(attendanceSources.filter(r=>r.card||!isTrainingEntry(r)).map(r=>r.employeeKey+'|'+r.date));
- for(let i=attendanceSources.length-1;i>=0;i--){const r=attendanceSources[i];if(!r.card&&isTrainingEntry(r)&&workedDays.has(r.employeeKey+'|'+r.date))attendanceSources.splice(i,1);}
+ // OD (On Duty, the OD Master) follows the same rule: a day with a duty counts once, as that duty.
+ const workedDays=new Set(attendanceSources.filter(r=>r.card||!isAwayEntry(r)).map(r=>r.employeeKey+'|'+r.date));
+ for(let i=attendanceSources.length-1;i>=0;i--){const r=attendanceSources[i];if(!r.card&&isAwayEntry(r)&&workedDays.has(r.employeeKey+'|'+r.date))attendanceSources.splice(i,1);}
  const attendanceDuties=group(attendanceSources.filter(r=>!hr||![r.employeeId,r.caliberCode].some(isDummyEmployeeId)),r=>JSON.stringify([r.employeeKey,r.date,r.shift])).filter(sources=>sources.some(r=>rowMatches(r,f)));
  const shiftAttendance=!full?[]:attendanceDuties
   .map(sources=>{
-   const r=sources[0],cards=sources.filter(s=>s.card),zero=sources.filter(s=>!s.card&&!isTrainingEntry(s)),training=!cards.length&&!zero.length;
+   const r=sources[0],cards=sources.filter(s=>s.card),zero=sources.filter(s=>!s.card&&!isAwayEntry(s)),training=!cards.length&&!zero.length,away=awayPresence(sources.filter(s=>!s.card&&isAwayEntry(s)));
    const trips=cards.filter(c=>c.trips!==null).map(c=>c.trips);
    return {id:JSON.stringify([r.employeeKey,r.date,r.shift]),date:r.date,shift:r.shift,site:unique(sources.map(s=>s.site)).join('; '),
     employeeId:r.employeeId,employeeName:r.employeeName,caliberCode:r.caliberCode,
-    status:cards.some(c=>c.hasTrips)?'Present — with trips':zero.length?'Present — 0 trips':training?TRAINING_STATUS:'Present',
+    status:cards.some(c=>c.hasTrips)?'Present — with trips':zero.length?'Present — 0 trips':training?away.status:'Present',
     trips:trips.length?sum(trips):cards.length||training?null:0,doors:unique(sources.map(s=>s.door)).join('; '),
-    reason:training?VTC_TRAINING_REASON:unique(zero.map(s=>s.reason)).join('; '),remarks:unique(sources.filter(s=>!s.card).map(s=>s.remarks)).join('; ')};
+    reason:training?away.reason:unique(zero.map(s=>s.reason)).join('; '),remarks:unique(sources.filter(s=>!s.card).map(s=>s.remarks)).join('; ')};
   }).sort((a,b)=>a.date.localeCompare(b.date)||a.shift.localeCompare(b.shift)||a.employeeName.localeCompare(b.employeeName));
  // Shift Attendance Equipment Wise: one row per driver, date, shift, site and equipment group.
  // A driver who worked two equipment groups in one shift is listed on both ("equipment-wise duties"). The one
  // actual duty per driver, date and shift sits on the machine with the most HMR hours, or on the card saved
  // first when hours are missing or equal.
- const siteOf=s=>canonicalSiteName(s.site),equipmentOf=s=>s.card||!s.noMachine?equipmentName(s.group):isTrainingEntry(s)?VTC_TRAINING_REASON:NO_EQUIPMENT_ASSIGNED;
+ const siteOf=s=>canonicalSiteName(s.site),equipmentOf=s=>s.card||!s.noMachine?equipmentName(s.group):isAwayEntry(s)?awayPresence([s]).reason:NO_EQUIPMENT_ASSIGNED;
  const attendanceEquipment=attendanceDuties.flatMap(sources=>{
   // A VTC Training entry (shared/vtc-training.mjs) is its own presence: never a zero-trip entry, purple, no trips. It counts
   // only where neither a card nor a zero-trip entry holds the shift.
-  const r=sources[0],cards=sources.filter(s=>s.card),zero=sources.filter(s=>!s.card&&!isTrainingEntry(s)),trained=sources.filter(s=>!s.card&&isTrainingEntry(s));
-  const training=!cards.length&&!zero.length&&trained.length>0;
+  const r=sources[0],cards=sources.filter(s=>s.card),zero=sources.filter(s=>!s.card&&!isAwayEntry(s)),trained=sources.filter(s=>!s.card&&isAwayEntry(s));
+  const training=!cards.length&&!zero.length&&trained.length>0,away=awayPresence(trained);
   // A zero-trip entry names the equipment only when no card was saved; next to a card it adds its reason, not a second machine.
   const lines=group(cards.length?cards:zero.length?zero:trained,s=>JSON.stringify([siteOf(s),equipmentOf(s)])).map(list=>({list,siteKey:siteOf(list[0]),site:sitesByKey.get(siteOf(list[0]))||list[0].site,equipment:equipmentOf(list[0]),doors:unique(list.map(s=>s.door)).join('; '),hours:list.reduce((total,s)=>total+(s.card&&s.hours>0?s.hours:0),0)}));
   let main=lines[0];for(const line of lines)if(line.hours>main.hours)main=line;
   const withTrips=cards.some(c=>c.hasTrips),zeroTrips=!withTrips&&!cards.some(c=>c.kind==='equipment')&&(zero.length>0||cards.some(c=>c.zeroCard));
-  const status=withTrips?'Present — with trips':zeroTrips?'Present — 0 trips':training?TRAINING_STATUS:'Present';
+  const status=withTrips?'Present — with trips':zeroTrips?'Present — 0 trips':training?away.status:'Present';
   const twoSites=unique(lines.map(l=>l.siteKey)).length>1,where=line=>`${line.doors||'no door number'} (${line.equipment}${twoSites?', '+line.site:''})`;
-  const reason=training?VTC_TRAINING_REASON:unique(zero.map(s=>s.reason)).join('; '),remarks=unique((training?trained:zero).map(s=>s.remarks)).join('; ');
+  const reason=training?away.reason:unique(zero.map(s=>s.reason)).join('; '),remarks=unique((training?trained:zero).map(s=>s.remarks)).join('; ');
   return lines.map(line=>{
    const mark=otMarks.get(JSON.stringify([r.employeeKey,line.siteKey,r.date,r.shift])),trips=line.list.filter(s=>s.card&&s.trips!==null).map(s=>s.trips);
    const others=mark?unique([...mark.others].sort((a,b)=>a.date.localeCompare(b.date)||a.shift.localeCompare(b.shift)).map(o=>o.date===r.date?o.shift:`${o.shift} on ${shortDate(o.date)}`)):[];
@@ -323,9 +324,9 @@ export function buildManpowerReport({records=[],attendance=[],assets=[],employee
    return {id:JSON.stringify([r.employeeKey,r.date,r.shift,line.siteKey,line.equipment]),date:r.date,shift:r.shift,site:line.site,siteKey:line.siteKey,employeeKey:r.employeeKey,employeeId:r.employeeId,caliberCode:r.caliberCode,employeeName:r.employeeName,
     equipment:line.equipment,doors:line.doors,makeModel:unique(line.list.map(s=>s.noMachine?'':makeModelName(s))).join('; '),status,trips:trips.length?sum(trips):training||line.list.some(s=>s.card)?null:0,
     actual:line===main,actualLabel:line===main?'Yes':'No — second machine',
-    flag:mark?.severity||(zeroTrips?'zero':training?TRAINING_FLAG:'normal'),flagLabel:mark?unique(mark.reasons).join('; '):zeroTrips?'BLUE — Present with 0 trips':training?TRAINING_FLAG_LABEL:'Normal duty',
+    flag:mark?.severity||(zeroTrips?'zero':training?away.flag:'normal'),flagLabel:mark?unique(mark.reasons).join('; '):zeroTrips?'BLUE — Present with 0 trips':training?away.flagLabel:'Normal duty',
     note:[others.length?'Also worked '+others.join(', '):'',machines].filter(Boolean).join(' · '),reason,remarks,
-    logBooks:unique(line.list.filter(s=>s.card).map(s=>logBookCode(s.kind))),source:training?TRAINING_SOURCE:cardSource(line.list.filter(s=>s.card)),batches:unique(line.list.flatMap(s=>s.batchNames||[])).join('; '),
+    logBooks:unique(line.list.filter(s=>s.card).map(s=>logBookCode(s.kind))),source:training?away.source:cardSource(line.list.filter(s=>s.card)),batches:unique(line.list.flatMap(s=>s.batchNames||[])).join('; '),
     // A zero-trip entry has no card, so no log book of its own: it belongs to the log book of its machine (Site Sheet vs
     // Trip Card checks one log book at a time). '' when a card is on the line, or the entry names no machine.
     machineBook:line.list.some(s=>s.card)||training?'':unique(line.list.map(s=>s.machineBook)).join(' + ')};
