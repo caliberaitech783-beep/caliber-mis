@@ -231,6 +231,15 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
  };
  app.get('/api/reports/manpower/attendance',...protect,readAttendance(false));
  app.get('/api/integrations/hr/attendance',requireHrAttendance(),readAttendance(true));
+ // What the HR feed signs now for every site, at most 31 days, asked by this server itself (no request, so every site):
+ // exactly the answer HR Pulse gets for only=days. The nightly check sets HR Pulse's saved days against it
+ // (server/services/hr-attendance-day-watch.mjs).
+ const hrFeedDays=({from,to})=>new Promise((resolve,reject)=>{
+  const refused=(status,body)=>reject(Object.assign(new Error(body?.error||'The attendance feed could not be read.'),{status}));
+  const res={set(){return res;},type(){return res;},status(code){return {json:body=>refused(code,body)};},
+   send(body){try{const days=JSON.parse(body).days;resolve(Array.isArray(days)?days:[]);}catch(error){reject(error);}}};
+  void readAttendance(true)({query:{from,to,only:'days'},logBookScope:{sites:null}},res,reject).catch(reject);
+ });
  // Earlier red / orange repeats per driver, read only when someone asks for them.
  // Only the card fields that decide a duty are read, one week at a time, from all three log books.
  app.get('/api/reports/manpower/ot-history',...protect,async(req,res,next)=>{
@@ -291,4 +300,5 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
    res.set('Cache-Control','private, no-store').json(body);
   }catch(error){if(error.status)return res.status(error.status).json({error:error.message});next(error);}
  });
+ return {hrFeedDays};
 }

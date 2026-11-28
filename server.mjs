@@ -49,6 +49,7 @@ import {createHrEmployeeSync} from './server/services/hr-employee-sync.mjs';
 import {createHrEmployeeMinuteCopy} from './server/services/hr-employee-minute-copy.mjs';
 import {createDriveSpaceAlert} from './server/services/drive-space-alert.mjs';
 import {createHrSiteMoveOutbox} from './server/services/hr-site-move-outbox.mjs';
+import {createHrAttendanceDayWatch} from './server/services/hr-attendance-day-watch.mjs';
 import {registerEmployeeMaster} from './server/routes/employee-master.mjs';
 import {createEmployeeMasterDoor,registerEmployeeMasterDoor} from './server/routes/employee-master-door.mjs';
 import {createAttendanceApproval,registerAttendanceApproval} from './server/routes/attendance-approval.mjs';
@@ -8187,7 +8188,7 @@ const automationCentre=createAutomationCentre({pool,ensureSchema:()=>logBooks.in
   pool.query('SELECT setting_value FROM app_settings WHERE setting_key=$1',['mis_deletion_whatsapp']).then(result=>result.rows[0]?.setting_value,()=>null)]);
  return {whatsappSettings,whatsappConfigured:metaWhatsAppConfiguration(whatsappEnv).configured,misTelegram:{enabled:Boolean(misBot?.enabled&&misBot?.webhookReady)},
   pulseTelegram:telegramConfiguration(),pulseTelegramPurpose:purpose=>telegramPurposeEnabled(whatsappSettings,purpose),vlbAlerts,vlbAlertsRunning:process.env.VLB_BATCH_ALERTS!=='0',scanBatchReportRunning:scanBatchReportEnabled(),healthReportRunning:healthReportEnabled()&&isLiveSlot(),
-  driveSpace:driveSpaceAlert.status(),scheduledJobs:scheduledJobsEnabled,emailConfigured:ticketEmailConfiguration().configured,deletionWhatsApp:deletion?.enabled===true};
+  driveSpace:driveSpaceAlert.status(),hrDayWatch:hrDayWatch.last(),scheduledJobs:scheduledJobsEnabled,emailConfigured:ticketEmailConfiguration().configured,deletionWhatsApp:deletion?.enabled===true};
 }});
 // Site-wise batch completion report on Telegram to the owner: one message per VLB batch when it is closed (MIS_SCAN_BATCH_REPORT=off stops it).
 // The Automation Centre sends a sample of it on request.
@@ -8231,6 +8232,11 @@ const hrEmployeeCopyTelegram=telegramOutboxSender(pool,{drain:()=>misTelegram.dr
 const hrEmployeeCopy=createHrEmployeeMinuteCopy({pool,hr:hrEmployeeSync,live:isLiveSlot(),
  alert:async(message,key)=>{for(const login of await releaseApproverLogins(pool)){try{await hrEmployeeCopyTelegram.send(login,message,`${key}:${login}`);}catch{/* the next person is still told */}}}});
 hrSiteMoveOutbox=createHrSiteMoveOutbox({pool,hr:hrEmployeeSync});
+// HR Pulse's saved trip card days are kept in step with Pulse-II (owner, 28 Nov 2026; server/services/hr-attendance-day-watch.mjs):
+// every two minutes the live server tells HR Pulse which site-days changed, and once a night it checks every saved day.
+// When the two were not the same, or HR Pulse cannot be told, the release approvers are told on Telegram (A29).
+const hrDayWatch=createHrAttendanceDayWatch({pool,hr:hrEmployeeSync,feedDays:range=>logBooks.hrFeedDays(range),ensureBooks:()=>logBooks.initialize(),live:isLiveSlot(),
+ alert:async(message,key)=>{for(const login of await releaseApproverLogins(pool)){try{await hrEmployeeCopyTelegram.send(login,message,`${key}:${login}`);}catch{/* the next person is still told */}}}});
 const masterSync=registerMasterSync(app,{pool,pulse:pulseMasterSync,erp:erpMasters,hr:hrEmployeeSync,copy:hrEmployeeCopy,outbox:hrSiteMoveOutbox,requireSession,requireAdministrator});
 app.get('/api/masters',requireSession,async(req,res,next)=>{
   try{
@@ -9005,6 +9011,8 @@ async function initializeDatabase(){
     await pulseMasterSync.start();
     // From HR Pulse: Employee Transfer every hour, and every minute a new transfer and the changes of Employee Master.
     if(process.env.HR_SYNC_SCHEDULE!=='0')masterSync.start();
+    // To HR Pulse: the trip card days that changed, every two minutes, and the nightly check of its saved days (HR_DAY_WATCH=0 stops both).
+    if(process.env.HR_SYNC_SCHEDULE!=='0'&&process.env.HR_DAY_WATCH!=='0')hrDayWatch.startTimer();
     await pulseBreakdownMirror?.start();
     await logBooks.initialize();
     await initializeRowSecurity(pool,{enabled:process.env.MIS_RLS_ENABLED==='true'});

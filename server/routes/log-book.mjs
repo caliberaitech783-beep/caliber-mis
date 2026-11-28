@@ -352,7 +352,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
  registerFleetReconciliation(app,{pool,protect,ensureBooks:ensure,pulseMasterSync,breakdownMirror});
  const batchScope=protect[2];
  const batchEditAccess=(req,res,next)=>req.query?.siteBatchEdit==='1'?next():requireAdministrator(req,res,next);
- registerManpowerReports(app,{pool,protect,ensureBooks:ensure,withHandovers:withVlbTripHandovers,lane});
+ const manpowerReports=registerManpowerReports(app,{pool,protect,ensureBooks:ensure,withHandovers:withVlbTripHandovers,lane});
  registerBiometricAttendance(app,{pool,protect,ensureBooks:ensure});
  registerAttendanceSheetCheck(app,{pool,protect});
  const attendanceAccess=(req,res,next)=>{
@@ -753,7 +753,8 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
  // Stored locked days for the attendance register; server.mjs starts the sweep.
  const attendanceDayStore=attendanceDayStoreSweep({pool,ensure});
  const operationsDayStore=operationsDayStoreSweep({pool,ensure});
- return {initialize:ensure,readHours,readBreakdownRows,attendanceDayStore,operationsDayStore};
+ // hrFeedDays: what the HR feed signs now, for the nightly check of HR Pulse's saved days (hr-attendance-day-watch.mjs).
+ return {initialize:ensure,readHours,readBreakdownRows,attendanceDayStore,operationsDayStore,hrFeedDays:manpowerReports.hrFeedDays};
 }
 
 
