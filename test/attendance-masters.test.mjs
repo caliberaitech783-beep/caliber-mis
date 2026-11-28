@@ -158,7 +158,7 @@ test('Masters › VTC Master and OD Master: the people of Caliber ID Re-check, t
  const main=read('../src/main.jsx');
  assert.match(main,/'Attendance approval','VTC Master','OD Master','Capacity master'/);
  assert.match(main,/renderedActive==='VTC Master'\|\|renderedActive==='OD Master' \? \(<AttendanceMasters /);
- assert.ok(read('../server.mjs').includes('registerAttendanceMasters(app,{pool,requireSession,requireAdministrator,getSiteScope:logBookScope,timerMs:scheduledJobsEnabled?5*60_000:0});'));
+ assert.ok(read('../server.mjs').includes('registerAttendanceMasters(app,{pool,requireSession,requireAdministrator,getSiteScope:logBookScope,timerMs:5*60_000});'),'the day writer runs even with scheduled jobs off');
  assert.match(read('../src/attendance-register.jsx'),/\['od','Teal','On Duty, OD \(present\)'\]/);
  assert.match(read('../src/manpower-reports.jsx'),/\['od','Teal','On Duty, OD \(present\)'\]/);
  assert.match(read('../src/attendance-register.css'),/\.ar-flag-od\{/);
