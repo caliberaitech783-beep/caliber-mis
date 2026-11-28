@@ -2,10 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
 import {createServer} from 'node:http';
-import {mkdtemp,writeFile,mkdir,rm} from 'node:fs/promises';
+import {mkdtemp,writeFile,mkdir,rm,readFile} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import {securityHeaders,protectStaticFiles,createLoginLimiter} from '../server/middleware/http-security.mjs';
+import {securityHeaders,protectStaticFiles,createLoginLimiter,FRAME_ANCESTORS} from '../server/middleware/http-security.mjs';
 import {installMisCredentialClient} from '../server/routes/mis-credential-client.mjs';
 
 async function serve(t,app){
@@ -36,6 +36,18 @@ test('an old report manual left on the server is not served, while the training 
  }
  assert.equal((await fetch(base+'/guides/daily-en.pdf')).headers.get('cache-control'),'no-store','a browser must not keep showing a copy it saved earlier');
  const video=await fetch(base+'/user-guides/mis-user-guide-english.mp4');assert.equal(video.status,200);assert.equal(await video.text(),'video');
+});
+// Caliber One (owner, 28 Nov 2026): Pulse shows Pulse-II as a tab, so pulse.cmll.in may frame its pages; no other site.
+test('Pulse-II pages may be shown inside Caliber One on pulse.cmll.in and inside Pulse-II, nowhere else',async t=>{
+ const root=await mkdtemp(path.join(os.tmpdir(),'mis-static-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ await writeFile(path.join(root,'index.html'),'<!doctype html>');
+ const app=express();app.use(securityHeaders,protectStaticFiles,express.static(root));
+ const policy=(await fetch(await serve(t,app)+'/')).headers.get('content-security-policy');
+ const ancestors=policy.split(';').map(part=>part.trim()).filter(part=>part.startsWith('frame-ancestors'));
+ assert.deepEqual(ancestors,["frame-ancestors 'self' https://pulse.cmll.in"]);
+ assert.equal(FRAME_ANCESTORS,ancestors[0]);
+ const hrModule=await readFile(new URL('../server/routes/hr-module.mjs',import.meta.url),'utf8');
+ assert.match(hrModule,/connect-src https:\/\/api\.telegram\.org; " \+ FRAME_ANCESTORS \+ "; base-uri/,'the attendance page framed inside Pulse-II must allow the same ancestors');
 });
 test('login throttle blocks before contacting Pulse and ignores spoofed forwarding headers',async t=>{
  const app=express();app.use(express.json());let calls=0;
