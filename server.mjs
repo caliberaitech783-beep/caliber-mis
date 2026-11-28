@@ -8145,7 +8145,8 @@ registerCaliberRecheck(app,{pool,requireSession,requireAdministrator,getSiteScop
 // VTC Master and OD Master (owner, 28 Nov 2026): their days are present in attendance (shared/attendance-masters.mjs).
 // The day writer runs even while scheduled jobs are off (production runs with them off, 28 Nov 2026): it only adds the
 // arrived days of saved records and skips a day already written, so a running VTC reaches the muster every day.
-registerAttendanceMasters(app,{pool,requireSession,requireAdministrator,getSiteScope:logBookScope,timerMs:5*60_000});
+// requireHr: HR Pulse's VTC Form / VTC approvals put an approved VTC into VTC Master (/api/integrations/hr/vtc).
+registerAttendanceMasters(app,{pool,requireSession,requireAdministrator,getSiteScope:logBookScope,timerMs:5*60_000,requireHr:requireHrAttendance()});
 // Two-way with HR Pulse: a site move made here with an OTP is sent to HR Pulse at once (the outbox is made further down, with the HR connection).
 let hrSiteMoveOutbox=null;
 registerEmployeeSiteMoves(app,{pool,requireSession,requireAdministrator,getSiteScope:logBookScope,pmLogins:vehicleTransferPmLogins,deliver:request=>approvalOtpDelivery.send(request),afterMove:()=>hrSiteMoveOutbox?.flush()});

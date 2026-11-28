@@ -5,6 +5,7 @@
 //  POST   /api/attendance-masters                            one record per ticked person (all saved or none)
 //  PUT    /api/attendance-masters/:id                        change dates or details of one record
 //  DELETE /api/attendance-masters/:id                        remove one record, with a reason
+//  …/api/integrations/hr/vtc                                  VTC approved in HR Pulse (see registerAttendanceMasters)
 //
 // Every record writes its arrived days (From to the earlier of To and today, India) into mis_shift_attendance as VTC
 // Training or OD, in TRAINING_SHIFT, marked with master_id, so attendance and the HR feed count them with no change of
@@ -17,6 +18,8 @@ import {siteAllowed,requireLogBookSite,employeeAtLocation,logBookSiteScope} from
 import {displaySiteName,REGION_DATA} from '../../shared/region-scope.mjs';
 import {drivesOrOperates,employeeDesignation,employeeLeft} from '../../shared/caliber-id-check.mjs';
 import {employeeIdentity} from '../../shared/employee-identity.mjs';
+import {employeeNumber} from '../../shared/hr-employee-master.mjs';
+import {hrSiteKey} from './hr-attendance-access.mjs';
 import {SHIFT_ATTENDANCE_SCHEMA} from './shift-attendance.mjs';
 import {TRAINING_SHIFT,indiaToday} from '../../shared/vtc-training.mjs';
 import {MASTER_KINDS,MASTER_MAX_PEOPLE,checkMasterEntry,masterRemarks,arrivedDays,monthRange,monthView,masterStatus,siteSummary,overlaps} from '../../shared/attendance-masters.mjs';
@@ -29,7 +32,9 @@ export const ATTENDANCE_MASTERS_SCHEMA=`
   remarks TEXT NOT NULL DEFAULT '',created_by TEXT NOT NULL,created_name TEXT NOT NULL DEFAULT '',created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_by TEXT,updated_name TEXT,updated_at TIMESTAMPTZ,deleted_by TEXT,deleted_name TEXT,deleted_at TIMESTAMPTZ,delete_reason TEXT);
  CREATE INDEX IF NOT EXISTS mis_attendance_masters_live ON mis_attendance_masters(from_date,to_date) WHERE deleted_at IS NULL;
- CREATE INDEX IF NOT EXISTS mis_attendance_masters_person ON mis_attendance_masters(employee_id) WHERE deleted_at IS NULL;`;
+ CREATE INDEX IF NOT EXISTS mis_attendance_masters_person ON mis_attendance_masters(employee_id) WHERE deleted_at IS NULL;
+ ALTER TABLE mis_attendance_masters ADD COLUMN IF NOT EXISTS hr_request TEXT;
+ CREATE UNIQUE INDEX IF NOT EXISTS mis_attendance_masters_hr_request ON mis_attendance_masters(hr_request) WHERE deleted_at IS NULL AND hr_request IS NOT NULL;`;
 // mis_shift_attendance is busy: its master_id column is added only when it is missing, waiting at most 5 s for the lock.
 const COLUMN_SQL="SELECT 1 FROM information_schema.columns WHERE table_name='mis_shift_attendance' AND column_name='master_id'";
 const ADD_COLUMN_SQL='ALTER TABLE mis_shift_attendance ADD COLUMN IF NOT EXISTS master_id BIGINT';
@@ -39,6 +44,9 @@ const LIST_ORDER=new Map(EMPLOYEE_LISTS.map((name,at)=>[name,at]));
 const text=value=>String(value??'').trim();
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status})};
 const idOk=value=>/^[1-9]\d{0,17}$/.test(String(value??''));
+// The number of a master line (CMPL123 = CMLL123 = 123): the first ID field that holds one, as in hr-attendance-change.
+const numberOf=field=>`NULLIF(substring(regexp_replace(upper(COALESCE(record_data->>'${field}','')),'[[:space:]/-]','','g') from '^(?:CMPL|CMLL)?0*([1-9][0-9]{0,8})$'),'')`;
+const RECORD_NUMBER=`COALESCE(${numberOf('caliberId')},${numberOf('employeeId')},${numberOf('caliberCode')})`;
 const isDriverText=designation=>/DRIVER/i.test(String(designation||''));
 const personOf=(row)=>{const e=row.record_data||{},who=employeeIdentity(e);
  return {id:String(row.id),list:row.master_name,caliberCode:who.caliberCode||who.employeeId,name:text(e.employee||e.employeeName||e.name),designation:employeeDesignation(e),record:e};};
@@ -70,7 +78,7 @@ const FILL_DAYS_SQL=`INSERT INTO mis_shift_attendance (book_date,site,shift,empl
  WHERE m.deleted_at IS NULL AND m.from_date<=$1::date AND m.to_date>=$1::date-2
  ON CONFLICT (book_date,site,shift,employee_id) DO NOTHING`;
 
-export function registerAttendanceMasters(app,{pool,requireSession,requireAdministrator,getSiteScope=async session=>logBookSiteScope(session),today=()=>indiaToday(),timerMs=5*60_000}){
+export function registerAttendanceMasters(app,{pool,requireSession,requireAdministrator,getSiteScope=async session=>logBookSiteScope(session),today=()=>indiaToday(),timerMs=5*60_000,requireHr=null}){
  let schema=null;
  const ensureSchema=()=>schema??=(async()=>{
   await pool.query(SHIFT_ATTENDANCE_SCHEMA+ATTENDANCE_MASTERS_SCHEMA);
@@ -200,6 +208,85 @@ export function registerAttendanceMasters(app,{pool,requireSession,requireAdmini
   });
   res.json({removed:true});
  }));
+
+ // VTC from HR Pulse (owner, 28 Nov 2026: "create the vtc here as new tab", with Form + approvals like OD). HR Pulse
+ // keeps the request and its approvals (VTC Form / VTC approvals on Leave / OD / Gatepass); when the last approver
+ // approves, HR Pulse puts it here, so the record lives in this VTC Master and its days are present like any other.
+ // HR Pulse calls with the user's Pulse HR grant (requireHr: sets req.logBookScope and req.securitySession):
+ //   GET  /api/integrations/hr/vtc?month=YYYY-MM          the VTC records of the month at the user's sites
+ //   POST /api/integrations/hr/vtc/check                  {site,employee,fromDate,toDate,…}: would it be taken? (before approval)
+ //   PUT  /api/integrations/hr/vtc                        {request,site,employee,fromDate,toDate,course,…}: the approved request
+ //   POST /api/integrations/hr/vtc/remove                 {request,reason}: a request cancelled after approval
+ // request is HR Pulse's request number: one record per request, so a repeated PUT changes it and never doubles it.
+ // employee is the Caliber ID or its number (CMPL8812 = CMLL8812 = 8812), found in Employee Master.
+ if(requireHr){
+  const hrWrap=fn=>async(req,res,next)=>{try{await ensureSchema();res.set('Cache-Control','no-store');await fn(req,res)}catch(e){if(e.status)return res.status(e.status).json({error:e.message});next(e)}};
+  const hrActor=req=>{const p=req.securitySession||{},id=text(p.login||p.username||p.email||p.userId||p.id).slice(0,120);return {by:'hr:'+id.toLowerCase(),name:text(p.name||p.displayName||id).slice(0,80)};};
+  const hrSite=value=>hrSiteKey(value)||fail('Choose a site of Pulse-II.');
+  const hrRequest=value=>{const code=text(value);return code&&code.length<=80?code:fail('The HR Pulse request number is missing.');};
+  // The Employee Master line of the number: exactly one, or the request waits for HR Pulse's master to be put right.
+  const personByNumber=async(client,value)=>{
+   const number=employeeNumber(value);
+   if(!number)fail('Give the Caliber ID of the driver or operator.');
+   const {rows}=await client.query(`SELECT id::text AS id FROM master_records WHERE master_name='Employee master' AND ${RECORD_NUMBER}=$1 ORDER BY id`,[number]);
+   if(!rows.length)fail(`No employee with the number ${number} is in Employee Master.`,404);
+   if(rows.length>1)fail(`${rows.length} lines of Employee Master hold the number ${number}. Correct that in HR Pulse first.`,409);
+   return rows[0].id;
+  };
+  const hrEntry=body=>{const entry=checkMasterEntry('vtc',body||{},{today:today()});if(entry.error)fail(entry.error);return entry;};
+  const outOf=row=>{const record=recordOut(row,today());return {...record,request:row.hr_request||''};};
+
+  app.get('/api/integrations/hr/vtc',requireHr,hrWrap(async(req,res)=>{
+   const now=today(),month=monthRange(req.query.month)?req.query.month:now.slice(0,7),range=monthRange(month);
+   await fill();
+   const {rows}=await pool.query(`SELECT ${SELECT_COLUMNS},hr_request FROM mis_attendance_masters WHERE deleted_at IS NULL AND kind='vtc' AND from_date<=$2::date AND to_date>=$1::date ORDER BY site,employee_name,from_date,id`,[range.from,range.to]);
+   res.json({month,today:now,records:rows.filter(row=>siteAllowed(req.logBookScope,row.site)).map(row=>{const record=outOf(row);return {...record,month:monthView(record,month,now)};})});
+  }));
+  app.post('/api/integrations/hr/vtc/check',requireHr,hrWrap(async(req,res)=>{
+   const entry=hrEntry(req.body),site=hrSite(req.body?.site);
+   const request=text(req.body?.request);
+   await transaction(async client=>{
+    const id=await personByNumber(client,req.body?.employee);
+    const own=request?(await client.query('SELECT id FROM mis_attendance_masters WHERE hr_request=$1 AND deleted_at IS NULL',[request])).rows[0]?.id:null;
+    await checkPeople(client,req,{site,ids:[id],from:entry.from,to:entry.to,except:own||null});
+   });
+   res.json({ok:true});
+  }));
+  app.put('/api/integrations/hr/vtc',requireHr,hrWrap(async(req,res)=>{
+   const entry=hrEntry(req.body),site=hrSite(req.body?.site),request=hrRequest(req.body?.request),who=hrActor(req);
+   req.audit={eventType:'Approval',module:'VTC from HR Pulse',action:'Approved VTC request put in VTC Master',targetType:'VTC',targetReference:request.slice(0,160),details:{hrUser:who.by}};
+   const record=await transaction(async client=>{
+    await client.query("SELECT pg_advisory_xact_lock(hashtext('mis-attendance-masters'))");
+    const id=await personByNumber(client,req.body?.employee);
+    const old=(await client.query(`SELECT ${SELECT_COLUMNS},remarks,hr_request FROM mis_attendance_masters WHERE hr_request=$1 AND deleted_at IS NULL FOR UPDATE`,[request])).rows[0];
+    if(old&&String(old.employee_id)!==id)fail(`Request ${request} is already in VTC Master for ${old.employee_name}. Cancel it in HR Pulse and raise a new one.`,409);
+    const {siteKey,chosen}=await checkPeople(client,req,{site,ids:[id],from:entry.from,to:entry.to,except:old?.id||null});
+    const person=chosen.get(id),remarks=masterRemarks('vtc',entry.details)+' · HR Pulse '+request;
+    const {rows:[row]}=old
+     ?await client.query(`UPDATE mis_attendance_masters SET site=$2,from_date=$3,to_date=$4,details=$5,remarks=$6,updated_by=$7,updated_name=$8,updated_at=NOW() WHERE id=$1 RETURNING ${SELECT_COLUMNS},remarks,hr_request`,
+       [old.id,siteKey,entry.from,entry.to,JSON.stringify(entry.details),remarks,who.by,who.name])
+     :await client.query(`INSERT INTO mis_attendance_masters(kind,site,employee_id,caliber_code,employee_name,designation,book_kind,from_date,to_date,details,remarks,created_by,created_name,hr_request)
+       VALUES('vtc',$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING ${SELECT_COLUMNS},remarks,hr_request`,
+       [siteKey,id,person.caliberCode,person.name,person.designation,isDriverText(person.designation)?'vehicle':'equipment',entry.from,entry.to,JSON.stringify(entry.details),remarks,who.by,who.name,request]);
+    const days=await writeDays(client,row,who.by);
+    return {...outOf(row),presentDays:days};
+   });
+   res.json({record,changed:Boolean(record.updatedAt)});
+  }));
+  app.post('/api/integrations/hr/vtc/remove',requireHr,hrWrap(async(req,res)=>{
+   const request=hrRequest(req.body?.request),reason=text(req.body?.reason),who=hrActor(req);
+   if(reason.length<5)fail('Write why the VTC is cancelled.');
+   const removed=await transaction(async client=>{
+    const old=(await client.query(`SELECT ${SELECT_COLUMNS} FROM mis_attendance_masters WHERE hr_request=$1 AND deleted_at IS NULL FOR UPDATE`,[request])).rows[0];
+    if(!old)return false;
+    requireLogBookSite(req.logBookScope,old.site);
+    await client.query(DROP_DAYS_SQL,[old.id,MASTER_KINDS.vtc.reason,'',[]]);
+    await client.query('UPDATE mis_attendance_masters SET deleted_at=NOW(),deleted_by=$2,deleted_name=$3,delete_reason=$4 WHERE id=$1',[old.id,who.by,who.name,('HR Pulse: '+reason).slice(0,1000)]);
+    return true;
+   });
+   res.json({removed});
+  }));
+ }
 
  // The days that arrive: written within five minutes of midnight (India), at start and when the page is opened.
  // timerMs 0 (scheduled jobs off, tests) leaves only the page and the saves to write them.

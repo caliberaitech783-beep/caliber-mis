@@ -58,10 +58,10 @@ const setup=async t=>{
  // node-postgres runs several statements in one query without parameters; PGlite needs exec for that.
  const run=(sql,params)=>params?pool.query(sql,params):pool.exec(sql).then(r=>r.at(-1));
  const api=registerAttendanceMasters({get:route('GET'),post:route('POST'),put:route('PUT'),delete:route('DELETE')},
-  {pool:{query:run,connect:async()=>({query:run,release(){}})},requireSession:(q,s,n)=>n(),requireAdministrator:(q,s,n)=>n(),getSiteScope:async()=>({sites:['sasti ob']}),today:()=>today,timerMs:0});
+  {pool:{query:run,connect:async()=>({query:run,release(){}})},requireSession:(q,s,n)=>n(),requireAdministrator:(q,s,n)=>n(),getSiteScope:async()=>({sites:['sasti ob']}),today:()=>today,timerMs:0,requireHr:(q,s,n)=>n()});
  const call=async(key,{body={},query={},params={}}={})=>{
   let status=200,payload;
-  await handlers[key]({session:{login:'sasti.hr',name:'Sasti HR'},body,query,params},{set(){return this;},status(v){status=v;return this;},json(v){payload=v;}},error=>{throw error;});
+  await handlers[key]({session:{login:'sasti.hr',name:'Sasti HR'},logBookScope:{sites:['sasti ob']},securitySession:{login:'Sasti.HRM',name:'Sasti HR Manager'},body,query,params},{set(){return this;},status(v){status=v;return this;},json(v){payload=v;}},error=>{throw error;});
   return {status,payload};
  };
  const days=async()=>(await pool.query("SELECT book_date::text AS date,site,shift,employee_id::text AS id,kind,reason,master_id::text AS master FROM mis_shift_attendance ORDER BY employee_id,book_date")).rows;
@@ -158,11 +158,39 @@ test('Masters › VTC Master and OD Master: the people of Caliber ID Re-check, t
  const main=read('../src/main.jsx');
  assert.match(main,/'Attendance approval','VTC Master','OD Master','Capacity master'/);
  assert.match(main,/renderedActive==='VTC Master'\|\|renderedActive==='OD Master' \? \(<AttendanceMasters /);
- assert.ok(read('../server.mjs').includes('registerAttendanceMasters(app,{pool,requireSession,requireAdministrator,getSiteScope:logBookScope,timerMs:5*60_000});'),'the day writer runs even with scheduled jobs off');
+ assert.ok(read('../server.mjs').includes('registerAttendanceMasters(app,{pool,requireSession,requireAdministrator,getSiteScope:logBookScope,timerMs:5*60_000,requireHr:requireHrAttendance()});'),'the day writer runs even with scheduled jobs off; HR Pulse puts approved VTC in');
  assert.match(read('../src/attendance-register.jsx'),/\['od','Teal','On Duty, OD \(present\)'\]/);
  assert.match(read('../src/manpower-reports.jsx'),/\['od','Teal','On Duty, OD \(present\)'\]/);
  assert.match(read('../src/attendance-register.css'),/\.ar-flag-od\{/);
  assert.match(read('../src/manpower-reports.css'),/\.mp-flag-od\{[\s\S]*tr\.mp-duty-od>td\{/);
  const screen=read('../src/attendance-masters.jsx');
  for(const step of ['Step 1 · ${info.title}','Step 2 · ${info.title}','Step 3 · ${record.caliberCode}'])assert.ok(screen.includes(step),step);
+});
+
+test('a VTC approved in HR Pulse goes into VTC Master once per request, and its days are present',async t=>{
+ const {pool,call,days}=await setup(t);
+ const body={request:'VTC12/2026-11',site:'WCL Sasti',employee:'CMPL8812',...vtcBody};
+ const first=await call('POST /api/integrations/hr/vtc/check',{body});assert.equal(first.payload.ok,true,JSON.stringify(first));
+ assert.equal((await call('PUT /api/integrations/hr/vtc',{body:{...body,employee:'CMLL7002'}})).status,400,'a person of another site is refused');
+ assert.equal((await call('PUT /api/integrations/hr/vtc',{body:{...body,employee:'9999'}})).status,404);
+ const put=await call('PUT /api/integrations/hr/vtc',{body});
+ assert.equal(put.status,200);
+ assert.deepEqual([put.payload.record.name,put.payload.record.request,put.payload.record.presentDays,put.payload.record.createdBy],['Ram Kumar','VTC12/2026-11',5,'Sasti HR Manager']);
+ // The same request again (HR Pulse retries, or the request was changed and approved again): changed, never doubled.
+ const again=await call('PUT /api/integrations/hr/vtc',{body:{...body,toDate:'2026-11-26'}});
+ assert.equal(again.payload.changed,true);
+ assert.equal((await pool.query("SELECT count(*)::int AS n FROM mis_attendance_masters WHERE deleted_at IS NULL")).rows[0].n,1);
+ assert.deepEqual((await days()).map(d=>d.date),['2026-11-24','2026-11-25','2026-11-26']);
+ assert.match((await pool.query('SELECT remarks FROM mis_shift_attendance LIMIT 1')).rows[0].remarks,/HR Pulse VTC12\/2026-11/);
+ // It shows on Pulse-II's VTC Master and in HR Pulse's list.
+ assert.equal((await call('GET /api/attendance-masters',{query:{kind:'vtc',month:'2026-11'}})).payload.records.length,1);
+ assert.equal((await call('GET /api/integrations/hr/vtc',{query:{month:'2026-11'}})).payload.records[0].request,'VTC12/2026-11');
+ // A second request of the same person on those days is refused.
+ const clash=await call('POST /api/integrations/hr/vtc/check',{body:{...body,request:'VTC13/2026-11'}});
+ assert.equal(clash.status,409);
+ // Cancelled in HR Pulse after approval: removed, its days leave attendance.
+ assert.equal((await call('POST /api/integrations/hr/vtc/remove',{body:{request:'VTC12/2026-11',reason:''}})).status,400);
+ assert.equal((await call('POST /api/integrations/hr/vtc/remove',{body:{request:'VTC12/2026-11',reason:'Course postponed'}})).payload.removed,true);
+ assert.equal((await days()).length,0);
+ assert.equal((await call('POST /api/integrations/hr/vtc/remove',{body:{request:'VTC12/2026-11',reason:'Course postponed'}})).payload.removed,false,'a second cancel finds nothing');
 });
