@@ -10,6 +10,7 @@ import {buildManpowerReport,joinAttendanceReports,pendingSiteDays} from './manpo
 import {linkVlbTripHandovers} from '../../shared/vlb-trip-handover.mjs';
 import {siteAllowed} from '../../shared/log-book-access.mjs';
 import {hrDaySignatures} from '../../shared/hr-attendance-change.mjs';
+import {cutHrAnswerToSite,HR_FEED_SUPPORTS} from '../../shared/hr-site-cut.mjs';
 
 // What the register reads of a duty line and of a presence line.
 const DUTY_FIELDS=['id','date','shift','site','siteKey','employeeKey','employeeId','caliberCode','employeeName','category','equipment','doors','makeModel','logBook','flag','flagLabel','hours','trips','km','books'];
@@ -39,7 +40,10 @@ export function buildAttendanceWeek({cards,cardsJson=[],links,linksJson,masters,
 //  days: one signature per locked site-day of the dates, of exactly the duty and presence lines sent for it. HR Pulse keeps
 //        a saved day only while its signature is the one given now. only:'days' sends just this list, for that check.
 //  hrChanges: what HR Pulse changed with an OTP in these dates (absent: the card is kept; present: a Present entry).
-export function attendanceAnswer({parts,filters,hr=false,scope,locked,only='',generatedAt=new Date().toISOString()}){
+//  supports: what the feed can do (shared/hr-site-cut.mjs), so HR Pulse asks for a cut only once Pulse-II gives it.
+// site (the HR feed, 28 Nov 2026): HR Pulse's name of the one site its roster shows; the answer is cut to it
+// (shared/hr-site-cut.mjs). The signatures are made before the cut, so a site's day is signed the same either way.
+export function attendanceAnswer({parts,filters,hr=false,scope,locked,only='',site='',generatedAt=new Date().toISOString()}){
  const lockedSet=locked instanceof Set?locked:new Set(locked||[]);
  const report=joinAttendanceReports(parts,filters);
  if(hr){
@@ -49,8 +53,8 @@ export function attendanceAnswer({parts,filters,hr=false,scope,locked,only='',ge
   // Only locked site-days are sent. These are the days left out because a shift is still open, reopened or has no batch;
   // nobody is absent on them, the figures come once the day is locked.
   const pendingDays=pendingSiteDays(report.attendanceShifts.filter(row=>siteAllowed(scope,row.siteKey)),lockedSet);
-  if(only==='days')return {days,pendingDays,generatedAt};
-  return {
+  if(only==='days')return {days,pendingDays,supports:HR_FEED_SUPPORTS,generatedAt};
+  const answer={
   attendanceEquipment:presence,
   attendanceShifts:report.attendanceShifts.filter(row=>siteAllowed(scope,row.siteKey)),
   otDuties:duties,days,hrChanges:report.hrChanges,
@@ -58,8 +62,10 @@ export function attendanceAnswer({parts,filters,hr=false,scope,locked,only='',ge
   details:report.otDuties.filter(row=>row.scanned).map(row=>({...pick(row,['date','site','siteKey','shift','employeeId','employeeName']),batchStatus:'Saved scan'})),
   exceptions:report.exceptions.map(row=>pick(row,['date','site','siteKey','shift','employeeId','employeeName','reason'])),
   ot:report.ot.map(row=>pick(row,['site','siteKey','employeeId','schedule'])),
-  pendingDays
- };}
+  pendingDays,supports:HR_FEED_SUPPORTS
+  };
+  return site?cutHrAnswerToSite(answer,site):answer;
+ }
  const dutyKey=d=>[d.employeeKey,d.siteKey,d.date,d.shift].join('|'),held=new Set(report.otDuties.map(dutyKey));
  // The locked site-days of the selected dates, so the register marks a day ? or counts it by the same rule as the server.
  const lockedDays=[...lockedSet].filter(k=>{const date=k.slice(k.lastIndexOf('|')+1);return date>=filters.from&&date<=filters.to&&siteAllowed(scope,k.slice(0,k.lastIndexOf('|')));}).sort();

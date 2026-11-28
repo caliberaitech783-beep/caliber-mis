@@ -154,6 +154,9 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
    const filters=manpowerFilters({from:req.query.from,to:req.query.to});
    // HR Pulse asks only=days to check its saved days against the signatures (shared/hr-attendance-change.mjs).
    const only=hr&&req.query.only==='days'?'days':'';
+   // HR Pulse's roster shows one site and asks for that site only: cut=site&site=<HR's name of it> (shared/hr-site-cut.mjs).
+   // Without cut=site the answer holds every site of the login, as before (an HR Pulse from before 28 Nov 2026 sends site alone).
+   const cutSite=hr&&!only&&req.query.cut==='site'&&typeof req.query.site==='string'&&req.query.site.trim()&&req.query.site.length<=200?req.query.site.trim():'';
    await ensureBooks();
    const body=await lane.run(reportKey(hr?'hr-attendance':'manpower-attendance',req),async()=>{
    let client,building=null;
@@ -193,7 +196,7 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
     const weekBatches=batches.filter(b=>b.report_date>=plan.range.contextFrom&&b.report_date<=plan.range.contextTo).sort((a,b)=>String(a.id).localeCompare(String(b.id)));
     plan.key=fingerprint('attendance-week',hr,scope.sites??null,plan.range,mastersKey,siteNames,weekBatches,plan.days.map(d=>[d.site,d.date,d.signature]),plan.linksJson,plan.attendance,plan.punched,plan.hrChanges);
    }
-   const answerKey=fingerprint('attendance-answer',hr,scope.sites??null,filters,plans.map(p=>p.key),[...locked].sort(),only);
+   const answerKey=fingerprint('attendance-answer',hr,scope.sites??null,filters,plans.map(p=>p.key),[...locked].sort(),only,cutSite);
    const ready=answerCache?.get(answerKey);
    if(ready){await client.query('COMMIT');client.release();client=null;return ready;}
    const weeks=[];
@@ -214,7 +217,7 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
    const built=await Promise.all(weeks);
    building=null;
    // The weeks are joined and the answer written as JSON text on the worker too; it is sent as it is.
-   const text=await buildInWorker('attendance-answer',{weeks:built,filters,hr,scope,locked:[...locked],only});
+   const text=await buildInWorker('attendance-answer',{weeks:built,filters,hr,scope,locked:[...locked],only,site:cutSite});
    answerCache?.set(answerKey,text,plans.every(p=>p.kept)?ATTENDANCE_WEEK_KEEP_MS:ATTENDANCE_RECENT_KEEP_MS);
    return text;
    }catch(error){if(client)await client.query('ROLLBACK').catch(()=>{});await building?.catch(()=>{});throw error;}

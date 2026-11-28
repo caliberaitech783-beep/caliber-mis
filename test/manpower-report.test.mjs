@@ -594,3 +594,29 @@ test('an answer with recent days is kept five minutes; finished weeks stay',asyn
  // 1-7 Nov ended more than two days before the 12th and is kept; 8-14 and 15-16 can still change with the clock.
  assert.deepEqual(builds.slice(4),['attendance-week','attendance-week','attendance-answer']);
 });
+
+// Owner, 28 Nov 2026: HR Pulse's roster shows one site. With cut=site the HR feed holds that site only (shared/hr-site-cut.mjs).
+test('the HR feed is cut to one site only when HR Pulse asks for it, and each answer is kept under its own key',async()=>{
+ const on=(id,day,shift,patch={})=>card(id,shift,{bookDate:day,...patch});
+ const cards=[on(1,'2026-11-10',1),on(2,'2026-11-10',2,{employeeId:22,caliberId:'102'})],range={from:'2026-11-09',to:'2026-11-11'};
+ const h=apiHarness({sites:null},cards,{batches:lockedBatches()}),path='/api/integrations/hr/attendance';
+ const whole=(await h.run(range,path)).result;
+ assert.equal(whole.cut,undefined);assert.deepEqual(whole.supports,['site-cut']);assert.equal(whole.otDuties.length,2);
+ // HR Pulse writes the site its own way; an HR Pulse from before this change sends site without cut and gets every site.
+ assert.equal((await h.run({...range,site:'Majri OC'},path)).result.cut,undefined);
+ const sasti=(await h.run({...range,site:'Sasti',cut:'site'},path)).result;
+ assert.equal(sasti.cut,'site');assert.deepEqual(sasti.otDuties,whole.otDuties);assert.deepEqual(sasti.attendanceEquipment,whole.attendanceEquipment);
+ assert.deepEqual(sasti.days,whole.days.filter(d=>d.siteKey==='sasti ob'),'a site\'s day is signed the same, cut or not');
+ assert.deepEqual(sasti.misSiteDays,{'2026-11-10':[site]});
+ const majri=(await h.run({...range,site:'Majri OC',cut:'site'},path)).result;
+ assert.equal(majri.cut,'site');assert.deepEqual([majri.otDuties.length,majri.attendanceEquipment.length,majri.days.length],[0,0,0]);
+ assert.deepEqual(majri.misSiteDays,{'2026-11-10':[site]},'HR Pulse is told where the lines were');
+ // The signature check is not cut and says what the feed can do.
+ const days=(await h.run({...range,only:'days',site:'Majri OC',cut:'site'},path)).result;
+ assert.deepEqual(Object.keys(days).sort(),['days','generatedAt','pendingDays','supports']);assert.deepEqual(days.days,whole.days);
+ // The whole answer is still served whole after the cut ones were kept.
+ assert.equal((await h.run(range,path)).result.otDuties.length,2);
+ // Pulse-II's own register is never cut.
+ const register=(await h.run({...range,site:'Majri OC',cut:'site',view:'attendance'},'/api/reports/manpower/attendance')).result;
+ assert.equal(register.cut,undefined);assert.equal(register.otDuties.length,2);
+});

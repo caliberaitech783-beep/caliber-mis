@@ -99,7 +99,7 @@ test('the HR feed signs every locked site-day, and the signature moves with what
  assert.notEqual(one.days[0].signature,marked.days[0].signature,'a change from HR Pulse');
  assert.equal(marked.days[0].lines,0);assert.equal(marked.otDuties.length,0);
  assert.deepEqual(marked.hrChanges.map(c=>c.mark),['absent']);
- assert.deepEqual(Object.keys(answer([card(1,1)],[],'days')).sort(),['days','generatedAt','pendingDays'],'only=days sends just the signatures');
+ assert.deepEqual(Object.keys(answer([card(1,1)],[],'days')).sort(),['days','generatedAt','pendingDays','supports'],'only=days sends just the signatures and what the feed can do');
  // A locked day with nobody is signed too, so "nobody" is a checked answer.
  assert.deepEqual(hrDaySignatures([],['majri ob|'+date]).map(d=>[d.siteKey,d.lines]),[['majri ob',0]]);
 });
