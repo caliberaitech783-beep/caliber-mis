@@ -10,6 +10,7 @@ import {employeeNumber} from '../../shared/hr-employee-master.mjs';
 import {cardDutyShift,TWELVE_HOUR_CODES} from '../../shared/duty-shift.mjs';
 import {isAwayEntry,awayPresence} from '../../shared/vtc-training.mjs';
 import {hrAbsences,dutyToken,absentNote,isHrPresentEntry} from '../../shared/hr-attendance-change.mjs';
+import {isOtherStaff,OTHER_STAFF_CATEGORY} from '../../shared/caliber-id-check.mjs';
 import {batchStage} from './vlb-two-stage.mjs';
 import {fleetAssetKind,assetIdentity} from './fleet-reconciliation.mjs';
 
@@ -221,6 +222,9 @@ export function buildManpowerReport({records=[],attendance=[],assets=[],employee
  const noteAbsent=(r,change)=>hrApplied.set(change.id,{id:String(change.id),mark:'absent',date:r.date,site:r.site,siteKey:canonicalSiteName(r.site),shift:r.shift,employeeKey:r.employeeKey,employeeId:r.employeeId,employeeName:r.employeeName,by:text(change.by),reason:text(change.reason),at:text(change.at)});
  const attendanceOnly=parts==='hr-attendance'||parts==='attendance';
  for(const r of deduped){const change=hrAbsent(r);if(!change)continue;r.hrAbsent=change;noteAbsent(r,change);addIssue(r,absentNote(change));}
+ // A Driver Trainer or a Lathe Operator is normal staff (isOtherStaff; owner, 28 Nov 2026): the card stands for machines,
+ // performance and OT, but the person's attendance is not trip card attendance, so the register and the HR feed leave it out.
+ for(const r of deduped)if(r.employeeKey&&isOtherStaff(r.designation)){r.otherStaff=true;addIssue(r,`Attendance not counted: ${r.designation} is ${OTHER_STAFF_CATEGORY.toLowerCase()}, not trip card attendance.`);}
  for(const sameAsset of group(deduped.filter(r=>r.assetKey&&r.shift),r=>JSON.stringify([r.date,canonicalSiteName(r.site),r.shift,r.assetKey]))){
   for(let i=0;i<sameAsset.length;i++)for(let j=i+1;j<sameAsset.length;j++){const a=sameAsset[i],b=sameAsset[j];if(a.hours>0&&b.hours>0&&Math.max(Number(a.data.openingHmr),Number(b.data.openingHmr))<Math.min(Number(a.data.closingHmr),Number(b.data.closingHmr))){for(const r of [a,b])if(r.performanceValid){r.performanceValid=false;addIssue(r,'Overlapping HMR intervals on this asset/shift; performance totals unavailable.');}}}
  }
@@ -244,11 +248,11 @@ export function buildManpowerReport({records=[],attendance=[],assets=[],employee
  // OT & Multiple Duties, duty by duty: one line per driver, site, date and shift from all three log books, flagged or not,
  // carrying the strongest colour of the cases it is part of. A duty on two machines sits on the one with the most HMR hours.
  // The attendance register and the HR feed leave out a duty HR Pulse marked absent; the OT view keeps it (the card stands).
- const otDutyLines=otDuties.filter(d=>(!hr||!dummyDuty(d))&&!(attendanceOnly&&d.cards[0].hrAbsent)&&d.cards.some(r=>rowMatches(r,f))).map(d=>{
+ const otDutyLines=otDuties.filter(d=>(!hr||!dummyDuty(d))&&!(attendanceOnly&&(d.cards[0].hrAbsent||d.cards[0].otherStaff))&&d.cards.some(r=>rowMatches(r,f))).map(d=>{
   const mark=otMarks.get(d.key);let main=d.cards[0];for(const c of d.cards)if((c.hours||0)>(main.hours||0))main=c;
   const others=mark?unique([...mark.others].sort((x,y)=>x.date.localeCompare(y.date)||x.shift.localeCompare(y.shift)).map(o=>o.date===d.date?o.shift:o.shift+' on '+shortDate(o.date))):[];
   const logBooks=LOG_BOOKS.map(([,code])=>code).filter(code=>d.cards.some(r=>logBookCode(r.kind)===code));
-  return {id:d.key,date:d.date,shift:d.shift,site:siteName(d.site),siteKey:canonicalSiteName(d.site),employeeKey:d.employeeKey,employeeId:d.employeeId,caliberCode:d.caliberCode,employeeName:d.employeeName,category:d.designation||'Category not in Employee master',
+  return {id:d.key,date:d.date,shift:d.shift,site:siteName(d.site),siteKey:canonicalSiteName(d.site),employeeKey:d.employeeKey,employeeId:d.employeeId,caliberCode:d.caliberCode,employeeName:d.employeeName,category:isOtherStaff(d.designation)?OTHER_STAFF_CATEGORY+' ('+d.designation+')':d.designation||'Category not in Employee master',
    equipment:equipmentName(main.group),doors:unique(d.cards.map(r=>r.door)).join('; '),makeModel:unique(d.cards.map(makeModelName)).join('; '),logBooks,logBook:logBooks.join(' + '),
    flag:mark?.severity||'normal',flagLabel:mark?unique(mark.reasons).join('; '):'Normal duty',others:others.length?'Also worked '+others.join(', '):'',hours:d.hours,trips:d.trips,km:d.km,books:d.cards.map(r=>r.book).join('; '),
    source:cardSource(d.cards),batches:unique(d.cards.flatMap(r=>r.batchNames||[])).join('; '),
@@ -262,11 +266,11 @@ export function buildManpowerReport({records=[],attendance=[],assets=[],employee
   const hasTrips=trips>0||r.kind==='equipment'&&number(r.data.fleetTrips)>0;
   // A VLB card saved with 0 trips; an ELB card is measured in hours, so it is never a zero-trip duty.
   const zeroCard=r.kind==='vehicle'&&trips===0;
-  if(r.employeeKey&&!r.hrAbsent)attendanceSources.push({...r,trips,hasTrips,zeroCard,card:true});
+  if(r.employeeKey&&!r.hrAbsent&&!r.otherStaff)attendanceSources.push({...r,trips,hasTrips,zeroCard,card:true});
   const split=r.data.operatorSplit;
   if(split?.secondOperatorId){
    const person=resolveEmployee({employeeId:split.secondOperatorId,caliberId:split.secondOperatorCaliberId});
-   const second=person.error?null:{...r,employeeKey:person.identityKey,employeeId:person.employeeId,employeeName:person.name,caliberCode:person.caliberCode,trips:null,hasTrips,zeroCard,card:true};
+   const second=person.error||isOtherStaff(person.designation)?null:{...r,employeeKey:person.identityKey,employeeId:person.employeeId,employeeName:person.name,caliberCode:person.caliberCode,trips:null,hasTrips,zeroCard,card:true};
    const change=second&&hrAbsent(second);
    if(change)noteAbsent(second,change);else if(second)attendanceSources.push(second);
   }
@@ -274,7 +278,7 @@ export function buildManpowerReport({records=[],attendance=[],assets=[],employee
  for(const entry of attendance){
   if(!dayLocked(entry.site,entry.date))continue;
   const person=resolveEmployee({employeeId:entry.employee_id});
-  if(person.error)continue;
+  if(person.error||isOtherStaff(person.designation))continue;
   const asset=assetMap.get(String(entry.asset_id));
   const door=asset?text(asset.door||asset.doorNo||equipmentDoorNumber(asset)):'';
   const site=sitesByKey.get(entry.site)||entry.site;

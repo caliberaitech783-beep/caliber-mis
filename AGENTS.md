@@ -267,3 +267,12 @@ Set by the owner on 28 November 2026: "I need the VTC master for Driver and Oper
 - OD is drawn teal (flag `od`, "On Duty, OD (present)", source `od`), VTC purple as VTC Training. Neither is a zero-trip entry. A day on which the person also has a card counts once, as that duty (`isAwayEntry` / `awayPresence` in `shared/vtc-training.mjs`). A half-day OD counts as a present day, with the half written on it.
 - Screen: Step 1 one line per site for the month, Step 2 its people, Step 3 the person's days of the month.
 - `shared/attendance-masters.mjs` holds the rule, `server/routes/attendance-masters.mjs` the table `mis_attendance_masters`, the routes and the day writer, `src/attendance-masters.jsx` the screen; `test/attendance-masters.test.mjs` checks it.
+
+# Driver Trainer and Lathe Operator are normal staff
+
+Set by the owner on 28 November 2026: "i need the driver trainer and Lathe operator as other staff (not trip card) it should not show in trip card attendence...it should have the category of normal staff".
+
+- A Driver Trainer (any designation with TRAINER, e.g. Volvo Driver Trainer; a trainee is not one) and a Lathe Operator (Lathe, Leath, Leth) are normal staff (`isOtherStaff`, `OTHER_STAFF_CATEGORY` in `shared/caliber-id-check.mjs`). The designation decides; with none, the department.
+- They are never a driver or an operator (`drivesOrOperates`): the scan holds their card as not a driver, VTC / OD Master, Caliber Punch Re-check and the biometric checks treat them as other staff.
+- A card that carries one stays, with its trips, hours, machines and OT, but their attendance is not trip card attendance: Attendance Batch-wise / Month-wise, Shift Attendance and the HR feed leave out their cards and their Present / VTC entries. The card says "Attendance not counted: … is normal staff", and the OT view shows their category as "Normal staff (designation)".
+- `test/other-staff-attendance.test.mjs` checks this.
