@@ -19,6 +19,7 @@ import {operationReports} from './operations-report-model.mjs';
 import EquipmentAliasAdminPanel,{EquipmentAliasCell,EquipmentAliasRevokeDialog,useEquipmentAliases} from './equipment-alias-admin.jsx';
 import {misPageAllowed} from '../shared/mis-application-access.mjs';
 import {useMisSharedSignIn,MisSharedLogin} from './mis-shared-signin.jsx';
+import {isCaliberOneSignOut} from './caliber-one-sign-out.mjs';
 import {useAccountSecurity,AccountSecurityGate} from './account-security.jsx';
 import LogBookModeChoice from './log-book-mode-choice.jsx';
 import VlbBatchApprovals from './vlb-batch-approvals.jsx';
@@ -11565,6 +11566,8 @@ function App() {
   const changeSidebarAuto=on=>{setSidebarAuto(on);setSidebarPeek(true);if(!on)changeSidebarHidden(false);try{localStorage.setItem("caliberSidebarAutoHide",String(on));}catch{}};
   const [sharedSignedOut,setSharedSignedOut]=useState(false);
   const sharedSignIn=useMisSharedSignIn(session,{autoStart:true,paused:sharedSignedOut});
+  // Caliber One's "Sign out all" signs this tab out exactly as the Sign out button does.
+  useEffect(()=>{const onMessage=event=>{if(isCaliberOneSignOut(event))logout();};window.addEventListener('message',onMessage);return()=>window.removeEventListener('message',onMessage);},[session]);
   const accountSecurity=useAccountSecurity(session,{enabled:sharedSignIn.mode==='client'||Boolean(session?.browserSession||session?.permissions?.separateMisCredentials)});
   const locationGate=useSignInLocationGate(session?.token);
   const canOpenHr=Boolean(session?.token&&accountSecurity.verified&&!accountSecurity.loading&&locationGate.phase==='open');
