@@ -1,3 +1,5 @@
+import {readBiometricShifts} from '../services/biometric-shifts.mjs';
+import {cShiftDays,adjacentDate} from '../../shared/c-shift-punches.mjs';
 // Biometric integration (owner, 20 Nov 2026): the punches exported from the biometric device are uploaded here and kept
 // one line per employee code and date (first In, last Out, site). Attendance Management > Mismatch attendance and the
 // Attendance Regularization pages compare them with trip card attendance (shared/attendance-mismatch.mjs).
@@ -46,12 +48,13 @@ export function registerBiometricAttendance(app,{pool,protect,ensureBooks,readIn
    if(!validDate(from)||!validDate(to)||to<from)return fail(res,400,'Select a valid From and To date.');
    if((Date.parse(to)-Date.parse(from))/86400000>BIOMETRIC_MAX_DAYS)return fail(res,400,`Select up to ${BIOMETRIC_MAX_DAYS} days.`);
    await ensure();
+   const shiftDates=req.query.shiftDates==='1',masters=shiftDates?await readBiometricShifts(pool):[];
    const {rows}=await pool.query(`SELECT caliber_code,punch_date::text AS date,in_time,out_time,site,employee_name,source_file,uploaded_by,uploaded_at,a_form_no
-    FROM mis_biometric_punches WHERE punch_date BETWEEN $1 AND $2 ORDER BY punch_date,site,caliber_code LIMIT ${BIOMETRIC_MAX_ROWS*2+1}`,[from,to]);
+    FROM mis_biometric_punches WHERE punch_date BETWEEN $1 AND $2 ORDER BY punch_date,site,caliber_code LIMIT ${BIOMETRIC_MAX_ROWS*2+1}`,[shiftDates?adjacentDate(from,-1):from,shiftDates?adjacentDate(to,1):to]);
    const scope=req.logBookScope;
    const punches=rows.filter(r=>r.site?siteAllowed(scope,r.site):scope?.sites===null).map(r=>({caliberCode:r.caliber_code,date:r.date,inTime:r.in_time,outTime:r.out_time,site:r.site,
     employeeName:r.employee_name,sourceFile:r.source_file,uploadedBy:r.uploaded_by,uploadedAt:r.uploaded_at,aFormNo:r.a_form_no||''}));
-   res.set('Cache-Control','private, no-store').json({punches,truncated:rows.length>BIOMETRIC_MAX_ROWS*2});
+   res.set('Cache-Control','private, no-store').json({punches:shiftDates?cShiftDays(punches,{masters}).filter(p=>p.date>=from&&p.date<=to):punches,masters,truncated:rows.length>BIOMETRIC_MAX_ROWS*2});
   }catch(error){next(error);}
  });
 

@@ -1,3 +1,4 @@
+import {cShiftNight,cShiftDays} from './c-shift-punches.mjs';
 // Attendance Sheet Mismatch, drivers and operators (owner, 23 Nov 2026): Reports > Manpower & OT > Attendance Sheet
 // Mismatch now compares the biometric log of a site with trip card attendance, for drivers and operators only.
 // The site's device log is uploaded (the ZKTeco attlog .dat, or the device's Excel/CSV export), the site is chosen, and
@@ -112,7 +113,7 @@ export function hrCorrections({corrections=[],sites=[]}={},{siteName=name=>name}
  return list;
 }
 
-export function machineDays({punches=[],sites=[],corrections=[]}={},{siteName=name=>name}={}){
+export function machineDays({punches=[],sites=[],corrections=[]}={},{siteName=name=>name,masters=[]}={}){
  const byCode=new Map();let unread=0;
  const fixes=hrCorrections({corrections,sites},{siteName}),nights=new Map([...fixes.values()].filter(c=>c.overnight).map(c=>[c.caliberCode+'|'+c.nextDate,c]));
  for(const row of Array.isArray(punches)?punches:[]){
@@ -143,7 +144,8 @@ export function machineDays({punches=[],sites=[],corrections=[]}={},{siteName=na
   for(const p of all){
    const prev=duty.at(-1);
    if(prev&&p.at-prev.at<REPEAT_PUNCH_SECONDS*1000&&p.dir===prev.dir)continue;
-   if(duty.length&&(p.at-duty[0].at>PAIR_HOURS*3600000||(p.dir==='IN'&&duty.some(x=>x.dir==='OUT')))){keep(code,duty);duty=[];}
+   const night=duty.length&&cShiftNight(duty[0].date,duty[0].time,duty[0].site,masters),sameNight=night&&night===cShiftNight(p.date,p.time,p.site,masters)&&canonicalSiteName(p.site)===canonicalSiteName(duty[0].site)&&!(p.dir==='IN'&&prev.dir==='OUT'&&prev.date===p.date&&p.date!==duty[0].date);
+   if(duty.length&&!sameNight&&(p.at-duty[0].at>PAIR_HOURS*3600000||(p.dir==='IN'&&duty.some(x=>x.dir==='OUT'))||night)){keep(code,duty);duty=[];}
    duty.push(p);
   }
   if(duty.length)keep(code,duty);
@@ -155,7 +157,7 @@ export function machineDays({punches=[],sites=[],corrections=[]}={},{siteName=na
   // P, HD or OD with no time: present by HR's word.
   days.set(key,{caliberCode:c.caliberCode,date:c.date,inTime:held?.inTime||'',outTime:held?.outTime||'',site:held?.site||c.site,source:'machine',corrected:hr,presentByHr:true});
  }
- return {days:[...days.values()],unread};
+ return {days:cShiftDays([...days.values()],{masters}),unread};
 }
 
 // Lines of mis_biometric_punches (already one per employee and date).

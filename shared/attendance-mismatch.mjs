@@ -1,3 +1,4 @@
+import {cShiftDays} from './c-shift-punches.mjs';
 // Attendance Management (owner, 20 Nov 2026): biometric punches against trip card / log book attendance.
 //
 // Biometric punches come from the device's Excel or CSV export, uploaded on "Biometric integration"
@@ -126,6 +127,7 @@ export function shiftOfPunch(time,site,masters){
 // duties:  trip card attendance lines (otDuties + attendanceEquipment of the attendance read): {date,shift,site,caliberCode,employeeName,equipment,doors,books}
 // lockedDays: ['siteKey|date'] of the dates asked.
 export function compareAttendance({punches=[],duties=[],lockedDays=[],from='',to='',masters}={}){
+ punches=cShiftDays(punches,{masters});
  const locked=new Set(lockedDays),lockedDates=new Set(lockedDays.map(k=>k.slice(k.lastIndexOf('|')+1)));
  const inRange=d=>(!from||d>=from)&&(!to||d<=to);
  const trip=new Map();let noCode=0;

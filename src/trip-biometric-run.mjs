@@ -42,7 +42,7 @@ export async function runHeldBiometricCheck({site,from,to,source='both',session,
  if(!biometric.machine?.connected&&biometric.machine?.asked&&!biometric.imported?.asked)throw Error(biometric.machine.error||'The machine punches could not be read.');
  const numbers=[...new Set([...biometric.days.map(d=>d.caliberCode),...lines.map(lineNumber).filter(Boolean)])];
  const master=await read('/api/reports/manpower/attendance-sheet/people',session,{method:'POST',body:JSON.stringify({site,ids:numbers.slice(0,5000)})});
- const result=tripBiometricCheck({days:biometric.days,lines,lockedDays:attendance.lockedDays||[],people:master.people||[],site:master.site||site,from,to});
+ const result=tripBiometricCheck({days:biometric.days,lines,lockedDays:attendance.lockedDays||[],people:master.people||[],masters:master.masters||biometric.masters,site:master.site||site,from,to});
  const label=SOURCE_CHOICES.find(c=>c.value===source)?.label||'';
  const book=tripBiometricWorkbook(result,{fileName:'biometric: '+label,checkedAt:formatDisplayDateTime(new Date())});
  return {result,biometric,title:book.title,blob:build(book.title,book.sheets),name:`Trip-card-vs-biometric-${slug(result.site)}-${from}-to-${to}.xlsx`};
@@ -57,7 +57,7 @@ export async function runTripBiometricCheck({bio,fileName,site,session,today=tod
  const lines=[...(attendance.otDuties||[]),...(attendance.attendanceEquipment||[])];
  const numbers=[...new Set([...bio.days.map(d=>d.caliberCode),...lines.map(l=>String(l.employeeId||l.caliberCode||'').trim()).filter(Boolean)])];
  const master=await read('/api/reports/manpower/attendance-sheet/people',session,{method:'POST',body:JSON.stringify({site,ids:numbers.slice(0,5000)})});
- const result=tripBiometricCheck({days:bio.days,lines,lockedDays:attendance.lockedDays||[],people:master.people||[],site:master.site||site,from:range.from,to:range.to});
+ const result=tripBiometricCheck({days:bio.days,lines,lockedDays:attendance.lockedDays||[],people:master.people||[],masters:master.masters,site:master.site||site,from:range.from,to:range.to});
  const book=tripBiometricWorkbook(result,{fileName,checkedAt:formatDisplayDateTime(new Date())});
  const siteSlug=result.site.replace(/[^A-Za-z0-9]+/g,'-').replace(/^-|-$/g,'');
  return {result,range,title:book.title,blob:build(book.title,book.sheets),name:`Trip-card-vs-biometric-${siteSlug}-${range.from}-to-${range.to}.xlsx`};

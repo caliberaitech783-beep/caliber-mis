@@ -64,6 +64,6 @@ test('punch keys come from the machine and the imported punches; HR Pulse not an
  assert.equal(asked,1,'HR Pulse is asked once for the same dates within a few minutes');
  const silent=createAttendancePunches({pool,hrPunches:()=>new Promise(()=>{}),waitMs:20});
  assert.deepEqual(await silent({from:date,to:date}),['907041||'+date],'only the imported punches');
- const noTable=createAttendancePunches({pool:{query:async()=>{throw Object.assign(Error('relation "mis_biometric_punches" does not exist'),{code:'42P01'});}}});
+ const noTable=createAttendancePunches({pool:{query:async sql=>{if(sql.includes('master_records'))return {rows:[]};throw Object.assign(Error('relation "mis_biometric_punches" does not exist'),{code:'42P01'});}}});
  assert.deepEqual(await noTable({from:date,to:date}),[]);
 });

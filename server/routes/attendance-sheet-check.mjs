@@ -1,3 +1,5 @@
+import {readBiometricShifts} from '../services/biometric-shifts.mjs';
+import {cShiftDays,adjacentDate} from '../../shared/c-shift-punches.mjs';
 // Attendance Sheet Mismatch (owner, 23 Nov 2026): Reports > Manpower & OT > Attendance Sheet Mismatch compares the
 // attendance Excel a site keeps by hand with Pulse-II (shared/attendance-sheet-check.mjs). The attendance itself comes
 // from the register's own read (/api/reports/manpower/attendance). These two reads give what that one does not hold:
@@ -48,23 +50,24 @@ const IMPORTED_SQL=`SELECT caliber_code,punch_date::text AS date,in_time,out_tim
 const ISO=/^\d{4}-\d{2}-\d{2}$/;
 const validDate=d=>ISO.test(String(d))&&new Date(d+'T00:00:00Z').toISOString().slice(0,10)===d;
 export async function readBiometricDays({pool,hrPunches,site,from,to,source='both',numbers=[]}){
+ const masters=await readBiometricShifts(pool);
  const siteKey=canonicalSiteName(site),asked=new Set(numbers.map(employeeNumber).filter(Boolean)),inRange=d=>d.date>=from&&d.date<=to;
  const machine={asked:source!=='imported',connected:false,punches:0,unread:0,error:''},imported={asked:source!=='machine',lines:0};
  let machineList=[],importedList=[];
  if(machine.asked){
   try{
    const answer=await readHrPunchesWithDayBefore(hrPunches,{from,to});
-   const read=machineDays(answer,{siteName:name=>hrSiteName(name)||name});
+   const read=machineDays(answer,{siteName:name=>hrSiteName(name)||name,masters});
    machineList=read.days;Object.assign(machine,{connected:true,punches:answer?.punches?.length||0,unread:read.unread});
   }catch(error){machine.error=error.status===503?'Pulse-II is not connected to HR Pulse, so the machine punches could not be read.':'HR Pulse did not give the machine punches ('+(error.message||'no answer')+').';}
  }
  if(imported.asked){
-  try{const {rows}=await pool.query(IMPORTED_SQL,[from,to]);importedList=importedDays(rows.map(r=>({caliberCode:r.caliber_code,date:r.date,inTime:r.in_time,outTime:r.out_time,site:r.site})));}
+  try{const {rows}=await pool.query(IMPORTED_SQL,[adjacentDate(from,-1),adjacentDate(to,1)]);importedList=importedDays(rows.map(r=>({caliberCode:r.caliber_code,date:r.date,inTime:r.in_time,outTime:r.out_time,site:r.site})));}
   catch(error){if(error.code!=='42P01')throw error;}
   imported.lines=importedList.length;
  }
- const days=mergeBiometricDays(machineList,importedList).filter(d=>inRange(d)&&(!d.site||canonicalSiteName(d.site)===siteKey||asked.has(d.caliberCode)));
- return {days,machine,imported};
+ const days=cShiftDays(mergeBiometricDays(machineList,importedList),{masters,site}).filter(d=>inRange(d)&&(!d.site||canonicalSiteName(d.site)===siteKey||asked.has(d.caliberCode)));
+ return {days,machine,imported,masters};
 }
 
 // readIndex: the employee lists and A Form Master together (server/services/a-form-people-index.mjs); a test passes its own.
@@ -96,7 +99,7 @@ export function registerAttendanceSheetCheck(app,{pool,protect,readIndex=readAFo
    if(!Array.isArray(ids)||!ids.length)return fail(res,400,'The sheet has no EMP. ID to check.');
    if(ids.length>SHEET_MAX_PEOPLE)return fail(res,400,`Check up to ${SHEET_MAX_PEOPLE} employees at a time.`);
    const numbers=[...new Set(ids.map(employeeNumber).filter(Boolean))];
-   res.set('Cache-Control','private, no-store').json({site:known,...sheetPeopleAnswer(await readIndex(pool),known,numbers)});
+   res.set('Cache-Control','private, no-store').json({site:known,masters:await readBiometricShifts(pool),...sheetPeopleAnswer(await readIndex(pool),known,numbers)});
   }catch(error){next(error);}
  });
 }

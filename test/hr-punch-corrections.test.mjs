@@ -59,21 +59,17 @@ test('HR Pulse is asked from the day before, so a night Out on the first date is
  const hrPunches=async range=>{asked.push(range);return {sites:[SITE],punches:[['','17462','2026-10-31 19:56',0,'0'],['','17462','2026-11-01 04:47',0,'1']],corrections:[]};};
  const pool={query:async()=>({rows:[]})};
  const read=await readBiometricDays({pool,hrPunches,site:SITE,from:'2026-11-01',to:'2026-11-20'});
- assert.deepEqual(asked,[{from:'2026-10-31',to:'2026-11-20'}]);
+ assert.deepEqual(asked,[{from:'2026-10-31',to:'2026-11-21'}]);
  assert.deepEqual(read.days,[]);
 });
 
-test('31 dates asked: the day before is a second read, only what falls before the first date is kept',async()=>{
+test('31 dates plus both boundary days are split into bounded reads with remapped sites',async()=>{
  const asked=[];
- const hrPunches=async range=>{asked.push(range);
-  if(range.from===range.to)return {sites:['Other',SITE],punches:[['','3','2026-10-31 20:00',1,'0'],['','3','2026-11-01 04:40',1,'1']],corrections:[[1,'2026-10-31','3','','20:00','04:40','r','b'],[1,'2026-11-01','3','P','','','r','b']]};
-  return {sites:[SITE],punches:[['','3','2026-11-01 04:40',0,'1']],corrections:[]};};
- const answer=await readHrPunchesWithDayBefore(hrPunches,{from:'2026-11-01',to:'2026-12-01'});
- assert.deepEqual(asked,[{from:'2026-11-01',to:'2026-12-01'},{from:'2026-10-31',to:'2026-10-31'}]);
- assert.deepEqual(answer.sites,[SITE]);
- assert.deepEqual(answer.punches,[['','3','2026-11-01 04:40',0,'1'],['','3','2026-10-31 20:00',0,'0']]);
- assert.deepEqual(answer.corrections,[[0,'2026-10-31','3','','20:00','04:40','r','b']]);
- assert.deepEqual(machineDays(answer).days.map(d=>[d.date,d.inTime,d.outTime]),[['2026-10-31','20:00','04:40']]);
+ const answer=await readHrPunchesWithDayBefore(async range=>{
+  asked.push(range);
+  return range.from==='2026-10-31'?{sites:[SITE],punches:[['','3','2026-10-31 20:00',0,'0']],corrections:[]}:{sites:['Other',SITE],punches:[['','3','2026-12-02 04:40',1,'1']],corrections:[]};
+ },{from:'2026-11-01',to:'2026-12-01'});
+ assert.deepEqual(asked,[{from:'2026-10-31',to:'2026-11-30'},{from:'2026-12-01',to:'2026-12-02'}]);
+ assert.deepEqual(answer.punches.map(p=>[p[2],answer.sites[p[3]]]),[['2026-10-31 20:00',SITE],['2026-12-02 04:40',SITE]]);
  assert.equal(dayBefore('2026-03-01'),'2026-02-28');
- assert.deepEqual(joinPunchAnswers({sites:['A'],punches:[]},{sites:['A'],punches:[['','1','2026-11-01 06:00',0,'0']]}).punches,[['','1','2026-11-01 06:00',0,'0']]);
 });
