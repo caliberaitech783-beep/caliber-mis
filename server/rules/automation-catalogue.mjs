@@ -154,6 +154,13 @@ export const AUTOMATIONS=[
   format:'GB used and free, since when it is above 400 GB, what it stops, where to see what fills it',controlledIn:'This page; live server only',
   telegram:context=>state(context.driveSpace?.running&&misBot(context)),whatsapp:()=>null,popup:()=>null,count:{outbox:['drive-space']},
   why:context=>[need(context.driveSpace?.running,'this is not the live server'),misBotWhy(context)]},
+ {code:'A29',key:'hr-trip-card-days',name:'HR Pulse saved trip card days not the same as Pulse-II',category:'Masters',
+  rule:'Once a night every trip card day saved in HR Pulse is checked against what Pulse-II holds. Told when a saved day was changed in Pulse-II after saving, or was saved before days were signed; those days are marked in HR Pulse and read from Pulse-II again. Also told once when HR Pulse has not taken the changed days for 30 minutes, or the nightly check could not be made',
+  trigger:context=>{const night=context.hrDayWatch?.lastNight;return 'Changed days are sent to HR Pulse every 2 minutes; the nightly check runs from 02:30 on the live server'+(night?`; last check ${night.day}: ${night.same?'all the same':`${night.differed} changed, ${night.unsigned} saved before signing, ${night.marked} marked`}`:'');},
+  people:'Owner (logins with the owner\'s registered mobile) and Mr Mohit Chadda',
+  format:'How many saved days were not the same, site-wise with their dates, how many were marked, and how many old HR-only corrections are still listed',controlledIn:'This page; live server only',
+  telegram:context=>state(context.hrDayWatch?.running&&misBot(context)),whatsapp:()=>null,popup:()=>null,count:{outbox:['hr-trip-card-days']},
+  why:context=>[need(context.hrDayWatch?.running,'this is not the live server'),misBotWhy(context)]},
 ];
 export const AUTOMATION_KEYS=new Set(AUTOMATIONS.map(item=>item.key));
 

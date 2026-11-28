@@ -110,6 +110,17 @@ export function createHrEmployeeSync({pool,key=process.env.HR_SYNC_KEY,base=proc
   if(!response.ok||!body)throw fail(502,`HR Pulse refused the site move (${response.status}${body?.error?': '+body.error:''}).`);
   return body;
  }
+ // The site-days that changed here after HR Pulse saved them (caliber-hr server/mis-trip-card-days.mjs): HR Pulse marks
+ // its saved copies and reads those days from Pulse-II again. Telling a day twice is harmless.
+ async function tripCardDaysChanged(change){
+  if(!configured())throw fail(503,'HR connection is not set up (HR_SYNC_KEY).');
+  let response;
+  try{response=await request(new URL('/api/integrations/mis/trip-card-days/changed',base),{method:'POST',headers:{'X-MIS-Sync-Key':key,'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify(change),redirect:'error',signal:AbortSignal.timeout(30_000)});}
+  catch{throw fail(502,'HR Pulse did not answer.');}
+  const body=await response.json().catch(()=>null);
+  if(!response.ok||!body)throw fail(502,`HR Pulse refused the changed days (${response.status}${body?.error?': '+body.error:''}).`);
+  return body;
+ }
  const sheetOf=async()=>{const data=await read('employees');return readHrMasterSheet(hrEmployeeSheet(data.employees),{leaveOut:true});};
  const leftOut=sheet=>({lines:sheet.problems.length,problems:sheet.problems.slice(0,LIST_LIMIT)});
 
@@ -171,6 +182,9 @@ export function createHrEmployeeSync({pool,key=process.env.HR_SYNC_KEY,base=proc
   // The site machines' punches of up to 31 days (caliber-hr server/mis-biometric-punches.mjs), for Attendance Sheet Mismatch.
   biometricPunches:({from,to})=>read('biometric-punches?'+new URLSearchParams({from,to})),
   sendSiteMove,
+  // HR Pulse's saved trip card days of up to 62 days, without their cards (site, day, the signature it was saved with).
+  tripCardDays:({from,to})=>read('trip-card-days?'+new URLSearchParams({from,to})),
+  tripCardDaysChanged,
   async count(name){
    if(name!==HR_EMPLOYEE_TRANSFER)return null;
    await ensure();return Number((await pool.query('SELECT count(*) n FROM hr_transfer_sync')).rows[0].n);
