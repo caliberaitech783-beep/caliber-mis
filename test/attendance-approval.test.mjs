@@ -1,6 +1,8 @@
 // Owner, 27 Nov 2026: trip card batches up to 20 Nov 2026 are approved day by day for every site, by
 // Level 1 Site HR → Level 2 Office HR → Level 3 RHR → Level 4 Directors, and then locked. One Telegram message
 // per site, day and approver with Approve / Send back, or the same from Masters › Attendance approval.
+// Owner, 28 Nov 2026 ("make it summary"): one Telegram message per approver, site and level with every day due, each
+// day with its own Approve / Send back row; a tap takes away only that day's row.
 //   - a day starts at Site HR only when every batch of that date is closed;
 //   - only the approvers of that level and site may act; RHR is per region, Directors for all sites;
 //   - Send back (with a reason, on Telegram the next message) returns the day to the batch creators; a batch
@@ -10,7 +12,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {PGlite} from '@electric-sql/pglite';
-import {APPROVAL_LEVELS,LOCKED_LEVEL,approvalUntil,approversFor,groupDays,reconcileDay,approveDay,sendBackDay,normalScope,parseCallback,approvalMessage} from '../shared/attendance-approval.mjs';
+import {APPROVAL_LEVELS,LOCKED_LEVEL,approvalUntil,approversFor,groupDays,reconcileDay,approveDay,sendBackDay,normalScope,parseCallback,approvalMessage,approvalSummaryMessages,SUMMARY_DAYS_PER_MESSAGE} from '../shared/attendance-approval.mjs';
 import {createAttendanceApproval} from '../server/routes/attendance-approval.mjs';
 import {describeServerError} from '../server/middleware/server-error-response.mjs';
 import {misRequestAllowed,misPageAllowed} from '../shared/mis-application-access.mjs';
@@ -109,19 +111,19 @@ const tap=async(f,chat,action='a')=>{
  return f.approval.handleTelegramCallback({data,logins:[chat.replace('chat-','')],chatId:chat});
 };
 
-test('one Telegram message per day climbs Site HR, Office HR, RHR, Directors and locks the day',async()=>{
+test('a day climbs Site HR, Office HR, RHR, Directors and locks the day',async()=>{
  const f=await fixture();
  const run=await f.approval.reconcile();
  assert.equal(run.days,2,'21 Nov is outside the window');
  await f.approval.notifyDue();
  assert.deepEqual(f.sent.map(m=>m.chatId),['chat-sasti.hr'],'only the closed day, only to Site HR of Sasti OC');
- assert.match(f.sent[0].text,/Sasti OC<\/b> · 18-11-2026/);assert.match(f.sent[0].text,/Batches: 3/);assert.match(f.sent[0].text,/VTC Training 1/);
+ assert.match(f.sent[0].text,/Sasti OC<\/b> · 1 day waiting · 18-11-2026/);assert.match(f.sent[0].text,/<b>18-11<\/b> · 3 batches \(S1 S2 S3\)/);assert.match(f.sent[0].text,/VTC 1/);
  await f.approval.notifyDue();assert.equal(f.sent.length,1,'never sent twice');
 
  assert.match((await f.approval.handleTelegramCallback({data:f.sent[0].buttons[0][0].callback_data,logins:['majri.hr'],chatId:'chat-majri.hr'})).answer,/another login/);
  await assert.rejects(f.approval.act({site:'Sasti OC',date:'2026-11-18',action:'approve',login:'office.hr',source:'MIS'}),/Only Site HR of Sasti OC/);
 
- assert.match((await tap(f,'chat-sasti.hr')).answer,/Sent to Office HR/);
+ assert.match((await tap(f,'chat-sasti.hr')).answer,/^✅ 18-11: Approved\. Sent to Office HR/);
  assert.match((await tap(f,'chat-sasti.hr')).answer,/moved on/,'the old button is spent');
  assert.equal(f.sent.at(-1).chatId,'chat-office.hr');
  await tap(f,'chat-office.hr');
@@ -174,7 +176,7 @@ test('Send back takes the reason from the next Telegram message; a reopened and 
  day=(await f.db.query("SELECT level,status,corrected FROM mis_attendance_days WHERE book_date='2026-11-18'")).rows[0];
  assert.deepEqual(day,{level:1,status:'waiting',corrected:true});
  const before=f.sent.length;await f.approval.notifyDue();
- assert.equal(f.sent.length,before+1);assert.equal(f.sent.at(-1).chatId,'chat-sasti.hr');assert.match(f.sent.at(-1).text,/Corrected/);
+ assert.equal(f.sent.length,before+1);assert.equal(f.sent.at(-1).chatId,'chat-sasti.hr');assert.match(f.sent.at(-1).text,/✏️ corrected/);
 
  // A batch reopened while the day waits at a higher level also sends it back to Site HR.
  await tap(f,'chat-sasti.hr');
@@ -273,7 +275,7 @@ test('Send sample to my Telegram: only to the login\'s own chat, marked SAMPLE, 
  const result=await f.approval.sendSample({login:'Office.HR'});
  assert.deepEqual(result,{sent:1,site:'Sasti OC',date:'2026-11-18',realDay:true},'a real closed day is used');
  assert.equal(f.sent.length,1);assert.equal(f.sent[0].chatId,'chat-office.hr');
- assert.match(f.sent[0].text,/^🧪 <b>SAMPLE<\/b>[\s\S]*LEVEL 1 · SITE HR[\s\S]*Sasti OC<\/b> · 18-11-2026[\s\S]*Batches: 3/);
+ assert.match(f.sent[0].text,/^🧪 <b>SAMPLE<\/b>[\s\S]*LEVEL 1 · SITE HR[\s\S]*Sasti OC<\/b> · 1 day waiting · 18-11-2026[\s\S]*<b>18-11<\/b> · 3 batches/);
  assert.deepEqual(f.sent[0].buttons[0].map(b=>b.callback_data),['atts:a','atts:b']);
  assert.equal(f.texts.at(-1).chatId,'chat-office.hr');assert.match(f.texts.at(-1).text,/SAMPLE[\s\S]*ATTENDANCE UNLOCK[\s\S]*OTP 123456/);
  assert.match((await f.approval.handleTelegramCallback({data:'atts:a',logins:['office.hr'],chatId:'chat-office.hr'})).answer,/Sample only: nothing was approved/);
@@ -283,4 +285,36 @@ test('Send sample to my Telegram: only to the login\'s own chat, marked SAMPLE, 
  assert.equal((await f.db.query('SELECT count(*)::int AS n FROM mis_attendance_days')).rows[0].n,0,'a sample saves no approval');
  assert.equal(misRequestAllowed({permissions:{separateMisCredentials:true,misDesktopAccess:[]}},{path:'/api/attendance-approval/sample',method:'POST'}),true);
  assert.match(source('src/attendance-approval.jsx'),/Send sample to my Telegram/);
+});
+
+test('one summary message per approver and site holds every day due; a tap approves its own day only',async()=>{
+ const f=await fixture();
+ for(const [id,date] of [['c17','2026-11-17'],['c20','2026-11-20']])
+  await f.db.query("INSERT INTO mis_vlb_batches(id,site,book_date,shift,closed_at,creator_login) VALUES($1,'Sasti OC',$2,'Shift I','2026-11-21T00:00:00Z','maker1')",[id,date]);
+ await f.db.query("INSERT INTO mis_vlb_batches(id,site,book_date,shift,closed_at,creator_login) VALUES('m18','Majri OC','2026-11-18','Shift I','2026-11-19T00:00:00Z','maker1')");
+ await f.approval.reconcile();await f.approval.notifyDue();
+ assert.deepEqual(f.sent.map(m=>m.chatId).sort(),['chat-majri.hr','chat-sasti.hr'],'one message per approver and site, not one per day');
+ const sasti=f.sent.find(m=>m.chatId==='chat-sasti.hr');
+ assert.match(sasti.text,/Sasti OC<\/b> · 3 days waiting · 17-11 to 20-11-2026/);
+ assert.match(sasti.text,/<b>17-11<\/b>[\s\S]*<b>18-11<\/b>[\s\S]*<b>20-11<\/b>/,'oldest first');
+ assert.deepEqual(sasti.buttons.map(row=>row.map(b=>b.text)),[['✅ Approve 17-11','↩ Send back 17-11'],['✅ Approve 18-11','↩ Send back 18-11'],['✅ Approve 20-11','↩ Send back 20-11']]);
+ await f.approval.notifyDue();assert.equal(f.sent.length,2,'never sent twice');
+
+ const answer=await f.approval.handleTelegramCallback({data:sasti.buttons[1][0].callback_data,logins:['sasti.hr'],chatId:'chat-sasti.hr'});
+ assert.equal(answer.answer,'✅ 18-11: Approved. Sent to Office HR.');assert.equal(answer.done,true);assert.equal(answer.keepOtherButtons,true);
+ const levels=Object.fromEntries((await f.db.query("SELECT book_date::text AS d,level FROM mis_attendance_days WHERE site='Sasti OC' ORDER BY 1")).rows.map(r=>[r.d,r.level]));
+ assert.deepEqual(levels,{'2026-11-17':1,'2026-11-18':2,'2026-11-20':1},'only the tapped day moved');
+ assert.equal(f.sent.at(-1).chatId,'chat-office.hr');assert.match(f.sent.at(-1).text,/1 day waiting · 18-11-2026[\s\S]*Approved so far: Site HR: SASTI\.HR ✓/);
+ assert.match((await f.approval.handleTelegramCallback({data:sasti.buttons[1][0].callback_data,logins:['sasti.hr'],chatId:'chat-sasti.hr'})).answer,/^18-11: This day has moved on/);
+ assert.match((await f.approval.handleTelegramCallback({data:sasti.buttons[2][1].callback_data,logins:['sasti.hr'],chatId:'chat-sasti.hr'})).answer,/^20-11: Write the reason/);
+});
+
+test('a long run of days is split so a message stays within the Telegram size',()=>{
+ const days=Array.from({length:25},(_,i)=>({date:'2026-10-'+String(i+1).padStart(2,'0'),batches:[{shift:'Shift I'},{shift:'Shift II'},{shift:'Shift III'}],summary:{present:735,people:705,training:8,cards:710,vlb:522,elb:169,lmv:19},trail:[]}));
+ const parts=approvalSummaryMessages({site:'Gauri Pauni OC (2nd)',region:'WCL',level:4,days});
+ assert.equal(parts.length,2);assert.equal(parts[0].dates.length,SUMMARY_DAYS_PER_MESSAGE);assert.equal(parts[1].dates.length,5);
+ assert.match(parts[0].text,/LEVEL 4 · DIRECTORS[\s\S]*20 days waiting · 01-10 to 20-10-2026 \(part 1 of 2\)/);
+ for(const p of parts)assert.ok(p.text.length<3600,'within the Telegram limit: '+p.text.length);
+ const mixed=approvalSummaryMessages({site:'Sasti OC',level:2,days:[{date:'2026-11-17',trail:[{level:1,action:'approved',name:'A'}]},{date:'2026-11-18',trail:[{level:1,action:'approved',name:'B'}]}]})[0].text;
+ assert.match(mixed,/<b>17-11<\/b>[^\n]*\n   ✓ Site HR: A[\s\S]*✓ Site HR: B/,'different approvers are shown per day');
 });

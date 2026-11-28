@@ -155,6 +155,55 @@ export function approvalMessage({site,region,date,level,batches=[],summary={},tr
   `Details: Masters › Attendance approval › ${html(fmtDate(date))}`,
  ].join('\n');
 }
+// One summary message per site, level and approver (owner, 28 Nov 2026: "make it summary", after one site's 20 days
+// came as 20 messages). Every waiting day is one line with its own Approve / Send back row, so a day is still approved
+// on its own; the approvals already given are shown once when every day has the same ones.
+export const SUMMARY_DAYS_PER_MESSAGE=20;
+export const SUMMARY_MAX_CHARS=3300;
+const shortDate=value=>fmtDate(value).slice(0,5);
+const shortShift=value=>String(value||'').replace(/^shift\s*/i,'S').replace(/^SIII$/,'S3').replace(/^SII$/,'S2').replace(/^SI$/,'S1');
+function approvedBy(trail=[]){
+ const last=new Map();for(const t of trail)if(t.action==='approved')last.set(t.level,t);
+ return [...last.values()].sort((a,b)=>a.level-b.level).map(t=>`${levelLabel(t.level)}: ${t.name||t.by}`).join(' · ');
+}
+export function summaryDayLine({date,batches=[],summary={},corrected=false}){
+ const shifts=batches.map(b=>shortShift(b.shift)).filter(Boolean).join(' ');
+ const parts=[`<b>${html(shortDate(date))}</b>`,`${batches.length} batch${batches.length===1?'':'es'}${shifts?` (${html(shifts)})`:''}`];
+ if(summary.present!=null)parts.push(`Present ${Number(summary.present).toLocaleString('en-IN')}`,`${Number(summary.people||0).toLocaleString('en-IN')} people`);
+ if(summary.training)parts.push(`VTC ${summary.training}`);
+ if(summary.cards!=null)parts.push(`VLB ${summary.vlb||0} · ELB ${summary.elb||0} · LMV ${summary.lmv||0}`);
+ return parts.join(' · ')+(corrected?' · ✏️ corrected':'');
+}
+// days: [{date,batches,summary,trail,corrected}] of one site waiting at one level → [{text,dates}], oldest first.
+export function approvalSummaryMessages({site,region,level,days=[]}){
+ const info=levelInfo(level);
+ const sorted=[...days].sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+ const by=sorted.map(d=>approvedBy(d.trail));
+ const same=by.length&&by.every(v=>v===by[0])?by[0]:null;
+ const lines=sorted.map((d,i)=>summaryDayLine(d)+(same===null&&by[i]?`\n   ✓ ${html(by[i])}`:''));
+ const chunks=[];let current=[];let size=0;
+ sorted.forEach((d,i)=>{
+  const add=lines[i].length+1;
+  if(current.length&&(current.length>=SUMMARY_DAYS_PER_MESSAGE||size+add>SUMMARY_MAX_CHARS)){chunks.push(current);current=[];size=0;}
+  current.push(i);size+=add;
+ });
+ if(current.length)chunks.push(current);
+ return chunks.map((chunk,part)=>{
+  const first=sorted[chunk[0]].date,last=sorted[chunk.at(-1)].date;
+  const span=chunk.length===1?fmtDate(first):`${shortDate(first)} to ${fmtDate(last)}`;
+  return {dates:chunk.map(i=>sorted[i].date),text:[
+   `<blockquote>🗓 <b>ATTENDANCE APPROVAL · LEVEL ${info.level} · ${html(info.label.toUpperCase())}</b>${region&&info.level===3?` (${html(region)})`:''}\n${html(info.task)}</blockquote>`,
+   '',
+   `<b>${html(site)}</b> · ${chunk.length} day${chunk.length===1?'':'s'} waiting · ${html(span)}${chunks.length>1?` (part ${part+1} of ${chunks.length})`:''}`,
+   ...(same?[`Approved so far: ${html(same)} ✓`]:[]),
+   '',
+   ...chunk.map(i=>lines[i]),
+   '',
+   'Tap a date to approve or send back that day. Details: Masters › Attendance approval.',
+  ].join('\n')};
+ });
+}
+export const summaryButtons=(entries)=>entries.map(({date,id})=>[{text:`✅ Approve ${shortDate(date)}`,callback_data:callbackData(id,'a')},{text:`↩ Send back ${shortDate(date)}`,callback_data:callbackData(id,'b')}]);
 export function lockedMessage({site,date}){
  return `🔒 <b>${html(site)} · ${html(fmtDate(date))} locked</b>\nApproved by Site HR, Office HR, RHR and Directors. The batches of this day cannot be reopened and its cards cannot change.`;
 }

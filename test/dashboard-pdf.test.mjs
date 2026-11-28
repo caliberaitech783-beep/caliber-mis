@@ -145,7 +145,7 @@ test("each sheet of the dashboard PDF is dressed for paper: a heading band, page
   assert.match(source, /if \(paged\) for \(let sheet = 1; sheet <= sheets; sheet\+\+\) \{[\s\S]*?pdf\.text\(`Page \$\{sheet\} of \$\{sheets\}`/, "sheets of reports are numbered");
   const screen = readFileSync(new URL("../src/log-book-dashboard.jsx", import.meta.url), "utf8");
   assert.match(screen, /data-print-brand="Caliber Pulse-II" data-print-logo="\/pulse-ii-icon\.png"/);
-  assert.match(screen, /data-print-title="VLB & ELB Dashboard"/);
+  assert.match(screen, /data-print-title="VLB, LMV, DLB & ELB Dashboard"/);
   const css = readFileSync(new URL("../src/log-book-dashboard.css", import.meta.url), "utf8");
   assert.match(css, /\[data-printing\] :is\(\.lb-range,\.lb-footer,/, "the date boxes and buttons are left off the paper");
   assert.match(css, /\[data-printing\] \.lb-reports :is\(header,\.mp-heading,\.production-filters,[^)]*\.generated-report-search,\.report-table-pagination,/, "so are each report's filters, search box and page buttons");

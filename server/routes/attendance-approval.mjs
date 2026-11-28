@@ -4,7 +4,7 @@
 //   POST /api/attendance-approval/act             {site,date,action:'approve'|'back'|'resume',reason} from the screen;
 //   GET  /api/attendance-approval/approvers       the approver list (administrators change it);
 //   PUT  /api/attendance-approval/approvers       {approvers:[{level,scope,login}]} replaces the list.
-// Telegram: one message per site, day and approver with Approve / Send back (callback att:<id>:a|b). Send back asks
+// Telegram: one summary per approver, site and level, each day with its own Approve / Send back (att:<id>:a|b). Send back asks
 // for the reason as the next message in that chat. A timer (one server at a time) moves days whose batches are all
 // closed to Level 1 and sends the messages that are due.
 // A locked day: its raw site spellings and date go into mis_attendance_locked_sites, and database triggers on
@@ -12,7 +12,7 @@
 import {randomBytes,randomUUID} from 'node:crypto';
 import {generateOtp,hashOtp,otpExpiresAt,checkOtpAttempt,resendTooSoon,OTP_TTL_MINUTES} from '../../shared/otp-approval.mjs';
 import {APPROVAL_FROM,APPROVAL_LEVELS,LOCKED_LEVEL,ALL_SITES,ATTENDANCE_LOCKED_SQLSTATE,approvalUntil,levelInfo,levelLabel,siteKey,siteLabel,siteRegion,normalScope,scopeCovers,
- approversFor,canApprove,groupDays,reconcileDay,approveDay,sendBackDay,resumeDay,approvalMessage,lockedMessage,sentBackMessage,callbackData,parseCallback,displayDate,
+ approversFor,canApprove,groupDays,reconcileDay,approveDay,sendBackDay,resumeDay,approvalSummaryMessages,summaryButtons,lockedMessage,sentBackMessage,callbackData,parseCallback,displayDate,
  UNLOCK_REASON_MIN,unlockDay,unlockOtpMessage,unlockedMessage} from '../../shared/attendance-approval.mjs';
 import {VTC_TRAINING_REASON} from '../../shared/vtc-training.mjs';
 
@@ -152,7 +152,9 @@ export function createAttendanceApproval({pool,sendButtons=null,sendText=null,de
    training:present.filter(p=>p.reason===VTC_TRAINING_REASON).length};
  }
 
- // One message per site, day, level and approver (owner, 27 Nov 2026). Sent once per batch signature.
+ // One summary message per approver, site and level with every day due, each day with its own Approve / Send back row
+ // (owner, 28 Nov 2026: "make it summary"; it was one message per day from 27 Nov 2026). Each day is still sent once
+ // per batch signature: its button id is a line of mis_attendance_messages, as before.
  async function notifyDue(){
   if(!sendButtons)return {sent:0};
   await ensure();
@@ -161,22 +163,45 @@ export function createAttendanceApproval({pool,sendButtons=null,sendText=null,de
   const already=new Set((await pool.query('SELECT site_key,book_date::text AS date,level,signature,login FROM mis_attendance_messages WHERE book_date BETWEEN $1::date AND $2::date',[APPROVAL_FROM,until()])).rows
    .map(r=>[r.site_key,r.date,r.level,r.signature,r.login].join('|')));
   const batchesByDay=new Map(groupDays(await readBatches(pool)).map(d=>[d.siteKey+'|'+d.date,d]));
-  let sent=0;
+  // login → chat, read once for every login that is due somewhere.
+  const due=new Map();
   for(const row of saved.sort((a,b)=>a.date.localeCompare(b.date))){
-   if(sent>=SEND_PER_RUN)break;
    const day=batchesByDay.get(row.site_key+'|'+row.date);if(!day||day.signature!==row.signature)continue;
-   const due=approversFor(list,row.site,row.level).filter(login=>!already.has([row.site_key,row.date,row.level,row.signature,login].join('|')));
-   if(!due.length)continue;
-   const chats=await chatsOf(pool,due);if(!chats.length)continue;
-   const text=approvalMessage({site:day.site,region:siteRegion(day.site),date:day.date,level:Number(row.level),batches:day.batches,summary:await daySummary(pool,day),trail:row.trail||[],corrected:row.corrected});
-   for(const chat of chats){
-    const id=randomBytes(8).toString('hex');
-    const claimed=(await pool.query('INSERT INTO mis_attendance_messages(id,site_key,book_date,level,signature,login,chat_id) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING RETURNING id',[id,row.site_key,row.date,row.level,row.signature,chat.login,chat.chatId])).rows[0];
-    if(!claimed)continue;
-    try{
-     const ok=await sendButtons(chat.chatId,text,[[{text:`✅ Approve ${displayDate(day.date).slice(0,5)}`,callback_data:callbackData(id,'a')},{text:`↩ Send back ${displayDate(day.date).slice(0,5)}`,callback_data:callbackData(id,'b')}]],{parse_mode:'HTML'});
-     if(ok)sent++;else await pool.query('DELETE FROM mis_attendance_messages WHERE id=$1',[id]);
-    }catch(error){await pool.query('DELETE FROM mis_attendance_messages WHERE id=$1',[id]).catch(()=>{});log('Attendance approval message failed:',error?.message);}
+   for(const login of approversFor(list,row.site,row.level)){
+    if(already.has([row.site_key,row.date,row.level,row.signature,login].join('|')))continue;
+    const key=[login,row.site_key,row.level].join('|');
+    if(!due.has(key))due.set(key,{login,site:day.site,siteKey:row.site_key,level:Number(row.level),days:[]});
+    due.get(key).days.push({row,day});
+   }
+  }
+  if(!due.size)return {sent:0};
+  const chats=new Map();for(const chat of await chatsOf(pool,[...new Set([...due.values()].map(g=>g.login))]))(chats.get(chat.login)||chats.set(chat.login,[]).get(chat.login)).push(chat);
+  const summaries=new Map();
+  const summaryOf=async day=>{const key=day.siteKey+'|'+day.date;if(!summaries.has(key))summaries.set(key,await daySummary(pool,day));return summaries.get(key);};
+  let sent=0;
+  for(const group of due.values()){
+   const mine=chats.get(group.login);if(!mine?.length)continue;
+   const days=[];for(const {row,day} of group.days)days.push({date:day.date,batches:day.batches,summary:await summaryOf(day),trail:row.trail||[],corrected:row.corrected,row});
+   const messages=approvalSummaryMessages({site:group.site,region:siteRegion(group.site),level:group.level,days});
+   for(const chat of mine){
+    for(const message of messages){
+     if(sent>=SEND_PER_RUN)return {sent};
+     const entries=[];
+     for(const date of message.dates){
+      const {row}=days.find(d=>d.date===date);
+      const id=randomBytes(8).toString('hex');
+      const claimed=(await pool.query('INSERT INTO mis_attendance_messages(id,site_key,book_date,level,signature,login,chat_id) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING RETURNING id',[id,row.site_key,row.date,row.level,row.signature,chat.login,chat.chatId])).rows[0];
+      if(claimed)entries.push({date,id});
+     }
+     if(!entries.length)continue;
+     // Another server claimed some of these days at the same moment: send only the days this run claimed.
+     const text=entries.length===message.dates.length?message.text:approvalSummaryMessages({site:group.site,region:siteRegion(group.site),level:group.level,days:days.filter(d=>entries.some(e=>e.date===d.date))})[0].text;
+     const drop=()=>pool.query('DELETE FROM mis_attendance_messages WHERE id=ANY($1::text[])',[entries.map(e=>e.id)]);
+     try{
+      const ok=await sendButtons(chat.chatId,text,summaryButtons(entries),{parse_mode:'HTML'});
+      if(ok)sent++;else await drop();
+     }catch(error){await drop().catch(()=>{});log('Attendance approval message failed:',error?.message);}
+    }
    }
   }
   return {sent};
@@ -241,24 +266,26 @@ export function createAttendanceApproval({pool,sendButtons=null,sendText=null,de
   await ensure();
   const chats=await chatsOf(pool,[who]);
   if(!chats.length)throw fail(409,'Your login has not connected Telegram. Connect it on the Telegram Integration page first.');
-  // A real closed day when there is one, so the figures are true; else an example day.
-  const day=groupDays(await readBatches(pool)).find(d=>d.ready);
-  const site=day?.site||'Sasti OC',date=day?.date||'2026-11-18';
-  const summary=day?await daySummary(pool,day):{present:239,people:211,training:2,vlb:93,elb:35,lmv:17,cards:145};
-  const batches=day?.batches||[{shift:'Shift I'},{shift:'Shift II'},{shift:'Shift III'}];
+  // The real closed days of the first site that has one (at most 3), so the figures are true; else an example day.
+  const ready=groupDays(await readBatches(pool)).filter(d=>d.ready).sort((a,b)=>a.date.localeCompare(b.date));
+  const picked=ready.length?ready.filter(d=>d.siteKey===ready[0].siteKey).slice(0,3):[];
+  const site=picked[0]?.site||'Sasti OC',date=picked[0]?.date||'2026-11-18';
+  const days=picked.length?await Promise.all(picked.map(async d=>({date:d.date,batches:d.batches,summary:await daySummary(pool,d),trail:[]})))
+   :[{date,batches:[{shift:'Shift I'},{shift:'Shift II'},{shift:'Shift III'}],summary:{present:239,people:211,training:2,vlb:93,elb:35,lmv:17,cards:145},trail:[]}];
   const head='🧪 <b>SAMPLE</b> · this is how an approval reaches you. Tapping its buttons changes nothing.\n\n';
-  const text=head+approvalMessage({site,region:siteRegion(site),date,level:1,batches,summary,trail:[]});
+  const text=head+approvalSummaryMessages({site,region:siteRegion(site),level:1,days})[0].text;
+  const buttons=days.map(d=>[{text:`✅ Approve ${displayDate(d.date).slice(0,5)}`,callback_data:'atts:a'},{text:`↩ Send back ${displayDate(d.date).slice(0,5)}`,callback_data:'atts:b'}]);
   const otpText='🧪 SAMPLE · this is how the RHR gets an unlock OTP. Not a real OTP.\n\n'+unlockOtpMessage({site,region:siteRegion(site),date,requestedBy:'An MIS user',reason:'Shift III card of DT-112 has the wrong driver',otp:'123456',minutes:OTP_TTL_MINUTES});
   let sent=0;
   for(const chat of chats){
    try{
-    if(await sendButtons(chat.chatId,text,[[{text:`✅ Approve ${displayDate(date).slice(0,5)}`,callback_data:'atts:a'},{text:`↩ Send back ${displayDate(date).slice(0,5)}`,callback_data:'atts:b'}]],{parse_mode:'HTML'}))sent++;
+    if(await sendButtons(chat.chatId,text,buttons,{parse_mode:'HTML'}))sent++;
     if(sendText)await sendText(chat.chatId,otpText);
    }catch(error){log('Attendance approval sample failed:',error?.message);}
   }
   if(!sent)throw fail(503,'Telegram did not take the sample. Check the bot on the Telegram Integration page.');
   lastSample.set(who,at);
-  return {sent,site,date,realDay:Boolean(day)};
+  return {sent,site,date,realDay:picked.length>0};
  }
 
  async function handleTelegramCallback({data,logins,chatId}){
@@ -266,24 +293,26 @@ export function createAttendanceApproval({pool,sendButtons=null,sendText=null,de
   const parsed=parseCallback(data);if(!parsed)return null;
   await ensure();
   const message=(await pool.query('SELECT *,book_date::text AS date FROM mis_attendance_messages WHERE id=$1',[parsed.id])).rows[0];
-  if(!message)return {answer:'This button is no longer active.',done:true};
+  // A summary message holds several days: an answer names its day, and only that day's row of buttons is taken away.
+  if(!message)return {answer:'This button is no longer active.',done:true,keepOtherButtons:true};
   const mine=(logins||[]).map(lower);
   if(!mine.includes(lower(message.login)))return {answer:'This approval was sent to another login.'};
+  const tag=`${displayDate(message.date).slice(0,5)}: `;
   const row=(await pool.query('SELECT level,status,signature FROM mis_attendance_days WHERE site_key=$1 AND book_date=$2::date',[message.site_key,message.date])).rows[0];
   if(!row||Number(row.level)!==Number(message.level)||row.signature!==message.signature||row.status!=='waiting'){
-   return {answer:Number(row?.level)>=LOCKED_LEVEL?'This day is already locked.':'This day has moved on. See Masters › Attendance approval.',done:true};
+   return {answer:tag+(Number(row?.level)>=LOCKED_LEVEL?'This day is already locked.':'This day has moved on. See Masters › Attendance approval.'),done:true,keepOtherButtons:true};
   }
   const names=await loginNames();
   if(parsed.action==='back'){
    await pool.query(`INSERT INTO mis_attendance_reason_waits(chat_id,message_id,login,expires_at) VALUES($1,$2,$3,$4)
     ON CONFLICT(chat_id) DO UPDATE SET message_id=EXCLUDED.message_id,login=EXCLUDED.login,expires_at=EXCLUDED.expires_at`,[String(chatId||message.chat_id),message.id,lower(message.login),new Date(now()+REASON_WAIT_MINUTES*60000).toISOString()]);
    if(sendText)await sendText(String(chatId||message.chat_id),`Write why ${siteLabel(message.site_key)} · ${displayDate(message.date)} is sent back, as your next message (within ${REASON_WAIT_MINUTES} minutes).`,{reply_markup:{force_reply:true}}).catch(()=>{});
-   return {answer:'Write the reason as your next message.'};
+   return {answer:tag+'Write the reason as your next message.'};
   }
   try{
    const result=await act({site:message.site_key,date:message.date,action:'approve',login:message.login,name:names.get(lower(message.login)),source:'Telegram'});
-   return {answer:result.level>=LOCKED_LEVEL?'✅ Approved. The day is locked.':`✅ Approved. Sent to ${levelLabel(result.level)}.`,done:true};
-  }catch(error){if(error.status)return {answer:error.message,done:true};throw error;}
+   return {answer:'✅ '+tag+(result.level>=LOCKED_LEVEL?'Approved. The day is locked.':`Approved. Sent to ${levelLabel(result.level)}.`),done:true,keepOtherButtons:true};
+  }catch(error){if(error.status)return {answer:tag+error.message,done:true,keepOtherButtons:true};throw error;}
  }
 
  // The next text in a chat after Send back is the reason. null = not ours.
