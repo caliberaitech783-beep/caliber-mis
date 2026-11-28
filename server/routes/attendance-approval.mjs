@@ -12,7 +12,7 @@
 import {randomBytes,randomUUID} from 'node:crypto';
 import {generateOtp,hashOtp,otpExpiresAt,checkOtpAttempt,resendTooSoon,OTP_TTL_MINUTES} from '../../shared/otp-approval.mjs';
 import {APPROVAL_FROM,APPROVAL_LEVELS,LOCKED_LEVEL,ALL_SITES,ATTENDANCE_LOCKED_SQLSTATE,approvalUntil,levelInfo,levelLabel,siteKey,siteLabel,siteRegion,normalScope,scopeCovers,
- approversFor,canApprove,groupDays,reconcileDay,approveDay,sendBackDay,resumeDay,approvalSummaryMessages,summaryButtons,lockedMessage,sentBackMessage,callbackData,parseCallback,displayDate,
+ approversFor,approverRoles,canApprove,groupDays,reconcileDay,approveDay,sendBackDay,resumeDay,approvalSummaryMessages,summaryButtons,lockedMessage,sentBackMessage,callbackData,parseCallback,displayDate,
  UNLOCK_REASON_MIN,unlockDay,unlockOtpMessage,unlockedMessage} from '../../shared/attendance-approval.mjs';
 import {VTC_TRAINING_REASON} from '../../shared/vtc-training.mjs';
 
@@ -458,7 +458,7 @@ export function createAttendanceApproval({pool,sendButtons=null,sendText=null,de
   await tell([row.requested_by,...row.sent_to,...approversFor(list,day.site,1),...(day.creators||[])],unlockedMessage({site:day.site,date:row.date,by:row.requested_name||row.requested_by,reason:row.reason,rhr:(row.sent_to||[]).join(', ')}));
   return {site:day.site,date:row.date,unlocked:true,status:'unlocked'};
  }
- return {ensure,reconcile,notifyDue,act,sendSample,lockStatus,requestUnlock,verifyUnlock,handleTelegramCallback,handleTelegramText,overview,dayDetail,approvers,saveApprovers,loginNames,
+ return {myRoles:async({login})=>approverRoles(await approvers(),login),ensure,reconcile,notifyDue,act,sendSample,lockStatus,requestUnlock,verifyUnlock,handleTelegramCallback,handleTelegramText,overview,dayDetail,approvers,saveApprovers,loginNames,
   start({everyMs=120000,firstMs=45000}={}){if(timer)return;setTimeout(()=>void tick(),firstMs).unref?.();timer=setInterval(()=>void tick(),everyMs);timer.unref?.();},
   stop(){clearInterval(timer);timer=null;}};
 }
@@ -502,6 +502,11 @@ export function registerAttendanceApproval(app,{approval,requireSession,isAdmini
   const result=await approval.verifyUnlock({id:req.body?.id,otp:req.body?.otp,...who(req)});
   req.audit={eventType:'Approval',module:'Attendance approval',action:'Unlock attendance day with RHR OTP',targetType:'Site day',targetReference:result.site+' '+result.date,details:{}};
   res.json(result);
+ }));
+ // The levels and sites the signed-in login approves (the "connect your Telegram" pop-up asks this once per sign-in).
+ app.get('/api/attendance-approval/mine',requireSession,wrap(async(req,res)=>{
+  req.audit=false;
+  res.set('Cache-Control','no-store').json({roles:await approval.myRoles(who(req))});
  }));
  app.get('/api/attendance-approval/approvers',requireSession,wrap(async(req,res)=>{
   const names=await approval.loginNames();

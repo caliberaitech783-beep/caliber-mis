@@ -91,6 +91,7 @@ import { sortCollator, useSortableRows, SortableHeader, sortRowsBlanksLast } fro
 import { closedTimeAfterStartedColumns, ensureJobReferenceVisibleKeys } from "./table-actions-model.mjs";
 import UserProfile from "./user-profile.jsx";
 import TelegramGate from "./telegram-gate.jsx";
+import ApproverTelegramNotice from "./approver-telegram-notice.jsx";
 import DiagnosticsPage from "./diagnostics-page.jsx";
 import SpeedTestPage from "./speed-test-page.jsx";
 import { PurgeDataPage, RetentionRulesPage } from "./data-housekeeping-page.jsx";
@@ -11521,6 +11522,7 @@ const AppBackgroundServices = React.memo(function AppBackgroundServices({ sessio
     <ReturnedCorrectionGate key={token} token={token} />
     <TicketResolutionNotices key={token} token={token} />
     <EquipmentMismatchNotice key={'equipment-mismatch-'+token} session={session} onOpen={()=>window.location.assign('/?page=equipment-deployment')} />
+    <ApproverTelegramNotice key={'approver-telegram-'+token} session={session} />
     <RemoteAssistanceAgent session={session} />
   </>;
 }, (previous, next) => previous.session === next.session);

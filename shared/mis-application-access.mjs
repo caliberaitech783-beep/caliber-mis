@@ -71,7 +71,7 @@ export function misRequestAllowed(session,req){
  if(route==='/api/admin/elb-pulse-repair/sites')return read&&isMisAdministrator(session);
  // Attendance approval (owner, 27 Nov 2026): every login may ask; the route itself lets an approver act only at the level
  // and sites given to that login, and only an administrator changes the approver list.
- if(route==='/api/attendance-approval'||route==='/api/attendance-approval/day')return read;
+ if(route==='/api/attendance-approval'||route==='/api/attendance-approval/day'||route==='/api/attendance-approval/mine')return read;
  if(route==='/api/attendance-approval/approvers')return read||req.method==='PUT';
  if(route==='/api/attendance-approval/act')return req.method==='POST';
  // RHR unlock with OTP: the route checks that the site is the login's.
