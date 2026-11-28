@@ -43,6 +43,17 @@ test('log books are counted by save time and shifts by lock time, in 6, 12 and 2
  assert.deepEqual(locksIn(recent,6),[]);assert.deepEqual(locksIn(recent,12).map(r=>r.batchId),['b']);
 });
 
+test('DLB is counted beside VLB, LMV and ELB with its own lock and drill-down totals',()=>{
+ const recent=buildRecentActivity({now:NOW,kinds:['vehicle','dlb','equipment'],
+  cards:[{site:'Dudhichua OC',book_type:'dlb',date:'2026-11-11',shift:'I',h6:2,h12:2,h24:2}],
+  batches:[{id:'d1',name:'DLB batch',site:'Dudhichua OC',date:'2026-11-11',shift:'I',created_at:ago(5),vlb_locked_at:ago(4),lmv_locked_at:ago(3),dlb_locked_at:ago(2),closed_at:ago(1),cards:8,dlb_saved:2,machines_saved:4}]});
+ assert.deepEqual(recent.logs[6],{total:2,vehicle:0,lmv:0,dlb:2,equipment:0});
+ assert.equal(recent.shifts[6].dlb,1);assert.equal(recent.shiftCards[6].dlb,2);
+ assert.deepEqual(lockCards(locksIn(recent,6)),{vehicle:8,lmv:0,dlb:2,equipment:4});
+ assert.deepEqual(batchStageTimes(recent.locked[0]).stages,[],'the saved stage timing is already attached to the locked row');
+ assert.deepEqual(recent.locked[0].stages.map(stage=>stage.key),['vlb','lmv','dlb','elb']);
+});
+
 test('batches locked are listed site by site, the most batches on top, with who locked each one',()=>{
  const batch=(id,site,date,shift,hours,cards,by)=>({id,name:id,site,date,shift,vlb_locked_at:ago(hours+2),lmv_locked_at:ago(hours+1),closed_at:ago(hours),cards,machines_saved:cards/5,locked_by:by});
  const input={now:NOW,
@@ -105,8 +116,8 @@ test('a window of the user\'s own hours is a whole number from 1 to 24, added be
 test('the dashboard reads the last 24 hours within the login\'s sites and lists one window\'s cards',async()=>{
  const db=new PGlite();let server;try{
   await db.exec(`CREATE TABLE mis_log_books(id BIGSERIAL PRIMARY KEY,book_no TEXT,book_type TEXT,book_date DATE,site TEXT,data JSONB,created_at TIMESTAMPTZ,deleted_at TIMESTAMPTZ);
-   CREATE TABLE mis_vlb_batches(id TEXT PRIMARY KEY,name TEXT,site TEXT,book_date DATE,shift TEXT,vlb_locked_at TIMESTAMPTZ,lmv_locked_at TIMESTAMPTZ,closed_at TIMESTAMPTZ,deleted_at TIMESTAMPTZ,archived_at TIMESTAMPTZ,created_at TIMESTAMPTZ,creator_login TEXT,created_by TEXT);
-   CREATE TABLE mis_vlb_batch_entries(batch_id TEXT,logbook_id BIGINT);CREATE TABLE mis_vlb_batch_fleet(batch_id TEXT,asset_id BIGINT,logbook_id BIGINT);
+   CREATE TABLE mis_vlb_batches(id TEXT PRIMARY KEY,name TEXT,site TEXT,book_date DATE,shift TEXT,vlb_locked_at TIMESTAMPTZ,lmv_locked_at TIMESTAMPTZ,closed_at TIMESTAMPTZ,deleted_at TIMESTAMPTZ,archived_at TIMESTAMPTZ,created_at TIMESTAMPTZ,creator_login TEXT,created_by TEXT,dlb_locked_at TIMESTAMPTZ);
+   CREATE TABLE mis_vlb_batch_entries(batch_id TEXT,logbook_id BIGINT);CREATE TABLE mis_dlb_batch_entries(batch_id TEXT,logbook_id BIGINT);CREATE TABLE mis_vlb_batch_fleet(batch_id TEXT,asset_id BIGINT,logbook_id BIGINT);
    CREATE TABLE mis_vlb_batch_audit(id BIGSERIAL PRIMARY KEY,batch_id TEXT,actor TEXT,action TEXT,occurred_at TIMESTAMPTZ,detail JSONB);
    CREATE TABLE master_records(id BIGSERIAL PRIMARY KEY,master_name TEXT,record_data JSONB);`);
   // Batch "two" was locked once by another login, reopened, and locked again nine hours ago by r.kumar.
@@ -130,12 +141,12 @@ test('the dashboard reads the last 24 hours within the login\'s sites and lists 
   server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));const root='http://127.0.0.1:'+server.address().port;
   const get=async(path,extra={})=>{const response=await fetch(root+'/api/dashboard/log-books'+path,{headers:{Authorization:'test',...extra}});return {status:response.status,body:await response.json()}};
   let result=await get('/recent');assert.equal(result.status,200,JSON.stringify(result.body));
-  assert.deepEqual(result.body.logs,{6:{total:3,vehicle:1,lmv:1,equipment:1},12:{total:4,vehicle:2,lmv:1,equipment:1},24:{total:5,vehicle:3,lmv:1,equipment:1}});
-  assert.deepEqual(result.body.shifts,{6:{vlb:1,lmv:0,elb:0},12:{vlb:1,lmv:1,elb:1},24:{vlb:1,lmv:1,elb:1}});
+  assert.deepEqual(result.body.logs,{6:{total:3,vehicle:1,lmv:1,dlb:0,equipment:1},12:{total:4,vehicle:2,lmv:1,dlb:0,equipment:1},24:{total:5,vehicle:3,lmv:1,dlb:0,equipment:1}});
+  assert.deepEqual(result.body.shifts,{6:{vlb:1,lmv:0,dlb:0,elb:0},12:{vlb:1,lmv:1,dlb:0,elb:1},24:{vlb:1,lmv:1,dlb:0,elb:1}});
   assert.deepEqual(result.body.bySite[24].map(s=>s.site),['Sasti OC','Jayant OC'],'the site with the most cards on top');
   // Cards inside the completed shifts: a deleted card is not counted, an open machine is not counted.
   assert.deepEqual(result.body.completed.map(r=>[r.kind,r.batchName,r.cards]),[['vlb','one',2],['elb','two',1],['lmv','two',1]]);
-  assert.deepEqual(result.body.shiftCards,{6:{vlb:2,lmv:0,elb:0},12:{vlb:2,lmv:1,elb:1},24:{vlb:2,lmv:1,elb:1}});
+  assert.deepEqual(result.body.shiftCards,{6:{vlb:2,lmv:0,dlb:0,elb:0},12:{vlb:2,lmv:1,dlb:0,elb:1},24:{vlb:2,lmv:1,dlb:0,elb:1}});
   // Batches locked: batch "two" alone, with its cards and the name of the login that locked it last. "one" has only its VLB locked.
   assert.deepEqual(result.body.batchLocks,{6:0,12:1,24:1});
   assert.deepEqual(result.body.locked.map(r=>[r.batchName,r.site,r.vehicle,r.lmv,r.equipment,r.lockedBy,r.minutesAgo]),[['two','Jayant OC',0,1,1,'Ravi Kumar',540]]);
@@ -143,16 +154,16 @@ test('the dashboard reads the last 24 hours within the login\'s sites and lists 
   assert.deepEqual(result.body.locked.map(r=>[r.startedBy,r.startedAt,r.closedAt,r.totalMinutes,r.stages.map(s=>[s.key,s.minutes])]),[['Ravi Kumar',ago(33),ago(9),1440,[['vlb',180],['lmv',1140],['elb',120]]]]);
   // A site opens into its cards by card date and shift.
   assert.deepEqual(result.body.logShifts.filter(r=>r.site==='Sasti OC').map(r=>[r.dateLabel,r.shift,r.counts[24].total]),[['03-11-26','S1',1],['03-11-26','',3]]);
-  result=await get('/recent',{'x-scope':'sasti'});assert.deepEqual(result.body.logs[24],{total:4,vehicle:3,lmv:1,equipment:0});assert.deepEqual(result.body.shifts[24],{vlb:1,lmv:0,elb:0});
+  result=await get('/recent',{'x-scope':'sasti'});assert.deepEqual(result.body.logs[24],{total:4,vehicle:3,lmv:1,dlb:0,equipment:0});assert.deepEqual(result.body.shifts[24],{vlb:1,lmv:0,dlb:0,elb:0});
   assert.deepEqual(result.body.completed.map(r=>[r.kind,r.batchName,r.cards]),[['vlb','one',2]]);
   assert.deepEqual(result.body.batchLocks,{6:0,12:0,24:0},'another site\'s locked batch is not counted for this login');assert.deepEqual(result.body.locked,[]);
   assert.deepEqual(result.body.batchSites,['Sasti OC'],'the sites that work in batches, within the login\'s sites');
   // A window of the user's own hours (owner, 13 Nov 2026): ?hours=2 reads "last 2 hours" beside 6, 12 and 24.
   result=await get('/recent?hours=2');assert.equal(result.status,200,JSON.stringify(result.body));
   assert.deepEqual(result.body.windows,[2,6,12,24]);
-  assert.deepEqual(result.body.logs[2],{total:1,vehicle:1,lmv:0,equipment:0},'only the card saved an hour ago');
-  assert.deepEqual(result.body.logs[24],{total:5,vehicle:3,lmv:1,equipment:1},'the other windows are unchanged');
-  assert.deepEqual([result.body.batchLocks[2],result.body.shifts[2]],[0,{vlb:0,lmv:0,elb:0}]);
+  assert.deepEqual(result.body.logs[2],{total:1,vehicle:1,lmv:0,dlb:0,equipment:0},'only the card saved an hour ago');
+  assert.deepEqual(result.body.logs[24],{total:5,vehicle:3,lmv:1,dlb:0,equipment:1},'the other windows are unchanged');
+  assert.deepEqual([result.body.batchLocks[2],result.body.shifts[2]],[0,{vlb:0,lmv:0,dlb:0,elb:0}]);
   assert.deepEqual(result.body.batchSites,['Jayant OC','Sasti OC'],'a deleted batch does not make a site');
   for(const hours of ['6','25','0','2.5','abc','-3'])assert.deepEqual((await get('/recent?hours='+encodeURIComponent(hours))).body.windows,[6,12,24],hours+' adds no window');
   assert.equal((await fetch(root+'/api/dashboard/log-books/recent')).status,401);

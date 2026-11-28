@@ -18,27 +18,27 @@ export const recentWindow=value=>RECENT_WINDOWS.includes(Number(value))?Number(v
 export const CUSTOM_HOURS_MAX=24;
 export const customWindow=value=>{const text=String(value??'').trim(),hours=Number(text);return /^\d+$/.test(text)&&hours>=1&&hours<=CUSTOM_HOURS_MAX?hours:0;};
 export const recentWindows=custom=>{const hours=customWindow(custom);return hours&&!RECENT_WINDOWS.includes(hours)?[...RECENT_WINDOWS,hours].sort((a,b)=>a-b):[...RECENT_WINDOWS];};
-export const SHIFT_KINDS=[['vlb','VLB'],['lmv','LMV'],['elb','ELB']];
+export const SHIFT_KINDS=[['vlb','VLB'],['lmv','LMV'],['dlb','DLB'],['elb','ELB']];
 // What is counted inside a completed shift of each kind.
-export const SHIFT_CARD_NOUNS={vlb:'trip cards',lmv:'LMV log books',elb:'ELB cards'};
+export const SHIFT_CARD_NOUNS={vlb:'trip cards',lmv:'LMV log books',dlb:'DLB entries',elb:'ELB cards'};
 // The same cards inside a locked batch, by the log book type a login may see.
-export const LOCK_CARD_NOUNS={vehicle:'trip cards',lmv:'LMV log books',equipment:'ELB cards'};
-const CARD_KINDS=['vehicle','lmv','equipment'];
+export const LOCK_CARD_NOUNS={vehicle:'trip cards',lmv:'LMV log books',dlb:'DLB entries',equipment:'ELB cards'};
+const CARD_KINDS=['vehicle','lmv','dlb','equipment'];
 const SHIFT_ORDER=['S1','S2','S3','D','N',''];
 
 const ms=value=>value===null||value===undefined||value===''?null:new Date(value).getTime();
 const scopeKey=(site,date,shift)=>canonicalSiteName(site)+'|'+date+'|'+(bookShiftCode(shift)||shift||'');
-const emptyCount=()=>({total:0,vehicle:0,lmv:0,equipment:0});
+const emptyCount=()=>({total:0,vehicle:0,lmv:0,dlb:0,equipment:0});
 const sameSite=(a,b)=>canonicalSiteName(a)===canonicalSiteName(b);
 // When each stage of a batch was completed. A batch closed under the older one-step rule has no separate
 // VLB and LMV lock times, so its closing time stands for all three.
 export function batchCompletionTimes(batch){
  const closed=ms(batch.closed_at);
- return {vlb:ms(batch.vlb_locked_at)??closed,lmv:ms(batch.lmv_locked_at)??closed,elb:closed};
+ return {vlb:ms(batch.vlb_locked_at)??closed,lmv:ms(batch.lmv_locked_at)??closed,...(Object.hasOwn(batch,'dlb_locked_at')?{dlb:ms(batch.dlb_locked_at)}:{}),elb:closed};
 }
 
 // The three stages of a batch in the order they are worked, with the kind of card each one holds.
-export const LOCK_STAGES=[['vlb','VLB','vehicle','batch start to VLB lock'],['lmv','LMV','lmv','VLB lock to LMV lock'],['elb','ELB','equipment','LMV lock to batch lock']];
+export const LOCK_STAGES=[['vlb','VLB','vehicle','batch start to VLB lock'],['lmv','LMV','lmv','VLB lock to LMV lock'],['dlb','DLB','dlb','LMV lock to DLB lock'],['elb','ELB','equipment','DLB lock to batch lock']];
 
 // A length of time in plain words: 45 min, 5 h 23 min, 2 days 3 h 12 min.
 export function durationLabel(minutes){
@@ -57,13 +57,14 @@ export function batchStageTimes(batch){
  const start=minute(batch.created_at),close=minute(batch.closed_at);
  if(start===null||close===null||close<start)return {startedAt:'',closedAt:'',totalMinutes:null,stages:[]};
  const whole={startedAt:iso(start),closedAt:iso(close),totalMinutes:close-start};
- const vlbLock=minute(batch.vlb_locked_at),lmvLock=minute(batch.lmv_locked_at);
+ const vlbLock=minute(batch.vlb_locked_at),lmvLock=minute(batch.lmv_locked_at),dlbLock=minute(batch.dlb_locked_at);
  // Closed under the older one-step rule: no separate VLB and LMV lock times, so the time cannot be divided.
  if(vlbLock===null||lmvLock===null)return {...whole,stages:[]};
  // A lock time outside its place (a clock corrected in between) is held inside the batch, so the sum still holds.
- const vlbEnd=Math.min(close,Math.max(start,vlbLock)),lmvEnd=Math.min(close,Math.max(vlbEnd,lmvLock));
- const ends={vlb:[start,vlbEnd],lmv:[vlbEnd,lmvEnd],elb:[lmvEnd,close]};
- return {...whole,stages:LOCK_STAGES.map(([key])=>({key,from:iso(ends[key][0]),to:iso(ends[key][1]),minutes:ends[key][1]-ends[key][0]}))};
+ const vlbEnd=Math.min(close,Math.max(start,vlbLock)),lmvEnd=Math.min(close,Math.max(vlbEnd,lmvLock)),dlbEnd=dlbLock===null?lmvEnd:Math.min(close,Math.max(lmvEnd,dlbLock));
+ const ends={vlb:[start,vlbEnd],lmv:[vlbEnd,lmvEnd],dlb:[lmvEnd,dlbEnd],elb:[dlbEnd,close]};
+ const stageList=dlbLock===null?LOCK_STAGES.filter(([key])=>key!=='dlb').map(stage=>stage[0]==='elb'?[stage[0],stage[1],stage[2],'LMV lock to batch lock']:stage):LOCK_STAGES;
+ return {...whole,stages:stageList.map(([key])=>({key,from:iso(ends[key][0]),to:iso(ends[key][1]),minutes:ends[key][1]-ends[key][0]}))};
 }
 
 // cards: [{site, book_type: vehicle|lmv|equipment, date, shift, h6, h12, h24}] counted by save time (one h<hours> for each window).
@@ -76,7 +77,8 @@ export function batchStageTimes(batch){
 // batchSites: every site this login may see that works in batches, so a site that locked nothing can be named.
 export function buildRecentActivity({now=Date.now(),cards=[],batches=[],lmvBooks=[],kinds=['vehicle','equipment'],windows=RECENT_WINDOWS,batchSites=[]}){
  const cardKinds=CARD_KINDS.filter(kind=>kinds.includes(kind==='lmv'?'vehicle':kind));
- const shiftKinds=SHIFT_KINDS.map(([key])=>key).filter(key=>kinds.includes(key==='elb'?'equipment':'vehicle'));
+ const shiftKinds=SHIFT_KINDS.map(([key])=>key).filter(key=>kinds.includes(key==='elb'?'equipment':key==='dlb'?'dlb':'vehicle'));
+ const zeroCount=()=>({total:0,vehicle:0,lmv:0,...(cardKinds.includes('dlb')?{dlb:0}:{}),equipment:0});
  const logs={},shifts={},shiftCards={},bySite={},batchLocks={},locked=[],logGroups=new Map();
  const list=[...new Set((windows?.length?windows:RECENT_WINDOWS).map(Number))].filter(hours=>Number.isFinite(hours)&&hours>0).sort((a,b)=>a-b);
  for(const hours of list){
@@ -84,24 +86,24 @@ export function buildRecentActivity({now=Date.now(),cards=[],batches=[],lmvBooks
   for(const row of cards){
    if(!cardKinds.includes(row.book_type))continue;
    const count=Number(row['h'+hours]||0);if(!count)continue;
-   const key=canonicalSiteName(row.site),site=sites.get(key)||{site:displaySiteName(row.site),vehicle:0,lmv:0,equipment:0,total:0};
+   const key=canonicalSiteName(row.site),site=sites.get(key)||{site:displaySiteName(row.site),vehicle:0,lmv:0,dlb:0,equipment:0,total:0};
    site[row.book_type]+=count;site.total+=count;sites.set(key,site);
    // The same cards by card date and shift, for the list that opens from a site.
    const shift=bookShiftCode(row.shift)||'',date=row.date||'',groupKey=key+'|'+date+'|'+shift;
-   const group=logGroups.get(groupKey)||{site:site.site,date,dateLabel:displayDate(date),shift,shiftLabel:SHIFT_LABELS[shift]||shift,counts:Object.fromEntries(list.map(h=>[h,emptyCount()]))};
+   const group=logGroups.get(groupKey)||{site:site.site,date,dateLabel:displayDate(date),shift,shiftLabel:SHIFT_LABELS[shift]||shift,counts:Object.fromEntries(list.map(h=>[h,zeroCount()]))};
    group.counts[hours][row.book_type]+=count;group.counts[hours].total+=count;logGroups.set(groupKey,group);
   }
   // Highest first, so the busiest site is on top.
   bySite[hours]=[...sites.values()].sort((a,b)=>b.total-a.total||a.site.localeCompare(b.site));
-  logs[hours]=bySite[hours].reduce((sum,site)=>({total:sum.total+site.total,vehicle:sum.vehicle+site.vehicle,lmv:sum.lmv+site.lmv,equipment:sum.equipment+site.equipment}),emptyCount());
-  shifts[hours]={vlb:0,lmv:0,elb:0};batchLocks[hours]=0;
+  logs[hours]=bySite[hours].reduce((sum,site)=>{sum.total+=site.total;for(const kind of cardKinds)sum[kind]+=site[kind];return sum;},zeroCount());
+  shifts[hours]={vlb:0,lmv:0,...(shiftKinds.includes('dlb')?{dlb:0}:{}),elb:0};batchLocks[hours]=0;
  }
  const lmvByScope=new Map();
  for(const book of lmvBooks){const key=scopeKey(book.site,book.date,book.shift);lmvByScope.set(key,(lmvByScope.get(key)||0)+Number(book.count||0));}
  const widest=Math.max(...list)*3600000,completed=[];
  for(const batch of batches){
   const times=batchCompletionTimes(batch),code=bookShiftCode(batch.shift)||batch.shift||'';
-  const inside={vlb:Number(batch.cards||0),lmv:lmvByScope.get(scopeKey(batch.site,batch.date,batch.shift))||0,elb:Number(batch.machines_saved||0)};
+  const inside={vlb:Number(batch.cards||0),lmv:lmvByScope.get(scopeKey(batch.site,batch.date,batch.shift))||0,dlb:Number(batch.dlb_saved||0),elb:Number(batch.machines_saved||0)};
   for(const kind of shiftKinds){
    const at=times[kind];
    if(at===null||at>now+60000||now-at>widest)continue;
@@ -116,7 +118,7 @@ export function buildRecentActivity({now=Date.now(),cards=[],batches=[],lmvBooks
   const lockedHoursAgo=Math.max(0,(now-lockedAt)/3600000),seen=kind=>cardKinds.includes(kind);
   for(const hours of list)if(lockedHoursAgo<=hours)batchLocks[hours]++;
   locked.push({batchId:batch.id||'',batchName:batch.name||'',site:displaySiteName(batch.site),date:batch.date,dateLabel:displayDate(batch.date),shift:code,shiftLabel:SHIFT_LABELS[code]||code,
-   vehicle:seen('vehicle')?inside.vlb:0,lmv:seen('lmv')?inside.lmv:0,equipment:seen('equipment')?inside.elb:0,lockedBy:batch.locked_by||'',
+   vehicle:seen('vehicle')?inside.vlb:0,lmv:seen('lmv')?inside.lmv:0,...(seen('dlb')?{dlb:inside.dlb}:{}),equipment:seen('equipment')?inside.elb:0,lockedBy:batch.locked_by||'',
    at:new Date(lockedAt).toISOString(),hoursAgo:lockedHoursAgo,minutesAgo:Math.floor((now-lockedAt)/60000),
    // Batch start to close, and the same time divided into VLB, LMV and ELB.
    startedBy:batch.started_by||'',...batchStageTimes(batch)});
@@ -128,7 +130,7 @@ export function buildRecentActivity({now=Date.now(),cards=[],batches=[],lmvBooks
  const recent={asOf:new Date(now).toISOString(),windows:list,cardKinds,shiftKinds,logs,shifts,shiftCards,batchLocks,locked,bySite,completed,
   batchSites:[...sites.values()].sort((a,b)=>a.localeCompare(b)),
   logShifts:[...logGroups.values()].sort((a,b)=>b.date.localeCompare(a.date)||SHIFT_ORDER.indexOf(a.shift)-SHIFT_ORDER.indexOf(b.shift)||a.site.localeCompare(b.site))};
- for(const hours of list)shiftCards[hours]=Object.fromEntries(SHIFT_KINDS.map(([kind])=>[kind,cardsInside(completedIn(recent,kind,hours))]));
+ for(const hours of list)shiftCards[hours]=Object.fromEntries(SHIFT_KINDS.filter(([kind])=>shiftKinds.includes(kind)).map(([kind])=>[kind,cardsInside(completedIn(recent,kind,hours))]));
  return recent;
 }
 
@@ -171,9 +173,9 @@ export const locksIn=(recent,hours,site='')=>(recent?.locked||[]).filter(row=>ro
 
 // Cards inside a list of locked batches, by log book type. Two batches of one shift never add its LMV log books twice.
 export function lockCards(rows){
- const seen=new Set(),total={vehicle:0,lmv:0,equipment:0};
+ const seen=new Set(),withDlb=rows.some(row=>Object.hasOwn(row,'dlb')),total={vehicle:0,lmv:0,...(withDlb?{dlb:0}:{}),equipment:0};
  for(const row of rows){
-  total.vehicle+=Number(row.vehicle||0);total.equipment+=Number(row.equipment||0);
+  total.vehicle+=Number(row.vehicle||0);if(withDlb)total.dlb+=Number(row.dlb||0);total.equipment+=Number(row.equipment||0);
   const key=canonicalSiteName(row.site)+'|'+row.date+'|'+row.shift;if(seen.has(key))continue;seen.add(key);
   total.lmv+=Number(row.lmv||0);
  }
@@ -188,7 +190,7 @@ export function averageLockMinutes(rows){
 
 // One window's locked batches, site by site: the site with the most batches on top.
 export function locksBySite(recent,hours){
- const sites=new Map(),all=cards=>cards.vehicle+cards.lmv+cards.equipment;
+ const sites=new Map(),all=cards=>Object.values(cards).reduce((sum,count)=>sum+Number(count||0),0);
  for(const row of locksIn(recent,hours)){const key=canonicalSiteName(row.site),entry=sites.get(key)||{site:row.site,rows:[]};entry.rows.push(row);sites.set(key,entry);}
  return [...sites.values()].map(({site,rows})=>({site,batches:rows.length,cards:lockCards(rows)})).sort((a,b)=>b.batches-a.batches||all(b.cards)-all(a.cards)||a.site.localeCompare(b.site));
 }

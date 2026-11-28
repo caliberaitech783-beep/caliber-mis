@@ -17,8 +17,8 @@ const timeLabel=at=>new Date(at).toLocaleString('en-IN',{day:'2-digit',month:'sh
 export const agoLabel=minutes=>minutes<1?'just now':minutes<60?`${minutes} min ago`:`${Math.floor(minutes/60)} h ${minutes%60} min ago`;
 export const windowLabel=hours=>`Last ${hours} hour${Number(hours)===1?'':'s'}`;
 const readCustomHours=()=>{try{return customWindow(localStorage.getItem(CUSTOM_HOURS_KEY));}catch{return 0;}};
-const CARD_LABELS={vehicle:'VLB',lmv:'LMV',equipment:'ELB'};
-const SHIFT_NOTES={vlb:'trip cards locked',lmv:'LMV log books locked',elb:'ELB cards locked'};
+const CARD_LABELS={vehicle:'VLB',lmv:'LMV',dlb:'DLB',equipment:'ELB'};
+const SHIFT_NOTES={vlb:'trip cards locked',lmv:'LMV log books locked',dlb:'DLB entries locked',elb:'ELB cards locked'};
 const capital=text=>text.charAt(0).toUpperCase()+text.slice(1);
 const shiftCount=count=>`${number(count)} shift${Number(count)===1?'':'s'}`;
 const batchCount=count=>`${number(count)} batch${Number(count)===1?'':'es'}`;
@@ -48,8 +48,8 @@ export function useRecentActivity({session,fetcher=fetch,refresh=0,active=true})
 }
 
 export default function RecentActivityPanel({recent,error,Dialog,customHours=0,onCustomHours=null}){
- // open: {row: logs|vlb|lmv|elb|batch, hours, site, batch, order}. Without a site the list shows the sites; with one, that site alone.
- // With a batch (Batches locked only): that batch's start to close time, divided into VLB, LMV and ELB.
+ // open: {row: logs|vlb|lmv|dlb|elb|batch, hours, site, batch, order}. Without a site the list shows the sites; with one, that site alone.
+ // With a batch (Batches locked only): that batch's start to close time, divided into VLB, LMV, DLB and ELB.
  // order 'longest' (Batches locked only): one list of the batches, the longest batch start to close first.
  const [chosen,setOpen]=useState(null);
  if(!recent)return <article className="lb-panel lb-recent"><div className="lb-panel-heading"><div><h3>Completed in the last 6, 12 and 24 hours</h3><p role={error?'alert':'status'}>{error||'Reading the last 24 hours…'}</p></div></div></article>;
@@ -91,7 +91,7 @@ export default function RecentActivityPanel({recent,error,Dialog,customHours=0,o
  const batchHead=first=><thead><tr><th>{first}</th><th>Card date</th><th>Shift</th>{recent.cardKinds.map(card=><th key={card}>{capital(LOCK_CARD_NOUNS[card])}</th>)}<th>Batch start to close</th><th>Locked at</th><th className="lb-recent-wide">Locked by</th></tr></thead>;
  // In the longest-first list of every site the site is written under the batch number.
  const batchRow=(row,withSite)=><tr key={row.batchId+row.at}><td className="lb-recent-batch">{row.batchName||'—'}{withSite===true&&<small>{row.site}</small>}</td><td>{row.dateLabel}</td><td>{row.shiftLabel}</td>{recent.cardKinds.map(card=><td key={card}>{number(row[card])}</td>)}
-  <td className="lb-recent-time">{hasTime(row)?<><button type="button" className="lb-recent-site" onClick={()=>setOpen({...open,batch:row.batchId})} aria-label={`Batch start to close, ${row.batchName}: ${durationLabel(row.totalMinutes)}. Show VLB, LMV and ELB time`}>{durationLabel(row.totalMinutes)}</button><small>started {timeLabel(row.startedAt)}</small></>:'—'}</td>
+  <td className="lb-recent-time">{hasTime(row)?<><button type="button" className="lb-recent-site" onClick={()=>setOpen({...open,batch:row.batchId})} aria-label={`Batch start to close, ${row.batchName}: ${durationLabel(row.totalMinutes)}. Show ${recent.cardKinds.includes('dlb')?'VLB, LMV, DLB and ELB':'VLB, LMV and ELB'} time`}>{durationLabel(row.totalMinutes)}</button><small>started {timeLabel(row.startedAt)}</small></>:'—'}</td>
   <td>{timeLabel(row.at)}<small>{agoLabel(row.minutesAgo)}</small></td><td className="lb-recent-wide">{row.lockedBy||'—'}</td></tr>;
  // On a site's line and the last line: the cards added up, and the average batch start to close time of its batches.
  const batchTotalRow=(name,rows,cards)=>{const average=averageLockMinutes(rows);return <tr className="lb-recent-site-row"><td>{name}<span>{batchCount(rows.length)}</span></td><td/><td/>{recent.cardKinds.map(card=><td key={card}><b>{number(cards[card])}</b></td>)}<td className="lb-recent-time">{average!==null&&<><b>{durationLabel(average)}</b><small>average</small></>}</td><td/><td className="lb-recent-wide"/></tr>;};
@@ -125,10 +125,10 @@ export default function RecentActivityPanel({recent,error,Dialog,customHours=0,o
     <p className="lb-recent-total">Batch start to close: <b>{durationLabel(timed.totalMinutes)}</b> · started {timeLabel(timed.startedAt)}{by(timed.startedBy)} · locked {timeLabel(timed.closedAt)}{by(timed.lockedBy)}</p>
     {stages.length>0?<div className="lb-table-wrap lb-recent-locks lb-recent-stages"><table>
       <thead><tr><th>Stage</th><th>From</th><th>To</th><th>Time taken</th><th>Cards</th></tr></thead>
-      <tbody>{LOCK_STAGES.map(([key,label,card,span])=>{const stage=stages.find(item=>item.key===key);return <tr key={key}><td><b>{label}</b><small>{span}</small></td><td>{timeLabel(stage.from)}</td><td>{timeLabel(stage.to)}</td><td><b>{durationLabel(stage.minutes)}</b></td><td>{stageCards(card)}</td></tr>;})}
-       <tr className="lb-recent-site-row"><td>Batch start to close<span>VLB + LMV + ELB</span></td><td>{timeLabel(timed.startedAt)}</td><td>{timeLabel(timed.closedAt)}</td><td><b>{durationLabel(timed.totalMinutes)}</b></td><td/></tr></tbody></table></div>
-     :<p>This batch was saved and locked in one step, so the VLB and LMV lock times were not recorded and its time cannot be divided.</p>}
-    {stages.length>0&&<p className="lb-muted">VLB is from the batch start to the VLB lock, LMV from the VLB lock to the LMV lock, and ELB from the LMV lock to the batch lock. The three add up to the batch start to close time.</p>}
+      <tbody>{stages.map(stage=>{const definition=LOCK_STAGES.find(([key])=>key===stage.key),[key,label,card,span]=definition;return <tr key={key}><td><b>{label}</b><small>{key==='elb'&&!stages.some(item=>item.key==='dlb')?'LMV lock to batch lock':span}</small></td><td>{timeLabel(stage.from)}</td><td>{timeLabel(stage.to)}</td><td><b>{durationLabel(stage.minutes)}</b></td><td>{stageCards(card)}</td></tr>;})}
+       <tr className="lb-recent-site-row"><td>Batch start to close<span>{stages.some(item=>item.key==='dlb')?'VLB + LMV + DLB + ELB':'VLB + LMV + ELB'}</span></td><td>{timeLabel(timed.startedAt)}</td><td>{timeLabel(timed.closedAt)}</td><td><b>{durationLabel(timed.totalMinutes)}</b></td><td/></tr></tbody></table></div>
+     :<p>This batch was saved and locked in one step under an earlier flow, so all separate stage lock times were not recorded and its time cannot be divided.</p>}
+    {stages.length>0&&<p className="lb-muted">{stages.some(item=>item.key==='dlb')?'VLB is from batch start to VLB lock, LMV to LMV lock, DLB to DLB lock, and ELB from DLB lock to batch lock. The four add up to the batch start to close time.':'VLB is from the batch start to the VLB lock, LMV from the VLB lock to the LMV lock, and ELB from the LMV lock to the batch lock. The three add up to the batch start to close time.'}</p>}
    </>}
    {!timed&&<><div className="lb-recent-steps">{open.site&&<StepBackButton onBack={()=>setOpen({row:open.row,hours:open.hours,order:open.order})} label="Back to sites"/>}
     <span className="lb-recent-switch">{recent.windows.map(hours=><button key={hours} type="button" aria-pressed={open.hours===hours} onClick={()=>setOpen({...open,hours})}>{windowLabel(hours)}</button>)}</span>
